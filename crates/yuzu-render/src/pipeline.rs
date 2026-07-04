@@ -90,6 +90,12 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         syntect_css.as_bytes(),
     )?;
 
+    // llms.txt / llms-full.txt（copy_public より前 = ユーザが public/llms.txt を
+    // 置いた場合はそちらが上書きして優先される。テーマ上書きと同じ思想）
+    if cfg.llms.enabled {
+        crate::llms::write_llms_files(rc, params.site, output_dir)?;
+    }
+
     assets::copy_public(rc.public_dir.as_deref(), output_dir)?;
     assets::write_build_id(output_dir)?;
 

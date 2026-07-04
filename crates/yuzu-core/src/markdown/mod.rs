@@ -11,7 +11,7 @@
 use std::path::Path;
 
 use comrak::nodes::{AstNode, NodeHtmlBlock, NodeValue};
-use comrak::{Anchorizer, Arena, Options, format_html, parse_document};
+use comrak::{Anchorizer, Arena, Options, format_commonmark, format_html, parse_document};
 
 use crate::MarkdownOptions;
 use crate::error::CoreError;
@@ -136,6 +136,34 @@ pub(crate) fn render_body_html(
 
     let mut out = String::new();
     format_html(root, &options, &mut out)?;
+    Ok(out)
+}
+
+/// 本文を正規化 Markdown として出力する（frontmatter は含めない）。
+///
+/// comrak の `format_commonmark` による正規化（見出し ATX 化・箇条書き `-` 統一・
+/// 裸 URL の `<url>` 化等）。llms-full.txt と将来の `yuzu fmt`（Phase 6）の共通基盤。
+///
+/// ⚠️ `render_body_html` 後の AST（コードブロックが HtmlBlock 化済み）を
+/// 流用しないこと。必ず新規パースした AST に対して行う
+pub(crate) fn normalize_markdown(
+    source: &str,
+    opts: &MarkdownOptions,
+) -> Result<String, CoreError> {
+    let arena = Arena::new();
+    let options = comrak_options(opts);
+    let root = parse_document(&arena, source, &options);
+
+    // format_commonmark は FrontMatter ノードを（区切り行込みの生テキストごと）
+    // 再出力するため、AST から外す。FrontMatter は常に Document の第一子
+    if let Some(first) = root.first_child() {
+        if matches!(first.data.borrow().value, NodeValue::FrontMatter(_)) {
+            first.detach();
+        }
+    }
+
+    let mut out = String::new();
+    format_commonmark(root, &options, &mut out)?;
     Ok(out)
 }
 

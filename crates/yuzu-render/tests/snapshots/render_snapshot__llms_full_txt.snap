@@ -1,0 +1,49 @@
+---
+source: crates/yuzu-render/tests/render_snapshot.rs
+expression: full
+---
+# Fixture Docs
+
+> yuzu-render のテスト用サイト
+
+---
+
+URL: /docs/
+
+# Fixture Docs
+
+[はじめに](guide/getting-started.md)を読む。
+
+| 機能 | 状態 |
+| --- | --- |
+| build | ✅ |
+| 検索 | Phase 3 |
+
+![ロゴ](/images/logo.svg)
+
+```mermaid
+graph TD;
+    A-->B;
+```
+
+---
+
+URL: /docs/guide/getting-started/
+
+# はじめに
+
+## インストール
+
+```rust
+fn main() {
+    println!("こんにちは yuzu");
+}
+```
+
+## 使い方
+
+[ホームへ戻る](../index.md)
+
+### 詳細
+
+本文。

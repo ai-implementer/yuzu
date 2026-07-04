@@ -17,7 +17,7 @@ description: yuzu のサンプルドキュメント
 | コードハイライト | syntect（ビルド時・CSS クラス出力） | ✅ |
 | Mermaid 図 | mermaid.js によるクライアント描画 | ✅ |
 | 日本語全文検索 | BM25 + vaporetto + Wasm（ヘッダーの検索ボックス） | ✅ |
-| llms.txt | LLM 向けの索引/全文 | Phase 4 |
+| llms.txt | LLM 向けの索引と全文（`/llms.txt`・`/llms-full.txt`） | ✅ |
 
 ## コードブロック
 

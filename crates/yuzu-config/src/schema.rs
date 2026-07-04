@@ -15,6 +15,7 @@ pub struct Config {
     pub nav: NavConfig,
     pub markdown: MarkdownConfig,
     pub search: SearchConfig,
+    pub llms: LlmsConfig,
     pub build: BuildConfig,
     pub dev: DevConfig,
 }
@@ -208,6 +209,24 @@ impl Default for ShardConfig {
     fn default() -> Self {
         Self {
             max_terms_per_shard: 16384,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LlmsConfig {
+    /// llms.txt / llms-full.txt を生成するか
+    pub enabled: bool,
+    /// llms-full.txt（正規化 Markdown の全文連結）も生成するか
+    pub full: bool,
+}
+
+impl Default for LlmsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            full: true,
         }
     }
 }

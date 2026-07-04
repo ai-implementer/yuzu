@@ -1,0 +1,15 @@
+---
+source: crates/yuzu-render/tests/render_snapshot.rs
+expression: llms
+---
+# Fixture Docs
+
+> yuzu-render のテスト用サイト
+
+## Docs
+
+- [ホーム](/docs/): フィクスチャのトップページ
+
+## guide
+
+- [はじめに](/docs/guide/getting-started/)

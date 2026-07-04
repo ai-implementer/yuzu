@@ -88,6 +88,8 @@ fn 生成物一式が揃っている() {
     assert!(dist.join("_assets/vendor/mermaid.min.js").is_file());
     assert!(dist.join("images/logo.svg").is_file());
     assert!(dist.join("__yuzu/build_id").is_file());
+    assert!(dist.join("llms.txt").is_file());
+    assert!(dist.join("llms-full.txt").is_file());
 
     // 通常ビルドにはオートリフレッシュを注入しない
     let index = fs::read_to_string(dist.join("index.html")).unwrap();
@@ -109,6 +111,91 @@ fn ws_モードは_livereload_js_が注入される() {
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
     assert!(index.contains("js/livereload.js"));
     assert!(!index.contains("autorefresh.js"));
+}
+
+#[test]
+fn llms_txt_のスナップショット() {
+    let dir = build_fixture(LiveReloadMode::None);
+    let dist = dir.path().join("dist");
+
+    let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
+    let full = fs::read_to_string(dist.join("llms-full.txt")).unwrap();
+
+    insta::assert_snapshot!("llms_txt", llms);
+    insta::assert_snapshot!("llms_full_txt", full);
+}
+
+/// fixture を上書きしてビルドする共通ヘルパ（llms 系テスト用）
+fn build_fixture_with(edit: impl FnOnce(&Path)) -> tempfile::TempDir {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    edit(dir.path());
+
+    let rc = yuzu_config::load(dir.path()).unwrap();
+    let site = yuzu_core::build_site_model(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &yuzu_core::MarkdownOptions::default(),
+    )
+    .unwrap();
+    render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+    })
+    .unwrap();
+    dir
+}
+
+#[test]
+fn llms_false_のページは両ファイルから除外される() {
+    let dir = build_fixture_with(|root| {
+        // getting-started.md を llms: false に
+        let path = root.join("content/guide/getting-started.md");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace("title: はじめに", "title: はじめに\nllms: false"),
+        )
+        .unwrap();
+    });
+    let dist = dir.path().join("dist");
+
+    let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
+    assert!(!llms.contains("getting-started"), "llms.txt:\n{llms}");
+    // リンク 0 件になった guide セクションは見出しごと消える
+    assert!(!llms.contains("## guide"), "llms.txt:\n{llms}");
+    // 他ページは残る
+    assert!(llms.contains("- [ホーム]"));
+
+    let full = fs::read_to_string(dist.join("llms-full.txt")).unwrap();
+    assert!(!full.contains("こんにちは yuzu"), "本文が除外される");
+}
+
+#[test]
+fn llms_無効化と_full_無効化() {
+    // enabled: false → 両ファイルとも出ない
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("yuzu.jsonc"),
+            r#"{ "site": { "title": "Fixture Docs" }, "llms": { "enabled": false } }"#,
+        )
+        .unwrap();
+    });
+    assert!(!dir.path().join("dist/llms.txt").exists());
+    assert!(!dir.path().join("dist/llms-full.txt").exists());
+
+    // full: false → llms.txt のみ
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("yuzu.jsonc"),
+            r#"{ "site": { "title": "Fixture Docs" }, "llms": { "full": false } }"#,
+        )
+        .unwrap();
+    });
+    assert!(dir.path().join("dist/llms.txt").exists());
+    assert!(!dir.path().join("dist/llms-full.txt").exists());
 }
 
 #[test]

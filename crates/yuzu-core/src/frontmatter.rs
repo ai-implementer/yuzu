@@ -39,6 +39,14 @@ mod tests {
     }
 
     #[test]
+    fn llms_は省略時_true_で_false_を指定できる() {
+        let fm = parse_frontmatter("---\ntitle: x\n---\n").unwrap();
+        assert!(fm.llms, "省略時は収録する");
+        let fm = parse_frontmatter("---\nllms: false\n---\n").unwrap();
+        assert!(!fm.llms);
+    }
+
+    #[test]
     fn 未知のキーは無視する() {
         let fm = parse_frontmatter("---\ntitle: x\nfuture_key: 123\n---\n").unwrap();
         assert_eq!(fm.title.as_deref(), Some("x"));

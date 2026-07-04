@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// frontmatter（YAML、`---` 区切り）で指定できるページメタデータ。
-/// 未知のキーは無視する（後続フェーズで `slug` / `tags` / `llms` 等を追加予定）
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// 未知のキーは無視する（後続フェーズで `slug` / `tags` 等を追加予定）
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Frontmatter {
     /// ページタイトル（ナビ表示にも使う）。未指定なら先頭 h1 → ファイル名の順で補う
@@ -17,6 +17,22 @@ pub struct Frontmatter {
     pub draft: bool,
     /// メタディスクリプション
     pub description: Option<String>,
+    /// false なら llms.txt / llms-full.txt に収録しない
+    pub llms: bool,
+}
+
+// llms の既定を true にするため derive ではなく手書き
+// （serde のコンテナ #[serde(default)] もこの Default を使う）
+impl Default for Frontmatter {
+    fn default() -> Self {
+        Self {
+            title: None,
+            order: None,
+            draft: false,
+            description: None,
+            llms: true,
+        }
+    }
 }
 
 /// ソース上の位置（1 始まりの行・列）。将来の Linter 診断用に保持する

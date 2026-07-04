@@ -14,8 +14,8 @@ pub use discover::find_project_root;
 pub use error::ConfigError;
 pub use resolve::{ResolvedConfig, load, write_resolved};
 pub use schema::{
-    BuildConfig, Config, DevConfig, HighlightConfig, InputConfig, MarkdownConfig, MermaidConfig,
-    NavConfig, OutputConfig, SearchConfig, ShardConfig, SiteConfig, ThemeConfig,
+    BuildConfig, Config, DevConfig, HighlightConfig, InputConfig, LlmsConfig, MarkdownConfig,
+    MermaidConfig, NavConfig, OutputConfig, SearchConfig, ShardConfig, SiteConfig, ThemeConfig,
     TypoToleranceConfig,
 };
 

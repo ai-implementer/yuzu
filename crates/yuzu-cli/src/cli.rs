@@ -59,6 +59,10 @@ pub enum Command {
         json: bool,
     },
 
-    /// llms.txt / llms-full.txt の生成（Phase 4 で実装予定）
-    Llms,
+    /// llms.txt をその場で生成して標準出力へ（dist/ 不要）
+    Llms {
+        /// llms-full.txt（全ページの正規化 Markdown 連結）を出力する
+        #[arg(long)]
+        full: bool,
+    },
 }

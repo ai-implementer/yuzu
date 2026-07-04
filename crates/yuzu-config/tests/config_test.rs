@@ -103,6 +103,27 @@ fn search_設定を読み込める() {
 }
 
 #[test]
+fn llms_設定を読み込める() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "llms": { "full": false } }"#,
+    )
+    .unwrap();
+
+    let rc = load(dir.path()).unwrap();
+    assert!(rc.config.llms.enabled);
+    assert!(!rc.config.llms.full);
+
+    // 未指定時のデフォルトは両方 true
+    let dir2 = tempfile::tempdir().unwrap();
+    fs::write(dir2.path().join("yuzu.jsonc"), "{}").unwrap();
+    let rc2 = load(dir2.path()).unwrap();
+    assert!(rc2.config.llms.enabled);
+    assert!(rc2.config.llms.full);
+}
+
+#[test]
 fn build_base_url_が_site_base_url_より優先される() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(

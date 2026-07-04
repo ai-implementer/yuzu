@@ -15,11 +15,13 @@ mod context;
 mod css;
 mod error;
 mod highlight;
+mod llms;
 mod pipeline;
 mod templates;
 mod urls;
 
 pub use error::RenderError;
 pub use highlight::SyntectCodeRenderer;
+pub use llms::{generate_llms_full_txt, generate_llms_txt};
 pub use pipeline::{LiveReloadMode, RenderParams, render_site};
 pub use urls::UrlResolver;

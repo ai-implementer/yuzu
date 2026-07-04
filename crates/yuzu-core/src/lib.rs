@@ -107,3 +107,9 @@ pub fn render_body_html(
 pub fn extract_plain_text(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
     markdown::extract_plain_text(&page.source, opts)
 }
+
+/// ページ本文を正規化 Markdown として出力する（frontmatter は含めない）。
+/// llms-full.txt と将来の `yuzu fmt` の共通基盤
+pub fn normalize_markdown(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
+    markdown::normalize_markdown(&page.source, opts)
+}

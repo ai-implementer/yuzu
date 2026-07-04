@@ -24,6 +24,6 @@ fn main() -> anyhow::Result<()> {
         cli::Command::Preview { port } => commands::preview::run(port),
         cli::Command::Dev { port } => commands::dev::run(port),
         cli::Command::Search { query, limit, json } => commands::search::run(&query, limit, json),
-        cli::Command::Llms => commands::stubs::not_implemented("llms"),
+        cli::Command::Llms { full } => commands::llms::run(full),
     }
 }

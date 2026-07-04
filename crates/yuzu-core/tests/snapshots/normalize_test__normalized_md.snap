@@ -1,0 +1,27 @@
+---
+source: crates/yuzu-core/tests/normalize_test.rs
+expression: normalize_str(SAMPLE)
+---
+# 見出し
+
+- アスタリスク箇条書き
+- 二つ目
+  - ネスト
+
+| 機能 | 状態 |
+| :-- | --: |
+| build | ✅ |
+
+- [ ] 未完了タスク
+- [x] 完了タスク
+
+コードは `inline` と:
+
+```rust
+fn main() {}
+```
+
+裸 URL: <https://example.com/path>
+
+改行を
+含む段落。
