@@ -1,6 +1,6 @@
 [package]
 name = "yuzu-search-wasm"
-description = "yuzu のクライアント検索クエリエンジン（Phase 3 で実装予定の器）"
+description = "yuzu のクライアント検索クエリエンジン（wasm-bindgen ラッパ）"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,4 +13,6 @@ authors.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# builtin-model は有効化しない（モデルはブラウザが fetch する。wasm を肥大させない）
 yuzu-index-format = { workspace = true }
+wasm-bindgen = { workspace = true }

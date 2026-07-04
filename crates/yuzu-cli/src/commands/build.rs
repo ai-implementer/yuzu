@@ -52,17 +52,31 @@ pub fn run(watch: bool) -> anyhow::Result<()> {
 }
 
 pub(crate) fn build_once(rc: &ResolvedConfig, live_reload: LiveReloadMode) -> anyhow::Result<()> {
-    let site = yuzu_core::build_site_model(
-        &rc.content_dir,
-        &rc.config.input.ignore,
-        &MarkdownOptions {
-            gfm: rc.config.markdown.gfm,
-        },
-    )?;
+    let md_opts = MarkdownOptions {
+        gfm: rc.config.markdown.gfm,
+    };
+    let site = yuzu_core::build_site_model(&rc.content_dir, &rc.config.input.ignore, &md_opts)?;
     yuzu_render::render_site(&RenderParams {
         config: rc,
         site: &site,
         live_reload,
     })?;
+
+    // 検索インデックスは render の後（output.clean が dist を消すため必ず後段）
+    if rc.config.search.enabled {
+        let search = &rc.config.search;
+        yuzu_index::build_search_index(
+            &site,
+            &md_opts,
+            &yuzu_index::IndexParams {
+                // 相対パスはプロジェクトルート基準
+                dictionary: search.dictionary.as_ref().map(|p| rc.root.join(p)),
+                typo_enabled: search.typo_tolerance.enabled,
+                max_edits: search.typo_tolerance.max_edits.min(1),
+                max_terms_per_shard: search.shard.max_terms_per_shard.max(1),
+            },
+            &rc.output_dir,
+        )?;
+    }
     Ok(())
 }

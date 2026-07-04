@@ -1,6 +1,6 @@
 [package]
 name = "yuzu-index"
-description = "yuzu の検索インデクサ（Phase 3 で実装予定の器）"
+description = "yuzu の検索インデクサ（dist/_search/ の生成）とネイティブ検索"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,3 +9,15 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+yuzu-core = { workspace = true }
+yuzu-index-format = { workspace = true, features = ["builtin-model"] }
+fst = { workspace = true }
+rust-embed = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

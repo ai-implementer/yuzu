@@ -1,4 +1,11 @@
 <header class="site-header">
 <a class="site-title" href="{{ base_url | safe }}">{{ site.title }}</a>
-{% if dark_enabled %}<button id="theme-toggle" type="button" aria-label="ダークモード切替" title="ダークモード切替">◐</button>
-{% endif %}</header>
+<div class="header-tools">
+{% if search_enabled %}<div class="search" id="yuzu-search">
+<input type="search" id="yuzu-search-input" placeholder="検索 ( / )" autocomplete="off"
+       role="combobox" aria-expanded="false" aria-controls="yuzu-search-results">
+<div class="search-results" id="yuzu-search-results" role="listbox" hidden></div>
+</div>
+{% endif %}{% if dark_enabled %}<button id="theme-toggle" type="button" aria-label="ダークモード切替" title="ダークモード切替">◐</button>
+{% endif %}</div>
+</header>

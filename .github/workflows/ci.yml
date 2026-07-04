@@ -32,11 +32,22 @@ jobs:
       - name: build
         run: cargo build --workspace
 
-      # e2e: サンプルプロジェクト生成 → ビルドまで通す
-      - name: e2e (yuzu new && yuzu build)
+      # 検索 wasm が wasm32 でコンパイルできることだけ確認する
+      # （成果物の生成は scripts/build-search-wasm.sh で行い、リポジトリに vendor 済み）
+      - name: wasm check
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo check -p yuzu-search-wasm --target wasm32-unknown-unknown
+
+      # e2e: サンプルプロジェクト生成 → ビルド → ネイティブ検索（誤字クエリ込み）
+      - name: e2e (yuzu new && yuzu build && yuzu search)
         run: |
           ./target/debug/yuzu new "$RUNNER_TEMP/e2e-docs"
           cd "$RUNNER_TEMP/e2e-docs"
           "$GITHUB_WORKSPACE/target/debug/yuzu" build
           test -f dist/index.html
           test -f dist/guide/getting-started/index.html
+          test -f dist/_search/manifest.json
+          test -f dist/_search/search_bg.wasm
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search "はじめに" | grep "はじめに"
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search "ダーくモード" | grep -q "."

@@ -47,8 +47,17 @@ pub enum Command {
         port: Option<u16>,
     },
 
-    /// 全文検索インデックスの生成（BM25 + Wasm。Phase 3 で実装予定）
-    Search,
+    /// ビルド済みサイトの全文検索（dist/_search をブラウザと同じエンジンで検索）
+    Search {
+        /// 検索クエリ（日本語可。1 文字の誤字にも寛容）
+        query: String,
+        /// 表示件数
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        /// JSON で出力する
+        #[arg(long)]
+        json: bool,
+    },
 
     /// llms.txt / llms-full.txt の生成（Phase 4 で実装予定）
     Llms,

@@ -1,0 +1,19 @@
+---
+source: crates/yuzu-index-format/src/tokenizer.rs
+expression: "t.tokenize(\"Markdownで書いた設計書を静的HTMLサイトに変換する\")"
+---
+[
+    "markdown",
+    "で",
+    "書い",
+    "た",
+    "設計",
+    "書",
+    "を",
+    "静的",
+    "html",
+    "サイト",
+    "に",
+    "変換",
+    "する",
+]

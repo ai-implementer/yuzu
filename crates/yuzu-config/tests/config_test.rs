@@ -73,6 +73,36 @@ fn dev_の_live_reload_と_open_を読み込める() {
 }
 
 #[test]
+fn search_設定を読み込める() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "search": { "enabled": false, "dictionary": "models/custom.model.zst",
+             "typoTolerance": { "maxEdits": 0 }, "shard": { "maxTermsPerShard": 4096 } } }"#,
+    )
+    .unwrap();
+
+    let rc = load(dir.path()).unwrap();
+    assert!(!rc.config.search.enabled);
+    assert_eq!(
+        rc.config.search.dictionary.as_deref(),
+        Some("models/custom.model.zst")
+    );
+    assert_eq!(rc.config.search.typo_tolerance.max_edits, 0);
+    assert_eq!(rc.config.search.shard.max_terms_per_shard, 4096);
+
+    // 未指定時のデフォルト
+    let dir2 = tempfile::tempdir().unwrap();
+    fs::write(dir2.path().join("yuzu.jsonc"), "{}").unwrap();
+    let rc2 = load(dir2.path()).unwrap();
+    assert!(rc2.config.search.enabled);
+    assert!(rc2.config.search.dictionary.is_none());
+    assert!(rc2.config.search.typo_tolerance.enabled);
+    assert_eq!(rc2.config.search.typo_tolerance.max_edits, 1);
+    assert_eq!(rc2.config.search.shard.max_terms_per_shard, 16384);
+}
+
+#[test]
 fn build_base_url_が_site_base_url_より優先される() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(

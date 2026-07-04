@@ -112,6 +112,42 @@ fn ws_モードは_livereload_js_が注入される() {
 }
 
 #[test]
+fn search_有効なら検索_ui_が入り_無効なら出ない() {
+    // 既定（enabled: true）
+    let dir = build_fixture(LiveReloadMode::None);
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(index.contains("yuzu-search-input"));
+    assert!(index.contains("js/search-ui.js"));
+    assert!(index.contains("data-search-base=\"/docs/_search/\""));
+
+    // 無効化した fixture
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "site": { "title": "Fixture Docs" }, "search": { "enabled": false } }"#,
+    )
+    .unwrap();
+    let rc = yuzu_config::load(dir.path()).unwrap();
+    let site = yuzu_core::build_site_model(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &yuzu_core::MarkdownOptions::default(),
+    )
+    .unwrap();
+    render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+    })
+    .unwrap();
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(!index.contains("yuzu-search-input"));
+    assert!(!index.contains("search-ui.js"));
+}
+
+#[test]
 fn base_url_がリンクとアセットに反映される() {
     let dir = build_fixture(LiveReloadMode::None);
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();

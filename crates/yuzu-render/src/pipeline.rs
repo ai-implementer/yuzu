@@ -72,6 +72,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             live_reload_ws => params.live_reload == LiveReloadMode::Ws,
             mermaid_enabled => cfg.markdown.mermaid.enabled,
             dark_enabled => cfg.theme.dark,
+            search_enabled => cfg.search.enabled,
         })?;
         let out_path = output_dir.join(page.output_rel_path());
         assets::write_file(&out_path, html.as_bytes())?;

@@ -16,7 +16,7 @@ description: yuzu のサンプルドキュメント
 | GFM の表 | この表がそれです | ✅ |
 | コードハイライト | syntect（ビルド時・CSS クラス出力） | ✅ |
 | Mermaid 図 | mermaid.js によるクライアント描画 | ✅ |
-| 日本語全文検索 | BM25 + Wasm | Phase 3 |
+| 日本語全文検索 | BM25 + vaporetto + Wasm（ヘッダーの検索ボックス） | ✅ |
 | llms.txt | LLM 向けの索引/全文 | Phase 4 |
 
 ## コードブロック

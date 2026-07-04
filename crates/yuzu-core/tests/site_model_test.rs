@@ -135,6 +135,32 @@ fn 重複見出しの_toc_id_が本文アンカーと一致する() {
 }
 
 #[test]
+fn extract_plain_text_はコードブロックと_html_を除外する() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "index.md",
+        "---\ntitle: 抽出テスト\n---\n# 見出し\n\n本文の一行目\n続きの行\n\nインライン `code_api` は含む。\n\n```rust\nfn secret_code() {}\n```\n\n```mermaid\ngraph TD;\n```\n\n<div>raw html</div>\n\n- 項目いち\n- 項目に\n",
+    );
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let text = yuzu_core::extract_plain_text(&site.pages[0], &MarkdownOptions::default()).unwrap();
+
+    // 含む: 見出し・本文（SoftBreak は空白に）・インラインコード・リスト項目
+    assert!(text.contains("見出し"));
+    assert!(text.contains("本文の一行目 続きの行"));
+    assert!(text.contains("code_api"));
+    assert!(text.contains("項目いち"));
+    // 含まない: フェンスコード・mermaid ソース・生 HTML・frontmatter
+    assert!(!text.contains("secret_code"));
+    assert!(!text.contains("graph TD"));
+    assert!(!text.contains("raw html"));
+    assert!(!text.contains("抽出テスト")); // frontmatter の title は本文ではない
+    // ブロック区切りで改行が入る
+    assert!(text.lines().count() >= 4, "text:\n{text}");
+}
+
+#[test]
 fn toc_は_sourcepos_を持つ() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "index.md", "# 一行目\n\n本文\n\n## 五行目\n");

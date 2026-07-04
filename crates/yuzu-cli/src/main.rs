@@ -23,7 +23,7 @@ fn main() -> anyhow::Result<()> {
         cli::Command::Build { watch } => commands::build::run(watch),
         cli::Command::Preview { port } => commands::preview::run(port),
         cli::Command::Dev { port } => commands::dev::run(port),
-        cli::Command::Search => commands::stubs::not_implemented("search"),
+        cli::Command::Search { query, limit, json } => commands::search::run(&query, limit, json),
         cli::Command::Llms => commands::stubs::not_implemented("llms"),
     }
 }

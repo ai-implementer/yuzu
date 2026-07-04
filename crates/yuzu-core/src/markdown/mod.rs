@@ -139,6 +139,51 @@ pub(crate) fn render_body_html(
     Ok(out)
 }
 
+/// 本文のプレーンテキストを抽出する（検索インデックス用）。
+///
+/// - 収集: `Text` / インライン `Code`（API 名検索のため含める）。
+///   `SoftBreak` / `LineBreak` は空白、ブロック要素の末尾で改行 1 つ
+/// - 除外: frontmatter・生 HTML・**フェンスコードブロック**
+///   （mermaid ソースや長いコード片が BM25 を汚すため。
+///   将来 `search.indexCode` のような opt-in を足す余地はある）
+pub(crate) fn extract_plain_text(
+    source: &str,
+    opts: &MarkdownOptions,
+) -> Result<String, CoreError> {
+    let arena = Arena::new();
+    let options = comrak_options(opts);
+    let root = parse_document(&arena, source, &options);
+
+    let mut out = String::new();
+    collect_plain_text(root, &mut out);
+    Ok(out.trim().to_string())
+}
+
+fn collect_plain_text<'a>(node: &'a AstNode<'a>, out: &mut String) {
+    {
+        let data = node.data.borrow();
+        match &data.value {
+            NodeValue::FrontMatter(_)
+            | NodeValue::HtmlBlock(_)
+            | NodeValue::HtmlInline(_)
+            | NodeValue::CodeBlock(_) => return,
+            NodeValue::Text(literal) => out.push_str(literal),
+            NodeValue::Code(code) => out.push_str(&code.literal),
+            NodeValue::LineBreak | NodeValue::SoftBreak => out.push(' '),
+            _ => {}
+        }
+    }
+
+    for child in node.children() {
+        collect_plain_text(child, out);
+    }
+
+    // 段落・見出し・リスト項目等の区切りで改行を入れる（トークナイズの文脈を切る）
+    if node.data.borrow().value.block() && !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+}
+
 /// 見出しノード配下のプレーンテキストを収集する。
 /// comrak の header_ids 拡張と同じ規則（Text/Code はリテラル、改行は空白）に合わせる
 fn collect_text<'a>(node: &'a AstNode<'a>) -> String {

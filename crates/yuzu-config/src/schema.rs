@@ -14,6 +14,7 @@ pub struct Config {
     pub theme: ThemeConfig,
     pub nav: NavConfig,
     pub markdown: MarkdownConfig,
+    pub search: SearchConfig,
     pub build: BuildConfig,
     pub dev: DevConfig,
 }
@@ -154,6 +155,60 @@ pub struct MermaidConfig {
 impl Default for MermaidConfig {
     fn default() -> Self {
         Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SearchConfig {
+    /// 全文検索（インデックス生成＋テーマの検索 UI）を有効にするか
+    pub enabled: bool,
+    /// vaporetto モデル（`.model.zst`）のパス。未指定なら同梱モデル
+    pub dictionary: Option<String>,
+    pub typo_tolerance: TypoToleranceConfig,
+    pub shard: ShardConfig,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            dictionary: None,
+            typo_tolerance: TypoToleranceConfig::default(),
+            shard: ShardConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TypoToleranceConfig {
+    pub enabled: bool,
+    /// 許容編集距離。v1 では 0..=1 に clamp される（2 以上はノイズと構築コストが跳ねる）
+    pub max_edits: u8,
+}
+
+impl Default for TypoToleranceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_edits: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ShardConfig {
+    /// 1 シャードあたりの term 数（term_id の連続範囲で分割）
+    pub max_terms_per_shard: u32,
+}
+
+impl Default for ShardConfig {
+    fn default() -> Self {
+        Self {
+            max_terms_per_shard: 16384,
+        }
     }
 }
 

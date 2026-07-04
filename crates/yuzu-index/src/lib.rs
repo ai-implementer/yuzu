@@ -1,7 +1,20 @@
-//! TODO(Phase 3): 検索インデクサ。
+//! yuzu の検索インデクサ。
 //!
-//! ビルド時に本文を抽出し、日本語トークナイズ（vaporetto）→ 転置インデックス＋
-//! BM25 統計 → term 辞書の fst 化 → シャーディング → 静的成果物
-//! （`dist/_search/`）を出力する。索引フォーマット型は `yuzu-index-format` に
-//! 切り出し、クエリ側（`yuzu-search-wasm`）と共有する。
-//! 全体像は README.md のロードマップ（Phase 3）を参照。
+//! サイトモデルから `dist/_search/` 一式（manifest / terms.fst / シャード /
+//! fragment / モデル / wasm 成果物）を生成する。
+//! クエリエンジンとフォーマットは `yuzu-index-format` にあり、
+//! ブラウザ（wasm）とネイティブ（[`search_dist`]）で同一コードを共有する。
+//!
+//! この crate は設定（yuzu-config）に依存しない。cli が設定を [`IndexParams`] に
+//! 写して渡す（依存方向の凍結: cli → index → {core, index-format}）。
+
+mod builder;
+mod error;
+mod query;
+
+pub use builder::{IndexParams, IndexStats, build_search_index};
+pub use error::IndexError;
+pub use query::{SearchResult, search_dist};
+
+/// `dist/` 内の検索成果物ディレクトリ名
+pub const SEARCH_DIR_NAME: &str = "_search";

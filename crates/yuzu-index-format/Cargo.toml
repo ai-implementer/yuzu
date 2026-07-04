@@ -1,6 +1,6 @@
 [package]
 name = "yuzu-index-format"
-description = "yuzu-index と yuzu-search-wasm が共有する索引フォーマット型（Phase 3 で実装予定の器）"
+description = "yuzu の検索インデックスフォーマットとクエリエンジン（yuzu-index と yuzu-search-wasm が共有）"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,3 +9,20 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+fst = { workspace = true }
+ruzstd = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+unicode-normalization = { workspace = true }
+vaporetto = { workspace = true }
+vaporetto_rules = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+
+[features]
+# 同梱モデル（assets/model/*.model.zst）を include_bytes! で埋め込む。
+# yuzu-index（ネイティブ側）だけが有効化する。wasm 側はモデルを fetch するので
+# 有効化しない（wasm バイナリを肥大させないため）
+builtin-model = []

@@ -100,3 +100,10 @@ pub fn render_body_html(
 ) -> Result<String, CoreError> {
     markdown::render_body_html(page, opts, code, urls)
 }
+
+/// ページ本文のプレーンテキストを抽出する（検索インデックス用）。
+/// frontmatter・生 HTML・フェンスコードブロックは含めない
+/// （インラインコードは API 名検索のため含める）
+pub fn extract_plain_text(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
+    markdown::extract_plain_text(&page.source, opts)
+}

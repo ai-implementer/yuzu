@@ -42,6 +42,7 @@ mod tests {
             "static/js/autorefresh.js",
             "static/js/livereload.js",
             "static/js/mermaid-init.js",
+            "static/js/search-ui.js",
             "static/vendor/mermaid.min.js",
         ] {
             assert!(super::get(path).is_some(), "{path} が同梱されていない");

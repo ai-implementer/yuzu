@@ -25,7 +25,14 @@ expression: index
 <body>
 <header class="site-header">
 <a class="site-title" href="/docs/">Fixture Docs</a>
+<div class="header-tools">
+<div class="search" id="yuzu-search">
+<input type="search" id="yuzu-search-input" placeholder="検索 ( / )" autocomplete="off"
+       role="combobox" aria-expanded="false" aria-controls="yuzu-search-results">
+<div class="search-results" id="yuzu-search-results" role="listbox" hidden></div>
+</div>
 <button id="theme-toggle" type="button" aria-label="ダークモード切替" title="ダークモード切替">◐</button>
+</div>
 </header>
 <div class="layout">
 
@@ -96,5 +103,6 @@ expression: index
 <script src="/docs/_assets/js/theme.js"></script>
 <script src="/docs/_assets/vendor/mermaid.min.js"></script>
 <script src="/docs/_assets/js/mermaid-init.js"></script>
+<script type="module" src="/docs/_assets/js/search-ui.js" data-search-base="/docs/_search/" data-base="/docs/"></script>
 </body>
 </html>

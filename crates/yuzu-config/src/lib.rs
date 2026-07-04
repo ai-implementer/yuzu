@@ -15,7 +15,8 @@ pub use error::ConfigError;
 pub use resolve::{ResolvedConfig, load, write_resolved};
 pub use schema::{
     BuildConfig, Config, DevConfig, HighlightConfig, InputConfig, MarkdownConfig, MermaidConfig,
-    NavConfig, OutputConfig, SiteConfig, ThemeConfig,
+    NavConfig, OutputConfig, SearchConfig, ShardConfig, SiteConfig, ThemeConfig,
+    TypoToleranceConfig,
 };
 
 /// 設定ファイル名（プロジェクトルートのマーカーを兼ねる）
