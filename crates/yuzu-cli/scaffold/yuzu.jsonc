@@ -20,5 +20,9 @@
     "highlight": { "enabled": true },
     "mermaid": { "enabled": true }
   },
-  "dev": { "port": 5173 }
+  "dev": {
+    "port": 5173
+    // "liveReload": true, // yuzu dev の WS ライブリロード（false で注入なし）
+    // "open": false // yuzu dev 起動時にブラウザを開く
+  }
 }

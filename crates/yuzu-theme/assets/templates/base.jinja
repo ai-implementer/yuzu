@@ -30,6 +30,7 @@
 <script src="{{ asset_url | safe }}js/theme.js"></script>
 {% if mermaid_enabled %}<script src="{{ asset_url | safe }}vendor/mermaid.min.js"></script>
 <script src="{{ asset_url | safe }}js/mermaid-init.js"></script>
-{% endif %}{% if live_reload %}<script src="{{ asset_url | safe }}js/autorefresh.js" data-base="{{ base_url | safe }}"></script>
+{% endif %}{% if live_reload_poll %}<script src="{{ asset_url | safe }}js/autorefresh.js" data-base="{{ base_url | safe }}"></script>
+{% endif %}{% if live_reload_ws %}<script src="{{ asset_url | safe }}js/livereload.js"></script>
 {% endif %}</body>
 </html>

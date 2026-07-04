@@ -40,8 +40,12 @@ pub enum Command {
         port: Option<u16>,
     },
 
-    /// 開発サーバ（WS フルライブリロード。Phase 2 で実装予定）
-    Dev,
+    /// 開発サーバ（監視ビルド＋配信＋WS ライブリロード）
+    Dev {
+        /// ポート番号（既定: 設定の dev.port）
+        #[arg(long)]
+        port: Option<u16>,
+    },
 
     /// 全文検索インデックスの生成（BM25 + Wasm。Phase 3 で実装予定）
     Search,

@@ -52,6 +52,27 @@ fn 空の設定でもデフォルトで解決できる() {
 }
 
 #[test]
+fn dev_の_live_reload_と_open_を読み込める() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "dev": { "liveReload": false, "open": true } }"#,
+    )
+    .unwrap();
+
+    let rc = load(dir.path()).unwrap();
+    assert!(!rc.config.dev.live_reload);
+    assert!(rc.config.dev.open);
+
+    // 未指定時のデフォルト
+    let dir2 = tempfile::tempdir().unwrap();
+    fs::write(dir2.path().join("yuzu.jsonc"), "{}").unwrap();
+    let rc2 = load(dir2.path()).unwrap();
+    assert!(rc2.config.dev.live_reload);
+    assert!(!rc2.config.dev.open);
+}
+
+#[test]
 fn build_base_url_が_site_base_url_より優先される() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(

@@ -8,7 +8,7 @@ use std::fs;
 use std::path::Path;
 
 use yuzu_core::MarkdownOptions;
-use yuzu_render::{RenderParams, render_site};
+use yuzu_render::{LiveReloadMode, RenderParams, render_site};
 
 /// フィクスチャを tempdir へコピーする（dist をリポジトリ内に作らないため）
 fn copy_tree(src: &Path, dest: &Path) {
@@ -37,7 +37,7 @@ fn walkdir_files(dir: &Path) -> Vec<std::path::PathBuf> {
     files
 }
 
-fn build_fixture(live_reload: bool) -> tempfile::TempDir {
+fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
     let dir = tempfile::tempdir().unwrap();
     copy_tree(&fixture, dir.path());
@@ -62,7 +62,7 @@ fn build_fixture(live_reload: bool) -> tempfile::TempDir {
 
 #[test]
 fn フルビルドのスナップショット() {
-    let dir = build_fixture(false);
+    let dir = build_fixture(LiveReloadMode::None);
     let dist = dir.path().join("dist");
 
     let index = fs::read_to_string(dist.join("index.html")).unwrap();
@@ -74,7 +74,7 @@ fn フルビルドのスナップショット() {
 
 #[test]
 fn 生成物一式が揃っている() {
-    let dir = build_fixture(false);
+    let dir = build_fixture(LiveReloadMode::None);
     let dist = dir.path().join("dist");
 
     // syntect.css はバージョン更新で差分が出やすいので存在と中身だけ確認
@@ -95,16 +95,25 @@ fn 生成物一式が揃っている() {
 }
 
 #[test]
-fn live_reload_時はオートリフレッシュが注入される() {
-    let dir = build_fixture(true);
+fn poll_モードはオートリフレッシュが注入される() {
+    let dir = build_fixture(LiveReloadMode::Poll);
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
     assert!(index.contains("autorefresh.js"));
     assert!(index.contains("data-base=\"/docs/\""));
+    assert!(!index.contains("livereload.js"));
+}
+
+#[test]
+fn ws_モードは_livereload_js_が注入される() {
+    let dir = build_fixture(LiveReloadMode::Ws);
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(index.contains("js/livereload.js"));
+    assert!(!index.contains("autorefresh.js"));
 }
 
 #[test]
 fn base_url_がリンクとアセットに反映される() {
-    let dir = build_fixture(false);
+    let dir = build_fixture(LiveReloadMode::None);
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
 
     // 本文リンク（.md → pretty URL）・画像・アセット・ナビすべて /docs/ 配下

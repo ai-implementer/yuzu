@@ -40,6 +40,7 @@ mod tests {
             "static/css/theme.css",
             "static/js/theme.js",
             "static/js/autorefresh.js",
+            "static/js/livereload.js",
             "static/js/mermaid-init.js",
             "static/vendor/mermaid.min.js",
         ] {

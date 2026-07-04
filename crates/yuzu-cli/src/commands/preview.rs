@@ -35,6 +35,7 @@ pub(crate) fn serve_dist(rc: &ResolvedConfig, port: Option<u16>) -> anyhow::Resu
         host,
         port: port.unwrap_or(rc.config.dev.port),
         base_url: rc.base_url.clone(),
+        live_reload: None,
     })?;
     Ok(())
 }

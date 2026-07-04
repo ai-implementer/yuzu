@@ -46,8 +46,8 @@ pub fn run(dir: &Path) -> anyhow::Result<()> {
     println!();
     println!("次の一歩:");
     println!("  cd {}", dir.display());
+    println!("  yuzu dev            # 開発サーバ（監視＋WS ライブリロード）で執筆");
     println!("  yuzu build          # dist/ に静的サイトを出力");
     println!("  yuzu preview        # dist/ をブラウザで確認");
-    println!("  yuzu build --watch  # 監視しながら執筆（自動リロード）");
     Ok(())
 }

@@ -16,12 +16,23 @@ use crate::highlight::SyntectCodeRenderer;
 use crate::templates;
 use crate::urls::UrlResolver;
 
+/// ページに注入するライブリロード方式
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LiveReloadMode {
+    /// 注入なし（通常ビルド / `dev.liveReload: false`）
+    #[default]
+    None,
+    /// build_id ポーリング（`build --watch`）
+    Poll,
+    /// WebSocket（`yuzu dev`）
+    Ws,
+}
+
 /// レンダリング一式の入力
 pub struct RenderParams<'a> {
     pub config: &'a ResolvedConfig,
     pub site: &'a SiteModel,
-    /// `build --watch` のときだけ true（オートリフレッシュ JS を注入する）
-    pub live_reload: bool,
+    pub live_reload: LiveReloadMode,
 }
 
 /// サイト全体を `dist/` に書き出す
@@ -57,7 +68,8 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             nav => NavCtx::build(&params.site.nav, &page.route, &resolver),
             base_url => resolver.base(),
             asset_url => resolver.asset_url(),
-            live_reload => params.live_reload,
+            live_reload_poll => params.live_reload == LiveReloadMode::Poll,
+            live_reload_ws => params.live_reload == LiveReloadMode::Ws,
             mermaid_enabled => cfg.markdown.mermaid.enabled,
             dark_enabled => cfg.theme.dark,
         })?;

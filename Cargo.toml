@@ -35,11 +35,17 @@ globset = "0.4"
 # 9.0 は rc 段階のため 8.2 に固定（notify-debouncer-mini 0.7 は notify ^8.2 前提）
 notify = "8.2"
 notify-debouncer-mini = "0.7"
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["fs"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+# broadcast（ライブリロード通知）に "sync" が必須（axum の feature からは有効化されない）
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
+# `yuzu dev` の dev.open（起動時にブラウザを開く）用
+open = "5.3"
 insta = { version = "1.48", features = ["filters"] }
 tempfile = "3"
+# WS 統合テスト用（axum 0.8 の内部依存と同版に合わせる）
+tokio-tungstenite = "0.29"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 # 内部 crate（依存方向の凍結: cli → {server, render, index, core, config} /
 # render, index → core / search-wasm → index-format）

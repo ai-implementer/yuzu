@@ -14,14 +14,17 @@ yuzu build
 
 `content/**/*.md` がテーマ HTML になり、`dist/` に出力されます。
 
-## 監視モードで書く
+## 開発サーバで書く
 
 ```bash
-yuzu build --watch
+yuzu dev
 ```
 
-`content/` と `theme/` を監視して自動再ビルドし、
-配信中のブラウザを自動リロードします（執筆はこれ 1 コマンド）。
+`content/` と `theme/` を監視して自動再ビルドし、WebSocket で
+ブラウザを即リロードします（執筆はこれ 1 コマンド）。
+`yuzu.jsonc` の `dev.open: true` で起動時にブラウザも開きます。
+
+WebSocket が使えない環境では `yuzu build --watch`（ポーリング式）が退避先です。
 
 ## プレビューする
 

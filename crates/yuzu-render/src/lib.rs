@@ -21,5 +21,5 @@ mod urls;
 
 pub use error::RenderError;
 pub use highlight::SyntectCodeRenderer;
-pub use pipeline::{RenderParams, render_site};
+pub use pipeline::{LiveReloadMode, RenderParams, render_site};
 pub use urls::UrlResolver;

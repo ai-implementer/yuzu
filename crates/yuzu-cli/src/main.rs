@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
         cli::Command::New { dir } => commands::new::run(&dir),
         cli::Command::Build { watch } => commands::build::run(watch),
         cli::Command::Preview { port } => commands::preview::run(port),
-        cli::Command::Dev => commands::stubs::not_implemented("dev"),
+        cli::Command::Dev { port } => commands::dev::run(port),
         cli::Command::Search => commands::stubs::not_implemented("search"),
         cli::Command::Llms => commands::stubs::not_implemented("llms"),
     }

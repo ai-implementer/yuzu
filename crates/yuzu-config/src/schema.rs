@@ -169,6 +169,11 @@ pub struct BuildConfig {
 pub struct DevConfig {
     pub host: String,
     pub port: u16,
+    /// `yuzu dev` の WebSocket ライブリロード。
+    /// false なら監視ビルド＋配信のみ（WS 注入なし。反映は手動リロード）
+    pub live_reload: bool,
+    /// `yuzu dev` 起動時に既定ブラウザでサイトを開く
+    pub open: bool,
 }
 
 impl Default for DevConfig {
@@ -176,6 +181,8 @@ impl Default for DevConfig {
         Self {
             host: "127.0.0.1".to_string(),
             port: 5173,
+            live_reload: true,
+            open: false,
         }
     }
 }
