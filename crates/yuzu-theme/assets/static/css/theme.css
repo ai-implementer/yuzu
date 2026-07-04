@@ -420,6 +420,17 @@ body {
   text-align: center;
 }
 
+/* tankan によるビルド時 SVG（backend: "ssr"） */
+.markdown-body figure.mermaid-ssr {
+  margin: 1rem 0;
+  text-align: center;
+}
+
+.markdown-body figure.mermaid-ssr svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* ---- レスポンシブ ---- */
 
 @media (max-width: 72rem) {

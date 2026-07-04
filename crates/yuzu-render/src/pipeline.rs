@@ -50,7 +50,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let template = env.get_template("page.jinja")?;
     let resolver = UrlResolver::new(&rc.base_url, params.site);
     let highlighter =
-        SyntectCodeRenderer::new(cfg.markdown.highlight.enabled, cfg.markdown.mermaid.enabled);
+        SyntectCodeRenderer::new(cfg.markdown.highlight.enabled, &cfg.markdown.mermaid);
     let md_opts = MarkdownOptions {
         gfm: cfg.markdown.gfm,
     };
@@ -61,7 +61,15 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     };
 
     for page in &params.site.pages {
+        highlighter.begin_page();
         let body = yuzu_core::render_body_html(page, &md_opts, &highlighter, &resolver)?;
+        // 「このページで mermaid.js を読み込むか」。client は従来どおり常に読み、
+        // ssr はフォールバック（未対応図種等）が発生したページだけ読む
+        let mermaid_js_needed = cfg.markdown.mermaid.enabled
+            && match cfg.markdown.mermaid.backend {
+                yuzu_config::MermaidBackend::Client => true,
+                yuzu_config::MermaidBackend::Ssr => highlighter.mermaid_fallback_occurred(),
+            };
         let html = template.render(context! {
             site => site_ctx,
             page => PageCtx::new(page, &body, &resolver),
@@ -70,7 +78,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             asset_url => resolver.asset_url(),
             live_reload_poll => params.live_reload == LiveReloadMode::Poll,
             live_reload_ws => params.live_reload == LiveReloadMode::Ws,
-            mermaid_enabled => cfg.markdown.mermaid.enabled,
+            mermaid_enabled => mermaid_js_needed,
             dark_enabled => cfg.theme.dark,
             search_enabled => cfg.search.enabled,
         })?;

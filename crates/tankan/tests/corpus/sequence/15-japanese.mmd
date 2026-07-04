@@ -1,0 +1,8 @@
+sequenceDiagram
+    participant W as 執筆者
+    participant Y as yuzu
+    participant B as ブラウザ
+    W->>Y: yuzu build --watch
+    Y-->>B: 静的 HTML（自動リロード）
+    W->>Y: Markdown を編集
+    Y-->>B: 再ビルド → リロード

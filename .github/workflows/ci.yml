@@ -32,12 +32,14 @@ jobs:
       - name: build
         run: cargo build --workspace
 
-      # 検索 wasm が wasm32 でコンパイルできることだけ確認する
-      # （成果物の生成は scripts/build-search-wasm.sh で行い、リポジトリに vendor 済み）
+      # wasm32 でのコンパイル可能性を確認する
+      # - yuzu-search-wasm: 成果物は scripts/build-search-wasm.sh で vendor 済み
+      # - tankan: 将来の wasm ターゲット（M5）の前倒し保険
       - name: wasm check
         run: |
           rustup target add wasm32-unknown-unknown
           cargo check -p yuzu-search-wasm --target wasm32-unknown-unknown
+          cargo check -p tankan --target wasm32-unknown-unknown
 
       # e2e: サンプルプロジェクト生成 → ビルド → ネイティブ検索（誤字クエリ込み）
       - name: e2e (yuzu new && yuzu build && yuzu search)

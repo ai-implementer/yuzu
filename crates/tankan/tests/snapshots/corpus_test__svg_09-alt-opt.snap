@@ -1,0 +1,68 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-sequence" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 443.5" width="450" height="443.5" role="img" aria-label="Sequence diagram" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-actor rect { fill: #ffffff; stroke: #d1d9e0; }
+.tankan .tk-actor-figure { stroke: #1f2328; fill: none; }
+.tankan .tk-lifeline { stroke: #59636e; }
+.tankan .tk-msg { stroke: #1f2328; fill: none; }
+.tankan .tk-head-fill { fill: #1f2328; }
+.tankan .tk-head-line { stroke: #1f2328; fill: none; stroke-width: 1.5; }
+.tankan .tk-activation { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-note { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-frame { stroke: #d1d9e0; fill: none; }
+.tankan .tk-frame-sep { stroke: #d1d9e0; stroke-dasharray: 4,4; }
+.tankan .tk-frame-labelbox { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-frame-kind { font-weight: bold; }
+.tankan .tk-frame-label { fill: #59636e; }
+.tankan .tk-groupbox { stroke: #d1d9e0; fill: none; }
+.tankan .tk-groupbox-bg { stroke: none; }
+.tankan .tk-seqnum circle { fill: #9a6700; }
+.tankan .tk-seqnum text { fill: #ffffff; font-size: 11px; }
+.tankan .tk-title { font-weight: bold; }
+</style>
+<defs>
+<marker id="tk-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="tk-head-fill" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="tk-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="tk-head-line" d="M1,1 L9,5 L1,9"/></marker>
+<marker id="tk-cross" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path class="tk-head-line" d="M1,1 L9,9 M9,1 L1,9"/></marker>
+</defs>
+<line class="tk-lifeline" x1="125" y1="53.5" x2="125" y2="390"/>
+<line class="tk-lifeline" x1="325" y1="53.5" x2="325" y2="390"/>
+<rect class="tk-frame" x="105" y="124" width="240" height="157"/>
+<polygon class="tk-frame-labelbox" points="105,124 155,124 155,138 149,144 105,144"/>
+<text class="tk-frame-kind" x="127" y="138" text-anchor="middle">alt</text>
+<text class="tk-frame-label" x="163" y="138" text-anchor="start">[is sick]</text>
+<line class="tk-frame-sep" x1="105" y1="203" x2="345" y2="203"/>
+<text class="tk-frame-label" x="113" y="222.5" text-anchor="start">[is well]</text>
+<rect class="tk-frame" x="105" y="291.5" width="240" height="82.5"/>
+<polygon class="tk-frame-labelbox" points="105,291.5 155,291.5 155,305.5 149,311.5 105,311.5"/>
+<text class="tk-frame-kind" x="127" y="305.5" text-anchor="middle">opt</text>
+<text class="tk-frame-label" x="163" y="305.5" text-anchor="start">[Extra response]</text>
+<line class="tk-msg" x1="125" y1="99" x2="325" y2="99" marker-end="url(#tk-head)"/>
+<text class="tk-msg-text" x="225" y="89" text-anchor="middle">Hello Bob, how are you?</text>
+<line class="tk-msg" x1="325" y1="178" x2="125" y2="178" marker-end="url(#tk-head)"/>
+<text class="tk-msg-text" x="225" y="168" text-anchor="middle">Not so good :(</text>
+<line class="tk-msg" x1="325" y1="252.5" x2="125" y2="252.5" marker-end="url(#tk-head)"/>
+<text class="tk-msg-text" x="225" y="242.5" text-anchor="middle">Feeling fresh like a daisy</text>
+<line class="tk-msg" x1="325" y1="345" x2="125" y2="345" marker-end="url(#tk-head)"/>
+<text class="tk-msg-text" x="225" y="335" text-anchor="middle">Thanks for asking</text>
+<g class="tk-actor">
+<rect class="tk-actor-box" x="50" y="10" width="150" height="43.5" rx="3"/>
+<text class="tk-actor-label" x="125" y="34" text-anchor="middle">Alice</text>
+</g>
+<g class="tk-actor">
+<rect class="tk-actor-box" x="50" y="390" width="150" height="43.5" rx="3"/>
+<text class="tk-actor-label" x="125" y="414" text-anchor="middle">Alice</text>
+</g>
+<g class="tk-actor">
+<rect class="tk-actor-box" x="250" y="10" width="150" height="43.5" rx="3"/>
+<text class="tk-actor-label" x="325" y="34" text-anchor="middle">Bob</text>
+</g>
+<g class="tk-actor">
+<rect class="tk-actor-box" x="250" y="390" width="150" height="43.5" rx="3"/>
+<text class="tk-actor-label" x="325" y="414" text-anchor="middle">Bob</text>
+</g>
+</svg>

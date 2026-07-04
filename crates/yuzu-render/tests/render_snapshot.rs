@@ -199,6 +199,49 @@ fn llms_無効化と_full_無効化() {
 }
 
 #[test]
+fn mermaid_ssr_はページ単位で_mermaid_js_の要否が決まる() {
+    let dir = build_fixture_with(|root| {
+        // backend を ssr に。sequence のみのページと flowchart ページを追加
+        fs::write(
+            root.join("yuzu.jsonc"),
+            r#"{ "site": { "title": "Fixture Docs" },
+                 "markdown": { "mermaid": { "backend": "ssr" } } }"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("content/seq-only.md"),
+            "---\ntitle: シーケンスのみ\n---\n# 図\n\n```mermaid\nsequenceDiagram\n    A->>B: こんにちは\n```\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("content/flow.md"),
+            "---\ntitle: フローチャート\n---\n# 図\n\n```mermaid\nflowchart TD\n    A-->B\n```\n",
+        )
+        .unwrap();
+    });
+    let dist = dir.path().join("dist");
+
+    // sequence のみのページ: SSR された SVG があり、mermaid.js は読み込まない
+    let seq = fs::read_to_string(dist.join("seq-only/index.html")).unwrap();
+    assert!(seq.contains("figure class=\"mermaid-ssr\""), "SSR figure");
+    assert!(seq.contains("<svg class=\"tankan tankan-sequence\""));
+    assert!(seq.contains("var(--fg, #1f2328)"), "テーマ変数の注入");
+    assert!(!seq.contains("pre class=\"mermaid\""), "フォールバックなし");
+    assert!(!seq.contains("mermaid.min.js"), "mermaid.js 不要");
+
+    // flowchart ページ: フォールバックして mermaid.js を読み込む
+    let flow = fs::read_to_string(dist.join("flow/index.html")).unwrap();
+    assert!(flow.contains("pre class=\"mermaid\""), "フォールバック");
+    assert!(flow.contains("mermaid.min.js"), "mermaid.js 必要");
+    assert!(!flow.contains("mermaid-ssr"));
+
+    // 既存 fixture の index.md（```mermaid の graph TD）もフォールバック側
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(index.contains("pre class=\"mermaid\""));
+    assert!(index.contains("mermaid.min.js"));
+}
+
+#[test]
 fn search_有効なら検索_ui_が入り_無効なら出ない() {
     // 既定（enabled: true）
     let dir = build_fixture(LiveReloadMode::None);

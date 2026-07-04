@@ -148,15 +148,30 @@ impl Default for HighlightConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MermaidConfig {
-    /// ```mermaid ブロックを `<pre class="mermaid">` に変換し、
-    /// テーマ同梱の mermaid.js でクライアント描画する
+    /// mermaid コードブロックの描画を有効にするか
     pub enabled: bool,
+    /// 描画方式。client = mermaid.js（従来）/ ssr = tankan によるビルド時 SVG
+    /// （未対応図種はクライアント描画へ自動フォールバック）
+    pub backend: MermaidBackend,
 }
 
 impl Default for MermaidConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            backend: MermaidBackend::Client,
+        }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MermaidBackend {
+    /// mermaid.js によるクライアント描画（既定）
+    #[default]
+    Client,
+    /// tankan によるビルド時 SVG（対応図種のみ。他はクライアントへフォールバック）
+    Ssr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

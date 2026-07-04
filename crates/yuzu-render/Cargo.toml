@@ -12,6 +12,7 @@ authors.workspace = true
 yuzu-config = { workspace = true }
 yuzu-core = { workspace = true }
 yuzu-theme = { workspace = true }
+tankan = { workspace = true }
 minijinja = { workspace = true }
 serde = { workspace = true }
 syntect = { workspace = true }

@@ -1,0 +1,19 @@
+[package]
+name = "tankan"
+# 汎用ライブラリ（特定ツール非依存）。将来 crates.io へ分離する際は
+# repository を専用リポジトリに差し替える
+description = "Mermaid 互換のダイアグラムテキストを SVG に変換する純 Rust ライブラリ（I/O なし・wasm 対応）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+roxmltree = { workspace = true }

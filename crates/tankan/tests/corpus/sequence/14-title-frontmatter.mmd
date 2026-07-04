@@ -1,0 +1,8 @@
+---
+title: 認証フロー
+---
+sequenceDiagram
+    participant U as 利用者
+    participant S as 認証サービス
+    U->>+S: ログイン要求
+    S-->>-U: トークン発行

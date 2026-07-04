@@ -18,7 +18,10 @@
   "markdown": {
     "gfm": true,
     "highlight": { "enabled": true },
-    "mermaid": { "enabled": true }
+    "mermaid": {
+      "enabled": true
+      // "backend": "ssr" // sequence 図をビルド時に SVG 化（tankan）。既定は "client"
+    }
   },
   "dev": {
     "port": 5173

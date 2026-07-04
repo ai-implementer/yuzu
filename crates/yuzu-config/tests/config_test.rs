@@ -103,6 +103,35 @@ fn search_設定を読み込める() {
 }
 
 #[test]
+fn mermaid_backend_を読み込める() {
+    use yuzu_config::MermaidBackend;
+
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "markdown": { "mermaid": { "backend": "ssr" } } }"#,
+    )
+    .unwrap();
+    let rc = load(dir.path()).unwrap();
+    assert_eq!(rc.config.markdown.mermaid.backend, MermaidBackend::Ssr);
+
+    // 未指定は client（既存の yuzu.jsonc は挙動不変）
+    let dir2 = tempfile::tempdir().unwrap();
+    fs::write(dir2.path().join("yuzu.jsonc"), "{}").unwrap();
+    let rc2 = load(dir2.path()).unwrap();
+    assert_eq!(rc2.config.markdown.mermaid.backend, MermaidBackend::Client);
+
+    // 不正値は設定エラー
+    let dir3 = tempfile::tempdir().unwrap();
+    fs::write(
+        dir3.path().join("yuzu.jsonc"),
+        r#"{ "markdown": { "mermaid": { "backend": "server" } } }"#,
+    )
+    .unwrap();
+    assert!(load(dir3.path()).is_err());
+}
+
+#[test]
 fn llms_設定を読み込める() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
