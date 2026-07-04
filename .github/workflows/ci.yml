@@ -34,7 +34,7 @@ jobs:
 
       # wasm32 でのコンパイル可能性を確認する
       # - yuzu-search-wasm: 成果物は scripts/build-search-wasm.sh で vendor 済み
-      # - tankan: 将来の wasm ターゲット（M5）の前倒し保険
+      # - tankan: wasm ターゲットの担保（M5。I/O・時刻・乱数非依存を維持する）
       - name: wasm check
         run: |
           rustup target add wasm32-unknown-unknown

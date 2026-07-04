@@ -23,7 +23,8 @@ Mermaid 互換のダイアグラムテキストを **SVG** に変換する純 Ru
 | sequenceDiagram | ✅ M1（participant/actor・矢印 10 種・activation・Note・loop/alt/opt/par/critical/break/rect・autonumber・box・title） |
 | flowchart / graph | ✅ M2（ノード形状 15 種・エッジ全種（実線/点線/太線/不可視・長さ・端点・ラベル 2 形）・チェーン/`&`・TB/BT/LR/RL・subgraph（ネスト・内部 direction）。スタイル系（style/classDef/class/linkStyle/click/`:::`）と `@{}` 新記法はフォールバック） |
 | stateDiagram / stateDiagram-v2 | ✅ M3（`[*]`・ラベル付き遷移・`state "説明" as s`・composite（ネスト）・direction・`<<choice/fork/join>>`・note・concurrency `--`。レイアウトは flowchart エンジンを共用。classDef 等はフォールバック） |
-| ER / gantt | 🔜 M4 |
+| erDiagram | ✅ M4（全基数×識別/非識別・属性ブロック（PK/FK/UK・引用符コメント）・エイリアス `E[表示名]`・引用符名・単独エンティティ宣言・direction は受理して無視。style/classDef/`:::` はフォールバック） |
+| gantt | ✅ M4（`dateFormat YYYY-MM-DD`・section・done/active/crit/milestone・after 依存・開始省略・excludes（weekends/曜日/日付 = 働き日消化＋網掛け）・weekend・axisFormat・tickInterval。時分単位・until 等はフォールバック。**today 線は描かない**＝時刻非依存。`todayMarker off` のみ受理） |
 | その他 | フォールバック |
 
 レイアウトは自作の **Sugiyama 法サブセット**（閉路除去 → longest-path 層割当 →
