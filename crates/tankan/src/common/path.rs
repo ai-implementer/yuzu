@@ -40,6 +40,32 @@ pub(crate) fn rounded_polyline(points: &[(f32, f32)], radius: f32) -> String {
     d
 }
 
+/// k 本目の多重エッジのオフセット量（+7, -7, +14, -14, …）
+pub(crate) fn offset_amount(k: usize) -> f32 {
+    const STEP: f32 = 7.0;
+    let amount = k.div_ceil(2) as f32 * STEP;
+    if k % 2 == 1 { amount } else { -amount }
+}
+
+/// ポリライン全体を始点→終点方向の法線側へ平行移動する（多重エッジの分離用）
+pub(crate) fn offset_polyline(points: &mut [(f32, f32)], amount: f32) {
+    if points.len() < 2 {
+        return;
+    }
+    let (x1, y1) = points[0];
+    let (x2, y2) = points[points.len() - 1];
+    let (dx, dy) = (x2 - x1, y2 - y1);
+    let len = (dx * dx + dy * dy).sqrt();
+    if len == 0.0 {
+        return;
+    }
+    let (nx, ny) = (-dy / len * amount, dx / len * amount);
+    for p in points.iter_mut() {
+        p.0 += nx;
+        p.1 += ny;
+    }
+}
+
 fn dist(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
     ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt()
 }

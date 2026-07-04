@@ -1,0 +1,48 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-gantt" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1025 218" width="1025" height="218" role="img" aria-label="A Gantt Diagram" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-title { font-weight: bold; }
+.tankan .tk-section-band { fill: #f6f8fa; opacity: 0.5; }
+.tankan .tk-section-label { fill: #59636e; }
+.tankan .tk-grid { stroke: #d1d9e0; }
+.tankan .tk-axis-label { fill: #59636e; }
+.tankan .tk-excluded { fill: #f6f8fa; opacity: 0.7; }
+.tankan .tk-task { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-task-active { fill: #ffffff; stroke: #9a6700; }
+.tankan .tk-task-done { fill: #d1d9e0; stroke: #d1d9e0; }
+.tankan .tk-task-crit { stroke: #9a6700; stroke-width: 2; }
+.tankan .tk-milestone { fill: #9a6700; stroke: #d1d9e0; }
+.tankan .tk-task-name-done { fill: #59636e; }
+</style>
+<text class="tk-section-label" x="8" y="85" text-anchor="start">Section</text>
+<rect class="tk-section-band" x="0" y="110" width="1025" height="60"/>
+<text class="tk-section-label" x="8" y="145" text-anchor="start">Another</text>
+<line class="tk-grid" x1="85" y1="170" x2="1005" y2="170"/>
+<line class="tk-grid" x1="191" y1="50" x2="191" y2="174"/>
+<text class="tk-axis-label" x="191" y="190" text-anchor="middle">01-06</text>
+<line class="tk-grid" x1="315" y1="50" x2="315" y2="174"/>
+<text class="tk-axis-label" x="315" y="190" text-anchor="middle">01-13</text>
+<line class="tk-grid" x1="439" y1="50" x2="439" y2="174"/>
+<text class="tk-axis-label" x="439" y="190" text-anchor="middle">01-20</text>
+<line class="tk-grid" x1="562.5" y1="50" x2="562.5" y2="174"/>
+<text class="tk-axis-label" x="562.5" y="190" text-anchor="middle">01-27</text>
+<line class="tk-grid" x1="686.5" y1="50" x2="686.5" y2="174"/>
+<text class="tk-axis-label" x="686.5" y="190" text-anchor="middle">02-03</text>
+<line class="tk-grid" x1="810.5" y1="50" x2="810.5" y2="174"/>
+<text class="tk-axis-label" x="810.5" y="190" text-anchor="middle">02-10</text>
+<line class="tk-grid" x1="934.5" y1="50" x2="934.5" y2="174"/>
+<text class="tk-axis-label" x="934.5" y="190" text-anchor="middle">02-17</text>
+<rect class="tk-task" x="102.5" y="53" width="531" height="24" rx="3"/>
+<text class="tk-task-name" x="368" y="70" text-anchor="middle">A task</text>
+<rect class="tk-task" x="633.5" y="83" width="354" height="24" rx="3"/>
+<text class="tk-task-name" x="810.5" y="100" text-anchor="middle">Another task</text>
+<rect class="tk-task" x="297.5" y="113" width="212.5" height="24" rx="3"/>
+<text class="tk-task-name" x="403.5" y="130" text-anchor="middle">Task in Another</text>
+<rect class="tk-task" x="509.5" y="143" width="424.5" height="24" rx="3"/>
+<text class="tk-task-name" x="722" y="160" text-anchor="middle">another task</text>
+<text class="tk-title" x="512.5" y="25" text-anchor="middle">A Gantt Diagram</text>
+</svg>

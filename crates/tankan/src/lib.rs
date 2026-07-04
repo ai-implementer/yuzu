@@ -13,8 +13,10 @@
 //! ```
 
 mod common;
+mod er;
 mod error;
 mod flowchart;
+mod gantt;
 mod kind;
 mod options;
 mod sequence;
@@ -38,6 +40,8 @@ pub fn render_svg(source: &str, options: &Options) -> Result<String, Error> {
         DiagramKind::Sequence => sequence::render(source, options),
         DiagramKind::Flowchart => flowchart::render(source, options),
         DiagramKind::State => state::render(source, options),
+        DiagramKind::Er => er::render(source, options),
+        DiagramKind::Gantt => gantt::render(source, options),
         kind => Err(Error::UnsupportedDiagram { kind }),
     }
 }

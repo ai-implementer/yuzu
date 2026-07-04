@@ -38,6 +38,8 @@ const CORPORA: &[(&str, &[&str])] = &[
         "state",
         &["01-basic", "03-composite", "08-concurrency", "10-japanese"],
     ),
+    ("er", &["01-basic", "03-keys-comments", "07-japanese"]),
+    ("gantt", &["01-basic", "02-excludes-tags", "05-japanese"]),
 ];
 
 fn corpus(dir: &str) -> Vec<(String, String)> {

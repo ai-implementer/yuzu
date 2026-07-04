@@ -20,7 +20,7 @@
     "highlight": { "enabled": true },
     "mermaid": {
       "enabled": true
-      // "backend": "ssr" // sequence 図をビルド時に SVG 化（tankan）。既定は "client"
+      // "backend": "ssr" // 対応図種（sequence/flowchart/state/er/gantt）をビルド時に SVG 化（tankan）。既定は "client"
     }
   },
   "dev": {

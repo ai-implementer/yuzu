@@ -1,0 +1,52 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-er" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 351.5 402" width="351.5" height="402" role="img" aria-label="ER diagram" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-entity { fill: #ffffff; stroke: #d1d9e0; }
+.tankan .tk-entity-title { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-entity-title-text { font-weight: bold; }
+.tankan .tk-entity-line { stroke: #d1d9e0; }
+.tankan .tk-entity-key { fill: #9a6700; }
+.tankan .tk-entity-comment { fill: #59636e; }
+.tankan .tk-rel { stroke: #1f2328; fill: none; }
+.tankan .tk-card { stroke: #1f2328; fill: none; stroke-width: 1.2; }
+.tankan .tk-card-zero { stroke: #1f2328; fill: #ffffff; stroke-width: 1.2; }
+.tankan .tk-rel-label rect { fill: #ffffff; stroke: none; }
+</style>
+<defs>
+<marker id="tk-one" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><path class="tk-card" d="M4,2 V10 M7,2 V10"/></marker>
+<marker id="tk-zeroone" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><circle class="tk-card-zero" cx="3.5" cy="6" r="2.3"/><path class="tk-card" d="M8,2 V10"/></marker>
+<marker id="tk-onemany" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><path class="tk-card" d="M3,2 V10 M5,6 L11,2 M5,6 L11,6 M5,6 L11,10"/></marker>
+<marker id="tk-zeromany" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><circle class="tk-card-zero" cx="3" cy="6" r="2.3"/><path class="tk-card" d="M5.5,6 L11,2 M5.5,6 L11,6 M5.5,6 L11,10"/></marker>
+</defs>
+<path class="tk-rel" d="M 211.5,55.5 L 75.5,117 Q 70,119.5 70,125.5 L 70,183" marker-start="url(#tk-one)" marker-end="url(#tk-zeromany)"/>
+<g class="tk-rel-label">
+<rect class="" x="46" y="107.5" width="48.5" height="23.5"/>
+<text class="" x="70" y="121.5" text-anchor="middle">places</text>
+</g>
+<path class="tk-rel" d="M 70,219 L 70,276.5 Q 70,282.5 70,288.5 L 70,346.5" marker-start="url(#tk-one)" marker-end="url(#tk-onemany)"/>
+<g class="tk-rel-label">
+<rect class="" x="40" y="271" width="60" height="23.5"/>
+<text class="" x="70" y="284.5" text-anchor="middle">contains</text>
+</g>
+<path class="tk-rel" d="M 251,55.5 L 251,113.5 Q 251,119.5 251,125.5 L 251,183" stroke-dasharray="4,4" marker-start="url(#tk-onemany)" marker-end="url(#tk-onemany)"/>
+<g class="tk-rel-label">
+<rect class="" x="232" y="107.5" width="37.5" height="23.5"/>
+<text class="" x="251" y="121.5" text-anchor="middle">uses</text>
+</g>
+<rect class="tk-entity" x="200.5" y="20" width="100" height="35.5"/>
+<rect class="tk-entity-title" x="200.5" y="20" width="100" height="35.5"/>
+<text class="tk-entity-title-text" x="251" y="42.5" text-anchor="middle">CUSTOMER</text>
+<rect class="tk-entity" x="20" y="183" width="100" height="35.5"/>
+<rect class="tk-entity-title" x="20" y="183" width="100" height="35.5"/>
+<text class="tk-entity-title-text" x="70" y="206" text-anchor="middle">ORDER</text>
+<rect class="tk-entity" x="20" y="346.5" width="100" height="35.5"/>
+<rect class="tk-entity-title" x="20" y="346.5" width="100" height="35.5"/>
+<text class="tk-entity-title-text" x="70" y="369" text-anchor="middle">LINE-ITEM</text>
+<rect class="tk-entity" x="170" y="183" width="161.5" height="35.5"/>
+<rect class="tk-entity-title" x="170" y="183" width="161.5" height="35.5"/>
+<text class="tk-entity-title-text" x="251" y="206" text-anchor="middle">DELIVERY-ADDRESS</text>
+</svg>

@@ -1,0 +1,84 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-er" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 746 416.5" width="746" height="416.5" role="img" aria-label="ER diagram" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-entity { fill: #ffffff; stroke: #d1d9e0; }
+.tankan .tk-entity-title { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-entity-title-text { font-weight: bold; }
+.tankan .tk-entity-line { stroke: #d1d9e0; }
+.tankan .tk-entity-key { fill: #9a6700; }
+.tankan .tk-entity-comment { fill: #59636e; }
+.tankan .tk-rel { stroke: #1f2328; fill: none; }
+.tankan .tk-card { stroke: #1f2328; fill: none; stroke-width: 1.2; }
+.tankan .tk-card-zero { stroke: #1f2328; fill: #ffffff; stroke-width: 1.2; }
+.tankan .tk-rel-label rect { fill: #ffffff; stroke: none; }
+</style>
+<defs>
+<marker id="tk-one" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><path class="tk-card" d="M4,2 V10 M7,2 V10"/></marker>
+<marker id="tk-zeroone" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><circle class="tk-card-zero" cx="3.5" cy="6" r="2.3"/><path class="tk-card" d="M8,2 V10"/></marker>
+<marker id="tk-onemany" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><path class="tk-card" d="M3,2 V10 M5,6 L11,2 M5,6 L11,6 M5,6 L11,10"/></marker>
+<marker id="tk-zeromany" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="14" markerHeight="14" orient="auto-start-reverse"><circle class="tk-card-zero" cx="3" cy="6" r="2.3"/><path class="tk-card" d="M5.5,6 L11,2 M5.5,6 L11,6 M5.5,6 L11,10"/></marker>
+</defs>
+<path class="tk-rel" d="M 259.5,154 L 430,235 Q 435.5,238 439,242.5 L 482.5,301.5" marker-start="url(#tk-one)" marker-end="url(#tk-zeromany)"/>
+<g class="tk-rel-label">
+<rect class="" x="412" y="226" width="47" height="23.5"/>
+<text class="" x="435.5" y="240" text-anchor="middle">allows</text>
+</g>
+<path class="tk-rel" d="M 518,174 L 518,232 Q 518,238 518,244 L 518,301.5" marker-start="url(#tk-one)" marker-end="url(#tk-zeromany)"/>
+<g class="tk-rel-label">
+<rect class="" x="508.5" y="226" width="18" height="23.5"/>
+<text class="" x="518" y="240" text-anchor="middle">is</text>
+</g>
+<rect class="tk-entity" x="20" y="20" width="239.5" height="154"/>
+<rect class="tk-entity-title" x="20" y="20" width="239.5" height="35.5"/>
+<text class="tk-entity-title-text" x="140" y="42.5" text-anchor="middle">CAR</text>
+<text class="tk-entity-cell" x="30" y="75.5" text-anchor="start">string</text>
+<text class="tk-entity-cell" x="92" y="75.5" text-anchor="start">registrationNumber</text>
+<text class="tk-entity-key" x="231" y="75.5" text-anchor="start">PK</text>
+<line class="tk-entity-line" x1="20" y1="85" x2="259.5" y2="85"/>
+<text class="tk-entity-cell" x="30" y="105" text-anchor="start">string</text>
+<text class="tk-entity-cell" x="92" y="105" text-anchor="start">make</text>
+<line class="tk-entity-line" x1="20" y1="115" x2="259.5" y2="115"/>
+<text class="tk-entity-cell" x="30" y="134.5" text-anchor="start">string</text>
+<text class="tk-entity-cell" x="92" y="134.5" text-anchor="start">model</text>
+<line class="tk-entity-line" x1="20" y1="144.5" x2="259.5" y2="144.5"/>
+<text class="tk-entity-cell" x="30" y="164" text-anchor="start">string[]</text>
+<text class="tk-entity-cell" x="92" y="164" text-anchor="start">parts</text>
+<line class="tk-entity-line" x1="82" y1="55.5" x2="82" y2="174"/>
+<line class="tk-entity-line" x1="221" y1="55.5" x2="221" y2="174"/>
+<rect class="tk-entity" x="376.5" y="301.5" width="282.5" height="95"/>
+<rect class="tk-entity-title" x="376.5" y="301.5" width="282.5" height="35.5"/>
+<text class="tk-entity-title-text" x="518" y="324.5" text-anchor="middle">NAMED-DRIVER</text>
+<text class="tk-entity-cell" x="386.5" y="357" text-anchor="start">string</text>
+<text class="tk-entity-cell" x="441" y="357" text-anchor="start">carRegistrationNumber</text>
+<text class="tk-entity-key" x="604.5" y="357" text-anchor="start">PK, FK</text>
+<line class="tk-entity-line" x1="376.5" y1="367" x2="659" y2="367"/>
+<text class="tk-entity-cell" x="386.5" y="386.5" text-anchor="start">string</text>
+<text class="tk-entity-cell" x="441" y="386.5" text-anchor="start">driverLicence</text>
+<text class="tk-entity-key" x="604.5" y="386.5" text-anchor="start">PK, FK</text>
+<line class="tk-entity-line" x1="431" y1="337" x2="431" y2="396.5"/>
+<line class="tk-entity-line" x1="594.5" y1="337" x2="594.5" y2="396.5"/>
+<rect class="tk-entity" x="309.5" y="20" width="416" height="154"/>
+<rect class="tk-entity-title" x="309.5" y="20" width="416" height="35.5"/>
+<text class="tk-entity-title-text" x="518" y="42.5" text-anchor="middle">PERSON</text>
+<text class="tk-entity-cell" x="319.5" y="75.5" text-anchor="start">string</text>
+<text class="tk-entity-cell" x="374" y="75.5" text-anchor="start">driversLicense</text>
+<text class="tk-entity-key" x="484" y="75.5" text-anchor="start">PK</text>
+<text class="tk-entity-comment" x="523" y="75.5" text-anchor="start">The license #</text>
+<line class="tk-entity-line" x1="309.5" y1="85" x2="726" y2="85"/>
+<text class="tk-entity-cell" x="319.5" y="105" text-anchor="start">string</text>
+<text class="tk-entity-cell" x="374" y="105" text-anchor="start">firstName</text>
+<text class="tk-entity-comment" x="523" y="105" text-anchor="start">Only 99 characters are allowed</text>
+<line class="tk-entity-line" x1="309.5" y1="115" x2="726" y2="115"/>
+<text class="tk-entity-cell" x="319.5" y="134.5" text-anchor="start">string</text>
+<text class="tk-entity-cell" x="374" y="134.5" text-anchor="start">lastName</text>
+<line class="tk-entity-line" x1="309.5" y1="144.5" x2="726" y2="144.5"/>
+<text class="tk-entity-cell" x="319.5" y="164" text-anchor="start">int</text>
+<text class="tk-entity-cell" x="374" y="164" text-anchor="start">age</text>
+<line class="tk-entity-line" x1="364" y1="55.5" x2="364" y2="174"/>
+<line class="tk-entity-line" x1="474" y1="55.5" x2="474" y2="174"/>
+<line class="tk-entity-line" x1="513" y1="55.5" x2="513" y2="174"/>
+</svg>

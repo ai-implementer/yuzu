@@ -8,6 +8,7 @@
 use crate::Options;
 use crate::common::geom;
 use crate::common::layered::{self, LayeredConfig, LayeredEdge, LayeredNode, Size};
+use crate::common::path::{offset_amount, offset_polyline};
 use crate::common::text::max_width;
 use crate::flowchart::model::{Direction, EdgeLine, EdgeTip, EndRef, FlowchartDiagram, NodeShape};
 
@@ -19,7 +20,6 @@ const CLUSTER_PAD: f32 = 8.0;
 const CLUSTER_TITLE_H: f32 = 24.0;
 const LABEL_PAD: f32 = 4.0;
 const SELF_LOOP_W: f32 = 40.0;
-const MULTI_EDGE_OFFSET: f32 = 7.0;
 
 pub(crate) struct Layout {
     pub width: f32,
@@ -577,31 +577,6 @@ fn clip_end(
                 _ => geom::clip_rect(cx, cy, w, h, toward.0, toward.1),
             }
         }
-    }
-}
-
-/// k 本目の多重エッジのオフセット量（+7, -7, +14, -14, …）
-fn offset_amount(k: usize) -> f32 {
-    let step = k.div_ceil(2) as f32 * MULTI_EDGE_OFFSET;
-    if k % 2 == 1 { step } else { -step }
-}
-
-/// ポリライン全体を進行方向の法線側へ平行移動する
-fn offset_polyline(points: &mut [(f32, f32)], amount: f32) {
-    if points.len() < 2 {
-        return;
-    }
-    let (x1, y1) = points[0];
-    let (x2, y2) = points[points.len() - 1];
-    let (dx, dy) = (x2 - x1, y2 - y1);
-    let len = (dx * dx + dy * dy).sqrt();
-    if len == 0.0 {
-        return;
-    }
-    let (nx, ny) = (-dy / len * amount, dx / len * amount);
-    for p in points.iter_mut() {
-        p.0 += nx;
-        p.1 += ny;
     }
 }
 

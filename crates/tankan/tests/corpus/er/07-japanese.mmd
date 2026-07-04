@@ -1,0 +1,15 @@
+---
+title: 注文管理の ER 図
+---
+erDiagram
+    "顧客" ||--o{ "注文 履歴" : 発注
+    "顧客" {
+        int 顧客番号 PK
+        string 氏名
+        string 住所 "配送先と同じとは限らない"
+    }
+    "注文 履歴" {
+        int 注文番号 PK
+        int 顧客番号 FK
+        date 注文日
+    }

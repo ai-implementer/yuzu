@@ -1,0 +1,56 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-gantt" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1047.5 338" width="1047.5" height="338" role="img" aria-label="Adding GANTT diagram functionality to mermaid" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-title { font-weight: bold; }
+.tankan .tk-section-band { fill: #f6f8fa; opacity: 0.5; }
+.tankan .tk-section-label { fill: #59636e; }
+.tankan .tk-grid { stroke: #d1d9e0; }
+.tankan .tk-axis-label { fill: #59636e; }
+.tankan .tk-excluded { fill: #f6f8fa; opacity: 0.7; }
+.tankan .tk-task { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-task-active { fill: #ffffff; stroke: #9a6700; }
+.tankan .tk-task-done { fill: #d1d9e0; stroke: #d1d9e0; }
+.tankan .tk-task-crit { stroke: #9a6700; stroke-width: 2; }
+.tankan .tk-milestone { fill: #9a6700; stroke: #d1d9e0; }
+.tankan .tk-task-name-done { fill: #59636e; }
+</style>
+<text class="tk-section-label" x="8" y="115" text-anchor="start">A section</text>
+<rect class="tk-section-band" x="0" y="170" width="1047.5" height="120"/>
+<text class="tk-section-label" x="8" y="235" text-anchor="start">Critical tasks</text>
+<rect class="tk-excluded" x="343.5" y="50" width="38" height="240"/>
+<rect class="tk-excluded" x="381.5" y="50" width="38" height="240"/>
+<rect class="tk-excluded" x="609.5" y="50" width="38" height="240"/>
+<rect class="tk-excluded" x="647.5" y="50" width="38" height="240"/>
+<rect class="tk-excluded" x="875.5" y="50" width="38" height="240"/>
+<rect class="tk-excluded" x="913.5" y="50" width="38" height="240"/>
+<line class="tk-grid" x1="115.5" y1="290" x2="1027.5" y2="290"/>
+<line class="tk-grid" x1="153.5" y1="50" x2="153.5" y2="294"/>
+<text class="tk-axis-label" x="153.5" y="310" text-anchor="middle">01-06</text>
+<line class="tk-grid" x1="419.5" y1="50" x2="419.5" y2="294"/>
+<text class="tk-axis-label" x="419.5" y="310" text-anchor="middle">01-13</text>
+<line class="tk-grid" x1="685.5" y1="50" x2="685.5" y2="294"/>
+<text class="tk-axis-label" x="685.5" y="310" text-anchor="middle">01-20</text>
+<line class="tk-grid" x1="951.5" y1="50" x2="951.5" y2="294"/>
+<text class="tk-axis-label" x="951.5" y="310" text-anchor="middle">01-27</text>
+<rect class="tk-task tk-task-done" x="153.5" y="53" width="76" height="24" rx="3"/>
+<text class="tk-task-name tk-task-name-done" x="237.5" y="70" text-anchor="start">Completed task</text>
+<rect class="tk-task tk-task-active" x="267.5" y="83" width="190" height="24" rx="3"/>
+<text class="tk-task-name" x="362.5" y="100" text-anchor="middle">Active task</text>
+<rect class="tk-task" x="457.5" y="113" width="266" height="24" rx="3"/>
+<text class="tk-task-name" x="590.5" y="130" text-anchor="middle">Future task</text>
+<rect class="tk-task" x="723.5" y="143" width="266" height="24" rx="3"/>
+<text class="tk-task-name" x="856.5" y="160" text-anchor="middle">Future task2</text>
+<rect class="tk-task tk-task-done tk-task-crit" x="153.5" y="173" width="38" height="24" rx="3"/>
+<text class="tk-task-name tk-task-name-done" x="199.5" y="190" text-anchor="start">Completed task in the critical line</text>
+<rect class="tk-task tk-task-done tk-task-crit" x="229.5" y="203" width="76" height="24" rx="3"/>
+<text class="tk-task-name tk-task-name-done" x="313.5" y="220" text-anchor="start">Implement parser and jison</text>
+<rect class="tk-task tk-task-active tk-task-crit" x="305.5" y="233" width="190" height="24" rx="3"/>
+<text class="tk-task-name" x="400.5" y="250" text-anchor="middle">Create tests for parser</text>
+<rect class="tk-task tk-task-crit" x="495.5" y="263" width="266" height="24" rx="3"/>
+<text class="tk-task-name" x="628.5" y="280" text-anchor="middle">Future task in critical line</text>
+<text class="tk-title" x="523.5" y="25" text-anchor="middle">Adding GANTT diagram functionality to mermaid</text>
+</svg>
