@@ -1,0 +1,6 @@
+flowchart TD
+    A[Markdown を書く] --> B{図の種類は?}
+    B -->|sequence| C[tankan がビルド時に SVG 化]
+    B -->|それ以外| D[mermaid.js でクライアント描画]
+    C --> E([配信])
+    D --> E

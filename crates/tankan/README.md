@@ -21,10 +21,14 @@ Mermaid 互換のダイアグラムテキストを **SVG** に変換する純 Ru
 | 図種 | 状態 |
 |---|---|
 | sequenceDiagram | ✅ M1（participant/actor・矢印 10 種・activation・Note・loop/alt/opt/par/critical/break/rect・autonumber・box・title） |
-| flowchart | 🔜 M2（Sugiyama レイアウト） |
+| flowchart / graph | ✅ M2（ノード形状 15 種・エッジ全種（実線/点線/太線/不可視・長さ・端点・ラベル 2 形）・チェーン/`&`・TB/BT/LR/RL・subgraph（ネスト・内部 direction）。スタイル系（style/classDef/class/linkStyle/click/`:::`）と `@{}` 新記法はフォールバック） |
 | stateDiagram | 🔜 M3 |
 | ER / gantt | 🔜 M4 |
 | その他 | フォールバック |
+
+レイアウトは自作の **Sugiyama 法サブセット**（閉路除去 → longest-path 層割当 →
+ダミーノード → barycenter 交差削減 → median 座標決定）。全ステップ決定的で、
+同一入力からは常にバイト単位で同一の SVG が出る。
 
 ## 使い方
 

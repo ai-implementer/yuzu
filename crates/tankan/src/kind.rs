@@ -21,9 +21,9 @@ pub enum DiagramKind {
 }
 
 impl DiagramKind {
-    /// tankan がレンダリングできる図種か（M1 時点では sequence のみ）
+    /// tankan がレンダリングできる図種か
     pub fn is_supported(self) -> bool {
-        matches!(self, Self::Sequence)
+        matches!(self, Self::Sequence | Self::Flowchart)
     }
 }
 
@@ -147,9 +147,10 @@ mod tests {
     }
 
     #[test]
-    fn is_supported_は_sequence_のみ() {
+    fn is_supported_の対応図種() {
         assert!(DiagramKind::Sequence.is_supported());
-        assert!(!DiagramKind::Flowchart.is_supported());
+        assert!(DiagramKind::Flowchart.is_supported());
+        assert!(!DiagramKind::Class.is_supported());
         assert!(!DiagramKind::Unknown.is_supported());
     }
 }

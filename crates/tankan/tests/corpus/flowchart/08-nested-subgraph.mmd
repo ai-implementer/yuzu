@@ -1,0 +1,9 @@
+flowchart TD
+    subgraph outer[外側グループ]
+        subgraph inner[内側グループ]
+            a --> b
+        end
+        c --> a
+    end
+    x --> c
+    b --> y

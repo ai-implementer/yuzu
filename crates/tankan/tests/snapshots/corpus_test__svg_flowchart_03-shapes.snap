@@ -1,0 +1,67 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-flowchart" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 193 1375" width="193" height="1375" role="img" aria-label="Flowchart" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-node { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-node-line { stroke: #d1d9e0; fill: none; }
+.tankan .tk-edge { stroke: #1f2328; fill: none; }
+.tankan .tk-head-fill { fill: #1f2328; }
+.tankan .tk-head-line { stroke: #1f2328; fill: none; stroke-width: 1.5; }
+.tankan .tk-edge-label rect { fill: #ffffff; stroke: none; }
+.tankan .tk-cluster { fill: #f6f8fa; fill-opacity: 0.4; stroke: #d1d9e0; }
+.tankan .tk-cluster-title { fill: #59636e; }
+</style>
+<defs>
+<marker id="tk-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="tk-head-fill" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="tk-circle" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="9" markerHeight="9" orient="auto"><circle class="tk-head-fill" cx="5" cy="5" r="4"/></marker>
+<marker id="tk-cross" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path class="tk-head-line" d="M1,1 L9,9 M9,1 L1,9"/></marker>
+</defs>
+<path class="tk-edge" d="M 96.5,63.5 L 96.5,113.5" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,157 L 96.5,207" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,251 L 96.5,301" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,344.5 L 96.5,394.5" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,452 L 96.5,502" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,551.5 L 96.5,601.5" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,645 L 96.5,695" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,765 L 96.5,815" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,858.5 L 96.5,908.5" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,952 L 96.5,1002" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,1046 L 96.5,1096" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,1139.5 L 96.5,1189.5" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 96.5,1233 L 96.5,1283" marker-end="url(#tk-arrow)"/>
+<rect class="tk-node" x="67.5" y="20" width="58" height="43.5"/>
+<text class="tk-node-label" x="96.5" y="44" text-anchor="middle">矩形</text>
+<rect class="tk-node" x="67.5" y="113.5" width="58" height="43.5" rx="6"/>
+<text class="tk-node-label" x="96.5" y="137.5" text-anchor="middle">角丸</text>
+<rect class="tk-node" x="35.5" y="207" width="122" height="43.5" rx="22"/>
+<text class="tk-node-label" x="96.5" y="231" text-anchor="middle">スタジアム</text>
+<rect class="tk-node" x="31.5" y="301" width="130" height="43.5"/>
+<line class="tk-node-line" x1="39.5" y1="301" x2="39.5" y2="344.5"/>
+<line class="tk-node-line" x1="153.5" y1="301" x2="153.5" y2="344.5"/>
+<text class="tk-node-label" x="96.5" y="324.5" text-anchor="middle">サブルーチン</text>
+<path class="tk-node" d="M 39.5,401.5 v 43.5 a 57,7 0 0 0 114,0 v -43.5"/>
+<ellipse class="tk-node" cx="96.5" cy="401.5" rx="57" ry="7"/>
+<text class="tk-node-label" x="96.5" y="425.5" text-anchor="middle">データベース</text>
+<circle class="tk-node" cx="96.5" cy="527" r="25"/>
+<text class="tk-node-label" x="96.5" y="529" text-anchor="middle">円</text>
+<polygon class="tk-node" points="70.5,601.5 132.5,601.5 132.5,645 70.5,645 60.5,623.5"/>
+<text class="tk-node-label" x="96.5" y="625.5" text-anchor="middle">非対称</text>
+<polygon class="tk-node" points="96.5,695 154,730 96.5,765 39,730"/>
+<text class="tk-node-label" x="96.5" y="732" text-anchor="middle">ひし形</text>
+<polygon class="tk-node" points="60.5,815 132.5,815 154.5,837 132.5,858.5 60.5,858.5 39,837"/>
+<text class="tk-node-label" x="96.5" y="839" text-anchor="middle">六角形</text>
+<polygon class="tk-node" points="46.5,908.5 166,908.5 146.5,952 27,952"/>
+<text class="tk-node-label" x="96.5" y="932.5" text-anchor="middle">平行四辺形</text>
+<polygon class="tk-node" points="20,1002 153.5,1002 173,1046 39.5,1046"/>
+<text class="tk-node-label" x="96.5" y="1026" text-anchor="middle">逆平行四辺形</text>
+<polygon class="tk-node" points="67.5,1096 125.5,1096 145,1139.5 48,1139.5"/>
+<text class="tk-node-label" x="96.5" y="1119.5" text-anchor="middle">台形</text>
+<polygon class="tk-node" points="41,1189.5 152,1189.5 132.5,1233 60.5,1233"/>
+<text class="tk-node-label" x="96.5" y="1213.5" text-anchor="middle">逆台形</text>
+<circle class="tk-node" cx="96.5" cy="1319" r="36"/>
+<circle class="tk-node-line" cx="96.5" cy="1319" r="32"/>
+<text class="tk-node-label" x="96.5" y="1321" text-anchor="middle">二重円</text>
+</svg>

@@ -214,8 +214,8 @@ fn mermaid_ssr_はページ単位で_mermaid_js_の要否が決まる() {
         )
         .unwrap();
         fs::write(
-            root.join("content/flow.md"),
-            "---\ntitle: フローチャート\n---\n# 図\n\n```mermaid\nflowchart TD\n    A-->B\n```\n",
+            root.join("content/class.md"),
+            "---\ntitle: クラス図\n---\n# 図\n\n```mermaid\nclassDiagram\n    Animal <|-- Duck\n```\n",
         )
         .unwrap();
     });
@@ -229,16 +229,16 @@ fn mermaid_ssr_はページ単位で_mermaid_js_の要否が決まる() {
     assert!(!seq.contains("pre class=\"mermaid\""), "フォールバックなし");
     assert!(!seq.contains("mermaid.min.js"), "mermaid.js 不要");
 
-    // flowchart ページ: フォールバックして mermaid.js を読み込む
-    let flow = fs::read_to_string(dist.join("flow/index.html")).unwrap();
-    assert!(flow.contains("pre class=\"mermaid\""), "フォールバック");
-    assert!(flow.contains("mermaid.min.js"), "mermaid.js 必要");
-    assert!(!flow.contains("mermaid-ssr"));
+    // 未対応図種（classDiagram）のページ: フォールバックして mermaid.js を読み込む
+    let class = fs::read_to_string(dist.join("class/index.html")).unwrap();
+    assert!(class.contains("pre class=\"mermaid\""), "フォールバック");
+    assert!(class.contains("mermaid.min.js"), "mermaid.js 必要");
+    assert!(!class.contains("mermaid-ssr"));
 
-    // 既存 fixture の index.md（```mermaid の graph TD）もフォールバック側
+    // 既存 fixture の index.md（```mermaid の graph TD）は M2 から SSR 側
     let index = fs::read_to_string(dist.join("index.html")).unwrap();
-    assert!(index.contains("pre class=\"mermaid\""));
-    assert!(index.contains("mermaid.min.js"));
+    assert!(index.contains("tankan-flowchart"), "flowchart も SSR");
+    assert!(!index.contains("mermaid.min.js"));
 }
 
 #[test]

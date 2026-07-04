@@ -14,6 +14,7 @@
 
 mod common;
 mod error;
+mod flowchart;
 mod kind;
 mod options;
 mod sequence;
@@ -34,6 +35,7 @@ pub fn detect(source: &str) -> DiagramKind {
 pub fn render_svg(source: &str, options: &Options) -> Result<String, Error> {
     match detect(source) {
         DiagramKind::Sequence => sequence::render(source, options),
+        DiagramKind::Flowchart => flowchart::render(source, options),
         kind => Err(Error::UnsupportedDiagram { kind }),
     }
 }

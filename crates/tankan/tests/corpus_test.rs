@@ -1,12 +1,40 @@
-//! mermaid.js 公式ドキュメント例文コーパスの互換性テスト。
+//! mermaid.js 公式ドキュメント例文コーパスの互換性テスト（全図種共通・テーブル駆動）。
 //!
-//! - `corpus/sequence/*.mmd` — 全件が受理され（構文互換）、well-formed な
-//!   SVG になること。代表例は insta スナップショットで回帰検出
+//! - `corpus/<図種>/*.mmd` — 全件が受理され（構文互換）、well-formed で
+//!   座標が viewBox 内に収まる SVG になること。代表例は insta スナップショット
 //! - `corpus/fallback/*.mmd` — 未対応構文・図種が `Err` かつ
 //!   `is_unsupported()` でフォールバック判定できること
 
 use std::fs;
 use std::path::PathBuf;
+
+/// (図種ディレクトリ, スナップショットを取る代表例)
+const CORPORA: &[(&str, &[&str])] = &[
+    (
+        "sequence",
+        &[
+            "01-basic",
+            "05-arrows",
+            "06-activations",
+            "07-notes",
+            "09-alt-opt",
+            "13-autonumber",
+            "14-title-frontmatter",
+            "15-japanese",
+        ],
+    ),
+    (
+        "flowchart",
+        &[
+            "01-basic",
+            "02-lr",
+            "03-shapes",
+            "05-edge-labels",
+            "07-subgraph",
+            "14-japanese",
+        ],
+    ),
+];
 
 fn corpus(dir: &str) -> Vec<(String, String)> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/corpus/{dir}"));
@@ -28,47 +56,92 @@ fn corpus(dir: &str) -> Vec<(String, String)> {
 }
 
 #[test]
-fn 公式例文コーパスを全件受理して_well_formed_な_svg_を出す() {
-    for (name, source) in corpus("sequence") {
-        let svg = tankan::render_svg(&source, &tankan::Options::default())
-            .unwrap_or_else(|e| panic!("{name}: 受理できるはずの例文でエラー: {e}"));
-        // well-formed 検証（XML エスケープ漏れ・属性引用ミスを機械検出）
-        let doc = roxmltree::Document::parse(&svg)
-            .unwrap_or_else(|e| panic!("{name}: SVG が well-formed でない: {e}\n{svg}"));
-        let root = doc.root_element();
-        assert_eq!(root.tag_name().name(), "svg", "{name}");
-        assert!(root.attribute("viewBox").is_some(), "{name}");
-        // mermaid.run() の再処理対象にならないこと
-        assert!(
-            !root
-                .attribute("class")
-                .unwrap_or("")
-                .split(' ')
-                .any(|c| c == "mermaid"),
-            "{name}: mermaid クラスを付けてはいけない"
-        );
+fn 公式例文コーパスを全件受理して検証済み_svg_を出す() {
+    for (dir, _) in CORPORA {
+        for (name, source) in corpus(dir) {
+            let svg = tankan::render_svg(&source, &tankan::Options::default())
+                .unwrap_or_else(|e| panic!("{dir}/{name}: 受理できるはずの例文でエラー: {e}"));
+            validate_svg(&format!("{dir}/{name}"), &svg);
+        }
+    }
+}
+
+/// well-formed・viewBox 整合・座標が範囲内・NaN なし、の共通検証
+fn validate_svg(name: &str, svg: &str) {
+    assert!(
+        !svg.contains("NaN") && !svg.contains("inf"),
+        "{name}: 不正数値\n{svg}"
+    );
+
+    let doc = roxmltree::Document::parse(svg)
+        .unwrap_or_else(|e| panic!("{name}: SVG が well-formed でない: {e}\n{svg}"));
+    let root = doc.root_element();
+    assert_eq!(root.tag_name().name(), "svg", "{name}");
+    let viewbox = root
+        .attribute("viewBox")
+        .unwrap_or_else(|| panic!("{name}: viewBox なし"));
+    let dims: Vec<f32> = viewbox.split(' ').map(|v| v.parse().unwrap()).collect();
+    let (vw, vh) = (dims[2], dims[3]);
+    assert!(
+        !root
+            .attribute("class")
+            .unwrap_or("")
+            .split(' ')
+            .any(|c| c == "mermaid"),
+        "{name}: mermaid クラスを付けてはいけない"
+    );
+
+    // 単純座標属性が viewBox 内（marker の viewBox 内座標は除外）
+    const TOL: f32 = 1.0;
+    for node in doc.descendants().filter(|n| n.is_element()) {
+        if node.ancestors().any(|a| a.has_tag_name("marker")) {
+            continue;
+        }
+        for (attr, horizontal) in [
+            ("x", true),
+            ("x1", true),
+            ("x2", true),
+            ("cx", true),
+            ("y", false),
+            ("y1", false),
+            ("y2", false),
+            ("cy", false),
+        ] {
+            if let Some(v) = node.attribute(attr).and_then(|v| v.parse::<f32>().ok()) {
+                let limit = if horizontal { vw } else { vh };
+                assert!(
+                    (-TOL..=limit + TOL).contains(&v),
+                    "{name}: {} の {attr}={v} が viewBox（{limit}）外",
+                    node.tag_name().name(),
+                );
+            }
+        }
+        if let Some(points) = node.attribute("points") {
+            for (i, v) in points.split([' ', ',']).enumerate() {
+                if let Ok(v) = v.parse::<f32>() {
+                    let limit = if i % 2 == 0 { vw } else { vh };
+                    assert!(
+                        (-TOL..=limit + TOL).contains(&v),
+                        "{name}: points 座標 {v} が viewBox 外"
+                    );
+                }
+            }
+        }
     }
 }
 
 #[test]
 fn 代表例文の_svg_スナップショット() {
-    for name in [
-        "01-basic",
-        "05-arrows",
-        "06-activations",
-        "07-notes",
-        "09-alt-opt",
-        "13-autonumber",
-        "14-title-frontmatter",
-        "15-japanese",
-    ] {
-        let source = fs::read_to_string(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join(format!("tests/corpus/sequence/{name}.mmd")),
-        )
-        .unwrap();
-        let svg = tankan::render_svg(&source, &tankan::Options::default()).unwrap();
-        insta::assert_snapshot!(format!("svg_{name}"), svg);
+    for (dir, representatives) in CORPORA {
+        for name in *representatives {
+            let source = fs::read_to_string(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join(format!("tests/corpus/{dir}/{name}.mmd")),
+            )
+            .unwrap();
+            let svg = tankan::render_svg(&source, &tankan::Options::default()).unwrap();
+            insta::assert_snapshot!(format!("svg_{dir}_{name}"), svg);
+        }
     }
 }
 
@@ -83,13 +156,14 @@ fn フォールバックコーパスは_unsupported_判定になる() {
 
 #[test]
 fn 構文エラーは_parse_エラーでフォールバック区別できる() {
-    let err = tankan::render_svg(
-        "sequenceDiagram\n    これは矢印のない行\n",
-        &tankan::Options::default(),
-    )
-    .unwrap_err();
-    assert!(!err.is_unsupported(), "Parse エラーは要注意側: {err}");
-    assert!(err.to_string().contains("2 行目"), "{err}");
+    for (source, expect_line) in [
+        ("sequenceDiagram\n    これは矢印のない行\n", "2 行目"),
+        ("flowchart TD\n    A[未閉鎖 --> B\n", "2 行目"),
+    ] {
+        let err = tankan::render_svg(source, &tankan::Options::default()).unwrap_err();
+        assert!(!err.is_unsupported(), "Parse エラーは要注意側: {err}");
+        assert!(err.to_string().contains(expect_line), "{err}");
+    }
 }
 
 #[test]
@@ -102,9 +176,12 @@ fn テーマの_css_変数が_style_に埋め込まれる() {
         id_prefix: "tk7".to_string(),
         ..tankan::Options::default()
     };
-    let svg = tankan::render_svg("sequenceDiagram\n    A->>B: x\n", &options).unwrap();
-    assert!(svg.contains("var(--fg, #111)"));
-    // marker id は接頭辞で一意化される
-    assert!(svg.contains(r##"marker-end="url(#tk7-head)""##));
-    assert!(svg.contains(r#"id="tk7-head""#));
+    for source in [
+        "sequenceDiagram\n    A->>B: x\n",
+        "flowchart TD\n    A --> B\n",
+    ] {
+        let svg = tankan::render_svg(source, &options).unwrap();
+        assert!(svg.contains("var(--fg, #111)"), "{source}");
+        assert!(svg.contains(r#"id="tk7-"#), "marker id の接頭辞: {source}");
+    }
 }

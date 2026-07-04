@@ -231,13 +231,24 @@ mod tests {
         let r = SyntectCodeRenderer::new(true, &ssr_config());
         r.begin_page();
         let html = r
-            .render(Some("mermaid"), "flowchart TD\n    A-->B\n")
+            .render(Some("mermaid"), "classDiagram\n    Animal <|-- Duck\n")
             .unwrap();
         assert!(html.starts_with("<pre class=\"mermaid\">"));
         assert!(r.mermaid_fallback_occurred());
 
         // begin_page でリセットされる
         r.begin_page();
+        assert!(!r.mermaid_fallback_occurred());
+    }
+
+    #[test]
+    fn ssr_では_flowchart_も_svg_になる() {
+        let r = SyntectCodeRenderer::new(true, &ssr_config());
+        r.begin_page();
+        let html = r
+            .render(Some("mermaid"), "flowchart TD\n    A-->B\n")
+            .unwrap();
+        assert!(html.contains("tankan-flowchart"), "{html}");
         assert!(!r.mermaid_fallback_occurred());
     }
 
