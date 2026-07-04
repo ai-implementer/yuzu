@@ -1,0 +1,12 @@
+[package]
+name = "yuzu-theme"
+description = "yuzu のデフォルトテーマ（minijinja テンプレート＋CSS＋JS を rust-embed で同梱）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+rust-embed = { workspace = true }

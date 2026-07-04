@@ -1,0 +1,27 @@
+[package]
+name = "yuzu-cli"
+description = "yuzu の CLI（new / build / preview ＋ 後続フェーズのスタブ）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "yuzu"
+path = "src/main.rs"
+
+[dependencies]
+yuzu-config = { workspace = true }
+yuzu-core = { workspace = true }
+yuzu-index = { workspace = true }
+yuzu-render = { workspace = true }
+yuzu-server = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

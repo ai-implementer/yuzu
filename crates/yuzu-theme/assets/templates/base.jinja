@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang }}" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page.title }} | {{ site.title }}</title>
+{% if page.description %}<meta name="description" content="{{ page.description }}">
+{% endif %}{# URL 系の値はこちらで生成した安全な文字列なので safe を通す（/ の実体参照化を避ける） #}
+<link rel="stylesheet" href="{{ asset_url | safe }}css/theme.css">
+<link rel="stylesheet" href="{{ asset_url | safe }}css/syntect.css">
+{% if dark_enabled %}<script>
+// FOUC 回避: CSS 適用前に保存済みテーマ（なければ OS 設定）を反映する
+(function () {
+  var stored = null;
+  try { stored = localStorage.getItem("yuzu-theme"); } catch (e) {}
+  var theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = theme;
+})();
+</script>
+{% endif %}</head>
+<body>
+{% include "partials/header.jinja" %}
+<div class="layout">
+{% include "partials/sidebar.jinja" %}
+<main class="content">
+{% block content %}{% endblock %}
+</main>
+{% include "partials/toc.jinja" %}
+</div>
+<script src="{{ asset_url | safe }}js/theme.js"></script>
+{% if mermaid_enabled %}<script src="{{ asset_url | safe }}vendor/mermaid.min.js"></script>
+<script src="{{ asset_url | safe }}js/mermaid-init.js"></script>
+{% endif %}{% if live_reload %}<script src="{{ asset_url | safe }}js/autorefresh.js" data-base="{{ base_url | safe }}"></script>
+{% endif %}</body>
+</html>

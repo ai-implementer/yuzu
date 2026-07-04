@@ -1,0 +1,95 @@
+---
+source: crates/yuzu-render/tests/render_snapshot.rs
+expression: guide
+---
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>はじめに | Fixture Docs</title>
+
+<link rel="stylesheet" href="/docs/_assets/css/theme.css">
+<link rel="stylesheet" href="/docs/_assets/css/syntect.css">
+<script>
+// FOUC 回避: CSS 適用前に保存済みテーマ（なければ OS 設定）を反映する
+(function () {
+  var stored = null;
+  try { stored = localStorage.getItem("yuzu-theme"); } catch (e) {}
+  var theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = theme;
+})();
+</script>
+</head>
+<body>
+<header class="site-header">
+<a class="site-title" href="/docs/">Fixture Docs</a>
+<button id="theme-toggle" type="button" aria-label="ダークモード切替" title="ダークモード切替">◐</button>
+</header>
+<div class="layout">
+
+
+<aside class="sidebar">
+<nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
+
+<ul>
+
+<li>
+<a href="/docs/">ホーム</a>
+
+</li>
+
+<li>
+<span class="nav-label">guide</span>
+
+<ul>
+
+<li class="active">
+<a href="/docs/guide/getting-started/" aria-current="page">はじめに</a>
+
+</li>
+
+</ul>
+
+</li>
+
+</ul>
+
+</nav>
+</aside>
+<main class="content">
+
+<article class="markdown-body">
+<h1><a href="#はじめに" aria-hidden="true" class="anchor" id="はじめに"></a>はじめに</h1>
+<h2><a href="#インストール" aria-hidden="true" class="anchor" id="インストール"></a>インストール</h2>
+<pre class="highlight"><code class="language-rust"><span class="yz-source yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-storage yz-type yz-function yz-rust">fn</span> </span><span class="yz-entity yz-name yz-function yz-rust">main</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-begin yz-rust">(</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-end yz-rust">)</span></span></span></span><span class="yz-meta yz-function yz-rust"> </span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-block yz-rust"><span class="yz-punctuation yz-section yz-block yz-begin yz-rust">{</span>
+    <span class="yz-support yz-macro yz-rust">println!</span><span class="yz-meta yz-group yz-rust"><span class="yz-punctuation yz-section yz-group yz-begin yz-rust">(</span></span><span class="yz-meta yz-group yz-rust"><span class="yz-string yz-quoted yz-double yz-rust"><span class="yz-punctuation yz-definition yz-string yz-begin yz-rust">&quot;</span>こんにちは yuzu<span class="yz-punctuation yz-definition yz-string yz-end yz-rust">&quot;</span></span></span><span class="yz-meta yz-group yz-rust"><span class="yz-punctuation yz-section yz-group yz-end yz-rust">)</span></span><span class="yz-punctuation yz-terminator yz-rust">;</span>
+</span><span class="yz-meta yz-block yz-rust"><span class="yz-punctuation yz-section yz-block yz-end yz-rust">}</span></span></span>
+</span></code></pre>
+<h2><a href="#使い方" aria-hidden="true" class="anchor" id="使い方"></a>使い方</h2>
+<p><a href="/docs/">ホームへ戻る</a></p>
+<h3><a href="#詳細" aria-hidden="true" class="anchor" id="詳細"></a>詳細</h3>
+<p>本文。</p>
+
+</article>
+
+</main>
+
+<aside class="toc" aria-label="このページの目次">
+<div class="toc-title">このページ</div>
+<ul>
+
+<li class="toc-level-2"><a href="#インストール">インストール</a></li>
+
+<li class="toc-level-2"><a href="#使い方">使い方</a></li>
+
+<li class="toc-level-3"><a href="#詳細">詳細</a></li>
+
+</ul>
+</aside>
+</div>
+<script src="/docs/_assets/js/theme.js"></script>
+<script src="/docs/_assets/vendor/mermaid.min.js"></script>
+<script src="/docs/_assets/js/mermaid-init.js"></script>
+</body>
+</html>

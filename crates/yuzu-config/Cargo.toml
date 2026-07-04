@@ -1,0 +1,18 @@
+[package]
+name = "yuzu-config"
+description = "yuzu の設定スキーマ（yuzu.jsonc）と探索・解決"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+jsonc-parser = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

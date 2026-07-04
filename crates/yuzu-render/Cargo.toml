@@ -1,0 +1,24 @@
+[package]
+name = "yuzu-render"
+description = "yuzu のサイトモデル → HTML レンダリング（minijinja テーマ・syntect・base path 解決）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+yuzu-config = { workspace = true }
+yuzu-core = { workspace = true }
+yuzu-theme = { workspace = true }
+minijinja = { workspace = true }
+serde = { workspace = true }
+syntect = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+tempfile = { workspace = true }

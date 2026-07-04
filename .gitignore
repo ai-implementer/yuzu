@@ -1,0 +1,18 @@
+# Rust
+target/
+
+# yuzu 生成物
+dist/
+.yuzu/
+
+# insta の未承認スナップショット
+*.snap.new
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+/docs/design

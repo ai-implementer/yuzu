@@ -1,0 +1,100 @@
+---
+source: crates/yuzu-render/tests/render_snapshot.rs
+expression: index
+---
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ホーム | Fixture Docs</title>
+<meta name="description" content="フィクスチャのトップページ">
+
+<link rel="stylesheet" href="/docs/_assets/css/theme.css">
+<link rel="stylesheet" href="/docs/_assets/css/syntect.css">
+<script>
+// FOUC 回避: CSS 適用前に保存済みテーマ（なければ OS 設定）を反映する
+(function () {
+  var stored = null;
+  try { stored = localStorage.getItem("yuzu-theme"); } catch (e) {}
+  var theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = theme;
+})();
+</script>
+</head>
+<body>
+<header class="site-header">
+<a class="site-title" href="/docs/">Fixture Docs</a>
+<button id="theme-toggle" type="button" aria-label="ダークモード切替" title="ダークモード切替">◐</button>
+</header>
+<div class="layout">
+
+
+<aside class="sidebar">
+<nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
+
+<ul>
+
+<li class="active">
+<a href="/docs/" aria-current="page">ホーム</a>
+
+</li>
+
+<li>
+<span class="nav-label">guide</span>
+
+<ul>
+
+<li>
+<a href="/docs/guide/getting-started/">はじめに</a>
+
+</li>
+
+</ul>
+
+</li>
+
+</ul>
+
+</nav>
+</aside>
+<main class="content">
+
+<article class="markdown-body">
+<h1><a href="#fixture-docs" aria-hidden="true" class="anchor" id="fixture-docs"></a>Fixture Docs</h1>
+<p><a href="/docs/guide/getting-started/">はじめに</a>を読む。</p>
+<table>
+<thead>
+<tr>
+<th>機能</th>
+<th>状態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>build</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>検索</td>
+<td>Phase 3</td>
+</tr>
+</tbody>
+</table>
+<p><img src="/docs/images/logo.svg" alt="ロゴ" /></p>
+<pre class="mermaid">graph TD;
+    A--&gt;B;
+</pre>
+
+</article>
+
+</main>
+
+<aside class="toc" hidden aria-label="このページの目次">
+</aside>
+</div>
+<script src="/docs/_assets/js/theme.js"></script>
+<script src="/docs/_assets/vendor/mermaid.min.js"></script>
+<script src="/docs/_assets/js/mermaid-init.js"></script>
+</body>
+</html>

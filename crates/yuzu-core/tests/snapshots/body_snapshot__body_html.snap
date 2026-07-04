@@ -1,0 +1,41 @@
+---
+source: crates/yuzu-core/tests/body_snapshot.rs
+expression: html
+---
+<h1><a href="#サンプル" aria-hidden="true" class="anchor" id="サンプル"></a>サンプル</h1>
+<p>GFM の<strong>表</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>機能</th>
+<th>状態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>build</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><del>検索</del></td>
+<td>Phase 3</td>
+</tr>
+</tbody>
+</table>
+<h2><a href="#コード" aria-hidden="true" class="anchor" id="コード"></a>コード</h2>
+<pre><code class="language-rust">fn main() {
+    println!(&quot;こんにちは yuzu&quot;);
+}
+</code></pre>
+<h2><a href="#図" aria-hidden="true" class="anchor" id="図"></a>図</h2>
+<pre class="mermaid">sequenceDiagram
+    participant A
+    A->>B: hello
+</pre>
+<h2><a href="#使い方" aria-hidden="true" class="anchor" id="使い方"></a>使い方</h2>
+<h2><a href="#使い方-1" aria-hidden="true" class="anchor" id="使い方-1"></a>使い方</h2>
+<ul>
+<li><input type="checkbox" checked="" disabled="" /> タスクリスト</li>
+<li><input type="checkbox" disabled="" /> 未完了</li>
+</ul>
+<p>autolink: <a href="https://example.com">https://example.com</a></p>

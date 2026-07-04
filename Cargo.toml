@@ -1,0 +1,52 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ai-implementer/yuzu"
+authors = ["ai-implementer"]
+
+[workspace.dependencies]
+# Markdown パース（凍結: comrak）。default features には cli(clap) と
+# syntect-onig(C の oniguruma) が含まれるため、必ず default-features = false にする
+comrak = { version = "0.53", default-features = false }
+# シンタックスハイライト（凍結: syntect + fancy-regex）。default(onig) との同居を
+# 避けるため default-features = false + default-fancy のみ
+syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
+# テンプレート（凍結: minijinja。ランタイム解釈＝将来のテンプレ ホットリロード用）
+minijinja = { version = "2.21", features = ["loader"] }
+rust-embed = "8.11"
+clap = { version = "4.6", features = ["derive"] }
+# JSONC（凍結: serde + JSONC）。文字列リテラル内の "//" を壊さない構文パーサ
+jsonc-parser = { version = "0.32", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml_ng = "0.10"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+walkdir = "2"
+globset = "0.4"
+# 9.0 は rc 段階のため 8.2 に固定（notify-debouncer-mini 0.7 は notify ^8.2 前提）
+notify = "8.2"
+notify-debouncer-mini = "0.7"
+axum = "0.8"
+tower-http = { version = "0.6", features = ["fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+insta = { version = "1.48", features = ["filters"] }
+tempfile = "3"
+
+# 内部 crate（依存方向の凍結: cli → {server, render, index, core, config} /
+# render, index → core / search-wasm → index-format）
+yuzu-core = { path = "crates/yuzu-core" }
+yuzu-render = { path = "crates/yuzu-render" }
+yuzu-config = { path = "crates/yuzu-config" }
+yuzu-theme = { path = "crates/yuzu-theme" }
+yuzu-server = { path = "crates/yuzu-server" }
+yuzu-index = { path = "crates/yuzu-index" }
+yuzu-index-format = { path = "crates/yuzu-index-format" }

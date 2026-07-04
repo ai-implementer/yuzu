@@ -1,0 +1,24 @@
+{
+  // yuzu の設定ファイル（JSONC: コメント・トレーリングカンマ可）。
+  // デフォルトをマージした解決済み設定は .yuzu/settings.json に書き出されます。
+  "site": {
+    "title": "My Docs",
+    "description": "yuzu で生成するドキュメントサイト",
+    "lang": "ja"
+    // サブパスで配信する場合は baseUrl を設定します（例: 社内リバプロ配下）
+    // "baseUrl": "/docs/"
+  },
+  "input": { "dir": "content" },
+  "output": { "dir": "dist", "clean": true },
+  "theme": {
+    "name": "default",
+    "dark": true // ダークモード切替ボタンを出す
+  },
+  "nav": { "auto": true },
+  "markdown": {
+    "gfm": true,
+    "highlight": { "enabled": true },
+    "mermaid": { "enabled": true }
+  },
+  "dev": { "port": 5173 }
+}

@@ -1,0 +1,16 @@
+{# ナビツリーを再帰マクロで描画する（ディレクトリ階層＝ナビ階層） #}
+{% macro nav_list(items) %}
+<ul>
+{% for item in items %}
+<li{% if item.active %} class="active"{% endif %}>
+{% if item.url %}<a href="{{ item.url | safe }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.title }}</a>{% else %}<span class="nav-label">{{ item.title }}</span>{% endif %}
+{% if item.children %}{{ nav_list(item.children) }}{% endif %}
+</li>
+{% endfor %}
+</ul>
+{% endmacro %}
+<aside class="sidebar">
+<nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
+{{ nav_list(nav) }}
+</nav>
+</aside>

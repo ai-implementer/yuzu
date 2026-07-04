@@ -1,0 +1,58 @@
+---
+title: はじめに
+order: 1
+description: yuzu プロジェクトの基本操作
+---
+
+# はじめに
+
+## ビルドする
+
+```bash
+yuzu build
+```
+
+`content/**/*.md` がテーマ HTML になり、`dist/` に出力されます。
+
+## 監視モードで書く
+
+```bash
+yuzu build --watch
+```
+
+`content/` と `theme/` を監視して自動再ビルドし、
+配信中のブラウザを自動リロードします（執筆はこれ 1 コマンド）。
+
+## プレビューする
+
+```bash
+yuzu preview
+```
+
+ビルド済みの `dist/` を `http://127.0.0.1:5173/` で配信します。
+
+## frontmatter
+
+各ページの先頭に YAML frontmatter を書けます。
+
+```yaml
+---
+title: ページタイトル # ナビの表示名（未指定は h1 → ファイル名）
+order: 1 # ナビの並び順（未指定はファイル名順で最後尾）
+draft: true # ビルドから除外する
+description: 説明 # meta description
+---
+```
+
+## ナビゲーション
+
+`content/` のディレクトリ階層がそのままサイドバーの階層になります。
+並び順は `order` 昇順、未指定はファイル名順です。
+
+### ページ内目次（TOC）
+
+h2 / h3 見出しは右側の「このページ」に自動で載ります。
+
+### ダークモード
+
+ヘッダー右上の ◐ ボタンで切り替えられます（`theme.dark: false` で無効化）。

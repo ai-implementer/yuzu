@@ -1,0 +1,181 @@
+//! `yuzu.jsonc` の設定スキーマ。
+//!
+//! すべてのキーは省略可能で、省略時は各 `Default` 実装の値になる。
+//! JSON 側のキーは camelCase（`baseUrl` など）。
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Config {
+    pub site: SiteConfig,
+    pub input: InputConfig,
+    pub output: OutputConfig,
+    pub theme: ThemeConfig,
+    pub nav: NavConfig,
+    pub markdown: MarkdownConfig,
+    pub build: BuildConfig,
+    pub dev: DevConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SiteConfig {
+    pub title: String,
+    pub description: Option<String>,
+    /// サイトを配信するパス接頭辞（例: `/docs/`）。`build.baseUrl` があればそちらが優先
+    pub base_url: Option<String>,
+    pub lang: String,
+}
+
+impl Default for SiteConfig {
+    fn default() -> Self {
+        Self {
+            title: "Documentation".to_string(),
+            description: None,
+            base_url: None,
+            lang: "ja".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct InputConfig {
+    pub dir: String,
+    /// 除外 glob（`content/` からの相対パスに対して評価。例: `**/_drafts/**`）
+    pub ignore: Vec<String>,
+}
+
+impl Default for InputConfig {
+    fn default() -> Self {
+        Self {
+            dir: "content".to_string(),
+            ignore: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct OutputConfig {
+    pub dir: String,
+    /// ビルド前に出力ディレクトリを削除するか
+    pub clean: bool,
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self {
+            dir: "dist".to_string(),
+            clean: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ThemeConfig {
+    pub name: String,
+    /// ダークモード切替 UI を有効にするか
+    pub dark: bool,
+}
+
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        Self {
+            name: "default".to_string(),
+            dark: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NavConfig {
+    /// ディレクトリ階層＋frontmatter `title`/`order` からナビを自動生成する。
+    /// v0.1 では自動生成のみ（手動ナビ配列は非対応）
+    pub auto: bool,
+}
+
+impl Default for NavConfig {
+    fn default() -> Self {
+        Self { auto: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MarkdownConfig {
+    /// GFM 拡張（表・打ち消し線・autolink・タスクリスト）
+    pub gfm: bool,
+    pub highlight: HighlightConfig,
+    pub mermaid: MermaidConfig,
+}
+
+impl Default for MarkdownConfig {
+    fn default() -> Self {
+        Self {
+            gfm: true,
+            highlight: HighlightConfig::default(),
+            mermaid: MermaidConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HighlightConfig {
+    pub enabled: bool,
+    /// syntect のライト側テーマ名
+    pub theme_light: String,
+    /// syntect のダーク側テーマ名
+    pub theme_dark: String,
+}
+
+impl Default for HighlightConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            theme_light: "InspiredGitHub".to_string(),
+            theme_dark: "base16-ocean.dark".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MermaidConfig {
+    /// ```mermaid ブロックを `<pre class="mermaid">` に変換し、
+    /// テーマ同梱の mermaid.js でクライアント描画する
+    pub enabled: bool,
+}
+
+impl Default for MermaidConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BuildConfig {
+    /// ビルド時の baseUrl 上書き（`site.baseUrl` より優先）
+    pub base_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DevConfig {
+    pub host: String,
+    pub port: u16,
+}
+
+impl Default for DevConfig {
+    fn default() -> Self {
+        Self {
+            host: "127.0.0.1".to_string(),
+            port: 5173,
+        }
+    }
+}

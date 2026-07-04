@@ -1,0 +1,129 @@
+# yuzu 🍊
+
+[![CI](https://github.com/ai-implementer/yuzu/actions/workflows/ci.yml/badge.svg)](https://github.com/ai-implementer/yuzu/actions/workflows/ci.yml)
+![MSRV](https://img.shields.io/badge/MSRV-1.85-orange)
+![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
+
+Markdown で書いた設計書を、プロダクション品質の静的 HTML ドキュメントサイトに
+変換する **Rust 製の俺々ドキュメント生成ツール**。
+
+## クイックスタート
+
+```bash
+cargo install --path crates/yuzu-cli   # または cargo run -p yuzu-cli --
+
+yuzu new my-docs
+cd my-docs
+yuzu build          # dist/ に静的サイトを出力
+yuzu preview        # http://127.0.0.1:5173/ で確認
+yuzu build --watch  # 監視 + 自動再ビルド + 配信 + ブラウザ自動リロード
+```
+
+## v0.1 でできること
+
+- `content/**/*.md`（GFM: 表・打ち消し線・autolink・タスクリスト）→ テーマ HTML
+- **左サイドバーナビ**（ディレクトリ階層 ＝ ナビ階層。frontmatter `title` / `order` で制御）
+- **ページ内 TOC**（h2/h3、アンカーは本文見出しと同期）
+- **ダークモード切替**（localStorage 保存、OS 設定に追従、FOUC なし）
+- **シンタックスハイライト**: syntect をビルド時に実行し **CSS クラス出力**
+  （クライアント JS ゼロ、ライト/ダーク両対応）
+- **Mermaid**: ` ```mermaid ` ブロック → `<pre class="mermaid">`、同梱 mermaid.js でクライアント描画
+- `public/` の静的物パススルー（画像等）
+- **base path 対応**: `baseUrl: "/docs/"` でリンク・アセット参照をサブパスへ解決（社内リバプロ配下の配信を想定）
+- `yuzu build --watch`: notify で `content/`・`theme/` を監視 → 自動再ビルド →
+  簡易オートリフレッシュ（build_id ポーリング。WS は Phase 2）
+- frontmatter（YAML）: `title` / `order` / `draft` / `description`
+- テーマ上書き: プロジェクトの `theme/` に同じ相対パスのファイルを置くだけ
+
+## 設定（`yuzu.jsonc`）
+
+JSONC（コメント可）。解決済み設定は `.yuzu/settings.json` に書き出されます。
+`yuzu.jsonc` のあるディレクトリがプロジェクトルートです（cwd から上方向に探索）。
+
+```jsonc
+{
+  "site": { "title": "My Docs", "description": "...", "lang": "ja", "baseUrl": "/docs/" },
+  "input": { "dir": "content", "ignore": ["**/_drafts/**"] },
+  "output": { "dir": "dist", "clean": true },
+  "theme": { "name": "default", "dark": true },
+  "nav": { "auto": true },
+  "markdown": {
+    "gfm": true,
+    "highlight": { "enabled": true, "themeLight": "InspiredGitHub", "themeDark": "base16-ocean.dark" },
+    "mermaid": { "enabled": true }
+  },
+  "build": { "baseUrl": "/docs/" }, // site.baseUrl より優先
+  "dev": { "host": "127.0.0.1", "port": 5173 }
+}
+```
+
+## ロードマップ
+
+| Phase | 内容 | 状態 |
+|---|---|---|
+| **1 build（v0.1）** | build ＋ テーマ HTML ＋ ナビ/TOC/ダークモード ＋ Mermaid(client) ＋ `build --watch`/`preview` | ✅ |
+| **2 dev** | axum ＋ WebSocket のフルライブリロード開発サーバ（`yuzu dev`） | 🔜 |
+| **3 検索** | 自前 BM25 転置インデックス ＋ 日本語分かち書き（vaporetto）＋ タイポトレランス ＋ Wasm クエリエンジン（Pagefind 型の静的配信） | 🔜 |
+| **4 llms.txt** | `llms.txt`（リンク索引）/ `llms-full.txt`（正規化 md 連結）の自動生成 | 🔜 |
+| **5 図表 SSR** | Mermaid 互換描画ライブラリを自作して SSR 化（柑橘系の単独名で同一ワークスペースに追加予定。`yuzu-*` 非依存の汎用設計、必要時に別リポ/crates.io へ分離） | 🔜 |
+| **6 俺々** | `fmt`（AST → 決定的な正規化 md）/ `lint` / `check`（sourcepos 付き診断） | 🔜 |
+
+## 凍結した設計判断
+
+Web 調査込みで確定済み。差し替えないこと。
+
+| 領域 | 採用 | 要点 |
+|---|---|---|
+| Markdown パース | **comrak** | GFM 完備・可変 AST・sourcepos（将来の Linter 用）・`format_commonmark`（将来の Formatter 用）。frontmatter は YAML（front matter extension）。パーサは `yuzu-core` 内部に隠蔽し、公開 API はパーサ非依存 |
+| テンプレート | **minijinja** | ランタイム解釈 ＝ 将来 dev でテンプレのホットリロードが可能 |
+| ハイライト | **syntect**（`fancy-regex`） | pure-Rust（onig 非依存）。`ClassedHTMLGenerator` で **CSS クラス出力**、ビルド時実行 |
+| CLI | **clap（derive）** | `new` / `build` / `preview` ＋ `dev`・`search`・`llms` スタブ（後続で `fmt` / `lint` / `check`） |
+| 設定 | **serde ＋ JSONC** | `yuzu.jsonc` → 解決形 `.yuzu/settings.json`。上方向探索でルート確定 |
+| テーマ同梱 | **rust-embed** | デフォルトテーマをバイナリ埋め込み、`theme/` でファイル単位の上書き |
+| Mermaid | **mermaid.js クライアント描画**（v0.1） | 互換ライブラリの自作 SSR 化は確定方針（Phase 5） |
+| dev サーバ | **axum ＋ notify（＋debouncer）** | v0.1 は最小静的サーバ＋監視のみ。WS リロードは Phase 2 |
+
+依存方向（凍結）:
+`yuzu-cli → {server, render, index, core, config}` / `render, index → core` /
+`search-wasm ↔ index-format`。逆方向依存は作らない。
+
+## ワークスペース構成
+
+```
+crates/
+├─ yuzu-core          # comrak パース → Document/サイトモデル（nav・TOC・slug・sourcepos）
+├─ yuzu-render        # サイトモデル → HTML（minijinja・syntect・mermaid 変換・base path 解決）
+├─ yuzu-config        # yuzu.jsonc（JSONC）の探索・スキーマ・解決
+├─ yuzu-theme         # デフォルトテーマ（rust-embed: テンプレ + CSS + JS + mermaid.js）
+├─ yuzu-cli           # CLI（bin: yuzu）
+├─ yuzu-server        # preview/watch 用最小静的サーバ + notify 監視
+├─ yuzu-index         # （空）Phase 3: 検索インデクサ
+├─ yuzu-index-format  # （空）Phase 3: 索引フォーマット共有型
+└─ yuzu-search-wasm   # （空）Phase 3: クライアント検索クエリエンジン（cdylib）
+```
+
+## 開発
+
+```bash
+cargo build
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace          # insta スナップショットテストを含む
+cargo fmt --all
+```
+
+- **MSRV**: 1.85（edition 2024）
+- **スナップショット**: レンダリング結果は `insta` で回帰検証。syntect のバージョン更新で
+  ハイライト HTML の差分が出た場合は `cargo insta review` で確認のうえ更新する
+- **rust-embed の注意**: debug ビルドはテーマをファイルシステムから読む
+  （テーマ編集が再コンパイルなしで反映）。debug バイナリ単体を別マシンへコピーすると
+  アセットを見失う。リリースビルドは常に埋め込み
+- **mermaid.min.js**（約 3.4MB）は `crates/yuzu-theme/assets/static/vendor/` に同梱
+  （`scripts/vendor-mermaid.sh` で更新）。バイナリサイズ増は Phase 5 の SSR 化で解消予定
+- 既知の制限（v0.1）: ダークモード切替後の Mermaid 図はリロードで再描画
+
+## ライセンス
+
+MIT または Apache-2.0 のデュアルライセンス（お好きな方でどうぞ）。
+
+- [LICENSE-MIT](LICENSE-MIT)
+- [LICENSE-APACHE](LICENSE-APACHE)

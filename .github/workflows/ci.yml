@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # insta: CI ではスナップショット未承認を必ず失敗にする
+  INSTA_UPDATE: "no"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: fmt
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: test
+        run: cargo test --workspace
+
+      - name: build
+        run: cargo build --workspace
+
+      # e2e: サンプルプロジェクト生成 → ビルドまで通す
+      - name: e2e (yuzu new && yuzu build)
+        run: |
+          ./target/debug/yuzu new "$RUNNER_TEMP/e2e-docs"
+          cd "$RUNNER_TEMP/e2e-docs"
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          test -f dist/index.html
+          test -f dist/guide/getting-started/index.html

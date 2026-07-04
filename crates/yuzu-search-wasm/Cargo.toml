@@ -1,0 +1,16 @@
+[package]
+name = "yuzu-search-wasm"
+description = "yuzu のクライアント検索クエリエンジン（Phase 3 で実装予定の器）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+# rlib を併記しないと cargo test/clippy --workspace がリンクできない
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+yuzu-index-format = { workspace = true }
