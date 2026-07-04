@@ -23,7 +23,7 @@ pub enum DiagramKind {
 impl DiagramKind {
     /// tankan がレンダリングできる図種か
     pub fn is_supported(self) -> bool {
-        matches!(self, Self::Sequence | Self::Flowchart)
+        matches!(self, Self::Sequence | Self::Flowchart | Self::State)
     }
 }
 

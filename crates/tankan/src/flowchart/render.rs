@@ -10,7 +10,14 @@ use crate::common::text::{escape_xml, max_width};
 use crate::flowchart::layout::{Layout, NodeBox};
 use crate::flowchart::model::{EdgeLine, EdgeTip, NodeShape};
 
-pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
+/// flowchart 系レイアウトの共通レンダラ（stateDiagram も同じ経路を使う。
+/// `svg_class` / `fallback_label` で図種の見た目を切り替える）
+pub(crate) fn to_svg(
+    layout: &Layout,
+    options: &Options,
+    svg_class: &str,
+    fallback_label: &str,
+) -> String {
     let p = &options.id_prefix;
     let t = &options.theme;
 
@@ -18,10 +25,11 @@ pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
     let _ = write!(
         out,
         concat!(
-            r#"<svg class="tankan tankan-flowchart" xmlns="http://www.w3.org/2000/svg" "#,
+            r#"<svg class="tankan {class}" xmlns="http://www.w3.org/2000/svg" "#,
             r#"viewBox="0 0 {vw} {vh}" width="{w}" height="{h}" role="img" aria-label="{label}" "#,
             r#"font-family="{font}" font-size="{fs}">"#,
         ),
+        class = svg_class,
         vw = fmt_num(layout.width),
         vh = fmt_num(layout.height),
         w = fmt_num(layout.width * options.scale),
@@ -31,7 +39,7 @@ pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
                 .title
                 .as_ref()
                 .map(|t| t.join(" "))
-                .unwrap_or_else(|| "Flowchart".to_string())
+                .unwrap_or_else(|| fallback_label.to_string())
         ),
         font = escape_xml(&options.font_family),
         fs = fmt_num(options.font_size),
@@ -50,6 +58,9 @@ pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
          .tankan .tk-edge-label rect {{ fill: {bg}; stroke: none; }}\n\
          .tankan .tk-cluster {{ fill: {surface}; fill-opacity: 0.4; stroke: {border}; }}\n\
          .tankan .tk-cluster-title {{ fill: {muted}; }}\n\
+         .tankan .tk-region {{ fill: none; stroke: {border}; stroke-dasharray: 4,4; }}\n\
+         .tankan .tk-state-dot {{ fill: {fg}; stroke: none; }}\n\
+         .tankan .tk-notebox {{ fill: {surface}; stroke: {border}; stroke-dasharray: 3,3; }}\n\
          </style>\n",
         fg = t.foreground,
         bg = t.background,
@@ -78,6 +89,10 @@ pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
 
     // クラスタ（背景。外側から）
     for c in &layout.clusters {
+        if c.region {
+            svg.rect("tk-region", c.x, c.y, c.w, c.h, r#" rx="4""#);
+            continue;
+        }
         svg.rect("tk-cluster", c.x, c.y, c.w, c.h, r#" rx="4""#);
         svg.text_lines(
             "tk-cluster-title",
@@ -248,5 +263,12 @@ fn draw_node(svg: &mut SvgBuilder, node: &NodeBox) {
             let s = h * 0.45;
             svg.polygon("tk-node", &[(l, t), (r, t), (r - s, b), (l + s, b)]);
         }
+        StateStart => svg.circle("tk-state-dot", cx, cy, w / 2.0),
+        StateEnd => {
+            svg.circle("tk-node", cx, cy, w / 2.0);
+            svg.circle("tk-state-dot", cx, cy, w / 2.0 - 4.0);
+        }
+        ForkBar(_) => svg.rect("tk-state-dot", l, t, w, h, r#" rx="2""#),
+        NoteBox => svg.rect("tk-notebox", l, t, w, h, r#" rx="2""#),
     }
 }

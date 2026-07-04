@@ -1,0 +1,58 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-state" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 314 660" width="314" height="660" role="img" aria-label="State diagram" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-node { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-node-line { stroke: #d1d9e0; fill: none; }
+.tankan .tk-edge { stroke: #1f2328; fill: none; }
+.tankan .tk-head-fill { fill: #1f2328; }
+.tankan .tk-head-line { stroke: #1f2328; fill: none; stroke-width: 1.5; }
+.tankan .tk-edge-label rect { fill: #ffffff; stroke: none; }
+.tankan .tk-cluster { fill: #f6f8fa; fill-opacity: 0.4; stroke: #d1d9e0; }
+.tankan .tk-cluster-title { fill: #59636e; }
+.tankan .tk-region { fill: none; stroke: #d1d9e0; stroke-dasharray: 4,4; }
+.tankan .tk-state-dot { fill: #1f2328; stroke: none; }
+.tankan .tk-notebox { fill: #f6f8fa; stroke: #d1d9e0; stroke-dasharray: 3,3; }
+</style>
+<defs>
+<marker id="tk-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="tk-head-fill" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="tk-circle" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="9" markerHeight="9" orient="auto"><circle class="tk-head-fill" cx="5" cy="5" r="4"/></marker>
+<marker id="tk-cross" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path class="tk-head-line" d="M1,1 L9,9 M9,1 L1,9"/></marker>
+</defs>
+<path class="tk-edge" d="M 252,34 L 252,78.5 Q 252,84.5 252,90.5 L 252,135" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 224,178.5 L 146,238.5 Q 141,242.5 141,248.5 L 141,306" marker-end="url(#tk-arrow)"/>
+<g class="tk-edge-label">
+<rect class="" x="102" y="230.5" width="78" height="23.5"/>
+<text class="" x="141" y="244.5" text-anchor="middle">申請を受理</text>
+</g>
+<path class="tk-edge" d="M 121,350 L 67,409 Q 63,413.5 63,419.5 L 63,477.5" marker-end="url(#tk-arrow)"/>
+<g class="tk-edge-label">
+<rect class="" x="35" y="402" width="56" height="23.5"/>
+<text class="" x="63" y="415.5" text-anchor="middle">審査OK</text>
+</g>
+<path class="tk-edge" d="M 148.5,350 L 167.5,408 Q 169.5,413.5 174,418 L 231,477.5" marker-end="url(#tk-arrow)"/>
+<g class="tk-edge-label">
+<rect class="" x="141" y="402" width="57" height="23.5"/>
+<text class="" x="169.5" y="415.5" text-anchor="middle">審査NG</text>
+</g>
+<path class="tk-edge" d="M 252,477.5 L 252,419.5 Q 252,413.5 252,407.5 L 252,334 Q 252,328 252,322 L 252,248.5 Q 252,242.5 252,236.5 L 252,178.5" marker-end="url(#tk-arrow)"/>
+<g class="tk-edge-label">
+<rect class="" x="227" y="316" width="50" height="23.5"/>
+<text class="" x="252" y="330" text-anchor="middle">再申請</text>
+</g>
+<path class="tk-edge" d="M 63,521 L 63,565.5 Q 63,571.5 63,577.5 L 63,622" marker-end="url(#tk-arrow)"/>
+<circle class="tk-state-dot" cx="252" cy="27" r="7"/>
+<rect class="tk-node" x="216" y="135" width="72" height="43.5" rx="6"/>
+<text class="tk-node-label" x="252" y="159" text-anchor="middle">受付中</text>
+<rect class="tk-node" x="105" y="306" width="72" height="43.5" rx="6"/>
+<text class="tk-node-label" x="141" y="330" text-anchor="middle">処理中</text>
+<rect class="tk-node" x="20" y="477.5" width="86" height="43.5" rx="6"/>
+<text class="tk-node-label" x="63" y="501.5" text-anchor="middle">承認済み</text>
+<rect class="tk-node" x="216" y="477.5" width="72" height="43.5" rx="6"/>
+<text class="tk-node-label" x="252" y="501.5" text-anchor="middle">差戻し</text>
+<circle class="tk-node" cx="63" cy="631" r="9"/>
+<circle class="tk-state-dot" cx="63" cy="631" r="5"/>
+</svg>

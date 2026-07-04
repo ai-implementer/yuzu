@@ -1,0 +1,36 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-state" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 171 359.5" width="171" height="359.5" role="img" aria-label="State diagram" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-node { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-node-line { stroke: #d1d9e0; fill: none; }
+.tankan .tk-edge { stroke: #1f2328; fill: none; }
+.tankan .tk-head-fill { fill: #1f2328; }
+.tankan .tk-head-line { stroke: #1f2328; fill: none; stroke-width: 1.5; }
+.tankan .tk-edge-label rect { fill: #ffffff; stroke: none; }
+.tankan .tk-cluster { fill: #f6f8fa; fill-opacity: 0.4; stroke: #d1d9e0; }
+.tankan .tk-cluster-title { fill: #59636e; }
+.tankan .tk-region { fill: none; stroke: #d1d9e0; stroke-dasharray: 4,4; }
+.tankan .tk-state-dot { fill: #1f2328; stroke: none; }
+.tankan .tk-notebox { fill: #f6f8fa; stroke: #d1d9e0; stroke-dasharray: 3,3; }
+</style>
+<defs>
+<marker id="tk-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="tk-head-fill" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="tk-circle" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="9" markerHeight="9" orient="auto"><circle class="tk-head-fill" cx="5" cy="5" r="4"/></marker>
+<marker id="tk-cross" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path class="tk-head-line" d="M1,1 L9,9 M9,1 L1,9"/></marker>
+</defs>
+<rect class="tk-cluster" x="20" y="84" width="131" height="255.5" rx="4"/>
+<text class="tk-cluster-title" x="85.5" y="100" text-anchor="middle">First</text>
+<path class="tk-edge" d="M 85.5,150 L 85.5,200" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 85.5,243.5 L 85.5,293.5" marker-end="url(#tk-arrow)"/>
+<path class="tk-edge" d="M 85.5,34 L 85.5,84" marker-end="url(#tk-arrow)"/>
+<circle class="tk-state-dot" cx="85.5" cy="27" r="7"/>
+<circle class="tk-state-dot" cx="85.5" cy="143" r="7"/>
+<rect class="tk-node" x="48" y="200" width="75" height="43.5" rx="6"/>
+<text class="tk-node-label" x="85.5" y="224" text-anchor="middle">second</text>
+<circle class="tk-node" cx="85.5" cy="302.5" r="9"/>
+<circle class="tk-state-dot" cx="85.5" cy="302.5" r="5"/>
+</svg>

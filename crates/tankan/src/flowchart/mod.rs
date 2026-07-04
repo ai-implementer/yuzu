@@ -1,9 +1,10 @@
-//! flowchart の実装（パース → layered レイアウト（Sugiyama）→ SVG）
+//! flowchart の実装（パース → layered レイアウト（Sugiyama）→ SVG）。
+//! layout / render は stateDiagram（変換方式）とも共用する
 
-mod layout;
-mod model;
+pub(crate) mod layout;
+pub(crate) mod model;
 mod parser;
-mod render;
+pub(crate) mod render;
 
 use crate::Options;
 use crate::error::Error;
@@ -11,5 +12,10 @@ use crate::error::Error;
 pub(crate) fn render(source: &str, options: &Options) -> Result<String, Error> {
     let diagram = parser::parse(source)?;
     let layout = layout::layout(&diagram, options);
-    Ok(render::to_svg(&layout, options))
+    Ok(render::to_svg(
+        &layout,
+        options,
+        "tankan-flowchart",
+        "Flowchart",
+    ))
 }

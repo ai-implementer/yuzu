@@ -13,6 +13,9 @@ expression: svg
 .tankan .tk-edge-label rect { fill: #ffffff; stroke: none; }
 .tankan .tk-cluster { fill: #f6f8fa; fill-opacity: 0.4; stroke: #d1d9e0; }
 .tankan .tk-cluster-title { fill: #59636e; }
+.tankan .tk-region { fill: none; stroke: #d1d9e0; stroke-dasharray: 4,4; }
+.tankan .tk-state-dot { fill: #1f2328; stroke: none; }
+.tankan .tk-notebox { fill: #f6f8fa; stroke: #d1d9e0; stroke-dasharray: 3,3; }
 </style>
 <defs>
 <marker id="tk-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="tk-head-fill" d="M0,0 L10,5 L0,10 z"/></marker>

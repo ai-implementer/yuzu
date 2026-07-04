@@ -196,6 +196,7 @@ impl Parser {
             title: split_text(&title),
             parent: self.subgraph_stack.last().copied(),
             direction: None,
+            region: false,
         });
         self.subgraph_index.entry(id).or_insert(sub_id);
         self.subgraph_stack.push(sub_id);

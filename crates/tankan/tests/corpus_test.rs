@@ -34,6 +34,10 @@ const CORPORA: &[(&str, &[&str])] = &[
             "14-japanese",
         ],
     ),
+    (
+        "state",
+        &["01-basic", "03-composite", "08-concurrency", "10-japanese"],
+    ),
 ];
 
 fn corpus(dir: &str) -> Vec<(String, String)> {
@@ -66,13 +70,10 @@ fn 公式例文コーパスを全件受理して検証済み_svg_を出す() {
     }
 }
 
-/// well-formed・viewBox 整合・座標が範囲内・NaN なし、の共通検証
+/// well-formed・viewBox 整合・座標が範囲内・有限値、の共通検証
+/// （NaN/inf は座標パース時の is_finite で検出。文字列一致だと本文の
+/// "information" 等に誤マッチするため使わない）
 fn validate_svg(name: &str, svg: &str) {
-    assert!(
-        !svg.contains("NaN") && !svg.contains("inf"),
-        "{name}: 不正数値\n{svg}"
-    );
-
     let doc = roxmltree::Document::parse(svg)
         .unwrap_or_else(|e| panic!("{name}: SVG が well-formed でない: {e}\n{svg}"));
     let root = doc.root_element();
@@ -109,6 +110,7 @@ fn validate_svg(name: &str, svg: &str) {
         ] {
             if let Some(v) = node.attribute(attr).and_then(|v| v.parse::<f32>().ok()) {
                 let limit = if horizontal { vw } else { vh };
+                assert!(v.is_finite(), "{name}: {attr} が有限値でない");
                 assert!(
                     (-TOL..=limit + TOL).contains(&v),
                     "{name}: {} の {attr}={v} が viewBox（{limit}）外",
@@ -120,6 +122,7 @@ fn validate_svg(name: &str, svg: &str) {
             for (i, v) in points.split([' ', ',']).enumerate() {
                 if let Ok(v) = v.parse::<f32>() {
                     let limit = if i % 2 == 0 { vw } else { vh };
+                    assert!(v.is_finite(), "{name}: points 座標が有限値でない");
                     assert!(
                         (-TOL..=limit + TOL).contains(&v),
                         "{name}: points 座標 {v} が viewBox 外"

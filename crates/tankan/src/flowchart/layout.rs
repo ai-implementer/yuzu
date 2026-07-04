@@ -47,6 +47,8 @@ pub(crate) struct ClusterBox {
     pub w: f32,
     pub h: f32,
     pub title: Vec<String>,
+    /// concurrency 領域（破線・タイトルなし）
+    pub region: bool,
 }
 
 pub(crate) struct EdgePath {
@@ -114,6 +116,7 @@ pub(crate) fn layout(diagram: &FlowchartDiagram, options: &Options) -> Layout {
                 w,
                 h,
                 title: diagram.subgraphs[sid].title.clone(),
+                region: diagram.subgraphs[sid].region,
             }
         })
         .collect();
@@ -348,7 +351,7 @@ fn layout_scope(
                 clusters_out.push((*sid, x, y, size.w, size.h));
                 // 内部レイアウトをタイトル帯の下へ埋め込む
                 let ox = x + (size.w - inner.size.w) / 2.0;
-                let oy = y + CLUSTER_TITLE_H + CLUSTER_PAD;
+                let oy = y + cluster_title_h(diagram, *sid) + CLUSTER_PAD;
                 for &(id, cx, cy) in &inner.nodes {
                     nodes_out.push((id, cx + ox, cy + oy));
                 }
@@ -390,9 +393,18 @@ fn entity_size(entity: &Entity, diagram: &FlowchartDiagram, node_sizes: &[Size],
             let title_w = max_width(&diagram.subgraphs[*sid].title, fs) + 2.0 * CLUSTER_PAD;
             Size {
                 w: (inner.size.w + 2.0 * CLUSTER_PAD).max(title_w),
-                h: inner.size.h + CLUSTER_TITLE_H + 2.0 * CLUSTER_PAD,
+                h: inner.size.h + cluster_title_h(diagram, *sid) + 2.0 * CLUSTER_PAD,
             }
         }
+    }
+}
+
+/// クラスタのタイトル帯の高さ（region はタイトルなしで薄く）
+fn cluster_title_h(diagram: &FlowchartDiagram, sid: usize) -> f32 {
+    if diagram.subgraphs[sid].region {
+        6.0
+    } else {
+        CLUSTER_TITLE_H
     }
 }
 
@@ -489,6 +501,19 @@ fn node_size(shape: NodeShape, label: &[String], fs: f32, line_h: f32) -> Size {
             w: base_w + base_h * 0.9,
             h: base_h,
         },
+        StateStart => Size { w: 14.0, h: 14.0 },
+        StateEnd => Size { w: 18.0, h: 18.0 },
+        ForkBar(vertical) => {
+            if vertical {
+                Size { w: 8.0, h: 60.0 }
+            } else {
+                Size { w: 60.0, h: 8.0 }
+            }
+        }
+        NoteBox => Size {
+            w: tw + 16.0,
+            h: th + 12.0,
+        },
     }
 }
 
@@ -544,7 +569,9 @@ fn clip_end(
             let (cx, cy) = abs_nodes[n];
             let Size { w, h } = node_sizes[n];
             match diagram.nodes[n].shape {
-                Circle | DoubleCircle => geom::clip_circle(cx, cy, w / 2.0, toward.0, toward.1),
+                Circle | DoubleCircle | StateStart | StateEnd => {
+                    geom::clip_circle(cx, cy, w / 2.0, toward.0, toward.1)
+                }
                 Diamond => geom::clip_diamond(cx, cy, w, h, toward.0, toward.1),
                 Stadium => geom::clip_ellipse(cx, cy, w / 2.0, h / 2.0, toward.0, toward.1),
                 _ => geom::clip_rect(cx, cy, w, h, toward.0, toward.1),

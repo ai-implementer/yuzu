@@ -39,6 +39,15 @@ pub(crate) enum NodeShape {
     TrapezoidBottom,
     /// `[\text/]`（上辺が長い台形）
     TrapezoidTop,
+    // ---- 以下は stateDiagram 用（flowchart 構文からは生成されない） ----
+    /// 開始点（塗り circle）
+    StateStart,
+    /// 終了点（二重 circle）
+    StateEnd,
+    /// fork/join バー（true = 縦向き。LR/RL フロー用）
+    ForkBar(bool),
+    /// note（付箋風の矩形）
+    NoteBox,
 }
 
 #[derive(Debug)]
@@ -54,6 +63,8 @@ pub(crate) struct Subgraph {
     pub title: Vec<String>,
     pub parent: Option<usize>,
     pub direction: Option<Direction>,
+    /// stateDiagram の concurrency 領域（破線枠・タイトルなしで描く）
+    pub region: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +103,7 @@ pub(crate) struct Edge {
     pub label: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct FlowchartDiagram {
     pub direction: Direction,
     /// frontmatter title / accTitle（aria-label 用）
