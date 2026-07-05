@@ -14,7 +14,7 @@
   --sidebar-width: 17rem;
   --toc-width: 14rem;
   --header-height: 3.25rem;
-  --content-max: 48rem;
+  --content-max: 62rem; /* 992px。.layout の max-width とセットで調整する */
 }
 
 html[data-theme="dark"] {
@@ -183,7 +183,9 @@ body {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--toc-width);
   gap: 0 2rem;
-  max-width: 90rem;
+  /* 中央カラムが --content-max に届く幅を確保する
+     （sidebar 17 + toc 14 + gap 4 + padding 2.5 + content 62 = 99.5rem） */
+  max-width: 100rem;
   margin: 0 auto;
   padding: 0 1.25rem;
 }
