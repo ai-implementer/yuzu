@@ -3,14 +3,16 @@
  * シンタックスハイライトの配色は syntect.css（ビルド時生成）が担う。 */
 
 :root {
-  --bg: #ffffff;
-  --bg-subtle: #f6f8fa;
-  --fg: #1f2328;
-  --fg-muted: #59636e;
-  --border: #d1d9e0;
-  --accent: #e0a20a; /* 柚子色 */
-  --accent-fg: #9a6700;
-  --link: #0969da;
+  /* ライト: 青みのオフホワイト × オレンジ（純白は明るすぎるため青系に寄せる） */
+  --bg: #eef2f7;
+  --bg-outer: #cfdbe9; /* .layout の外側（左右余白）。本文パネルより濃く */
+  --bg-subtle: #e0e8f2;
+  --fg: #1a2739;
+  --fg-muted: #4e6480;
+  --border: #bccbdd;
+  --accent: #e8821e; /* オレンジ */
+  --accent-fg: #a55309;
+  --link: #155bbd;
   --sidebar-width: 17rem;
   --toc-width: 14rem;
   --header-height: 3.25rem;
@@ -18,14 +20,16 @@
 }
 
 html[data-theme="dark"] {
-  --bg: #0d1117;
-  --bg-subtle: #161b22;
-  --fg: #e6edf3;
-  --fg-muted: #9198a1;
-  --border: #30363d;
-  --accent: #e0a20a;
-  --accent-fg: #e3b341;
-  --link: #4493f8;
+  /* ダーク: ダークブルー（ネイビー） × ダークオレンジ */
+  --bg: #0e1a2b;
+  --bg-outer: #070f1b; /* .layout の外側（左右余白）。本文パネルより濃く */
+  --bg-subtle: #17273d;
+  --fg: #d9e4f2;
+  --fg-muted: #8aa2c0;
+  --border: #2c4363;
+  --accent: #c96a1b; /* ダークオレンジ */
+  --accent-fg: #f0a45c;
+  --link: #6fb0f7;
 }
 
 * {
@@ -43,7 +47,8 @@ html {
 body {
   margin: 0;
   min-height: 100%;
-  background: var(--bg);
+  /* .layout の外側（左右余白）は濃い色。本文パネル（.layout）側が --bg */
+  background: var(--bg-outer);
   color: var(--fg);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
     "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
@@ -192,6 +197,9 @@ body {
   max-width: 100rem;
   margin: 0 auto;
   padding: 0 1.25rem;
+  /* 余白（--bg-outer）より淡いパネルとして塗り、短いページでも下端まで伸ばす */
+  background: var(--bg);
+  min-height: calc(100vh - var(--header-height));
 }
 
 .sidebar {
@@ -238,6 +246,16 @@ body {
 
 .sidebar-nav li {
   margin: 0.1rem 0;
+}
+
+/* 項目間の区切り線（視認性向上）。ネスト ul は親 li の内側にあるため、
+   兄弟間は li + li、親行と子の先頭行の間は li > ul で線を引く */
+.sidebar-nav li + li {
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-nav li > ul {
+  border-top: 1px solid var(--border);
 }
 
 .sidebar-nav a,
@@ -300,29 +318,64 @@ body {
 
 /* ---- 本文 ---- */
 
+/* 見出しの設計方針:
+   - 階層は「サイズ＋装飾の種類」で二重に符号化する
+     （h1 = 下線＋アクセントバー / h2 = 左バー / h3 以下 = 太さと余白のみ）
+   - 上余白 > 下余白（見出しは直後の内容に属して見える。近接の原則）
+   - アクセント（オレンジ）は h1/h2 だけに絞る */
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
-.markdown-body h4 {
-  line-height: 1.4;
-  margin: 2rem 0 0.75rem;
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  line-height: 1.35;
+  margin: 2.25rem 0 0.75rem;
+  font-feature-settings: "palt"; /* 日本語見出しの約物詰め */
+  letter-spacing: 0.01em;
+  text-wrap: balance;
 }
 
 .markdown-body h1 {
-  font-size: 1.85rem;
+  font-size: 1.9rem;
   margin-top: 0.5rem;
-  padding-bottom: 0.4rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+/* h1 の下線に重ねる短いアクセントバー（ページタイトルの唯一性を示す） */
+.markdown-body h1::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 3.5rem;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent);
 }
 
 .markdown-body h2 {
-  font-size: 1.4rem;
-  padding-bottom: 0.3rem;
-  border-bottom: 1px solid var(--border);
+  font-size: 1.45rem;
+  margin-top: 2.75rem;
+  padding: 0.15rem 0 0.15rem 0.7rem;
+  border-left: 4px solid var(--accent);
 }
 
 .markdown-body h3 {
   font-size: 1.15rem;
+}
+
+.markdown-body h4 {
+  font-size: 1rem;
+}
+
+.markdown-body h5,
+.markdown-body h6 {
+  font-size: 0.9rem;
+  color: var(--fg-muted);
 }
 
 /* comrak が見出し先頭に挿入する空のアンカー要素。ホバーで # を出す */
@@ -335,10 +388,17 @@ body {
   visibility: hidden;
 }
 
+/* h2 は左バー（border-left + padding）の分だけ # を外側へ逃がす */
+.markdown-body h2 .anchor {
+  margin-left: -2rem;
+}
+
 .markdown-body h1:hover .anchor,
 .markdown-body h2:hover .anchor,
 .markdown-body h3:hover .anchor,
-.markdown-body h4:hover .anchor {
+.markdown-body h4:hover .anchor,
+.markdown-body h5:hover .anchor,
+.markdown-body h6:hover .anchor {
   visibility: visible;
 }
 
