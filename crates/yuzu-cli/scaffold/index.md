@@ -15,7 +15,7 @@ description: yuzu のサンプルドキュメント
 | --- | --- | --- |
 | GFM の表 | この表がそれです | ✅ |
 | コードハイライト | syntect（ビルド時・CSS クラス出力） | ✅ |
-| Mermaid 図 | mermaid.js によるクライアント描画 | ✅ |
+| Mermaid 図 | クライアント描画（既定）/ `backend: "ssr"` で 5 図種をビルド時 SVG 化 | ✅ |
 | 日本語全文検索 | BM25 + vaporetto + Wasm（ヘッダーの検索ボックス） | ✅ |
 | llms.txt | LLM 向けの索引と全文（`/llms.txt`・`/llms-full.txt`） | ✅ |
 

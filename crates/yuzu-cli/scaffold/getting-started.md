@@ -64,16 +64,44 @@ h2 / h3 見出しは右側の「このページ」に自動で載ります。
 
 ` ```mermaid ` ブロックで図が描けます。既定は同梱 mermaid.js によるクライアント描画です。
 
-`yuzu.jsonc` で `"backend": "ssr"` にすると、**sequence 図と flowchart は
-ビルド時に SVG 化**されます（JS 不要・ダークモードに即追従）。
+`yuzu.jsonc` で `"backend": "ssr"` にすると、**sequence・flowchart・state・
+ER・gantt の 5 図種はビルド時に SVG 化**されます（JS 不要・ダークモードに即追従）。
 未対応の図種は自動でクライアント描画にフォールバックし、
 フォールバックが発生したページだけ mermaid.js が読み込まれます。
 
 ```mermaid
 flowchart TD
     A[Markdown を書く] --> B{図の種類は?}
-    B -->|sequence / flowchart| C[tankan がビルド時に SVG 化]
+    B -->|対応 5 図種| C[tankan がビルド時に SVG 化]
     B -->|それ以外| D[mermaid.js でクライアント描画]
+```
+
+ガントチャート（gantt）:
+
+```mermaid
+gantt
+    title ドキュメント整備の計画（例）
+    dateFormat YYYY-MM-DD
+    excludes weekends
+    section 執筆
+    構成を決める : done, plan, 2026-07-06, 2d
+    本文を書く   : active, write, after plan, 5d
+    section 公開
+    レビュー     : review, after write, 3d
+    公開         : milestone, after review, 1d
+```
+
+ER 図（erDiagram）:
+
+```mermaid
+erDiagram
+    "サイト" ||--|{ "ページ" : contains
+    "ページ" ||--o{ "見出し" : has
+    "ページ" {
+        string title "frontmatter の title"
+        int order
+        bool draft
+    }
 ```
 
 ## 全文検索
