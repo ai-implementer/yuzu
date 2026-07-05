@@ -3,15 +3,22 @@
  * シンタックスハイライトの配色は syntect.css（ビルド時生成）が担う。 */
 
 :root {
-  /* ライト: 青みのオフホワイト × オレンジ（純白は明るすぎるため青系に寄せる） */
+  /* ライト: 青みのオフホワイト × オレンジ（純白は明るすぎるため青系に寄せる）
+     面の規律: --bg-subtle = 静的な面（th・ゼブラ・入力）/ --bg-hover = hover・選択 /
+     --bg-code = コード専用 / --accent-subtle = アクセントの面（active・mark・選択色）。
+     --accent は装飾専用でテキスト色には使わない（文字は --accent-fg） */
   --bg: #eef2f7;
   --bg-outer: #cfdbe9; /* .layout の外側（左右余白）。本文パネルより濃く */
   --bg-subtle: #e0e8f2;
+  --bg-hover: #d8e2ee;
+  --bg-code: #e4ebf5;
   --fg: #1a2739;
   --fg-muted: #4e6480;
   --border: #bccbdd;
+  --border-muted: #cfdae7; /* ヘアライン（ナビ区切り・表の内側罫線・details 内区切り） */
   --accent: #e8821e; /* オレンジ */
-  --accent-fg: #a55309;
+  --accent-fg: #9a4d06; /* --bg-subtle 上でも AA（4.94）を満たす値 */
+  --accent-subtle: #f1e0c9;
   --link: #155bbd;
   --sidebar-width: 17rem;
   --toc-width: 14rem;
@@ -24,11 +31,15 @@ html[data-theme="dark"] {
   --bg: #0e1a2b;
   --bg-outer: #070f1b; /* .layout の外側（左右余白）。本文パネルより濃く */
   --bg-subtle: #17273d;
+  --bg-hover: #1f334e;
+  --bg-code: #0b1524;
   --fg: #d9e4f2;
   --fg-muted: #8aa2c0;
   --border: #2c4363;
+  --border-muted: #22324a;
   --accent: #c96a1b; /* ダークオレンジ */
   --accent-fg: #f0a45c;
+  --accent-subtle: #3a2b1c;
   --link: #6fb0f7;
 }
 
@@ -52,7 +63,34 @@ body {
   color: var(--fg);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
     "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
-  line-height: 1.75;
+  line-height: 1.7; /* 高密度方針。日本語の可読下限（1.65）は割らない */
+}
+
+/* キーボード操作時のフォーカスリング（マウスクリックでは出ない） */
+:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-subtle);
+}
+
+/* キーボード利用者向け: フォーカス時のみ現れる本文スキップリンク */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  z-index: 30;
+  padding: 0.5rem 1rem;
+  background: var(--bg);
+  color: var(--link);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.skip-link:focus {
+  left: 0.75rem;
+  top: 0.75rem;
 }
 
 /* ---- ヘッダー ---- */
@@ -68,6 +106,25 @@ body {
   padding: 0 1.25rem;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 狭幅用のナビ開閉ボタン。広い画面と JS 無効時は出ない */
+#nav-toggle {
+  display: none;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--bg-subtle);
+  color: var(--fg);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
 }
 
 .site-title {
@@ -104,8 +161,9 @@ body {
   font-size: 0.9rem;
 }
 
-#yuzu-search-input:focus {
-  outline: none;
+#yuzu-search-input:focus,
+#yuzu-search-input:focus-visible {
+  outline: none; /* フォーカスはアクセント色ボーダーで表現（リングと二重にしない） */
   border-color: var(--accent);
 }
 
@@ -138,7 +196,7 @@ body {
 
 .search-hit:hover,
 .search-hit.selected {
-  background: var(--bg-subtle);
+  background: var(--bg-hover);
 }
 
 .search-hit-title {
@@ -158,8 +216,9 @@ body {
 }
 
 .search-hit mark {
-  background: var(--accent);
-  color: #1f2328;
+  background: var(--accent-subtle);
+  color: inherit;
+  font-weight: 600;
   border-radius: 0.15rem;
   padding: 0 0.1em;
 }
@@ -248,14 +307,14 @@ body {
   margin: 0.1rem 0;
 }
 
-/* 項目間の区切り線（視認性向上）。ネスト ul は親 li の内側にあるため、
-   兄弟間は li + li、親行と子の先頭行の間は li > ul で線を引く */
+/* 区切り線はトップレベル（セクション境界）のみヘアラインで。
+   ネスト内は左の縦線とインデントで区別する（線が多いとノイズになる） */
 .sidebar-nav li + li {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-muted);
 }
 
-.sidebar-nav li > ul {
-  border-top: 1px solid var(--border);
+.sidebar-nav ul ul li + li {
+  border-top: none;
 }
 
 .sidebar-nav a,
@@ -275,13 +334,13 @@ body {
 
 .sidebar-nav a:hover {
   color: var(--fg);
-  background: var(--bg-subtle);
+  background: var(--bg-hover);
 }
 
 .sidebar-nav li.active > a {
   color: var(--accent-fg);
   font-weight: 600;
-  background: var(--bg-subtle);
+  background: var(--accent-subtle);
 }
 
 /* ---- ページ内 TOC ---- */
@@ -406,19 +465,131 @@ body {
   content: "#";
 }
 
+/* ---- 本文テキスト・リスト（段落リズムを明示して密度を揃える） ---- */
+
+.markdown-body p {
+  margin: 0.75rem 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.75rem 0;
+  padding-left: 1.4rem;
+}
+
+.markdown-body li + li {
+  margin-top: 0.3rem;
+}
+
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin: 0.3rem 0;
+}
+
+/* loose list（項目が p で包まれる）の縦膨張を抑える */
+.markdown-body li > p {
+  margin: 0.25rem 0;
+}
+
+/* タスクリスト（comrak tasklist: li 直下または loose 時は p 内に input）。
+   マーカーを消し、checkbox を負マージンでマーカー位置へ置く（GitHub 方式。
+   テキストの揃えは通常リストと一致する） */
+.markdown-body li:has(> input[type="checkbox"]:first-child),
+.markdown-body li:has(> p:first-child > input[type="checkbox"]:first-child) {
+  list-style: none;
+}
+
+.markdown-body li input[type="checkbox"] {
+  accent-color: var(--accent);
+  margin: 0 0.4em 0.15em -1.4em;
+  vertical-align: middle;
+}
+
+/* リンクは常時下線（本文中で確実に判別できるように）。hover で太く */
 .markdown-body a {
   color: var(--link);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+}
+
+.markdown-body a:hover {
+  text-decoration-thickness: 2px;
 }
 
 .markdown-body img {
   max-width: 100%;
 }
 
+.markdown-body figure {
+  margin: 1.25rem 0;
+}
+
+.markdown-body figcaption {
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+  text-align: center;
+  margin-top: 0.4rem;
+}
+
 .markdown-body blockquote {
   margin: 1rem 0;
-  padding: 0.25rem 1rem;
-  border-left: 0.25rem solid var(--border);
+  padding: 0.1rem 1rem;
+  border-left: 3px solid var(--border);
   color: var(--fg-muted);
+}
+
+.markdown-body blockquote > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body del {
+  color: var(--fg-muted);
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2.5rem 0;
+}
+
+/* キーキャップ風（生 HTML の <kbd> 用） */
+.markdown-body kbd {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Noto Sans Mono CJK JP", monospace;
+  font-size: 0.85em;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 0.3rem;
+  padding: 0.1em 0.45em;
+}
+
+/* 折りたたみ（生 HTML の <details> 用） */
+.markdown-body details {
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0 0.9rem;
+  margin: 1rem 0;
+}
+
+.markdown-body summary {
+  padding: 0.5rem 0;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.markdown-body summary:hover {
+  color: var(--accent-fg);
+}
+
+.markdown-body details[open] > summary {
+  border-bottom: 1px solid var(--border-muted);
+  margin-bottom: 0.5rem;
 }
 
 /* ---- 表（GFM） ---- */
@@ -428,17 +599,22 @@ body {
   display: block;
   overflow-x: auto;
   margin: 1rem 0;
+  /* 表は本文より一段密に（MDN 流） */
+  font-size: 0.95rem;
+  line-height: 1.55;
 }
 
+/* 罫線は 2 段階: 内側はヘアライン、ヘッダ下だけ強い線 */
 .markdown-body th,
 .markdown-body td {
-  border: 1px solid var(--border);
-  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border-muted);
+  padding: 0.4rem 0.75rem;
 }
 
 .markdown-body th {
   background: var(--bg-subtle);
   font-weight: 600;
+  border-bottom: 2px solid var(--border);
 }
 
 .markdown-body tr:nth-child(2n) {
@@ -451,7 +627,7 @@ body {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Noto Sans Mono CJK JP", monospace;
   font-size: 0.875em;
-  background: var(--bg-subtle);
+  background: var(--bg-code);
   border-radius: 0.3rem;
   padding: 0.15em 0.4em;
 }
@@ -461,7 +637,7 @@ body {
   padding: 1rem;
   border: 1px solid var(--border);
   border-radius: 0.5rem;
-  background: var(--bg-subtle);
+  background: var(--bg-code);
   overflow-x: auto;
   line-height: 1.6;
 }
@@ -475,6 +651,19 @@ body {
 /* syntect ハイライト済みブロック（配色は syntect.css 側） */
 .markdown-body pre.highlight code {
   background: none;
+}
+
+/* 言語ラベル（右上）。通常フロー配置のため横スクロール時は流れる（許容） */
+.markdown-body pre.highlight[data-lang]::before {
+  content: attr(data-lang);
+  display: block;
+  width: max-content;
+  margin-left: auto;
+  margin-top: -0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-muted);
 }
 
 /* ---- Mermaid ---- */
@@ -496,15 +685,77 @@ body {
   height: auto;
 }
 
+/* ---- モバイル用ページ内目次（72rem 以下でのみ表示） ---- */
+
+.toc-mobile {
+  display: none;
+  margin: 1rem 0;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0 0.9rem;
+  font-size: 0.9rem;
+}
+
+.toc-mobile summary {
+  padding: 0.5rem 0;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+
+.toc-mobile[open] > summary {
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.toc-mobile ul {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+
+.toc-mobile a {
+  display: block;
+  padding: 0.15rem 0;
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+
+.toc-mobile a:hover {
+  color: var(--accent-fg);
+}
+
+.toc-mobile .toc-level-3 {
+  padding-left: 0.9rem;
+}
+
+/* ---- スクロールバー（独立スクロール領域は控えめに） ---- */
+
+.sidebar,
+.toc,
+.search-results,
+.markdown-body pre,
+.markdown-body table {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
 /* ---- レスポンシブ ---- */
 
 @media (max-width: 72rem) {
   .layout {
+    /* 中間幅ではサイドバーを細めて本文の圧迫を緩和する */
+    --sidebar-width: 15rem;
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    gap: 0 1.5rem;
   }
 
   .toc {
     display: none;
+  }
+
+  /* 右カラムの代替: 本文冒頭の折りたたみ目次 */
+  .toc-mobile {
+    display: block;
   }
 }
 
@@ -519,5 +770,19 @@ body {
     border-right: none;
     border-bottom: 1px solid var(--border);
     padding: 1rem 0;
+  }
+
+  #nav-toggle {
+    display: block;
+  }
+
+  /* JS が有効なときだけ「閉じた状態が既定」になる（nav.js が has-nav-js を付与）。
+     JS 無効時は従来どおり常時展開＝ナビ到達性を失わない */
+  body.has-nav-js .sidebar {
+    display: none;
+  }
+
+  body.has-nav-js.nav-open .sidebar {
+    display: block;
   }
 }
