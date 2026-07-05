@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "yuzu",
     version,
-    about = "Markdown で書いたドキュメントを静的 HTML サイトに変換する俺々ツール",
+    about = "Markdown で書いたドキュメントを静的 HTML サイトに変換するツール",
     long_about = "yuzu 🍊 — Markdown で書いた設計書をプロダクション品質の\n\
                   静的 HTML ドキュメントサイトに変換するツール。\n\
                   ロードマップと設計は README.md を参照。"
