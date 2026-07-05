@@ -167,6 +167,24 @@ pub(crate) fn normalize_markdown(
     Ok(out)
 }
 
+/// frontmatter の生テキスト（`---` 区切り行込み）とソース上の位置を返す。
+/// frontmatter がなければ None（lint の未知キー検出用）
+pub(crate) fn frontmatter_raw(
+    source: &str,
+    opts: &MarkdownOptions,
+) -> Option<(String, SourceSpan)> {
+    let arena = Arena::new();
+    let options = comrak_options(opts);
+    let root = parse_document(&arena, source, &options);
+
+    let first = root.first_child()?;
+    let data = first.data.borrow();
+    match &data.value {
+        NodeValue::FrontMatter(raw) => Some((raw.clone(), span_of(&data.sourcepos))),
+        _ => None,
+    }
+}
+
 /// 全文を整形した Markdown を返す（`yuzu fmt` 用）。
 ///
 /// 本文は [`normalize_markdown`] と同じ `format_commonmark` の正規形。

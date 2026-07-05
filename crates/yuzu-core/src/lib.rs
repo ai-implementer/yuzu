@@ -11,8 +11,10 @@
 //! 2. [`render_body_html`] — 本文の HTML 化（コードブロック差し替え・
 //!    リンク書き換えのフックを通す）
 
+mod diagnostics;
 mod error;
 mod frontmatter;
+mod lint;
 mod markdown;
 mod model;
 mod nav;
@@ -22,6 +24,7 @@ mod traits;
 use std::fs;
 use std::path::Path;
 
+pub use diagnostics::{Diagnostic, Severity};
 pub use error::CoreError;
 pub use model::{Frontmatter, NavNode, Page, SiteModel, SourceSpan, TocEntry};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
@@ -144,4 +147,13 @@ pub fn normalize_markdown(page: &Page, opts: &MarkdownOptions) -> Result<String,
 /// - 冪等: `format_document` の出力を再整形しても変化しない
 pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
     markdown::format_document(&page.source, opts)
+}
+
+/// 文書規約の診断（`yuzu lint` / `yuzu check` 用）。
+///
+/// ルール: `duplicate-h1`（本文 h1 の重複）/ `heading-level-skip`
+/// （見出しレベルの飛び）/ `frontmatter-unknown-key`（未知キー）。
+/// 診断は行順でソート済み
+pub fn lint_page(page: &Page, opts: &MarkdownOptions) -> Result<Vec<Diagnostic>, CoreError> {
+    lint::lint_page(page, opts)
 }

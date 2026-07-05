@@ -2,20 +2,28 @@
 
 use crate::model::Frontmatter;
 
+/// [`Frontmatter`] が受理するトップレベルキー（lint の未知キー検出用）。
+/// フィールドを増やすときはここにも足す（乖離は下のテストで検知する）
+pub(crate) const KNOWN_KEYS: &[&str] = &["title", "order", "draft", "description", "llms"];
+
 /// comrak の front matter extension が切り出した生テキスト
 /// （`---` 区切り行を含む）から YAML 部分を取り出してパースする
 pub(crate) fn parse_frontmatter(raw: &str) -> Result<Frontmatter, String> {
-    let trimmed = raw.trim();
-    let body = trimmed
-        .strip_prefix("---")
-        .and_then(|s| s.strip_suffix("---"))
-        .unwrap_or(trimmed)
-        .trim();
-
+    let body = yaml_body(raw);
     if body.is_empty() {
         return Ok(Frontmatter::default());
     }
     serde_yaml_ng::from_str(body).map_err(|e| e.to_string())
+}
+
+/// 生テキストから `---` 区切りを外した YAML 部分を返す
+pub(crate) fn yaml_body(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    trimmed
+        .strip_prefix("---")
+        .and_then(|s| s.strip_suffix("---"))
+        .unwrap_or(trimmed)
+        .trim()
 }
 
 #[cfg(test)]
@@ -55,5 +63,23 @@ mod tests {
     #[test]
     fn 不正な_yaml_はエラーになる() {
         assert!(parse_frontmatter("---\ntitle: [unclosed\n---\n").is_err());
+    }
+
+    /// KNOWN_KEYS と Frontmatter 構造体の乖離検知
+    /// （フィールドを追加して KNOWN_KEYS を忘れると未知キー lint が誤検知する）
+    #[test]
+    fn known_keys_は_frontmatter_のフィールドと一致する() {
+        let yaml = serde_yaml_ng::to_string(&crate::model::Frontmatter::default()).unwrap();
+        let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).unwrap();
+        let mut fields: Vec<String> = value
+            .as_mapping()
+            .unwrap()
+            .keys()
+            .map(|k| k.as_str().unwrap().to_string())
+            .collect();
+        fields.sort();
+        let mut known: Vec<String> = super::KNOWN_KEYS.iter().map(|k| k.to_string()).collect();
+        known.sort();
+        assert_eq!(fields, known);
     }
 }
