@@ -42,5 +42,7 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
         }
         cli::Command::Llms { full } => commands::llms::run(full).map(ok),
         cli::Command::Fmt { check } => commands::fmt::run(check),
+        cli::Command::Lint => commands::lint::run(),
+        cli::Command::Check => commands::check::run(),
     }
 }

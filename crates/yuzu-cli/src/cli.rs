@@ -72,4 +72,10 @@ pub enum Command {
         #[arg(long)]
         check: bool,
     },
+
+    /// 文書規約の診断（見出し・frontmatter）。違反があれば非ゼロ終了
+    Lint,
+
+    /// lint ＋ リンク切れ検査 ＋ fmt 差分検出の統合チェック（CI 用）
+    Check,
 }
