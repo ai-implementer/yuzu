@@ -1,6 +1,6 @@
 {# ページ内 TOC（level 2〜3 に絞ったエントリが渡ってくる） #}
 <aside class="toc"{% if not page.toc %} hidden{% endif %} aria-label="このページの目次">
-{% if page.toc %}<div class="toc-title">このページ</div>
+{% if page.toc %}<div class="toc-title">目次</div>
 <ul>
 {% for item in page.toc %}
 <li class="toc-level-{{ item.level }}"><a href="#{{ item.id }}">{{ item.text }}</a></li>
