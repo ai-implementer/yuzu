@@ -46,6 +46,6 @@ sequenceDiagram
 
 ![yuzu ロゴ](/images/yuzu-logo.svg)
 
----
+-----
 
 次は[はじめに](guide/getting-started.md)へどうぞ。

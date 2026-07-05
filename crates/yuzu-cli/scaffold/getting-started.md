@@ -116,4 +116,3 @@ yuzu search "検索したい言葉"
 ```
 
 `search.enabled: false` で機能ごと無効化できます。
-

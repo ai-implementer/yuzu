@@ -65,4 +65,11 @@ pub enum Command {
         #[arg(long)]
         full: bool,
     },
+
+    /// content/ の Markdown を正規形へ整形する（既定: その場で書き換え）
+    Fmt {
+        /// 書き換えず、差分のあるファイルを列挙して非ゼロ終了する（CI 用）
+        #[arg(long)]
+        check: bool,
+    },
 }
