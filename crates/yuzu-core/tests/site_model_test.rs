@@ -3,7 +3,9 @@
 use std::fs;
 use std::path::Path;
 
-use yuzu_core::{MarkdownOptions, NoopCodeBlockRenderer, NoopUrlRewriter, build_site_model};
+use yuzu_core::{
+    MarkdownOptions, NoopCodeBlockRenderer, NoopUrlRewriter, build_site_model, build_source_pages,
+};
 
 fn write(dir: &Path, rel: &str, content: &str) {
     let path = dir.join(rel);
@@ -20,6 +22,28 @@ fn draft_は除外される() {
     let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
     assert_eq!(site.pages.len(), 1);
     assert_eq!(site.pages[0].route, "");
+}
+
+#[test]
+fn build_source_pages_は_draft_を含む() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    write(dir.path(), "wip.md", "---\ndraft: true\n---\n# wip\n");
+    write(dir.path(), "_drafts/memo.md", "# memo\n");
+
+    // draft は含むが ignore glob は効く
+    let pages = build_source_pages(
+        dir.path(),
+        &["**/_drafts/**".to_string()],
+        &MarkdownOptions::default(),
+    )
+    .unwrap();
+    let rels: Vec<String> = pages
+        .iter()
+        .map(|p| p.rel.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(rels, ["index.md", "wip.md"]);
+    assert!(pages[1].frontmatter.draft);
 }
 
 #[test]

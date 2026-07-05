@@ -49,6 +49,36 @@ pub fn build_site_model(
     ignore: &[String],
     opts: &MarkdownOptions,
 ) -> Result<SiteModel, CoreError> {
+    let mut pages = load_pages(content_dir, ignore, opts)?;
+    pages.retain(|page| {
+        if page.frontmatter.draft {
+            tracing::debug!(path = %page.rel.display(), "draft のため除外");
+        }
+        !page.frontmatter.draft
+    });
+    let nav = nav::build_nav(&pages);
+    Ok(SiteModel { pages, nav })
+}
+
+/// `content_dir` 以下の全ページを列挙する（`yuzu fmt` / `lint` / `check` 用）。
+///
+/// [`build_site_model`] と違い **`draft: true` も除外しない**（リポジトリ内の
+/// ソースは公開前でも規約対象にする）。ナビは構築しない。
+/// ignore glob の扱いと走査順（パスのソート順）は [`build_site_model`] と同じ
+pub fn build_source_pages(
+    content_dir: &Path,
+    ignore: &[String],
+    opts: &MarkdownOptions,
+) -> Result<Vec<Page>, CoreError> {
+    load_pages(content_dir, ignore, opts)
+}
+
+/// 走査＋メタ抽出の共通部（draft を含む全ページ）
+fn load_pages(
+    content_dir: &Path,
+    ignore: &[String],
+    opts: &MarkdownOptions,
+) -> Result<Vec<Page>, CoreError> {
     let files = scan::scan_markdown_files(content_dir, ignore)?;
     let mut pages = Vec::new();
 
@@ -58,11 +88,6 @@ pub fn build_site_model(
             source,
         })?;
         let meta = markdown::extract_meta(&source, opts, &file.abs)?;
-
-        if meta.frontmatter.draft {
-            tracing::debug!(path = %file.rel.display(), "draft のため除外");
-            continue;
-        }
 
         let route = scan::route_for_rel(&file.rel);
         let title = meta
@@ -82,9 +107,7 @@ pub fn build_site_model(
             source,
         });
     }
-
-    let nav = nav::build_nav(&pages);
-    Ok(SiteModel { pages, nav })
+    Ok(pages)
 }
 
 /// パス2: ページ本文を HTML 化する。
