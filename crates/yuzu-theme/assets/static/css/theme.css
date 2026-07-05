@@ -34,6 +34,10 @@ html[data-theme="dark"] {
 
 html {
   height: 100%;
+  /* アンカー遷移時に sticky ヘッダーへ隠れないようにする。
+     見出しの id は comrak header_ids が埋め込む内側の <a class="anchor"> に
+     付くため、要素側の scroll-margin ではなくルートの scroll-padding で受ける */
+  scroll-padding-top: calc(var(--header-height) + 1rem);
 }
 
 body {
@@ -302,7 +306,6 @@ body {
 .markdown-body h4 {
   line-height: 1.4;
   margin: 2rem 0 0.75rem;
-  scroll-margin-top: calc(var(--header-height) + 1rem);
 }
 
 .markdown-body h1 {
