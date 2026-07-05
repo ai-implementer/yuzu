@@ -14,12 +14,14 @@
 mod diagnostics;
 mod error;
 mod frontmatter;
+mod linkcheck;
 mod lint;
 mod markdown;
 mod model;
 mod nav;
 mod scan;
 mod traits;
+pub mod urlpath;
 
 use std::fs;
 use std::path::Path;
@@ -156,4 +158,19 @@ pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, Co
 /// 診断は行順でソート済み
 pub fn lint_page(page: &Page, opts: &MarkdownOptions) -> Result<Vec<Diagnostic>, CoreError> {
     lint::lint_page(page, opts)
+}
+
+/// 内部リンク・アンカーの静的検査（`yuzu check` 用）。
+///
+/// - `pages` には draft 込みの全ページ（[`build_source_pages`]）を渡す。
+///   リンクの**有効ターゲットは非 draft ページのみ**（ビルド成果物に実在するもの）
+/// - 外部 URL（スキーム付き）はネットワークに触れず検査しない
+/// - アンカーは本文 HTML と同一採番の見出し id で照合する
+pub fn check_links(
+    pages: &[Page],
+    public_dir: Option<&Path>,
+    content_dir: &Path,
+    opts: &MarkdownOptions,
+) -> Result<Vec<Diagnostic>, CoreError> {
+    linkcheck::check_links(pages, public_dir, content_dir, opts)
 }

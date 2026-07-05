@@ -38,7 +38,7 @@ pub(crate) fn scan_markdown_files(
             .strip_prefix(content_dir)
             .expect("walkdir は content_dir 配下のみ返す")
             .to_path_buf();
-        if ignore_set.is_match(rel_to_slash(&rel)) {
+        if ignore_set.is_match(crate::urlpath::rel_to_slash(&rel)) {
             tracing::debug!(path = %rel.display(), "ignore パターンに一致したため除外");
             continue;
         }
@@ -62,14 +62,6 @@ fn build_ignore_set(patterns: &[String]) -> Result<GlobSet, CoreError> {
             pattern: patterns.join(", "),
             message: e.to_string(),
         })
-}
-
-/// 相対パスを `/` 区切りの文字列へ正規化する（Windows でも出力 URL を安定させる）
-pub(crate) fn rel_to_slash(rel: &Path) -> String {
-    rel.iter()
-        .map(|c| c.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 /// 相対パス → route（pretty URL、末尾スラッシュ付きサイト相対パス）。

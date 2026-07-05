@@ -5,12 +5,12 @@
 //! - `heading-level-skip` — 隣接見出し間でレベルが 2 以上深くなる（markdownlint MD001 相当）
 //! - `frontmatter-unknown-key` — 既知キー以外のトップレベルキー（typo 検出）
 
+use crate::MarkdownOptions;
 use crate::diagnostics::{Diagnostic, Severity};
 use crate::error::CoreError;
 use crate::frontmatter::{KNOWN_KEYS, yaml_body};
 use crate::markdown;
 use crate::model::{Page, SourceSpan, TocEntry};
-use crate::MarkdownOptions;
 
 pub(crate) fn lint_page(page: &Page, opts: &MarkdownOptions) -> Result<Vec<Diagnostic>, CoreError> {
     let mut out = Vec::new();
@@ -145,7 +145,11 @@ mod tests {
             .collect();
         assert_eq!(skips.len(), 1, "{diags:?}");
         assert_eq!(skips[0].span.unwrap().start_line, 5);
-        assert!(skips[0].message.contains("h3 を挟んで"), "{}", skips[0].message);
+        assert!(
+            skips[0].message.contains("h3 を挟んで"),
+            "{}",
+            skips[0].message
+        );
     }
 
     #[test]
@@ -163,7 +167,11 @@ mod tests {
             .filter(|d| d.rule == "frontmatter-unknown-key")
             .collect();
         assert_eq!(unknown.len(), 1, "{diags:?}");
-        assert!(unknown[0].message.contains("`tags`"), "{}", unknown[0].message);
+        assert!(
+            unknown[0].message.contains("`tags`"),
+            "{}",
+            unknown[0].message
+        );
         assert_eq!(unknown[0].span.unwrap().start_line, 3, "tags: の行");
     }
 

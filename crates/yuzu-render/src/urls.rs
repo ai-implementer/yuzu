@@ -4,8 +4,8 @@
 //! 絶対パスへ統一する（pretty URL と相対パスの組み合わせ事故を避ける）。
 
 use std::collections::HashMap;
-use std::path::Path;
 
+use yuzu_core::urlpath::{rel_to_slash, resolve_relative, split_suffix};
 use yuzu_core::{Page, SiteModel, UrlRewriter};
 
 /// URL 解決器。本文リンクの書き換え（[`UrlRewriter`]）と、
@@ -22,7 +22,7 @@ impl UrlResolver {
         let routes = site
             .pages
             .iter()
-            .map(|p| (rel_slash(&p.rel), p.route.clone()))
+            .map(|p| (rel_to_slash(&p.rel), p.route.clone()))
             .collect();
         Self {
             base: base_url.to_string(),
@@ -64,7 +64,7 @@ impl UrlRewriter for UrlResolver {
 
         // 相対 `.md` リンク → ページ route へ解決
         if path.ends_with(".md") {
-            let dir = page.rel.parent().map(rel_slash).unwrap_or_default();
+            let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
             let resolved = resolve_relative(&dir, path);
             let route = match self.routes.get(&resolved) {
                 Some(route) => route.clone(),
@@ -85,33 +85,6 @@ impl UrlRewriter for UrlResolver {
     }
 }
 
-/// `?query` / `#fragment` を切り離す
-fn split_suffix(url: &str) -> (&str, &str) {
-    match url.find(['?', '#']) {
-        Some(i) => (&url[..i], &url[i..]),
-        None => (url, ""),
-    }
-}
-
-/// 相対パスを `dir` 基準で解決し、`/` 区切りに正規化する
-fn resolve_relative(dir: &str, target: &str) -> String {
-    let mut parts: Vec<&str> = if dir.is_empty() {
-        Vec::new()
-    } else {
-        dir.split('/').collect()
-    };
-    for seg in target.split('/') {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                parts.pop();
-            }
-            s => parts.push(s),
-        }
-    }
-    parts.join("/")
-}
-
 /// リンク切れ時のフォールバック: `.md` パスを pretty URL へ機械変換する
 fn guess_route(rel: &str) -> String {
     let stem = rel.strip_suffix(".md").unwrap_or(rel);
@@ -121,14 +94,6 @@ fn guess_route(rel: &str) -> String {
     }
     .trim_start_matches('/')
     .to_string()
-}
-
-/// 相対パスを `/` 区切り文字列へ（Windows 対策）
-fn rel_slash(rel: &Path) -> String {
-    rel.iter()
-        .map(|c| c.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 #[cfg(test)]

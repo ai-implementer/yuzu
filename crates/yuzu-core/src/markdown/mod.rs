@@ -167,6 +167,37 @@ pub(crate) fn normalize_markdown(
     Ok(out)
 }
 
+/// 本文中のリンク・画像参照（linkcheck 用）
+pub(crate) struct LinkRef {
+    pub url: String,
+    pub is_image: bool,
+    pub span: SourceSpan,
+}
+
+/// 本文中のリンク・画像の URL を sourcepos 付きで列挙する（`yuzu check` 用）。
+/// autolink（GFM）もリンクとして現れる
+pub(crate) fn extract_link_refs(source: &str, opts: &MarkdownOptions) -> Vec<LinkRef> {
+    let arena = Arena::new();
+    let options = comrak_options(opts);
+    let root = parse_document(&arena, source, &options);
+
+    let mut refs = Vec::new();
+    for node in root.descendants() {
+        let data = node.data.borrow();
+        let (url, is_image) = match &data.value {
+            NodeValue::Link(link) => (link.url.clone(), false),
+            NodeValue::Image(link) => (link.url.clone(), true),
+            _ => continue,
+        };
+        refs.push(LinkRef {
+            url,
+            is_image,
+            span: span_of(&data.sourcepos),
+        });
+    }
+    refs
+}
+
 /// frontmatter の生テキスト（`---` 区切り行込み）とソース上の位置を返す。
 /// frontmatter がなければ None（lint の未知キー検出用）
 pub(crate) fn frontmatter_raw(
@@ -292,5 +323,32 @@ fn span_of(sourcepos: &comrak::nodes::Sourcepos) -> SourceSpan {
         start_col: sourcepos.start.column,
         end_line: sourcepos.end.line,
         end_col: sourcepos.end.column,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// インラインノード（リンク）の sourcepos が行・列とも正確なことの実測
+    /// （linkcheck の診断位置の前提。ずれるようなら表示を行番号のみに落とす）
+    #[test]
+    fn リンクの_sourcepos_は行と列を正しく指す() {
+        let source = "# 見出し\n\n本文 [リンク](target.md) と ![画像](img.png)。\n\n- 項目の [中のリンク](other.md#frag)\n";
+        let refs = extract_link_refs(source, &MarkdownOptions::default());
+        assert_eq!(refs.len(), 3);
+
+        assert_eq!(refs[0].url, "target.md");
+        assert!(!refs[0].is_image);
+        assert_eq!(refs[0].span.start_line, 3);
+        // 「本文 」= 本文(6 バイト) + 空白(1) の次 = 8 バイト目（col は 1 始まりバイト位置）
+        assert_eq!(refs[0].span.start_col, 8);
+
+        assert_eq!(refs[1].url, "img.png");
+        assert!(refs[1].is_image);
+        assert_eq!(refs[1].span.start_line, 3);
+
+        assert_eq!(refs[2].url, "other.md#frag");
+        assert_eq!(refs[2].span.start_line, 5);
     }
 }

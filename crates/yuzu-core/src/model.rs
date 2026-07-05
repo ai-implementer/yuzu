@@ -110,7 +110,7 @@ impl SiteModel {
     pub fn route_for_rel_str(&self, rel: &str) -> Option<&str> {
         self.pages
             .iter()
-            .find(|p| crate::scan::rel_to_slash(&p.rel) == rel)
+            .find(|p| crate::urlpath::rel_to_slash(&p.rel) == rel)
             .map(|p| p.route.as_str())
     }
 }

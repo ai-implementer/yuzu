@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::model::{NavNode, Page};
-use crate::scan::rel_to_slash;
+use crate::urlpath::rel_to_slash;
 
 /// ディレクトリツリーの中間表現
 #[derive(Default)]

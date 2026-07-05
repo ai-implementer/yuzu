@@ -47,7 +47,10 @@ fn frontmatter_を温存して整形する() {
     assert!(out.contains("# 見出し"), "out:\n{out}");
     assert!(out.contains("- アスタリスク箇条書き"), "out:\n{out}");
     assert!(out.contains("<https://example.com/path>"), "out:\n{out}");
-    assert!(out.ends_with('\n') && !out.ends_with("\n\n"), "末尾改行は 1 個");
+    assert!(
+        out.ends_with('\n') && !out.ends_with("\n\n"),
+        "末尾改行は 1 個"
+    );
     insta::assert_snapshot!("formatted_md", out);
 }
 
