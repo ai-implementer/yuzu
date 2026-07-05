@@ -132,7 +132,16 @@ pub fn extract_plain_text(page: &Page, opts: &MarkdownOptions) -> Result<String,
 }
 
 /// ページ本文を正規化 Markdown として出力する（frontmatter は含めない）。
-/// llms-full.txt と将来の `yuzu fmt` の共通基盤
+/// llms-full.txt の基盤（全文が要る場合は [`format_document`] を使う）
 pub fn normalize_markdown(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
     markdown::normalize_markdown(&page.source, opts)
+}
+
+/// ページ全文（frontmatter 込み）を整形した Markdown を返す（`yuzu fmt` 用）。
+///
+/// - 本文は [`normalize_markdown`] と同じ正規形（見出し ATX 化・箇条書き `-` 統一等）
+/// - frontmatter は YAML を再シリアライズせずバイト温存で再結合する
+/// - 冪等: `format_document` の出力を再整形しても変化しない
+pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
+    markdown::format_document(&page.source, opts)
 }

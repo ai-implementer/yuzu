@@ -167,6 +167,41 @@ pub(crate) fn normalize_markdown(
     Ok(out)
 }
 
+/// 全文を整形した Markdown を返す（`yuzu fmt` 用）。
+///
+/// 本文は [`normalize_markdown`] と同じ `format_commonmark` の正規形。
+/// frontmatter は YAML を再シリアライズせず**生テキストをバイト温存**して
+/// 再結合する（コメント・キー順・クォートを壊さない）。
+/// 末尾改行は常に 1 個、frontmatter と本文の間は空行 1 つに正規化する
+pub(crate) fn format_document(source: &str, opts: &MarkdownOptions) -> Result<String, CoreError> {
+    let arena = Arena::new();
+    let options = comrak_options(opts);
+    let root = parse_document(&arena, source, &options);
+
+    // frontmatter の生テキスト（区切り行込み）を退避して detach
+    // （format_commonmark が生テキストごと再出力してしまうため。normalize と同じ）
+    let mut fm_raw: Option<String> = None;
+    if let Some(first) = root.first_child() {
+        if let NodeValue::FrontMatter(raw) = &first.data.borrow().value {
+            fm_raw = Some(raw.clone());
+        }
+        if fm_raw.is_some() {
+            first.detach();
+        }
+    }
+
+    let mut body = String::new();
+    format_commonmark(root, &options, &mut body)?;
+    let body = body.trim_end();
+
+    Ok(match (fm_raw, body.is_empty()) {
+        (Some(raw), true) => format!("{}\n", raw.trim_end()),
+        (Some(raw), false) => format!("{}\n\n{body}\n", raw.trim_end()),
+        (None, true) => String::new(),
+        (None, false) => format!("{body}\n"),
+    })
+}
+
 /// 本文のプレーンテキストを抽出する（検索インデックス用）。
 ///
 /// - 収集: `Text` / インライン `Code`（API 名検索のため含める）。
