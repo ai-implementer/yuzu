@@ -17,6 +17,9 @@ comrak = { version = "0.53", default-features = false }
 # シンタックスハイライト（凍結: syntect + fancy-regex）。default(onig) との同居を
 # 避けるため default-features = false + default-fancy のみ
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
+# syntect の拡張構文セット（bat のアセット由来。TypeScript/TSX/TOML/Dockerfile 等を補完）。
+# default は onig を引くため必ず default-features = false + syntect-fancy
+two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
 # テンプレート（凍結: minijinja。ランタイム解釈＝将来のテンプレ ホットリロード用）
 minijinja = { version = "2.21", features = ["loader"] }
 rust-embed = "8.11"

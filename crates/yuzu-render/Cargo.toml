@@ -17,6 +17,7 @@ minijinja = { workspace = true }
 serde = { workspace = true }
 syntect = { workspace = true }
 thiserror = { workspace = true }
+two-face = { workspace = true }
 tracing = { workspace = true }
 walkdir = { workspace = true }
 

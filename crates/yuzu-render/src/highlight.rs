@@ -71,8 +71,10 @@ impl SyntectCodeRenderer {
                 counter: Cell::new(0),
             });
         Self {
-            // ClassedHTMLGenerator の行単位 API は newlines 版とセットで使う
-            syntax_set: SyntaxSet::load_defaults_newlines(),
+            // ClassedHTMLGenerator の行単位 API は newlines 版とセットで使う。
+            // syntect デフォルトには TypeScript/TSX/TOML/Dockerfile 等がないため、
+            // bat のアセット由来の拡張セット（two-face。デフォルト構文も内包）を使う
+            syntax_set: two_face::syntax::extra_newlines(),
             highlight_enabled,
             mermaid_enabled: mermaid.enabled,
             mermaid_ssr,
