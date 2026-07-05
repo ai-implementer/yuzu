@@ -19,15 +19,18 @@
 </script>
 {% endif %}</head>
 <body>
+<a class="skip-link" href="#yuzu-main">本文へ移動</a>
 {% include "partials/header.jinja" %}
 <div class="layout">
 {% include "partials/sidebar.jinja" %}
-<main class="content">
+<main class="content" id="yuzu-main">
+{% include "partials/toc-mobile.jinja" %}
 {% block content %}{% endblock %}
 </main>
 {% include "partials/toc.jinja" %}
 </div>
 <script src="{{ asset_url | safe }}js/theme.js"></script>
+<script src="{{ asset_url | safe }}js/nav.js"></script>
 {% if mermaid_enabled %}<script src="{{ asset_url | safe }}vendor/mermaid.min.js"></script>
 <script src="{{ asset_url | safe }}js/mermaid-init.js"></script>
 {% endif %}{% if search_enabled %}<script type="module" src="{{ asset_url | safe }}js/search-ui.js" data-search-base="{{ base_url | safe }}_search/" data-base="{{ base_url | safe }}"></script>

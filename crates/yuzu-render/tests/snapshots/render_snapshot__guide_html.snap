@@ -22,8 +22,14 @@ expression: guide
 </script>
 </head>
 <body>
+<a class="skip-link" href="#yuzu-main">本文へ移動</a>
 <header class="site-header">
+<div class="header-left">
+
+<button id="nav-toggle" type="button" aria-label="ナビゲーションを開閉"
+        aria-controls="site-sidebar" aria-expanded="false" hidden>☰</button>
 <a class="site-title" href="/docs/">Fixture Docs</a>
+</div>
 <div class="header-tools">
 <div class="search" id="yuzu-search">
 <input type="search" id="yuzu-search-input" placeholder="検索 ( / )" autocomplete="off"
@@ -36,7 +42,7 @@ expression: guide
 <div class="layout">
 
 
-<aside class="sidebar">
+<aside class="sidebar" id="site-sidebar">
 <nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
 
 <ul>
@@ -64,12 +70,26 @@ expression: guide
 
 </nav>
 </aside>
-<main class="content">
+<main class="content" id="yuzu-main">
+
+<details class="toc-mobile">
+<summary>目次</summary>
+<ul>
+
+<li class="toc-level-2"><a href="#インストール">インストール</a></li>
+
+<li class="toc-level-2"><a href="#使い方">使い方</a></li>
+
+<li class="toc-level-3"><a href="#詳細">詳細</a></li>
+
+</ul>
+</details>
+
 
 <article class="markdown-body">
 <h1><a href="#はじめに" aria-hidden="true" class="anchor" id="はじめに"></a>はじめに</h1>
 <h2><a href="#インストール" aria-hidden="true" class="anchor" id="インストール"></a>インストール</h2>
-<pre class="highlight"><code class="language-rust"><span class="yz-source yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-storage yz-type yz-function yz-rust">fn</span> </span><span class="yz-entity yz-name yz-function yz-rust">main</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-begin yz-rust">(</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-end yz-rust">)</span></span></span></span><span class="yz-meta yz-function yz-rust"> </span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-block yz-rust"><span class="yz-punctuation yz-section yz-block yz-begin yz-rust">{</span>
+<pre class="highlight" data-lang="rust"><code class="language-rust"><span class="yz-source yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-storage yz-type yz-function yz-rust">fn</span> </span><span class="yz-entity yz-name yz-function yz-rust">main</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-begin yz-rust">(</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-end yz-rust">)</span></span></span></span><span class="yz-meta yz-function yz-rust"> </span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-block yz-rust"><span class="yz-punctuation yz-section yz-block yz-begin yz-rust">{</span>
     <span class="yz-support yz-macro yz-rust">println!</span><span class="yz-meta yz-group yz-rust"><span class="yz-punctuation yz-section yz-group yz-begin yz-rust">(</span></span><span class="yz-meta yz-group yz-rust"><span class="yz-string yz-quoted yz-double yz-rust"><span class="yz-punctuation yz-definition yz-string yz-begin yz-rust">&quot;</span>こんにちは yuzu<span class="yz-punctuation yz-definition yz-string yz-end yz-rust">&quot;</span></span></span><span class="yz-meta yz-group yz-rust"><span class="yz-punctuation yz-section yz-group yz-end yz-rust">)</span></span><span class="yz-punctuation yz-terminator yz-rust">;</span>
 </span><span class="yz-meta yz-block yz-rust"><span class="yz-punctuation yz-section yz-block yz-end yz-rust">}</span></span></span>
 </span></code></pre>
@@ -96,6 +116,7 @@ expression: guide
 </aside>
 </div>
 <script src="/docs/_assets/js/theme.js"></script>
+<script src="/docs/_assets/js/nav.js"></script>
 <script src="/docs/_assets/vendor/mermaid.min.js"></script>
 <script src="/docs/_assets/js/mermaid-init.js"></script>
 <script type="module" src="/docs/_assets/js/search-ui.js" data-search-base="/docs/_search/" data-base="/docs/"></script>

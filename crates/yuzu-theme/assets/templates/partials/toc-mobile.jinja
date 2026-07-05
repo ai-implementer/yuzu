@@ -1,0 +1,11 @@
+{# 狭幅（右カラム TOC 非表示時）用のページ内目次。JS 不要の details/summary。
+   表示制御は CSS（.toc-mobile は 72rem 以下でのみ表示） #}
+{% if page.toc %}<details class="toc-mobile">
+<summary>目次</summary>
+<ul>
+{% for item in page.toc %}
+<li class="toc-level-{{ item.level }}"><a href="#{{ item.id }}">{{ item.text }}</a></li>
+{% endfor %}
+</ul>
+</details>
+{% endif %}

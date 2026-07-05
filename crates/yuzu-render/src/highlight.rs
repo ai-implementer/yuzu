@@ -154,10 +154,11 @@ impl CodeBlockRenderer for SyntectCodeRenderer {
             return self.render_mermaid(code);
         }
         let inner = self.highlight(lang, code)?;
+        // data-lang はテーマ CSS が言語ラベル表示（::before）に使う
         Some(format!(
-            "<pre class=\"highlight\"><code class=\"language-{}\">{}</code></pre>\n",
-            escape_html(lang),
-            inner
+            "<pre class=\"highlight\" data-lang=\"{lang}\"><code class=\"language-{lang}\">{}</code></pre>\n",
+            inner,
+            lang = escape_html(lang),
         ))
     }
 }
@@ -283,7 +284,7 @@ mod tests {
     fn rust_はハイライトされ_css_クラスが付く() {
         let r = SyntectCodeRenderer::new(true, &client_config());
         let html = r.render(Some("rust"), "fn main() {}\n").unwrap();
-        assert!(html.starts_with("<pre class=\"highlight\">"));
+        assert!(html.starts_with("<pre class=\"highlight\" data-lang=\"rust\">"));
         assert!(
             html.contains("class=\"yz-"),
             "yz- 接頭辞のクラス出力: {html}"
