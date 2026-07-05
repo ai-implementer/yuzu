@@ -7,8 +7,8 @@
 //! - ` ```mermaid ` は `<pre class="mermaid">` へ変換（クライアント描画）
 //! - リンク・アセット参照は `baseUrl` 付きの絶対パスへ解決
 //!
-//! 将来: Markdown 正規化出力（`yuzu fmt`）、`llms.txt` / `llms-full.txt`
-//! （正規化 md の連結）もこの crate が担う（Phase 4/6）。
+//! `llms.txt` / `llms-full.txt`（正規化 md の連結）もこの crate が担う（Phase 4）。
+//! `yuzu fmt` の整形コアは yuzu-core の `format_document`（Phase 6）。
 
 mod assets;
 mod context;

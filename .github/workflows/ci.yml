@@ -53,3 +53,12 @@ jobs:
           test -f dist/_search/search_bg.wasm
           "$GITHUB_WORKSPACE/target/debug/yuzu" search "はじめに" | grep "はじめに"
           "$GITHUB_WORKSPACE/target/debug/yuzu" search "ダーくモード" | grep -q "."
+          # Phase 6: fmt/lint/check（正常系 = 0、違反注入で = 1 の終了コード契約）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" fmt --check
+          "$GITHUB_WORKSPACE/target/debug/yuzu" lint
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check
+          echo '[壊れリンク](missing.md)' >> content/index.md
+          if "$GITHUB_WORKSPACE/target/debug/yuzu" check; then
+            echo "check が壊れリンクを検出しなかった" >&2
+            exit 1
+          fi
