@@ -379,7 +379,7 @@ body {
 
 /* 見出しの設計方針:
    - 階層は「サイズ＋装飾の種類」で二重に符号化する
-     （h1 = 下線＋アクセントバー / h2 = 左バー / h3 以下 = 太さと余白のみ）
+     （h1 = 下線＋アクセントバー / h2 = 左バー＋下線 / h3 以下 = 太さと余白のみ）
    - 上余白 > 下余白（見出しは直後の内容に属して見える。近接の原則）
    - アクセント（オレンジ）は h1/h2 だけに絞る */
 .markdown-body h1,
@@ -419,8 +419,9 @@ body {
 .markdown-body h2 {
   font-size: 1.45rem;
   margin-top: 2.75rem;
-  padding: 0.15rem 0 0.15rem 0.7rem;
+  padding: 0.15rem 0 0.35rem 0.7rem;
   border-left: 4px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
 }
 
 .markdown-body h3 {
