@@ -89,6 +89,22 @@ flowchart TD
     B -->|それ以外| D[mermaid.js でクライアント描画]
 ```
 
+シーケンス図（sequenceDiagram）— `yuzu dev` のライブリロードの流れ:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor W as 執筆者
+    participant Y as yuzu dev
+    participant B as ブラウザ
+
+    W->>Y: content/*.md を保存
+    Note over Y: 変更を検知して自動再ビルド
+    Y-)B: reload 通知（WebSocket /__livereload）
+    B->>Y: 再読み込み
+    Y-->>B: 更新された HTML
+```
+
 ガントチャート（gantt）:
 
 ```mermaid
