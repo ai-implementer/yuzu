@@ -372,7 +372,29 @@ body {
 }
 
 .toc .toc-level-3 {
-  padding-left: 0.9rem;
+  padding-left: calc(1rem - 2px + 0.9rem);
+}
+
+/* ---- スクロールスパイ（scrollspy.js が li に .active を付与） ---- */
+
+/* マーカー用の透明ボーダーを常時確保し、JS 無効時も見た目が変わらないようにする。
+   負マージンで li を .toc の padding ぶん引き出し、active 時に 2px のアクセントバーを
+   罫線（.toc の border-left）の内側に沿わせる（.toc は overflow-y: auto の
+   スクロールコンテナなので、padding box の外＝罫線の上には描画できない） */
+.toc li {
+  border-left: 2px solid transparent;
+  margin-left: -1rem;
+  padding-left: calc(1rem - 2px);
+}
+
+.toc li.active {
+  border-left-color: var(--accent); /* 装飾は --accent（テキスト色には使わない） */
+}
+
+.toc li.active > a,
+.toc-mobile li.active > a {
+  color: var(--accent-fg);
+  font-weight: 600;
 }
 
 /* ---- 本文 ---- */

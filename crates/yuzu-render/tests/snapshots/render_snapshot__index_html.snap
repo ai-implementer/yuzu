@@ -110,6 +110,7 @@ expression: index
 </div>
 <script src="/docs/_assets/js/theme.js"></script>
 <script src="/docs/_assets/js/nav.js"></script>
+<script src="/docs/_assets/js/scrollspy.js"></script>
 <script src="/docs/_assets/vendor/mermaid.min.js"></script>
 <script src="/docs/_assets/js/mermaid-init.js"></script>
 <script type="module" src="/docs/_assets/js/search-ui.js" data-search-base="/docs/_search/" data-base="/docs/"></script>
