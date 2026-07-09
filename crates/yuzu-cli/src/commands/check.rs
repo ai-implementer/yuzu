@@ -4,7 +4,7 @@
 use std::process::ExitCode;
 
 use anyhow::Context;
-use yuzu_core::{Diagnostic, MarkdownOptions, Severity};
+use yuzu_core::{Diagnostic, LintOptions, MarkdownOptions, Severity};
 
 use super::diag;
 
@@ -15,13 +15,16 @@ pub fn run() -> anyhow::Result<ExitCode> {
     let opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
     };
+    let lint_opts = LintOptions {
+        max_directory_depth: rc.config.lint.max_directory_depth,
+    };
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
 
     let mut diags = Vec::new();
     for page in &pages {
         // 文書規約
-        diags.extend(yuzu_core::lint_page(page, &opts)?);
+        diags.extend(yuzu_core::lint_page(page, &opts, &lint_opts)?);
         // fmt 差分（ファイル単位・位置なし）
         if yuzu_core::format_document(page, &opts)? != page.source {
             diags.push(Diagnostic {

@@ -23,6 +23,7 @@
       // "backend": "ssr" // 対応図種（sequence/flowchart/state/er/gantt）をビルド時に SVG 化（tankan）。既定は "client"
     }
   },
+  // "lint": { "maxDirectoryDepth": 1 }, // content 配下のディレクトリ階層を制限（直下 = 0。未設定なら無制限）
   "dev": {
     "port": 5173
     // "liveReload": true, // yuzu dev の WS ライブリロード（false で注入なし）

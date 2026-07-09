@@ -153,6 +153,25 @@ fn llms_設定を読み込める() {
 }
 
 #[test]
+fn lint_設定を読み込める() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "lint": { "maxDirectoryDepth": 1 } }"#,
+    )
+    .unwrap();
+
+    let rc = load(dir.path()).unwrap();
+    assert_eq!(rc.config.lint.max_directory_depth, Some(1));
+
+    // 未指定時のデフォルトは無制限（None）
+    let dir2 = tempfile::tempdir().unwrap();
+    fs::write(dir2.path().join("yuzu.jsonc"), "{}").unwrap();
+    let rc2 = load(dir2.path()).unwrap();
+    assert!(rc2.config.lint.max_directory_depth.is_none());
+}
+
+#[test]
 fn build_base_url_が_site_base_url_より優先される() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(

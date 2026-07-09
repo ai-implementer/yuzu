@@ -4,7 +4,7 @@
 use std::process::ExitCode;
 
 use anyhow::Context;
-use yuzu_core::MarkdownOptions;
+use yuzu_core::{LintOptions, MarkdownOptions};
 
 use super::diag;
 
@@ -15,11 +15,14 @@ pub fn run() -> anyhow::Result<ExitCode> {
     let opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
     };
+    let lint_opts = LintOptions {
+        max_directory_depth: rc.config.lint.max_directory_depth,
+    };
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
     let mut diags = Vec::new();
     for page in &pages {
-        diags.extend(yuzu_core::lint_page(page, &opts)?);
+        diags.extend(yuzu_core::lint_page(page, &opts, &lint_opts)?);
     }
 
     let prefix = rc

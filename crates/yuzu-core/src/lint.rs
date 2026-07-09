@@ -4,18 +4,27 @@
 //! - `duplicate-h1` — 本文 h1 が 2 個以上（テーマはページタイトルを h1 相当で表示する）
 //! - `heading-level-skip` — 隣接見出し間でレベルが 2 以上深くなる（markdownlint MD001 相当）
 //! - `frontmatter-unknown-key` — 既知キー以外のトップレベルキー（typo 検出）
+//! - `directory-too-deep` — content 配下のディレクトリ階層が深すぎる
+//!   （`lint.maxDirectoryDepth` 設定時のみ）
 
-use crate::MarkdownOptions;
 use crate::diagnostics::{Diagnostic, Severity};
 use crate::error::CoreError;
 use crate::frontmatter::{KNOWN_KEYS, yaml_body};
 use crate::markdown;
 use crate::model::{Page, SourceSpan, TocEntry};
+use crate::{LintOptions, MarkdownOptions};
 
-pub(crate) fn lint_page(page: &Page, opts: &MarkdownOptions) -> Result<Vec<Diagnostic>, CoreError> {
+pub(crate) fn lint_page(
+    page: &Page,
+    opts: &MarkdownOptions,
+    lint: &LintOptions,
+) -> Result<Vec<Diagnostic>, CoreError> {
     let mut out = Vec::new();
     check_headings(&page.toc, page, &mut out);
     check_frontmatter_keys(page, opts, &mut out);
+    if let Some(max_depth) = lint.max_directory_depth {
+        check_directory_depth(page, max_depth, &mut out);
+    }
     out.sort_by_key(|d| d.span.map_or((0, 0), |s| (s.start_line, s.start_col)));
     Ok(out)
 }
@@ -56,6 +65,23 @@ fn check_headings(toc: &[TocEntry], page: &Page, out: &mut Vec<Diagnostic>) {
                 ),
             });
         }
+    }
+}
+
+/// ディレクトリ階層の深さ検査（ファイル配置の問題なので span なし）。
+/// 深さは content 直下 = 0 で数える（`guide/x.md` は 1）
+fn check_directory_depth(page: &Page, max_depth: u32, out: &mut Vec<Diagnostic>) {
+    let depth = page.rel.components().count().saturating_sub(1);
+    if depth > max_depth as usize {
+        out.push(Diagnostic {
+            rule: "directory-too-deep",
+            severity: Severity::Warning,
+            rel: page.rel.clone(),
+            span: None,
+            message: format!(
+                "content から {depth} 階層のディレクトリに置かれています（許容は {max_depth} 階層まで）"
+            ),
+        });
     }
 }
 
@@ -111,11 +137,14 @@ fn key_span(raw: &str, fm_span: &SourceSpan, key: &str) -> SourceSpan {
 mod tests {
     use std::fs;
 
-    use crate::{MarkdownOptions, Page, build_source_pages};
+    use crate::{LintOptions, MarkdownOptions, Page, build_source_pages};
 
-    fn page_from(source: &str) -> Page {
+    /// content 相対パス `rel` にページを置いて構築する（親ディレクトリは自動作成）
+    fn page_from_rel(rel: &str, source: &str) -> Page {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("index.md"), source).unwrap();
+        let path = dir.path().join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, source).unwrap();
         build_source_pages(dir.path(), &[], &MarkdownOptions::default())
             .unwrap()
             .into_iter()
@@ -123,8 +152,29 @@ mod tests {
             .unwrap()
     }
 
+    fn page_from(source: &str) -> Page {
+        page_from_rel("index.md", source)
+    }
+
     fn lint(source: &str) -> Vec<crate::Diagnostic> {
-        super::lint_page(&page_from(source), &MarkdownOptions::default()).unwrap()
+        super::lint_page(
+            &page_from(source),
+            &MarkdownOptions::default(),
+            &LintOptions::default(),
+        )
+        .unwrap()
+    }
+
+    fn lint_depth(rel: &str, max_directory_depth: Option<u32>) -> Vec<crate::Diagnostic> {
+        let opts = LintOptions {
+            max_directory_depth,
+        };
+        super::lint_page(
+            &page_from_rel(rel, "# t\n"),
+            &MarkdownOptions::default(),
+            &opts,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -186,5 +236,33 @@ mod tests {
     #[test]
     fn frontmatter_なしでも動く() {
         assert!(lint("# t\n\n本文\n").is_empty());
+    }
+
+    #[test]
+    fn 階層制限が未設定なら深いパスも診断なし() {
+        let diags = lint_depth("a/b/c/deep.md", None);
+        assert!(diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn 制限_1_で_1_階層のディレクトリは許容() {
+        assert!(lint_depth("index.md", Some(1)).is_empty(), "content 直下");
+        assert!(lint_depth("guide/x.md", Some(1)).is_empty(), "1 階層");
+    }
+
+    #[test]
+    fn 制限_1_で_2_階層のディレクトリは警告() {
+        let diags = lint_depth("guide/sub/deep.md", Some(1));
+        let deep: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule == "directory-too-deep")
+            .collect();
+        assert_eq!(deep.len(), 1, "{diags:?}");
+        assert!(deep[0].span.is_none(), "ファイル単位の診断なので span なし");
+        assert!(
+            deep[0].message.contains("2 階層") && deep[0].message.contains("1 階層まで"),
+            "{}",
+            deep[0].message
+        );
     }
 }

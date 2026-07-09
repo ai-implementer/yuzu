@@ -44,6 +44,14 @@ impl Default for MarkdownOptions {
     }
 }
 
+/// 文書規約 lint の挙動設定（設定ファイルの `lint` セクションから写す）
+#[derive(Debug, Clone, Default)]
+pub struct LintOptions {
+    /// content 配下で許容するディレクトリ階層の最大深さ
+    /// （直下 = 0。例: 1 なら `guide/x.md` まで）。`None` なら無制限（チェックしない）
+    pub max_directory_depth: Option<u32>,
+}
+
 /// パス1: `content_dir` 以下の `*.md` を走査し、サイトモデルを構築する。
 ///
 /// - `ignore` は `content_dir` からの相対パスに対する glob（例: `**/_drafts/**`）
@@ -154,10 +162,16 @@ pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, Co
 /// 文書規約の診断（`yuzu lint` / `yuzu check` 用）。
 ///
 /// ルール: `duplicate-h1`（本文 h1 の重複）/ `heading-level-skip`
-/// （見出しレベルの飛び）/ `frontmatter-unknown-key`（未知キー）。
+/// （見出しレベルの飛び）/ `frontmatter-unknown-key`（未知キー）/
+/// `directory-too-deep`（ディレクトリ階層の深さ超過。
+/// [`LintOptions::max_directory_depth`] 設定時のみ）。
 /// 診断は行順でソート済み
-pub fn lint_page(page: &Page, opts: &MarkdownOptions) -> Result<Vec<Diagnostic>, CoreError> {
-    lint::lint_page(page, opts)
+pub fn lint_page(
+    page: &Page,
+    opts: &MarkdownOptions,
+    lint: &LintOptions,
+) -> Result<Vec<Diagnostic>, CoreError> {
+    lint::lint_page(page, opts, lint)
 }
 
 /// 内部リンク・アンカーの静的検査（`yuzu check` 用）。

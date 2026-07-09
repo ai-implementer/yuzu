@@ -14,6 +14,7 @@ pub struct Config {
     pub theme: ThemeConfig,
     pub nav: NavConfig,
     pub markdown: MarkdownConfig,
+    pub lint: LintConfig,
     pub search: SearchConfig,
     pub llms: LlmsConfig,
     pub build: BuildConfig,
@@ -172,6 +173,14 @@ pub enum MermaidBackend {
     Client,
     /// tankan によるビルド時 SVG（対応図種のみ。他はクライアントへフォールバック）
     Ssr,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LintConfig {
+    /// content 配下で許容するディレクトリ階層の最大深さ
+    /// （直下 = 0。例: 1 なら `content/guide/x.md` まで）。未指定なら無制限
+    pub max_directory_depth: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
