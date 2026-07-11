@@ -21,12 +21,22 @@ pub fn run(query: &str, limit: usize, json: bool) -> anyhow::Result<()> {
         return Ok(());
     }
     for (rank, result) in results.iter().enumerate() {
+        let title = match &result.heading {
+            Some(heading) => format!("{} › {}", result.title, heading),
+            None => result.title.clone(),
+        };
+        let anchor = result
+            .anchor
+            .as_deref()
+            .map(|a| format!("#{a}"))
+            .unwrap_or_default();
         println!(
-            "{:>2}. {:<7.3} {}  /{}",
+            "{:>2}. {:<7.3} {}  /{}{}",
             rank + 1,
             result.score,
-            result.title,
-            result.url
+            title,
+            result.url,
+            anchor
         );
         println!("      {}", result.excerpt);
     }

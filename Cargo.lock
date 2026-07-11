@@ -2192,6 +2192,7 @@ dependencies = [
 name = "yuzu-search-wasm"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "wasm-bindgen",
  "yuzu-index-format",
 ]

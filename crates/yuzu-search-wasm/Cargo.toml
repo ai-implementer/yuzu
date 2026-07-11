@@ -15,4 +15,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # builtin-model は有効化しない（モデルはブラウザが fetch する。wasm を肥大させない）
 yuzu-index-format = { workspace = true }
+# tokenize/excerpt の返却 JSON 用（token は任意文字列なのでエスケープ必須）
+serde_json = { workspace = true }
 wasm-bindgen = { workspace = true }

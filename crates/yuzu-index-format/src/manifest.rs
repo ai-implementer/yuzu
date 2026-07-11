@@ -52,14 +52,21 @@ pub struct TypoParams {
     pub max_edits: u8,
 }
 
-/// `fragment/<docId>.json` の中身（結果描画用。ブラウザは JS が直接読む）
+/// `fragment/<docId>.json` の中身（結果描画用。ブラウザは JS が直接読む）。
+/// v2: 1 doc = 1 セクション（h2/h3 境界）。抜粋はクエリ時に text から動的生成する
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Fragment {
+    /// ページタイトル
     pub title: String,
+    /// セクション見出し（リード doc は None）。表示は「title › heading」
+    pub heading: Option<String>,
     /// サイト相対 URL（route）。base の付与は表示側の責務
     pub url: String,
-    pub excerpt: String,
+    /// 見出しアンカー ID（リード doc は None）。遷移先は `url + "#" + anchor`
+    pub anchor: Option<String>,
+    /// 動的抜粋用のセクション全文（空白折り畳み済みの生テキスト）
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

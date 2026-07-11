@@ -59,4 +59,17 @@ impl YuzuSearch {
             .collect();
         format!("[{}]", hits.join(","))
     }
+
+    /// クエリをエンジンと同一の分かち書きで token 配列（JSON）にする: `["検索","エンジン"]`
+    pub fn tokenize(&self, query: &str) -> String {
+        serde_json::to_string(&self.inner.tokenize(query)).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// text からクエリ一致箇所周辺の抜粋断片（JSON）を返す:
+    /// `[{"text":"…文脈 ","mark":false},{"text":"検索","mark":true},…]`。
+    /// mark = true の断片を <mark> で描画する（一致判定・正規化はエンジンと同一）
+    pub fn excerpt(&self, text: &str, query: &str, max_chars: usize) -> String {
+        serde_json::to_string(&self.inner.excerpt(text, query, max_chars))
+            .unwrap_or_else(|_| "[]".into())
+    }
 }

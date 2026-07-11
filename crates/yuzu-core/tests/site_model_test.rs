@@ -187,6 +187,58 @@ fn 見出し内の数式は_toc_と本文のアンカーが一致する() {
 }
 
 #[test]
+fn extract_plain_sections_は_h2_h3_で分割しリード文を先頭に置く() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "index.md",
+        "---\ntitle: セクション\n---\nリード文。\n\n# 大見出し\n\n## 導入\n\n導入の段落。\n\n### 詳細\n\n詳細の段落。\n\n#### 補足\n\n補足の段落。\n\n```rust\nfn secret() {}\n```\n\n## 使い方\n\n使い方その一。\n\n## 使い方\n\n使い方その二。\n",
+    );
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let page = &site.pages[0];
+    let sections = yuzu_core::extract_plain_sections(page, &MarkdownOptions::default()).unwrap();
+
+    // リード文（h1 のテキストは本文として含む）
+    assert_eq!(sections[0].anchor, None);
+    assert_eq!(sections[0].heading, None);
+    assert!(sections[0].body.contains("リード文"), "{:?}", sections[0]);
+    assert!(sections[0].body.contains("大見出し"));
+
+    // h2「導入」: 自見出しは body に含まない
+    assert_eq!(sections[1].anchor.as_deref(), Some("導入"));
+    assert_eq!(sections[1].heading.as_deref(), Some("導入"));
+    assert!(sections[1].body.contains("導入の段落"));
+    assert!(!sections[1].body.contains("導入\n導入"), "自見出しが混入");
+
+    // h3「詳細」は別セクション。h4「補足」は併合（テキストは残る）
+    assert_eq!(sections[2].anchor.as_deref(), Some("詳細"));
+    assert!(sections[2].body.contains("詳細の段落"));
+    assert!(sections[2].body.contains("補足"), "h4 は併合される");
+    assert!(sections[2].body.contains("補足の段落"));
+    // コードブロックは除外
+    assert!(!sections[2].body.contains("secret"));
+
+    // 重複見出しのアンカーが採番され、本文 HTML の id と一致する（同期の実証）
+    assert_eq!(sections[3].anchor.as_deref(), Some("使い方"));
+    assert_eq!(sections[4].anchor.as_deref(), Some("使い方-1"));
+    let html = yuzu_core::render_body_html(
+        page,
+        &MarkdownOptions::default(),
+        &NoopCodeBlockRenderer,
+        &NoopUrlRewriter,
+    )
+    .unwrap();
+    for section in &sections[1..] {
+        let id = section.anchor.as_deref().unwrap();
+        assert!(
+            html.contains(&format!("id=\"{id}\"")),
+            "HTML に id=\"{id}\" がない"
+        );
+    }
+}
+
+#[test]
 fn extract_plain_text_はコードブロックと_html_を除外する() {
     let dir = tempfile::tempdir().unwrap();
     write(

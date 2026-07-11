@@ -22,12 +22,11 @@ use crate::error::IndexError;
 #[folder = "assets/search"]
 struct SearchAssets;
 
-/// タイトル token の追加重み（本文 ×1 に対して +2）
+/// タイトル token の追加重み（本文 ×1 に対して +2）。リード doc にだけ載せる
 const TITLE_WEIGHT: u32 = 2;
-/// 見出し（TOC）token の追加重み
-const HEADING_WEIGHT: u32 = 1;
-/// fragment の抜粋の最大文字数
-const EXCERPT_CHARS: usize = 160;
+/// 自セクション見出し token の重み。v1 は「本文に含まれる分＋TOC 加算」で実質 2 だった。
+/// v2 では見出しを body から外した分ここで 2 にして同等を保つ
+const HEADING_WEIGHT: u32 = 2;
 
 /// インデックス生成の入力（cli が設定から写す。yuzu-config には依存しない）
 #[derive(Debug, Clone)]
@@ -54,6 +53,8 @@ impl Default for IndexParams {
 #[derive(Debug, Clone, Copy)]
 pub struct IndexStats {
     pub pages: usize,
+    /// doc 数（= セクション数。1 ページにつきリード 1 ＋ h2/h3 セクション）
+    pub docs: usize,
     pub terms: usize,
     pub shards: usize,
 }
@@ -75,39 +76,50 @@ pub fn build_search_index(
     };
     let tokenizer = Tokenizer::from_zstd_model_bytes(&model_bytes)?;
 
-    // ページごとの tf 集計（重み付き）
-    let mut doc_lens: Vec<u32> = Vec::with_capacity(site.pages.len());
+    // セクション（h2/h3 境界）ごとの tf 集計（重み付き）。1 doc = 1 セクション
+    let mut doc_lens: Vec<u32> = Vec::new();
     let mut terms: BTreeMap<String, Vec<(u32, u32)>> = BTreeMap::new();
-    let mut fragments: Vec<Fragment> = Vec::with_capacity(site.pages.len());
+    let mut fragments: Vec<Fragment> = Vec::new();
+    let mut doc_id: u32 = 0;
 
-    for (doc_id, page) in site.pages.iter().enumerate() {
-        let body = yuzu_core::extract_plain_text(page, md_opts)?;
-
-        let mut tf: HashMap<String, u32> = HashMap::new();
-        let mut doc_len = 0u32;
-        let mut add = |tokens: Vec<String>, weight: u32, tf: &mut HashMap<String, u32>| {
-            for token in tokens {
-                *tf.entry(token).or_insert(0) += weight;
-                doc_len += weight;
+    for page in &site.pages {
+        let sections = yuzu_core::extract_plain_sections(page, md_opts)?;
+        for (sec_idx, section) in sections.iter().enumerate() {
+            let mut tf: HashMap<String, u32> = HashMap::new();
+            let mut doc_len = 0u32;
+            let mut add = |tokens: Vec<String>, weight: u32, tf: &mut HashMap<String, u32>| {
+                for token in tokens {
+                    *tf.entry(token).or_insert(0) += weight;
+                    doc_len += weight;
+                }
+            };
+            add(tokenizer.tokenize(&section.body), 1, &mut tf);
+            if let Some(heading) = &section.heading {
+                add(tokenizer.tokenize(heading), HEADING_WEIGHT, &mut tf);
             }
-        };
-        add(tokenizer.tokenize(&body), 1, &mut tf);
-        add(tokenizer.tokenize(&page.title), TITLE_WEIGHT, &mut tf);
-        for entry in &page.toc {
-            add(tokenizer.tokenize(&entry.text), HEADING_WEIGHT, &mut tf);
-        }
-        doc_lens.push(doc_len);
+            // ページタイトルは**リード doc（先頭セクション）だけ**に載せる。
+            // 全セクションに載せると同一ページの全 doc がタイトル語で同点ヒットして
+            // 重複ノイズになり、df も膨らんで idf が下がる。リード doc は空本文でも
+            // 必ず生成されるため「タイトル検索 → ページ先頭 1 件」の挙動が保たれる
+            if sec_idx == 0 {
+                add(tokenizer.tokenize(&page.title), TITLE_WEIGHT, &mut tf);
+            }
+            doc_lens.push(doc_len);
 
-        // doc_id 昇順で処理しているので postings は自然に昇順になる
-        for (term, count) in tf {
-            terms.entry(term).or_default().push((doc_id as u32, count));
-        }
+            // doc_id 昇順で処理しているので postings は自然に昇順になる
+            for (term, count) in tf {
+                terms.entry(term).or_default().push((doc_id, count));
+            }
 
-        fragments.push(Fragment {
-            title: page.title.clone(),
-            url: page.route.clone(),
-            excerpt: excerpt_of(&body),
-        });
+            fragments.push(Fragment {
+                title: page.title.clone(),
+                heading: section.heading.clone(),
+                url: page.route.clone(),
+                anchor: section.anchor.clone(),
+                text: single_line(&section.body),
+            });
+            doc_id += 1;
+        }
     }
 
     // term 辞書（fst は辞書順挿入が必須。BTreeMap の走査順で満たす）
@@ -173,7 +185,7 @@ pub fn build_search_index(
             enabled: params.typo_enabled,
             max_edits: params.max_edits.min(1),
         },
-        doc_count: site.pages.len() as u32,
+        doc_count: fragments.len() as u32,
         avg_doc_len,
         doc_lens,
         term_count: postings.len() as u32,
@@ -192,11 +204,13 @@ pub fn build_search_index(
 
     let stats = IndexStats {
         pages: site.pages.len(),
+        docs: manifest.doc_count as usize,
         terms: manifest.term_count as usize,
         shards: manifest.shards.len(),
     };
     tracing::info!(
         pages = stats.pages,
+        docs = stats.docs,
         terms = stats.terms,
         shards = stats.shards,
         "検索インデックス生成完了"
@@ -229,14 +243,9 @@ fn copy_wasm_assets(search_dir: &Path) -> Result<(), IndexError> {
     Ok(())
 }
 
-/// 本文プレーンテキストから抜粋を作る（char 境界で切り、改行は空白に）
-fn excerpt_of(body: &str) -> String {
-    let single_line: String = body.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut excerpt: String = single_line.chars().take(EXCERPT_CHARS).collect();
-    if single_line.chars().count() > EXCERPT_CHARS {
-        excerpt.push('…');
-    }
-    excerpt
+/// セクション本文を 1 行に折り畳む（fragment.text 用。改行・連続空白を空白 1 つに）
+fn single_line(body: &str) -> String {
+    body.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn hex(bytes: &[u8]) -> String {

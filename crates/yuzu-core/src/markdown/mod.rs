@@ -16,7 +16,7 @@ use comrak::{Anchorizer, Arena, Options, format_commonmark, format_html, parse_d
 use crate::MarkdownOptions;
 use crate::error::CoreError;
 use crate::frontmatter::parse_frontmatter;
-use crate::model::{Frontmatter, Page, SourceSpan, TocEntry};
+use crate::model::{Frontmatter, Page, PlainSection, SourceSpan, TocEntry};
 use crate::traits::{CodeBlockRenderer, UrlRewriter};
 
 /// comrak のオプションを組み立てる（凍結: GFM 拡張＋YAML frontmatter＋header_ids）。
@@ -277,26 +277,64 @@ pub(crate) fn format_document(source: &str, opts: &MarkdownOptions) -> Result<St
 }
 
 /// 本文のプレーンテキストを抽出する（検索インデックス用）。
+/// [`extract_plain_sections`] の結合として実装する（除外ルールの単一実装化）
+pub(crate) fn extract_plain_text(
+    source: &str,
+    opts: &MarkdownOptions,
+) -> Result<String, CoreError> {
+    let mut out = String::new();
+    for section in extract_plain_sections(source, opts)? {
+        if let Some(heading) = &section.heading {
+            out.push_str(heading);
+            out.push('\n');
+        }
+        if !section.body.is_empty() {
+            out.push_str(&section.body);
+            out.push('\n');
+        }
+    }
+    Ok(out.trim().to_string())
+}
+
+/// 本文を h2/h3 見出し境界で分割したプレーンテキストセクションを返す（検索インデックス用）。
 ///
+/// - 先頭は常にリード文セクション（anchor/heading = None。本文が無くても返す）
+/// - h4〜h6 と h1 は境界にせず、見出しテキストを現セクションの本文に含める
 /// - 収集: `Text` / インライン `Code`（API 名検索のため含める）。
 ///   `SoftBreak` / `LineBreak` は空白、ブロック要素の末尾で改行 1 つ
 /// - 除外: frontmatter・生 HTML・**フェンスコードブロック**
 ///   （mermaid ソースや長いコード片が BM25 を汚すため。
 ///   将来 `search.indexCode` のような opt-in を足す余地はある）
-pub(crate) fn extract_plain_text(
+///
+/// ⚠️ アンカー同期: [`extract_meta`]・HTML 化と同じく Anchorizer を
+/// **全見出し（h1〜h6）文書順**で回す。境界にしない見出しも必ず anchorize する。
+/// keep_footnotes 版オプションは使わない（採番が render とずれるため）
+pub(crate) fn extract_plain_sections(
     source: &str,
     opts: &MarkdownOptions,
-) -> Result<String, CoreError> {
+) -> Result<Vec<PlainSection>, CoreError> {
     let arena = Arena::new();
     let options = comrak_options(opts);
     let root = parse_document(&arena, source, &options);
 
-    let mut out = String::new();
-    collect_plain_text(root, &mut out);
-    Ok(out.trim().to_string())
+    let mut anchorizer = Anchorizer::new();
+    let mut sections = vec![PlainSection {
+        anchor: None,
+        heading: None,
+        body: String::new(),
+    }];
+    collect_sections(root, &mut anchorizer, &mut sections);
+    for section in &mut sections {
+        section.body = section.body.trim().to_string();
+    }
+    Ok(sections)
 }
 
-fn collect_plain_text<'a>(node: &'a AstNode<'a>, out: &mut String) {
+fn collect_sections<'a>(
+    node: &'a AstNode<'a>,
+    anchorizer: &mut Anchorizer,
+    sections: &mut Vec<PlainSection>,
+) {
     {
         let data = node.data.borrow();
         match &data.value {
@@ -304,20 +342,44 @@ fn collect_plain_text<'a>(node: &'a AstNode<'a>, out: &mut String) {
             | NodeValue::HtmlBlock(_)
             | NodeValue::HtmlInline(_)
             | NodeValue::CodeBlock(_) => return,
-            NodeValue::Text(literal) => out.push_str(literal),
-            NodeValue::Code(code) => out.push_str(&code.literal),
-            NodeValue::LineBreak | NodeValue::SoftBreak => out.push(' '),
+            NodeValue::Heading(heading) => {
+                let text = collect_text(node);
+                let id = anchorizer.anchorize(&text);
+                if heading.level == 2 || heading.level == 3 {
+                    // 境界: 新しいセクションを開始（自見出しは body に含めず、
+                    // builder が heading フィールドへ重み付きで別計上する）
+                    sections.push(PlainSection {
+                        anchor: Some(id),
+                        heading: Some(text),
+                        body: String::new(),
+                    });
+                } else {
+                    // h1・h4〜h6 は境界にしない（テキストは検索対象として本文に残す）
+                    let body = &mut sections.last_mut().expect("先頭セクションが常にある").body;
+                    body.push_str(&text);
+                    body.push('\n');
+                }
+                return; // 見出し配下は collect_text で回収済み
+            }
+            NodeValue::Text(literal) => sections.last_mut().unwrap().body.push_str(literal),
+            NodeValue::Code(code) => sections.last_mut().unwrap().body.push_str(&code.literal),
+            NodeValue::LineBreak | NodeValue::SoftBreak => {
+                sections.last_mut().unwrap().body.push(' ')
+            }
             _ => {}
         }
     }
 
     for child in node.children() {
-        collect_plain_text(child, out);
+        collect_sections(child, anchorizer, sections);
     }
 
-    // 段落・見出し・リスト項目等の区切りで改行を入れる（トークナイズの文脈を切る）
-    if node.data.borrow().value.block() && !out.is_empty() && !out.ends_with('\n') {
-        out.push('\n');
+    // 段落・リスト項目等の区切りで改行を入れる（トークナイズの文脈を切る）
+    if node.data.borrow().value.block() {
+        let body = &mut sections.last_mut().unwrap().body;
+        if !body.is_empty() && !body.ends_with('\n') {
+            body.push('\n');
+        }
     }
 }
 

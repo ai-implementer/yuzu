@@ -154,6 +154,16 @@ impl SearchEngine {
         hits
     }
 
+    /// クエリをエンジンと同一の正規化・分かち書きで token 列にする（UI の補助 API）
+    pub fn tokenize(&self, query: &str) -> Vec<String> {
+        self.tokenizer.tokenize(query)
+    }
+
+    /// fragment.text からクエリ一致箇所周辺の抜粋を作る（native / wasm 共通の入口）
+    pub fn excerpt(&self, text: &str, query: &str, max_chars: usize) -> Vec<crate::ExcerptSegment> {
+        crate::excerpt::make_excerpt(text, &self.tokenizer.tokenize(query), max_chars)
+    }
+
     /// クエリを token → term_id（重み付き）へ解決する。
     /// 完全一致を優先し、未ヒット token だけタイポ展開する
     fn resolve_terms(&self, query: &str) -> HashMap<u32, f32> {

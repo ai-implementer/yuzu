@@ -58,6 +58,19 @@ pub struct TocEntry {
     pub span: SourceSpan,
 }
 
+/// 検索インデックス用のセクション（h2/h3 境界で分割したプレーンテキスト）
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlainSection {
+    /// 見出しのアンカー ID（本文 HTML の `<h2 id="...">` と同一）。リード文は None
+    pub anchor: Option<String>,
+    /// 見出しのプレーンテキスト。リード文は None
+    pub heading: Option<String>,
+    /// セクション本文。h2/h3 自身の見出しテキストは含まない
+    /// （インデクサが heading フィールドに重みを付けて別計上する）。
+    /// h1・h4〜h6 の見出しテキストは本文として含む（検索対象に残す）
+    pub body: String,
+}
+
 /// 1 つの Markdown ページ
 #[derive(Debug, Clone)]
 pub struct Page {

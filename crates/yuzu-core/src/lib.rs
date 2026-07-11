@@ -28,7 +28,7 @@ use std::path::Path;
 
 pub use diagnostics::{Diagnostic, Severity};
 pub use error::CoreError;
-pub use model::{Frontmatter, NavNode, Page, SiteModel, SourceSpan, TocEntry};
+pub use model::{Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
 
 /// Markdown パースの挙動設定（設定ファイルの `markdown` セクションから写す）
@@ -147,6 +147,15 @@ pub fn render_body_html(
 /// （インラインコードは API 名検索のため含める）
 pub fn extract_plain_text(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
     markdown::extract_plain_text(&page.source, opts)
+}
+
+/// ページ本文を h2/h3 見出し境界で分割したプレーンテキストセクションを返す（検索用）。
+/// 先頭要素はリード文（anchor/heading = None）。h4〜h6 は直近セクションに併合される
+pub fn extract_plain_sections(
+    page: &Page,
+    opts: &MarkdownOptions,
+) -> Result<Vec<PlainSection>, CoreError> {
+    markdown::extract_plain_sections(&page.source, opts)
 }
 
 /// ページ本文を正規化 Markdown として出力する（frontmatter は含めない）。

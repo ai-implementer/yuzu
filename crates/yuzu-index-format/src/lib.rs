@@ -20,6 +20,7 @@
 
 mod engine;
 mod error;
+mod excerpt;
 mod manifest;
 mod shard;
 mod tokenizer;
@@ -27,12 +28,14 @@ pub mod varint;
 
 pub use engine::{Hit, SearchEngine};
 pub use error::FormatError;
+pub use excerpt::{ExcerptSegment, make_excerpt};
 pub use manifest::{Bm25Params, Fragment, Manifest, ShardMeta, TokenizerMeta, TypoParams};
 pub use shard::{Shard, encode_shard};
 pub use tokenizer::Tokenizer;
 
-/// インデックスフォーマットのバージョン。互換性を壊す変更で上げる
-pub const FORMAT_VERSION: u16 = 1;
+/// インデックスフォーマットのバージョン。互換性を壊す変更で上げる。
+/// v2: doc をページ単位 → セクション（h2/h3）単位に変更。Fragment v2（heading/anchor/text）
+pub const FORMAT_VERSION: u16 = 2;
 
 /// 同梱モデル（`yuzu-index` が有効化する）
 #[cfg(feature = "builtin-model")]

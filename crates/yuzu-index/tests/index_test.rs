@@ -48,14 +48,15 @@ fn 生成物一式が_search_に揃う() {
     assert!(search.join("terms.fst").is_file());
     assert!(search.join("model.zst").is_file());
     assert!(search.join("index/0000.bin").is_file());
-    for doc_id in 0..3 {
+    // doc = セクション: index/theme はリードのみ、getting-started はリード + h2 で 2
+    for doc_id in 0..4 {
         assert!(search.join(format!("fragment/{doc_id}.json")).is_file());
     }
 
     let manifest: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(search.join("manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["version"], 1);
-    assert_eq!(manifest["docCount"], 3);
+    assert_eq!(manifest["version"], 2);
+    assert_eq!(manifest["docCount"], 4);
     assert_eq!(manifest["tokenizer"]["kind"], "vaporetto");
     // モデルは同梱モデルと同一バイト（sha256 が入っている）
     assert_eq!(
@@ -70,10 +71,17 @@ fn 日本語クエリでランク付き結果が返る() {
 
     let results = search_dist(dist.path(), "検索", 10).unwrap();
     assert!(!results.is_empty());
-    // 「検索」を多く含む getting-started が先頭
+    // 「検索」を最も濃く含む「検索の使い方」セクションが先頭（アンカー付き）
     assert_eq!(results[0].url, "guide/getting-started/");
+    assert_eq!(results[0].anchor.as_deref(), Some("検索の使い方"));
+    assert_eq!(results[0].heading.as_deref(), Some("検索の使い方"));
     assert!(results[0].score > 0.0);
-    assert!(!results[0].excerpt.is_empty());
+    // 動的抜粋はクエリ語を含む
+    assert!(
+        results[0].excerpt.contains("検索"),
+        "excerpt={}",
+        results[0].excerpt
+    );
 
     // テーマページには「検索」が出ないのでヒットしない
     assert!(results.iter().all(|r| r.url != "guide/theme/"));
@@ -84,7 +92,33 @@ fn タイトル一致は重み付けで上位に来る() {
     let (_content, dist) = build_fixture();
     let results = search_dist(dist.path(), "テーマ", 10).unwrap();
     assert!(!results.is_empty());
+    // タイトル語はリード doc（アンカーなし）に載る
     assert_eq!(results[0].url, "guide/theme/", "results={results:?}");
+    assert_eq!(results[0].anchor, None);
+    assert_eq!(results[0].heading, None);
+}
+
+#[test]
+fn 見出し一致はセクション_doc_が先頭() {
+    let (_content, dist) = build_fixture();
+    let results = search_dist(dist.path(), "使い方", 10).unwrap();
+    assert!(!results.is_empty());
+    assert_eq!(
+        results[0].heading.as_deref(),
+        Some("検索の使い方"),
+        "results={results:?}"
+    );
+    assert_eq!(results[0].anchor.as_deref(), Some("検索の使い方"));
+}
+
+#[test]
+fn リード文ヒットはアンカーなし() {
+    let (_content, dist) = build_fixture();
+    let results = search_dist(dist.path(), "ビルド", 10).unwrap();
+    assert!(!results.is_empty());
+    let hit = &results[0];
+    assert_eq!(hit.url, "guide/getting-started/", "results={results:?}");
+    assert_eq!(hit.anchor, None, "リード文の内容はアンカーなしの doc");
 }
 
 #[test]

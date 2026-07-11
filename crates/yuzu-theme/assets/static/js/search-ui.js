@@ -8,6 +8,7 @@ const SEARCH_BASE = script.dataset.searchBase || "/_search/";
 const BASE = script.dataset.base || "/";
 const DEBOUNCE_MS = 150;
 const LIMIT = 10;
+const EXCERPT_CHARS = 160;
 
 const input = document.getElementById("yuzu-search-input");
 const resultsBox = document.getElementById("yuzu-search-results");
@@ -95,7 +96,7 @@ function setup() {
 
     const hits = JSON.parse(instance.search(query, LIMIT));
     const fragments = await Promise.all(hits.map((h) => fetchFragment(h.docId)));
-    render(query, hits, fragments);
+    render(query, instance, fragments);
   }
 
   async function fetchFragment(docId) {
@@ -106,10 +107,10 @@ function setup() {
     return fragmentCache.get(docId);
   }
 
-  function render(query, hits, fragments) {
+  function render(query, instance, fragments) {
     selected = -1;
     resultsBox.innerHTML = "";
-    if (!hits.length) {
+    if (!fragments.length) {
       resultsBox.innerHTML = `<div class="search-empty">一致するページはありません</div>`;
       open();
       return;
@@ -117,39 +118,37 @@ function setup() {
     for (const fragment of fragments) {
       const a = document.createElement("a");
       a.className = "search-hit";
-      a.href = BASE + fragment.url;
+      // セクション doc は見出しアンカーへ直接ジャンプする
+      a.href = BASE + fragment.url + (fragment.anchor ? "#" + fragment.anchor : "");
       const title = document.createElement("div");
       title.className = "search-hit-title";
-      title.append(...highlight(fragment.title, query));
+      title.append(...markSegments(instance, fragment.title, query));
+      if (fragment.heading) {
+        const crumb = document.createElement("span");
+        crumb.className = "search-hit-crumb";
+        crumb.append(" › ", ...markSegments(instance, fragment.heading, query));
+        title.append(crumb);
+      }
       const excerpt = document.createElement("div");
       excerpt.className = "search-hit-excerpt";
-      excerpt.append(...highlight(fragment.excerpt, query));
+      excerpt.append(...markSegments(instance, fragment.text, query, EXCERPT_CHARS));
       a.append(title, excerpt);
       resultsBox.append(a);
     }
     open();
   }
 
-  // クエリの空白区切り語を単純一致で <mark> にする（XSS 安全に DOM で構築）
-  function highlight(text, query) {
-    const words = query.split(/\s+/).filter((w) => w.length > 0);
-    if (!words.length) return [document.createTextNode(text)];
-    const pattern = new RegExp(words.map(escapeRegExp).join("|"), "gi");
-    const nodes = [];
-    let last = 0;
-    for (const m of text.matchAll(pattern)) {
-      if (m.index > last) nodes.push(document.createTextNode(text.slice(last, m.index)));
+  // wasm の excerpt（エンジンと同一の分かち書き・正規化）で <mark> 断片列を作る。
+  // XSS 安全: 文字列は必ず createTextNode / textContent 経由で DOM 化する。
+  // maxChars 既定 10000 = タイトル用の実質切り詰めなし（一致がなければ原文のまま）
+  function markSegments(instance, text, query, maxChars = 10000) {
+    const segments = JSON.parse(instance.excerpt(text, query, maxChars));
+    return segments.map((seg) => {
+      if (!seg.mark) return document.createTextNode(seg.text);
       const mark = document.createElement("mark");
-      mark.textContent = m[0];
-      nodes.push(mark);
-      last = m.index + m[0].length;
-    }
-    if (last < text.length) nodes.push(document.createTextNode(text.slice(last)));
-    return nodes;
-  }
-
-  function escapeRegExp(s) {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      mark.textContent = seg.text;
+      return mark;
+    });
   }
 
   function open() {

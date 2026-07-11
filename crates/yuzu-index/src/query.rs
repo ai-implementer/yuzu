@@ -9,15 +9,24 @@ use yuzu_index_format::{Fragment, Manifest, SearchEngine};
 use crate::SEARCH_DIR_NAME;
 use crate::error::IndexError;
 
+/// 抜粋の最大文字数（ブラウザ UI と同じ値）
+const EXCERPT_CHARS: usize = 160;
+
 /// ネイティブ検索の 1 件（fragment を解決済み）
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
     pub doc_id: u32,
     pub score: f32,
+    /// ページタイトル
     pub title: String,
+    /// セクション見出し（リード doc は None）
+    pub heading: Option<String>,
     /// サイト相対 URL（route）
     pub url: String,
+    /// 見出しアンカー（`url + "#" + anchor` で遷移）
+    pub anchor: Option<String>,
+    /// クエリ一致箇所周辺の動的抜粋
     pub excerpt: String,
 }
 
@@ -58,12 +67,20 @@ pub fn search_dist(
         let path = search_dir.join(format!("fragment/{}.json", hit.doc_id));
         let bytes = fs::read(&path).map_err(IndexError::io(&path))?;
         let fragment: Fragment = serde_json::from_slice(&bytes)?;
+        // 動的抜粋は wasm と完全に同じ SearchEngine::excerpt を通す（整合の実証を兼ねる）
+        let excerpt: String = engine
+            .excerpt(&fragment.text, query, EXCERPT_CHARS)
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
         results.push(SearchResult {
             doc_id: hit.doc_id,
             score: hit.score,
             title: fragment.title,
+            heading: fragment.heading,
             url: fragment.url,
-            excerpt: fragment.excerpt,
+            anchor: fragment.anchor,
+            excerpt,
         });
     }
     Ok(results)

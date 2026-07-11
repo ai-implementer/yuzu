@@ -255,6 +255,12 @@ body {
   font-size: 0.92rem;
 }
 
+/* セクションヒットの「› 見出し」部分（ページタイトルより控えめに） */
+.search-hit-crumb {
+  font-weight: 500;
+  color: var(--fg-muted);
+}
+
 .search-hit-excerpt {
   color: var(--fg-muted);
   font-size: 0.8rem;
