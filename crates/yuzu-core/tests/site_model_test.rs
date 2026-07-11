@@ -158,6 +158,34 @@ fn 重複見出しの_toc_id_が本文アンカーと一致する() {
     }
 }
 
+/// comrak の header_ids は見出し内数式の literal を採番に含める。
+/// yuzu 側の collect_text が Math を落とすと TOC・linkcheck のアンカーがずれる（回帰固定）
+#[test]
+fn 見出し内の数式は_toc_と本文のアンカーが一致する() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "index.md",
+        "# 概要\n\n## エネルギー $E=mc^2$ の式\n\n本文\n",
+    );
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let page = &site.pages[0];
+    let html = yuzu_core::render_body_html(
+        page,
+        &MarkdownOptions::default(),
+        &NoopCodeBlockRenderer,
+        &NoopUrlRewriter,
+    )
+    .unwrap();
+
+    let toc_id = &page.toc[1].id;
+    assert!(
+        html.contains(&format!("id=\"{toc_id}\"")),
+        "TOC の id=\"{toc_id}\" が本文 HTML にない:\n{html}"
+    );
+}
+
 #[test]
 fn extract_plain_text_はコードブロックと_html_を除外する() {
     let dir = tempfile::tempdir().unwrap();

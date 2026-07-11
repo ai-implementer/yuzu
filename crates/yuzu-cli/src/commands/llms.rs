@@ -16,6 +16,7 @@ pub fn run(full: bool) -> anyhow::Result<()> {
         &rc.config.input.ignore,
         &MarkdownOptions {
             gfm: rc.config.markdown.gfm,
+            math: rc.config.markdown.math.enabled,
         },
     )?;
 

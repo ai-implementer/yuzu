@@ -53,6 +53,7 @@ pub fn generate_llms_full_txt(
     let resolver = UrlResolver::new(&rc.base_url, site);
     let md_opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
+        math: rc.config.markdown.math.enabled,
     };
 
     let mut out = String::new();

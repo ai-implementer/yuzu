@@ -54,6 +54,7 @@ pub fn run(watch: bool) -> anyhow::Result<()> {
 pub(crate) fn build_once(rc: &ResolvedConfig, live_reload: LiveReloadMode) -> anyhow::Result<()> {
     let md_opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
+        math: rc.config.markdown.math.enabled,
     };
     let site = yuzu_core::build_site_model(&rc.content_dir, &rc.config.input.ignore, &md_opts)?;
     yuzu_render::render_site(&RenderParams {

@@ -100,6 +100,48 @@ title: alerts と脚注
 [^a]: 脚注本文には**強調**も書ける。
 "#;
 
+/// Phase 8 記法（数式）。comrak の出力形を固定する:
+/// - $..$ → span[data-math-style="inline"] / $$..$$ → span[data-math-style="display"]
+/// - $`..`$ → code[data-math-style="inline"] / ```math → pre>code.language-math
+/// - 通貨表記（直後が数字の $）は数式化されない・literal は HTML エスケープされる
+const MATH: &str = r#"---
+title: 数式
+---
+
+# 数式
+
+インライン $x^2$ とコード数式 $`a+b`$ の段落。
+
+$$
+\int_0^1 f(x) \, dx
+$$
+
+```math
+a^2 + b^2 = c^2
+```
+
+比較 $a < b$ と通貨 $100 と $200 の話。
+"#;
+
+#[test]
+fn 数式の_html_スナップショット() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("index.md"), MATH).unwrap();
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+    )
+    .unwrap();
+
+    // 通貨表記は数式化されない
+    assert!(html.contains("$100 と $200"), "html:\n{html}");
+    insta::assert_snapshot!("math_html", html);
+}
+
 #[test]
 fn alerts_と脚注の_html_スナップショット() {
     let dir = tempfile::tempdir().unwrap();

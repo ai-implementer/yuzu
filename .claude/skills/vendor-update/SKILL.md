@@ -1,11 +1,11 @@
 ---
 name: vendor-update
-description: vendor 資産（検索 wasm 成果物・mermaid.min.js・vaporetto 分かち書きモデル）の更新手順。wasm-bindgen のバージョンピン照合を含む。依存更新やアセット差し替えのときに使う。
+description: vendor 資産（検索 wasm 成果物・mermaid.min.js・KaTeX・vaporetto 分かち書きモデル）の更新手順。wasm-bindgen のバージョンピン照合を含む。依存更新やアセット差し替えのときに使う。
 ---
 
 # vendor 資産の更新手順
 
-3 種類の vendor 資産があり、それぞれ更新スクリプトが `scripts/` にある。
+4 種類の vendor 資産があり、それぞれ更新スクリプトが `scripts/` にある。
 
 ## 1. 検索 wasm 成果物（crates/yuzu-index/assets/search/）
 
@@ -30,7 +30,18 @@ scripts/vendor-mermaid.sh
 - 約 3.4MB。`backend: "ssr"` 運用でも未対応図種のフォールバック用に同梱は継続する。
 - 更新後は client 描画ページ（`run` スキル参照）で図が描画されることを確認。
 
-## 3. vaporetto モデル（crates/yuzu-index-format/assets/model/）
+## 3. KaTeX（crates/yuzu-theme/assets/static/vendor/katex/）
+
+```bash
+scripts/vendor-katex.sh
+```
+
+- katex.min.js / katex.min.css / fonts で約 600KB。**fonts は woff2 のみ同梱**（css は woff2 → woff → ttf の順で参照するが、モダンブラウザは woff2 しか取得しない）。
+- css が `url(fonts/...)` を相対参照するため `katex/` のディレクトリ構造を崩さないこと。
+- 更新後は `run` スキルで数式ページ（scaffold の getting-started「記法サンプル > 数式」）のライト/ダーク描画と、fonts が 404 なく取得されることを確認。
+- 未取得でもビルド・テストは通り、数式は原文（TeX ソース）表示になるだけ。
+
+## 4. vaporetto モデル（crates/yuzu-index-format/assets/model/）
 
 ```bash
 scripts/vendor-vaporetto-model.sh

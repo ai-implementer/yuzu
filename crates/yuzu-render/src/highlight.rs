@@ -153,6 +153,12 @@ impl CodeBlockRenderer for SyntectCodeRenderer {
         if lang == "mermaid" {
             return self.render_mermaid(code);
         }
+        // ```math は comrak の特殊化（<pre><code class="language-math"
+        // data-math-style="display">）に任せる。syntect のトークン一致で
+        // 偶然ハイライトされると属性が消え、KaTeX が拾えなくなる
+        if lang == "math" {
+            return None;
+        }
         let inner = self.highlight(lang, code)?;
         // data-lang はテーマ CSS が言語ラベル表示（::before）に使う
         Some(format!(
@@ -297,6 +303,12 @@ mod tests {
         let r = SyntectCodeRenderer::new(true, &client_config());
         assert!(r.render(Some("unknown-lang-xyz"), "x").is_none());
         assert!(r.render(None, "x").is_none());
+    }
+
+    #[test]
+    fn math_はハイライトせず_comrak_の特殊化に任せる() {
+        let r = SyntectCodeRenderer::new(true, &client_config());
+        assert!(r.render(Some("math"), "x^2").is_none());
     }
 
     #[test]

@@ -46,8 +46,12 @@ mod tests {
             "static/js/autorefresh.js",
             "static/js/livereload.js",
             "static/js/mermaid-init.js",
+            "static/js/katex-init.js",
             "static/js/search-ui.js",
             "static/vendor/mermaid.min.js",
+            "static/vendor/katex/katex.min.js",
+            "static/vendor/katex/katex.min.css",
+            "static/vendor/katex/fonts/KaTeX_Main-Regular.woff2",
         ] {
             assert!(super::get(path).is_some(), "{path} が同梱されていない");
         }

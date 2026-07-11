@@ -34,13 +34,18 @@ pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlR
 /// Markdown パースの挙動設定（設定ファイルの `markdown` セクションから写す）
 #[derive(Debug, Clone)]
 pub struct MarkdownOptions {
-    /// GFM 拡張（表・打ち消し線・autolink・タスクリスト）を有効にするか
+    /// GFM 拡張（表・打ち消し線・autolink・タスクリスト・alerts・脚注）を有効にするか
     pub gfm: bool,
+    /// 数式拡張（`$...$` / `$$...$$` / `` $`...`$ ``）を有効にするか。gfm とは独立
+    pub math: bool,
 }
 
 impl Default for MarkdownOptions {
     fn default() -> Self {
-        Self { gfm: true }
+        Self {
+            gfm: true,
+            math: true,
+        }
     }
 }
 

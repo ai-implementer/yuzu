@@ -53,6 +53,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         SyntectCodeRenderer::new(cfg.markdown.highlight.enabled, &cfg.markdown.mermaid);
     let md_opts = MarkdownOptions {
         gfm: cfg.markdown.gfm,
+        math: cfg.markdown.math.enabled,
     };
     let site_ctx = SiteCtx {
         title: &cfg.site.title,
@@ -71,6 +72,10 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 yuzu_config::MermaidBackend::Client => true,
                 yuzu_config::MermaidBackend::Ssr => highlighter.mermaid_fallback_occurred(),
             };
+        // 「このページで KaTeX を読み込むか」。comrak の数式出力は必ず
+        // data-math-style="…" 属性を持つ。本文テキスト中の同じ文字列は comrak が
+        // `"` を &quot; にエスケープするため、引用符込みのこの判定は誤検出しない
+        let math_needed = cfg.markdown.math.enabled && body.contains("data-math-style=\"");
         let html = template.render(context! {
             site => site_ctx,
             page => PageCtx::new(page, &body, &resolver),
@@ -80,6 +85,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             live_reload_poll => params.live_reload == LiveReloadMode::Poll,
             live_reload_ws => params.live_reload == LiveReloadMode::Ws,
             mermaid_enabled => mermaid_js_needed,
+            math_enabled => math_needed,
             dark_enabled => cfg.theme.dark,
             search_enabled => cfg.search.enabled,
         })?;

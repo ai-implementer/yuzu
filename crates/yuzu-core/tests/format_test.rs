@@ -129,3 +129,46 @@ fn phase7_記法でも整形は冪等() {
     let twice = format_str(&once);
     assert_eq!(once, twice, "format(format(x)) == format(x)");
 }
+
+/// Phase 8 記法（数式）。$ 区切りの温存・通貨表記の不干渉を固定する
+const MATH_SAMPLE: &str = r#"---
+title: 数式
+---
+
+# 数式
+
+インライン $x^2 + y^2$ とコード数式 $`a+b`$ を含む段落。
+
+$$
+\int_0^1 f(x) \, dx
+$$
+
+コーヒーは $5、ランチは $12 かかる。
+"#;
+
+#[test]
+fn 数式の_dollar_区切りは温存される() {
+    let out = format_str(MATH_SAMPLE);
+    assert!(out.contains("$x^2 + y^2$"), "out:\n{out}");
+    assert!(out.contains("$`a+b`$"), "out:\n{out}");
+    assert!(out.contains("$$\n\\int_0^1 f(x) \\, dx\n$$"), "out:\n{out}");
+    // 通貨表記は数式化も $ エスケープもされない
+    assert!(out.contains("コーヒーは $5、ランチは $12"), "out:\n{out}");
+}
+
+#[test]
+fn 数式でも整形は冪等() {
+    let once = format_str(MATH_SAMPLE);
+    let twice = format_str(&once);
+    assert_eq!(once, twice, "format(format(x)) == format(x)");
+}
+
+#[test]
+fn math_無効なら_dollar_はテキストのまま() {
+    let opts = MarkdownOptions {
+        gfm: true,
+        math: false,
+    };
+    let out = format_document(&page_from("# t\n\n式 $x^2$ と $5 の話。\n"), &opts).unwrap();
+    assert!(out.contains("式 $x^2$ と $5 の話。"), "out:\n{out}");
+}

@@ -1,0 +1,12 @@
+---
+source: crates/yuzu-core/tests/body_snapshot.rs
+expression: html
+---
+<h1><a href="#数式" aria-hidden="true" class="anchor" id="数式"></a>数式</h1>
+<p>インライン <span data-math-style="inline">x^2</span> とコード数式 <code data-math-style="inline">a+b</code> の段落。</p>
+<p><span data-math-style="display">
+\int_0^1 f(x) \, dx
+</span></p>
+<pre><code class="language-math" data-math-style="display">a^2 + b^2 = c^2
+</code></pre>
+<p>比較 <span data-math-style="inline">a &lt; b</span> と通貨 $100 と $200 の話。</p>

@@ -132,6 +132,23 @@ fn mermaid_backend_を読み込める() {
 }
 
 #[test]
+fn math_設定を読み込める() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "markdown": { "math": { "enabled": false } } }"#,
+    )
+    .unwrap();
+    let rc = load(dir.path()).unwrap();
+    assert!(!rc.config.markdown.math.enabled);
+
+    // 未指定時のデフォルトは有効
+    let dir2 = tempfile::tempdir().unwrap();
+    fs::write(dir2.path().join("yuzu.jsonc"), "{}").unwrap();
+    assert!(load(dir2.path()).unwrap().config.markdown.math.enabled);
+}
+
+#[test]
 fn site_logo_を読み込める() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(

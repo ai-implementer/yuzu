@@ -118,6 +118,7 @@ pub struct MarkdownConfig {
     pub gfm: bool,
     pub highlight: HighlightConfig,
     pub mermaid: MermaidConfig,
+    pub math: MathConfig,
 }
 
 impl Default for MarkdownConfig {
@@ -126,6 +127,7 @@ impl Default for MarkdownConfig {
             gfm: true,
             highlight: HighlightConfig::default(),
             mermaid: MermaidConfig::default(),
+            math: MathConfig::default(),
         }
     }
 }
@@ -177,6 +179,21 @@ pub enum MermaidBackend {
     Client,
     /// tankan によるビルド時 SVG（対応図種のみ。他はクライアントへフォールバック）
     Ssr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MathConfig {
+    /// 数式（`$...$` / `$$...$$` / `` $`...`$ `` / ```math）を有効にするか。
+    /// 描画は同梱 KaTeX のクライアント描画で、数式のあるページだけ読み込む
+    // 将来: backend（"client" | "ssr"）。serde は未知キーを無視するので後方互換で追加できる
+    pub enabled: bool,
+}
+
+impl Default for MathConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

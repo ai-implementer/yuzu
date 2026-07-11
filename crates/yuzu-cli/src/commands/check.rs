@@ -14,6 +14,7 @@ pub fn run() -> anyhow::Result<ExitCode> {
     let rc = yuzu_config::load(&root)?;
     let opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
+        math: rc.config.markdown.math.enabled,
     };
     let lint_opts = LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,

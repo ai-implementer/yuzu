@@ -48,6 +48,7 @@ fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
         &rc.config.input.ignore,
         &MarkdownOptions {
             gfm: rc.config.markdown.gfm,
+            math: rc.config.markdown.math.enabled,
         },
     )
     .unwrap();
@@ -86,6 +87,12 @@ fn 生成物一式が揃っている() {
     assert!(dist.join("_assets/css/theme.css").is_file());
     assert!(dist.join("_assets/js/theme.js").is_file());
     assert!(dist.join("_assets/vendor/mermaid.min.js").is_file());
+    assert!(dist.join("_assets/vendor/katex/katex.min.js").is_file());
+    assert!(dist.join("_assets/vendor/katex/katex.min.css").is_file());
+    assert!(
+        dist.join("_assets/vendor/katex/fonts/KaTeX_Main-Regular.woff2")
+            .is_file()
+    );
     assert!(dist.join("images/logo.svg").is_file());
     assert!(dist.join("__yuzu/build_id").is_file());
     assert!(dist.join("llms.txt").is_file());
@@ -267,6 +274,61 @@ fn mermaid_ssr_はページ単位で_mermaid_js_の要否が決まる() {
     let index = fs::read_to_string(dist.join("index.html")).unwrap();
     assert!(index.contains("tankan-flowchart"), "flowchart も SSR");
     assert!(!index.contains("mermaid.min.js"));
+}
+
+#[test]
+fn math_はページ単位で_katex_の要否が決まる() {
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("content/formula.md"),
+            "---\ntitle: 数式\n---\n# 数式\n\nインライン $x^2$ と:\n\n$$\nE = mc^2\n$$\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("content/code-math.md"),
+            "---\ntitle: 数式フェンス\n---\n# 数式フェンス\n\n```math\na^2 + b^2 = c^2\n```\n",
+        )
+        .unwrap();
+    });
+    let dist = dir.path().join("dist");
+
+    // 数式ページ: comrak の math 出力があり KaTeX 一式を読み込む
+    let formula = fs::read_to_string(dist.join("formula/index.html")).unwrap();
+    assert!(formula.contains("data-math-style=\"display\""), "math 出力");
+    assert!(formula.contains("vendor/katex/katex.min.css"), "KaTeX CSS");
+    assert!(formula.contains("vendor/katex/katex.min.js"), "KaTeX JS");
+    assert!(formula.contains("js/katex-init.js"), "初期化 JS");
+
+    // ```math フェンスのみのページも KaTeX を読み込む（highlight.rs のガードの結合確認）
+    let code_math = fs::read_to_string(dist.join("code-math/index.html")).unwrap();
+    assert!(
+        code_math.contains("<code class=\"language-math\" data-math-style=\"display\""),
+        "comrak の特殊化が生きている:\n{code_math}"
+    );
+    assert!(code_math.contains("vendor/katex/katex.min.js"));
+
+    // 数式のないページには KaTeX が出ない
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(!index.contains("katex"), "数式なしページに KaTeX 不要");
+
+    // math.enabled=false なら $ はテキストのまま・KaTeX も読み込まない
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("yuzu.jsonc"),
+            r#"{ "site": { "title": "Fixture Docs" },
+                 "markdown": { "math": { "enabled": false } } }"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("content/formula.md"),
+            "---\ntitle: 数式\n---\n# 数式\n\nインライン $x^2$ の話。\n",
+        )
+        .unwrap();
+    });
+    let formula = fs::read_to_string(dir.path().join("dist/formula/index.html")).unwrap();
+    assert!(formula.contains("$x^2$"), "素のテキストのまま");
+    assert!(!formula.contains("data-math-style=\"inline\""));
+    assert!(!formula.contains("katex"));
 }
 
 #[test]

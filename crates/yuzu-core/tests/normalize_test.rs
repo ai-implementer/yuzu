@@ -108,3 +108,16 @@ fn phase7_記法でも正規化は冪等() {
     let twice = normalize_markdown(&page_from(&once), &MarkdownOptions::default()).unwrap();
     assert_eq!(once, twice, "normalize(normalize(x)) == normalize(x)");
 }
+
+#[test]
+fn 数式は_llms_向け正規形でも温存される() {
+    let out = normalize_str(
+        "---\ntitle: 数式\n---\n\n# 数式\n\n式 $x^2$ と:\n\n$$\nE = mc^2\n$$\n\n```math\na^2 + b^2\n```\n",
+    );
+    assert!(out.contains("$x^2$"), "out:\n{out}");
+    assert!(out.contains("$$\nE = mc^2\n$$"), "out:\n{out}");
+    assert!(
+        out.contains("``` math\na^2 + b^2\n```") || out.contains("```math\na^2 + b^2\n```"),
+        "out:\n{out}"
+    );
+}

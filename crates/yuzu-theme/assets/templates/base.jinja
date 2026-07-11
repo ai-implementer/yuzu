@@ -8,7 +8,8 @@
 {% endif %}{# URL 系の値はこちらで生成した安全な文字列なので safe を通す（/ の実体参照化を避ける） #}
 <link rel="stylesheet" href="{{ asset_url | safe }}css/theme.css">
 <link rel="stylesheet" href="{{ asset_url | safe }}css/syntect.css">
-{% if dark_enabled %}<script>
+{% if math_enabled %}<link rel="stylesheet" href="{{ asset_url | safe }}vendor/katex/katex.min.css">
+{% endif %}{% if dark_enabled %}<script>
 // FOUC 回避: CSS 適用前に保存済みテーマ（なければ OS 設定）を反映する
 (function () {
   var stored = null;
@@ -35,6 +36,8 @@
 <script src="{{ asset_url | safe }}js/copy-button.js"></script>
 {% if mermaid_enabled %}<script src="{{ asset_url | safe }}vendor/mermaid.min.js"></script>
 <script src="{{ asset_url | safe }}js/mermaid-init.js"></script>
+{% endif %}{% if math_enabled %}<script src="{{ asset_url | safe }}vendor/katex/katex.min.js"></script>
+<script src="{{ asset_url | safe }}js/katex-init.js"></script>
 {% endif %}{% if search_enabled %}<script type="module" src="{{ asset_url | safe }}js/search-ui.js" data-search-base="{{ base_url | safe }}_search/" data-base="{{ base_url | safe }}"></script>
 {% endif %}{% if live_reload_poll %}<script src="{{ asset_url | safe }}js/autorefresh.js" data-base="{{ base_url | safe }}"></script>
 {% endif %}{% if live_reload_ws %}<script src="{{ asset_url | safe }}js/livereload.js"></script>

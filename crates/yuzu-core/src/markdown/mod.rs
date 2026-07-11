@@ -35,6 +35,10 @@ fn comrak_options(opts: &MarkdownOptions) -> Options<'static> {
         options.extension.alerts = true; // > [!NOTE] 等の Admonition（GitHub 互換 5 種）
         options.extension.footnotes = true; // [^name] 脚注
     }
+    if opts.math {
+        options.extension.math_dollars = true; // $...$ / $$...$$（通貨 $100 等は弾かれる）
+        options.extension.math_code = true; // $`...`$（```math フェンスは CodeBlock のまま）
+    }
     options.extension.front_matter_delimiter = Some("---".to_string());
     options.extension.header_id_prefix = Some(String::new());
     options.render.r#unsafe = true;
@@ -329,6 +333,9 @@ fn collect_text_into<'a>(node: &'a AstNode<'a>, out: &mut String) {
     match &node.data.borrow().value {
         NodeValue::Text(literal) => out.push_str(literal),
         NodeValue::Code(code) => out.push_str(&code.literal),
+        // comrak の header_ids（Anchorizer）は見出し内数式の literal を採番に含める。
+        // ここで落とすと TOC・リンク検査のアンカーが本文とずれる
+        NodeValue::Math(math) => out.push_str(&math.literal),
         NodeValue::LineBreak | NodeValue::SoftBreak => out.push(' '),
         _ => {
             for child in node.children() {

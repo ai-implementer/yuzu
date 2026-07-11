@@ -858,6 +858,32 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
   height: auto;
 }
 
+/* ---- 数式（KaTeX。katex-init.js が [data-math-style] を描画結果に置換） ---- */
+
+/* 描画前・KaTeX 無効時の $$..$$（comrak はインライン span で出す）: 原文をブロック表示 */
+.markdown-body span[data-math-style="display"] {
+  display: block;
+  margin: 1rem 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+/* 描画後のブロック数式: 長い式はモバイル幅で横スクロール。
+   overflow-x: auto は overflow-y も auto 扱いになり、KaTeX の積分記号等の
+   わずかな縦はみ出しで縦スクロールバーが出るため、縦は隠して
+   クリップ回避の余白を敷く */
+.markdown-body .math-display {
+  margin: 1rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0;
+}
+
+/* katex.min.css の .katex-display { margin: 1em 0 } はラッパ側に寄せて二重マージンを防ぐ */
+.markdown-body .math-display > .katex-display {
+  margin: 0;
+}
+
 /* ---- モバイル用ページ内目次（72rem 以下でのみ表示） ---- */
 
 .toc-mobile {
