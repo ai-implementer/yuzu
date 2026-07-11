@@ -78,3 +78,42 @@ fn 本文_html_のスナップショット() {
 
     insta::assert_snapshot!("body_html", html);
 }
+
+/// Phase 7 記法。HTML レンダ側の固定点:
+/// - div.markdown-alert-{note,caution} と p.markdown-alert-title（既定題・独自題）
+/// - 脚注は同一定義への複数参照を含め、section.footnotes が**末尾に 1 回だけ**出る
+///   （fmt 側の「定義位置温存」オプションを誤って流用すると壊れる回帰の検知）
+const ALERTS_FOOTNOTES: &str = r#"---
+title: alerts と脚注
+---
+
+# alerts と脚注
+
+> [!NOTE]
+> 補足です。
+
+> [!CAUTION] 独自タイトル
+> 取り返しがつきません。
+
+本文の参照[^a]と再利用[^a]。
+
+[^a]: 脚注本文には**強調**も書ける。
+"#;
+
+#[test]
+fn alerts_と脚注の_html_スナップショット() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("index.md"), ALERTS_FOOTNOTES).unwrap();
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+    )
+    .unwrap();
+
+    assert_eq!(html.matches("<section class=\"footnotes\"").count(), 1);
+    insta::assert_snapshot!("alerts_footnotes_html", html);
+}

@@ -81,3 +81,51 @@ fn crlf_の本文は_lf_に正規化される() {
     assert!(!out.contains('\r'), "out:\n{out:?}");
     assert_eq!(out, "# 見出し\n\n一行目\n二行目\n");
 }
+
+/// Phase 7 記法（Admonition・脚注）のサンプル。
+/// 脚注定義を本文の途中に置き、未参照の定義も混ぜてある
+const PHASE7_SAMPLE: &str = r#"---
+title: 執筆表現
+---
+
+# 執筆表現
+
+> [!note]
+> 小文字で書いた種別
+
+> [!WARNING] 独自タイトル
+> 本文
+
+先頭の参照[^used]。
+
+[^used]: 使われる脚注
+
+途中の段落。
+
+[^unused]: 参照されない脚注
+"#;
+
+#[test]
+fn admonition_は大文字正規化されタイトルを温存する() {
+    let out = format_str(PHASE7_SAMPLE);
+    assert!(out.contains("> [!NOTE]\n"), "out:\n{out}");
+    assert!(out.contains("> [!WARNING] 独自タイトル"), "out:\n{out}");
+}
+
+#[test]
+fn 脚注定義は位置と未参照を温存する() {
+    let out = format_str(PHASE7_SAMPLE);
+    // 定義が文書末尾へ移動させられない（「途中の段落」より前に留まる）
+    let def = out.find("[^used]:").expect("定義が残る");
+    let para = out.find("途中の段落").expect("段落が残る");
+    assert!(def < para, "定義が末尾へ移動している:\n{out}");
+    // 未参照の定義も削除されない
+    assert!(out.contains("[^unused]:"), "out:\n{out}");
+}
+
+#[test]
+fn phase7_記法でも整形は冪等() {
+    let once = format_str(PHASE7_SAMPLE);
+    let twice = format_str(&once);
+    assert_eq!(once, twice, "format(format(x)) == format(x)");
+}

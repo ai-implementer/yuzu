@@ -1,0 +1,21 @@
+---
+source: crates/yuzu-core/tests/body_snapshot.rs
+expression: html
+---
+<h1><a href="#alerts-と脚注" aria-hidden="true" class="anchor" id="alerts-と脚注"></a>alerts と脚注</h1>
+<div class="markdown-alert markdown-alert-note">
+<p class="markdown-alert-title">Note</p>
+<p>補足です。</p>
+</div>
+<div class="markdown-alert markdown-alert-caution">
+<p class="markdown-alert-title">独自タイトル</p>
+<p>取り返しがつきません。</p>
+</div>
+<p>本文の参照<sup class="footnote-ref"><a href="#fn-a" id="fnref-a" data-footnote-ref>1</a></sup>と再利用<sup class="footnote-ref"><a href="#fn-a" id="fnref-a-2" data-footnote-ref>1</a></sup>。</p>
+<section class="footnotes" data-footnotes>
+<ol>
+<li id="fn-a">
+<p>脚注本文には<strong>強調</strong>も書ける。 <a href="#fnref-a" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a> <a href="#fnref-a-2" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1-2" aria-label="Back to reference 1-2">↩<sup class="footnote-ref">2</sup></a></p>
+</li>
+</ol>
+</section>

@@ -72,3 +72,39 @@ fn 本文が空なら空文字列() {
     let out = normalize_str("---\ntitle: 空\n---\n");
     assert_eq!(out.trim(), "");
 }
+
+/// Phase 7 記法（Admonition・脚注）。llms-full.txt は原文に忠実な正規形を出す
+const PHASE7_SAMPLE: &str = r#"---
+title: 執筆表現
+---
+
+# 執筆表現
+
+> [!TIP]
+> ヒント
+
+先頭の参照[^used]。
+
+[^used]: 使われる脚注
+
+途中の段落。
+
+[^unused]: 参照されない脚注
+"#;
+
+#[test]
+fn 脚注定義は位置と未参照を温存する() {
+    let out = normalize_str(PHASE7_SAMPLE);
+    let def = out.find("[^used]:").expect("定義が残る");
+    let para = out.find("途中の段落").expect("段落が残る");
+    assert!(def < para, "定義が末尾へ移動している:\n{out}");
+    assert!(out.contains("[^unused]:"), "out:\n{out}");
+    assert!(out.contains("> [!TIP]"), "out:\n{out}");
+}
+
+#[test]
+fn phase7_記法でも正規化は冪等() {
+    let once = normalize_str(PHASE7_SAMPLE);
+    let twice = normalize_markdown(&page_from(&once), &MarkdownOptions::default()).unwrap();
+    assert_eq!(once, twice, "normalize(normalize(x)) == normalize(x)");
+}

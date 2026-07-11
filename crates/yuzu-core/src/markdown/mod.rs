@@ -32,10 +32,27 @@ fn comrak_options(opts: &MarkdownOptions) -> Options<'static> {
         options.extension.strikethrough = true;
         options.extension.autolink = true;
         options.extension.tasklist = true;
+        options.extension.alerts = true; // > [!NOTE] 等の Admonition（GitHub 互換 5 種）
+        options.extension.footnotes = true; // [^name] 脚注
     }
     options.extension.front_matter_delimiter = Some("---".to_string());
     options.extension.header_id_prefix = Some(String::new());
     options.render.r#unsafe = true;
+    options
+}
+
+/// fmt / normalize / linkcheck 用: 脚注定義を**ソース位置のまま**温存する。
+///
+/// comrak は既定でパース終端に「参照済み定義を文書末尾へ移動・未参照定義を削除」
+/// する（process_footnotes）。fmt のバイト尊重方針と衝突するため、整形・正規化・
+/// リンク検査は定義を動かさないこのオプションでパースする。
+///
+/// ⚠️ HTML レンダに使ってはならない: `<section class="footnotes">` ラッパが
+/// 最初の定義位置で 1 回しか開かれず HTML が壊れる。
+/// ⚠️ `extract_meta` にも使わない: 見出しのアンカー採番順が render とずれる
+fn comrak_options_keep_footnotes(opts: &MarkdownOptions) -> Options<'static> {
+    let mut options = comrak_options(opts);
+    options.parse.leave_footnote_definitions = true;
     options
 }
 
@@ -151,7 +168,8 @@ pub(crate) fn normalize_markdown(
     opts: &MarkdownOptions,
 ) -> Result<String, CoreError> {
     let arena = Arena::new();
-    let options = comrak_options(opts);
+    // 脚注定義の位置・未参照定義を温存する（llms-full は原文に忠実な正規形を出す）
+    let options = comrak_options_keep_footnotes(opts);
     let root = parse_document(&arena, source, &options);
 
     // format_commonmark は FrontMatter ノードを（区切り行込みの生テキストごと）
@@ -178,7 +196,9 @@ pub(crate) struct LinkRef {
 /// autolink（GFM）もリンクとして現れる
 pub(crate) fn extract_link_refs(source: &str, opts: &MarkdownOptions) -> Vec<LinkRef> {
     let arena = Arena::new();
-    let options = comrak_options(opts);
+    // 既定オプションだと未参照の脚注定義が AST から消え、その中の壊れリンクが
+    // 検査をすり抜ける。fmt が未参照定義を温存する以上、検査も同じ AST を見る
+    let options = comrak_options_keep_footnotes(opts);
     let root = parse_document(&arena, source, &options);
 
     let mut refs = Vec::new();
@@ -224,7 +244,8 @@ pub(crate) fn frontmatter_raw(
 /// 末尾改行は常に 1 個、frontmatter と本文の間は空行 1 つに正規化する
 pub(crate) fn format_document(source: &str, opts: &MarkdownOptions) -> Result<String, CoreError> {
     let arena = Arena::new();
-    let options = comrak_options(opts);
+    // 脚注定義の位置・未参照定義を温存する（fmt は書き手の構成を動かさない）
+    let options = comrak_options_keep_footnotes(opts);
     let root = parse_document(&arena, source, &options);
 
     // frontmatter の生テキスト（区切り行込み）を退避して detach

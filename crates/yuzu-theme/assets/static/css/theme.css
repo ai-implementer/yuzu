@@ -25,6 +25,14 @@
   --accent-2-fg: #c93a0f; /* テキスト用オレンジ（--bg-subtle 上でも AA 4.82） */
   --accent-2-subtle: #ffe3db; /* オレンジの面（検索 mark） */
   --link: #0a6ca3;
+  /* Admonition（GitHub 互換 5 種）。1 変数が左ボーダーとタイトル文字を兼ねるため
+     --bg 上で AA（4.5:1）を満たす値を選ぶ（実測は各行コメント）。
+     note はテキスト用ブルー --accent-fg をそのまま流用 */
+  --alert-note: var(--accent-fg); /* 実体 #014ba5。白上 AA 8.23 */
+  --alert-tip: #1a7f37; /* 緑。白上 AA 5.08 */
+  --alert-important: #8250df; /* 紫。白上 AA 5.05 */
+  --alert-warning: #9a6700; /* 黄土。白上 AA 4.87 */
+  --alert-caution: #cf222e; /* 赤。白上 AA 5.36 */
   --radius-sm: 3px;
   --radius-md: 4px;
   --radius-lg: 6px;
@@ -58,6 +66,11 @@ html[data-theme="dark"] {
   --accent-2-fg: #ff9973;
   --accent-2-subtle: #46231a;
   --link: #66b3e8;
+  /* --alert-note は --accent-fg 参照のため上書き不要（実体 #85b6f2、AA 8.15） */
+  --alert-tip: #3fb950; /* AA 6.76 */
+  --alert-important: #ab7df8; /* AA 5.74 */
+  --alert-warning: #d29922; /* AA 6.80 */
+  --alert-caution: #f85149; /* AA 5.12 */
   --shadow: 0 0 14px rgba(0, 0, 0, 0.55); /* 暗地ではライト用の淡い影が見えないため濃く */
 }
 
@@ -602,6 +615,77 @@ body {
   margin-bottom: 0;
 }
 
+/* ---- Admonition（comrak alerts: > [!NOTE] 等 GitHub 互換 5 種） ---- */
+
+/* blockquote と同じ「左 3px ボーダー」骨格。色は種別ごとの --alert-color 1 変数
+   （ボーダーとタイトル文字を兼用）。本文は引用と違い重要情報なので通常の --fg */
+.markdown-body .markdown-alert {
+  margin: 1rem 0;
+  padding: 0.1rem 1rem;
+  border-left: 3px solid var(--alert-color, var(--border-strong));
+}
+
+.markdown-body .markdown-alert > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body .markdown-alert-title {
+  font-weight: 600;
+  color: var(--alert-color, inherit);
+}
+
+.markdown-body .markdown-alert-note {
+  --alert-color: var(--alert-note);
+}
+
+.markdown-body .markdown-alert-tip {
+  --alert-color: var(--alert-tip);
+}
+
+.markdown-body .markdown-alert-important {
+  --alert-color: var(--alert-important);
+}
+
+.markdown-body .markdown-alert-warning {
+  --alert-color: var(--alert-warning);
+}
+
+.markdown-body .markdown-alert-caution {
+  --alert-color: var(--alert-caution);
+}
+
+/* ---- 脚注（comrak footnotes: ページ末尾に集約される section.footnotes） ---- */
+
+.markdown-body section.footnotes {
+  margin-top: 3rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+  /* 表と同じく本文より一段密に */
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--fg-muted);
+}
+
+.markdown-body section.footnotes ol {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+/* 戻りリンク（↩）は下線なしのアイコン扱い */
+.markdown-body .footnote-backref {
+  text-decoration: none;
+  padding: 0 0.15em;
+}
+
+/* 上付きの参照番号で行間が波打たないようにする */
+.markdown-body sup.footnote-ref {
+  line-height: 1;
+}
+
 .markdown-body del {
   color: var(--fg-muted);
 }
@@ -696,6 +780,7 @@ body {
   overflow-x: auto;
   line-height: 1.6;
   letter-spacing: normal;
+  position: relative; /* コピーボタンの絶対配置基準 */
 }
 
 .markdown-body pre code {
@@ -720,6 +805,38 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--fg-muted);
+}
+
+/* ---- コードコピーボタン（copy-button.js が挿入。非対応環境では存在しない） ---- */
+
+.copy-button {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.15rem 0.6rem;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--fg-muted);
+  /* 不透明背景: フィードバックで幅が広がり言語ラベルへ重なっても上に載るだけにする */
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  user-select: none; /* pre 全選択コピーへボタン文字列を混ぜない */
+  white-space: nowrap; /* pre の white-space: pre を打ち消す */
+}
+
+.copy-button:hover,
+.copy-button.copied {
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+/* ボタン常態（「コピー」）の幅ぶん言語ラベルを左へ避ける。
+   ラベル同様、横スクロール時は流れる（許容） */
+body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
+  margin-right: 4.5rem;
 }
 
 /* ---- Mermaid ---- */

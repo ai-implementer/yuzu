@@ -52,6 +52,19 @@ fn 存在しない_md_へのリンクを行番号付きで報告() {
 }
 
 #[test]
+fn 未参照の脚注定義内のリンクも検査される() {
+    // 既定パースだと未参照定義は AST から消えて検査をすり抜ける。
+    // fmt が未参照定義を温存する以上、check も同じ AST を見る（keep_footnotes）
+    let diags = check(&[("index.md", "# t\n\n[^x]: [壊れ](missing.md)\n")], &[]);
+    assert_eq!(rules(&diags), ["broken-link"]);
+    assert!(
+        diags[0].message.contains("missing.md"),
+        "{}",
+        diags[0].message
+    );
+}
+
+#[test]
 fn 相対リンクは_親ディレクトリ基準で解決される() {
     let diags = check(
         &[

@@ -42,6 +42,7 @@ mod tests {
             "static/js/theme.js",
             "static/js/nav.js",
             "static/js/scrollspy.js",
+            "static/js/copy-button.js",
             "static/js/autorefresh.js",
             "static/js/livereload.js",
             "static/js/mermaid-init.js",
