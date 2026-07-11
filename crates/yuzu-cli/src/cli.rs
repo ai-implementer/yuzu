@@ -31,6 +31,10 @@ pub enum Command {
         /// content/・theme/ を監視して自動再ビルドし、配信＋オートリフレッシュする
         #[arg(long)]
         watch: bool,
+        /// baseUrl を上書きする（site/build の設定より優先。
+        /// CI から configure-pages の base_path を渡す用途）
+        #[arg(long)]
+        base_url: Option<String>,
     },
 
     /// dist/ を配信する最小静的サーバ

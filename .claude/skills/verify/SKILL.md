@@ -39,9 +39,13 @@ cargo check -p tankan --target wasm32-unknown-unknown
 cargo build -p yuzu-cli
 ./target/debug/yuzu new "<scratchpad>/e2e-docs"
 cd "<scratchpad>/e2e-docs"
+test -f .github/workflows/deploy.yml   # Pages デプロイ雛形の同梱
 <repo>/target/debug/yuzu build
 test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_search/search_bg.wasm
 <repo>/target/debug/yuzu search "はじめに" | grep "はじめに"
+# --base-url は設定より優先（deploy.yml が configure-pages の base_path を渡す契約）
+<repo>/target/debug/yuzu build --base-url /docs/ && grep -q '/docs/_assets/' dist/index.html
+<repo>/target/debug/yuzu build   # 後続の検査は既定 baseUrl に戻してから
 <repo>/target/debug/yuzu fmt --check && <repo>/target/debug/yuzu lint && <repo>/target/debug/yuzu check
 # 異常系: 壊れリンクを注入して check が終了コード 1 を返すこと（CI と同じ）
 echo '[壊れリンク](missing.md)' >> content/index.md

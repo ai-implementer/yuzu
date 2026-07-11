@@ -115,7 +115,8 @@ pub fn write_resolved(rc: &ResolvedConfig) -> Result<PathBuf, ConfigError> {
 
 /// baseUrl を「常に先頭・末尾スラッシュ付き」の形へ正規化する。
 /// フル URL（`https://…`）は末尾スラッシュのみ保証する。
-fn normalize_base_url(raw: &str) -> String {
+/// CLI の `--base-url` 上書き（CI から configure-pages の base_path を渡す用途）でも使う
+pub fn normalize_base_url(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return "/".to_string();

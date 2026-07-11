@@ -50,11 +50,15 @@ jobs:
         run: |
           ./target/debug/yuzu new "$RUNNER_TEMP/e2e-docs"
           cd "$RUNNER_TEMP/e2e-docs"
+          test -f .github/workflows/deploy.yml
           "$GITHUB_WORKSPACE/target/debug/yuzu" build
           test -f dist/index.html
           test -f dist/guide/getting-started/index.html
           test -f dist/_search/manifest.json
           test -f dist/_search/search_bg.wasm
+          # --base-url は設定より優先して配信パスを差し替える（deploy.yml が使う契約）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build --base-url /docs/
+          grep -q '/docs/_assets/' dist/index.html
           "$GITHUB_WORKSPACE/target/debug/yuzu" search "はじめに" | grep "はじめに"
           "$GITHUB_WORKSPACE/target/debug/yuzu" search "ダーくモード" | grep -q "."
           # Phase 6: fmt/lint/check（正常系 = 0、違反注入で = 1 の終了コード契約）

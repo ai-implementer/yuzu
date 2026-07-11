@@ -13,10 +13,15 @@ use crate::commands::preview;
 /// エディタの連続保存をまとめる debounce 幅（build --watch / dev 共通）
 pub(crate) const DEBOUNCE: Duration = Duration::from_millis(300);
 
-pub fn run(watch: bool) -> anyhow::Result<()> {
+pub fn run(watch: bool, base_url: Option<String>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
     let root = yuzu_config::find_project_root(&cwd)?;
-    let rc = yuzu_config::load(&root)?;
+    let mut rc = yuzu_config::load(&root)?;
+    // --base-url は site/build の設定より優先（CI から配信パスを注入する用途）。
+    // write_resolved より前に上書きし、.yuzu/settings.json にも反映する
+    if let Some(raw) = base_url {
+        rc.base_url = yuzu_config::normalize_base_url(&raw);
+    }
     yuzu_config::write_resolved(&rc)?;
 
     // --watch のときだけオートリフレッシュ JS（ポーリング式）を注入する

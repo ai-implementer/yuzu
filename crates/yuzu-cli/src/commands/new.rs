@@ -22,6 +22,10 @@ const FILES: &[(&str, &str)] = &[
         "theme/README.md",
         include_str!("../../scaffold/theme-readme.md"),
     ),
+    (
+        ".github/workflows/deploy.yml",
+        include_str!("../../scaffold/deploy.yml"),
+    ),
 ];
 
 pub fn run(dir: &Path) -> anyhow::Result<()> {
@@ -49,5 +53,10 @@ pub fn run(dir: &Path) -> anyhow::Result<()> {
     println!("  yuzu dev            # 開発サーバ（監視＋WS ライブリロード）で執筆");
     println!("  yuzu build          # dist/ に静的サイトを出力");
     println!("  yuzu preview        # dist/ をブラウザで確認");
+    println!();
+    println!("GitHub に push すると Pages へ自動デプロイできます");
+    println!(
+        "（.github/workflows/deploy.yml 同梱。Settings > Pages > Source を GitHub Actions に）"
+    );
     Ok(())
 }
