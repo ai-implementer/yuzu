@@ -125,7 +125,7 @@ fn llms_txt_のスナップショット() {
     insta::assert_snapshot!("llms_full_txt", full);
 }
 
-/// fixture を上書きしてビルドする共通ヘルパ（llms 系テスト用）
+/// fixture を上書きしてビルドする共通ヘルパ
 fn build_fixture_with(edit: impl FnOnce(&Path)) -> tempfile::TempDir {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
     let dir = tempfile::tempdir().unwrap();
@@ -171,6 +171,34 @@ fn llms_false_のページは両ファイルから除外される() {
 
     let full = fs::read_to_string(dist.join("llms-full.txt")).unwrap();
     assert!(!full.contains("こんにちは yuzu"), "本文が除外される");
+}
+
+#[test]
+fn site_logo_の有無でヘッダーの_img_が切り替わる() {
+    // 未設定（既存 fixture）: img も has-logo も出ない（🍊 は CSS 側なので HTML に痕跡なし）
+    let dir = build_fixture(LiveReloadMode::None);
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(!index.contains("site-logo"));
+    assert!(!index.contains("has-logo"));
+
+    // 設定あり: baseUrl（/docs/）が前置された src と has-logo クラス、装飾扱いの alt=""
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("yuzu.jsonc"),
+            r#"{ "site": { "title": "Fixture Docs", "logo": "/images/logo.svg" },
+                 "build": { "baseUrl": "/docs/" } }"#,
+        )
+        .unwrap();
+    });
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(
+        index.contains(r#"<a class="site-title has-logo" href="/docs/">"#),
+        "index.html:\n{index}"
+    );
+    assert!(
+        index.contains(r#"<img class="site-logo" src="/docs/images/logo.svg" alt="">"#),
+        "index.html:\n{index}"
+    );
 }
 
 #[test]

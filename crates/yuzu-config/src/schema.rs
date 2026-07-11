@@ -29,6 +29,9 @@ pub struct SiteConfig {
     /// サイトを配信するパス接頭辞（例: `/docs/`）。`build.baseUrl` があればそちらが優先
     pub base_url: Option<String>,
     pub lang: String,
+    /// ヘッダーのタイトル横に出すロゴ画像（例: `/images/logo.svg`。public/ 配下を指す）。
+    /// フル URL も可。未指定ならテーマ既定の絵文字ロゴ
+    pub logo: Option<String>,
 }
 
 impl Default for SiteConfig {
@@ -38,6 +41,7 @@ impl Default for SiteConfig {
             description: None,
             base_url: None,
             lang: "ja".to_string(),
+            logo: None,
         }
     }
 }

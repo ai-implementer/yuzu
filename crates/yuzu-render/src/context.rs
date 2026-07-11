@@ -14,6 +14,8 @@ pub(crate) struct SiteCtx<'a> {
     pub title: &'a str,
     pub description: Option<&'a str>,
     pub lang: &'a str,
+    /// ヘッダーロゴの配信 URL（`site.logo` 由来。base 前置済み。None ならテーマ既定ロゴ）
+    pub logo_url: Option<String>,
 }
 
 #[derive(Serialize)]

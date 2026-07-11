@@ -3,7 +3,9 @@
 {# 狭幅用のナビ開閉。hidden は nav.js が解除する（JS 無効時は出さない） #}
 <button id="nav-toggle" type="button" aria-label="ナビゲーションを開閉"
         aria-controls="site-sidebar" aria-expanded="false" hidden>☰</button>
-<a class="site-title" href="{{ base_url | safe }}">{{ site.title }}</a>
+{# ロゴ画像（site.logo）指定時は img を出し、CSS 側で既定の絵文字ロゴを消す。
+   alt は空（直後にタイトル文字が並ぶため装飾扱い）。末尾のハイフンは改行 trim -#}
+<a class="site-title{% if site.logo_url %} has-logo{% endif %}" href="{{ base_url | safe }}">{% if site.logo_url %}<img class="site-logo" src="{{ site.logo_url | safe }}" alt="">{% endif %}{{ site.title }}</a>
 </div>
 <div class="header-tools">
 {% if search_enabled %}<div class="search" id="yuzu-search">

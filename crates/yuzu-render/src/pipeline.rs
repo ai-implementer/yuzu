@@ -58,6 +58,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         title: &cfg.site.title,
         description: cfg.site.description.as_deref(),
         lang: &cfg.site.lang,
+        logo_url: cfg.site.logo.as_deref().map(|p| resolver.public_url(p)),
     };
 
     for page in &params.site.pages {

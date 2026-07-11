@@ -5,6 +5,8 @@
     "title": "My Docs",
     "description": "yuzu で生成するドキュメントサイト",
     "lang": "ja"
+    // ヘッダーのタイトル横に出すロゴ画像（未指定なら 🍊）。public/ 配下がそのまま配信されます
+    // "logo": "/images/yuzu-logo.svg",
     // サブパスで配信する場合は baseUrl を設定します（例: 社内リバプロ配下）
     // "baseUrl": "/docs/"
   },

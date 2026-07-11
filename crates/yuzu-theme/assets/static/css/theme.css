@@ -157,6 +157,25 @@ body {
   content: "🍊 ";
 }
 
+/* site.logo 設定時（header.jinja が has-logo を付与）: 絵文字を消して画像ロゴを出す */
+.site-title.has-logo::before {
+  content: none;
+}
+
+.site-title.has-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.site-logo {
+  display: block; /* ベースライン下の隙間を消す */
+  height: 1.5rem; /* ヘッダー高 3.25rem に対して余白を残す */
+  width: auto;
+  max-width: 10rem; /* 横長ロゴがヘッダーを侵食しないよう上限 */
+  flex: none;
+}
+
 .header-tools {
   display: flex;
   align-items: center;

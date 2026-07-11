@@ -43,6 +43,15 @@ impl UrlResolver {
     pub fn asset_url(&self) -> String {
         format!("{}_assets/", self.base)
     }
+
+    /// 設定で指定されたサイト内パス（ロゴ等）を配信 URL へ解決する。
+    /// フル URL はそのまま、`/foo` と `foo` はともにサイトルート起点として base を前置する
+    pub fn public_url(&self, path: &str) -> String {
+        if path.contains("://") {
+            return path.to_string();
+        }
+        format!("{}{}", self.base, path.trim_start_matches('/'))
+    }
 }
 
 impl UrlRewriter for UrlResolver {
@@ -171,5 +180,16 @@ mod tests {
         let (r, _) = resolver("/docs/");
         assert_eq!(r.page_url("guide/"), "/docs/guide/");
         assert_eq!(r.asset_url(), "/docs/_assets/");
+    }
+
+    #[test]
+    fn public_url_は_base_を前置しフル_url_はそのまま() {
+        let (r, _) = resolver("/docs/");
+        assert_eq!(r.public_url("/images/logo.svg"), "/docs/images/logo.svg");
+        assert_eq!(r.public_url("images/logo.svg"), "/docs/images/logo.svg");
+        assert_eq!(
+            r.public_url("https://cdn.example.com/logo.png"),
+            "https://cdn.example.com/logo.png"
+        );
     }
 }

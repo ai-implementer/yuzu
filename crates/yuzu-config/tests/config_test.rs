@@ -132,6 +132,26 @@ fn mermaid_backend_を読み込める() {
 }
 
 #[test]
+fn site_logo_を読み込める() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "site": { "logo": "/images/yuzu-logo.svg" } }"#,
+    )
+    .unwrap();
+    let rc = load(dir.path()).unwrap();
+    assert_eq!(
+        rc.config.site.logo.as_deref(),
+        Some("/images/yuzu-logo.svg")
+    );
+
+    // 未指定時は None（テーマ既定の絵文字ロゴ）
+    let dir2 = tempfile::tempdir().unwrap();
+    fs::write(dir2.path().join("yuzu.jsonc"), "{}").unwrap();
+    assert!(load(dir2.path()).unwrap().config.site.logo.is_none());
+}
+
+#[test]
 fn llms_設定を読み込める() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
