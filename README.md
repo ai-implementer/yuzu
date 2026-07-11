@@ -112,9 +112,14 @@ Web 調査込みで確定済み。差し替えないこと。
 | Mermaid | **mermaid.js クライアント描画**（v0.1） | 自作 SSR（tankan、`backend: "ssr"`）は Phase 5 で実装済み。既定は client のまま |
 | dev サーバ | **axum ＋ notify（＋debouncer）＋ WebSocket** | `yuzu dev` は `/__livereload` への WS push でリロード。preview は純粋な静的配信 |
 
-依存方向（凍結）:
-`yuzu-cli → {server, render, index, core, config}` / `render, index → core` /
-`search-wasm ↔ index-format`。逆方向依存は作らない。
+依存方向（凍結。逆方向依存は作らない）:
+
+```
+yuzu-cli → {yuzu-server, yuzu-render, yuzu-index, yuzu-core, yuzu-config}
+yuzu-render → yuzu-core, tankan     yuzu-index → yuzu-core
+yuzu-search-wasm ↔ yuzu-index-format（native/wasm でトークナイザ共有）
+tankan は yuzu-* 非依存の汎用ライブラリ（将来 crates.io へ分離可能な設計を維持）
+```
 
 ## ワークスペース構成
 
