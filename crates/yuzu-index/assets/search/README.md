@@ -12,6 +12,8 @@
 
 ## 現在の成果物
 
-- 生成日: 2026-07-04（wasm-bindgen 0.2.126 / binaryen version_130 / wasm-opt -Oz）
-- `search_bg.wasm`: 453KB（vaporetto + fst + BM25 エンジン込み。gzip 転送で概ね半分以下）
-- `search.js`: 10KB（wasm-bindgen --target web の ES module グルー）
+- 生成日: 2026-07-12（wasm-bindgen 0.2.126 / binaryen version_130 / wasm-opt -Oz）
+- `search_bg.wasm`: 467KB（vaporetto + fst + BM25 エンジン + 動的抜粋込み。
+  gzip 転送で概ね半分以下）
+- `search.js`: 12KB（wasm-bindgen --target web の ES module グルー。
+  tokenize / excerpt API 追加）

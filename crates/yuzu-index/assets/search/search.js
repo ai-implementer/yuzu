@@ -10,6 +10,31 @@ export class YuzuSearch {
         wasm.__wbg_yuzusearch_free(ptr, 0);
     }
     /**
+     * text からクエリ一致箇所周辺の抜粋断片（JSON）を返す:
+     * `[{"text":"…文脈 ","mark":false},{"text":"検索","mark":true},…]`。
+     * mark = true の断片を <mark> で描画する（一致判定・正規化はエンジンと同一）
+     * @param {string} text
+     * @param {string} query
+     * @param {number} max_chars
+     * @returns {string}
+     */
+    excerpt(text, query, max_chars) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(query, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ret = wasm.yuzusearch_excerpt(this.__wbg_ptr, ptr0, len0, ptr1, len1, max_chars);
+            deferred3_0 = ret[0];
+            deferred3_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
      * fetch 済みシャードを登録する
      * @param {number} shard_id
      * @param {Uint8Array} bytes
@@ -69,6 +94,25 @@ export class YuzuSearch {
             const ptr0 = passStringToWasm0(query, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len0 = WASM_VECTOR_LEN;
             const ret = wasm.yuzusearch_search(this.__wbg_ptr, ptr0, len0, limit);
+            deferred2_0 = ret[0];
+            deferred2_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * クエリをエンジンと同一の分かち書きで token 配列（JSON）にする: `["検索","エンジン"]`
+     * @param {string} query
+     * @returns {string}
+     */
+    tokenize(query) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ptr0 = passStringToWasm0(query, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.yuzusearch_tokenize(this.__wbg_ptr, ptr0, len0);
             deferred2_0 = ret[0];
             deferred2_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
