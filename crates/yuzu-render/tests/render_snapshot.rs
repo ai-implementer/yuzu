@@ -332,6 +332,82 @@ fn math_はページ単位で_katex_の要否が決まる() {
 }
 
 #[test]
+fn 前後ページリンクは_nav_順で全ページを連結する() {
+    // フラット順: ホーム → はじめに → 応用（サイドバー表示順）
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("content/guide/advanced.md"),
+            "---\ntitle: 応用\norder: 2\n---\n# 応用\n\n本文\n",
+        )
+        .unwrap();
+    });
+    let dist = dir.path().join("dist");
+
+    // 先頭（ホーム）: prev なし・next = はじめに
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(!index.contains("rel=\"prev\""));
+    assert!(
+        index.contains(r#"<a class="pager-next" rel="next" href="/docs/guide/getting-started/">"#)
+    );
+
+    // 中間（はじめに）: 両方あり
+    let mid = fs::read_to_string(dist.join("guide/getting-started/index.html")).unwrap();
+    assert!(mid.contains(r#"rel="prev" href="/docs/">"#));
+    assert!(mid.contains(r#"rel="next" href="/docs/guide/advanced/">"#));
+
+    // 末尾（応用）: next なし・prev = はじめに
+    let last = fs::read_to_string(dist.join("guide/advanced/index.html")).unwrap();
+    assert!(!last.contains("rel=\"next\""));
+    assert!(last.contains(r#"rel="prev" href="/docs/guide/getting-started/">"#));
+
+    // llms.txt のリンク出現順と一致する（この標準構成において。
+    // トップレベル葉ページがディレクトリより後ろに並ぶ構成では llms 側が
+    // 先頭セクションへ前寄せするため一致しない = 仕様差として許容）
+    let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
+    let pos = |needle: &str| {
+        llms.find(needle)
+            .unwrap_or_else(|| panic!("{needle} が llms.txt にない"))
+    };
+    assert!(pos("(/docs/)") < pos("(/docs/guide/getting-started/)"));
+    assert!(pos("(/docs/guide/getting-started/)") < pos("(/docs/guide/advanced/)"));
+}
+
+#[test]
+fn パンくずはラベルとリンクを出し分ける() {
+    let dir = build_fixture_with(|root| {
+        // guide/ に index.md を足す → パンくず中間がリンクになる
+        fs::write(
+            root.join("content/guide/index.md"),
+            "---\ntitle: ガイド\norder: 0\n---\n# ガイド\n\n本文\n",
+        )
+        .unwrap();
+    });
+    let dist = dir.path().join("dist");
+
+    // 深いページ: ホーム(リンク) / ガイド(リンク) / はじめに(現在・リンクなし)
+    let page = fs::read_to_string(dist.join("guide/getting-started/index.html")).unwrap();
+    assert!(
+        page.contains(r#"<li><a href="/docs/">ホーム</a></li>"#),
+        "page:\n{page}"
+    );
+    assert!(page.contains(r#"<li><a href="/docs/guide/">ガイド</a></li>"#));
+    assert!(
+        page.contains(r#"<span class="breadcrumb-current" aria-current="page">はじめに</span>"#)
+    );
+
+    // ディレクトリ index 自身: [ホーム, ガイド(現在)]
+    let guide = fs::read_to_string(dist.join("guide/index.html")).unwrap();
+    assert!(guide.contains(r#"<li><a href="/docs/">ホーム</a></li>"#));
+    assert!(
+        guide.contains(r#"<span class="breadcrumb-current" aria-current="page">ガイド</span>"#)
+    );
+
+    // トップページには出ない
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(!index.contains("class=\"breadcrumb\""));
+}
+
+#[test]
 fn search_有効なら検索_ui_が入り_無効なら出ない() {
     // 既定（enabled: true）
     let dir = build_fixture(LiveReloadMode::None);

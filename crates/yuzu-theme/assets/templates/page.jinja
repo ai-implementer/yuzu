@@ -1,6 +1,8 @@
 {% extends "base.jinja" %}
 {% block content %}
+{% include "partials/breadcrumb.jinja" %}
 <article class="markdown-body">
 {{ page.body | safe }}
 </article>
+{% include "partials/pager.jinja" %}
 {% endblock %}

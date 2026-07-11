@@ -9,7 +9,7 @@ use yuzu_config::ResolvedConfig;
 use yuzu_core::{MarkdownOptions, SiteModel};
 
 use crate::assets;
-use crate::context::{NavCtx, PageCtx, SiteCtx};
+use crate::context::{NavCtx, NavOrder, PageCtx, SiteCtx, build_breadcrumbs};
 use crate::css;
 use crate::error::RenderError;
 use crate::highlight::SyntectCodeRenderer;
@@ -49,6 +49,8 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let env = templates::build_env(rc.theme_dir.as_deref())?;
     let template = env.get_template("page.jinja")?;
     let resolver = UrlResolver::new(&rc.base_url, params.site);
+    // 前/次リンクの導出元（サイドバー表示順のフラット列）。全ページで共通
+    let nav_order = NavOrder::new(&params.site.nav);
     let highlighter =
         SyntectCodeRenderer::new(cfg.markdown.highlight.enabled, &cfg.markdown.mermaid);
     let md_opts = MarkdownOptions {
@@ -80,6 +82,8 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             site => site_ctx,
             page => PageCtx::new(page, &body, &resolver),
             nav => NavCtx::build(&params.site.nav, &page.route, &resolver),
+            pager => nav_order.pager(&page.route, &resolver),
+            breadcrumbs => build_breadcrumbs(&params.site.nav, &page.route, &resolver),
             base_url => resolver.base(),
             asset_url => resolver.asset_url(),
             live_reload_poll => params.live_reload == LiveReloadMode::Poll,

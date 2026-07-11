@@ -928,6 +928,97 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
   padding-left: 0.9rem;
 }
 
+/* ---- ページナビ（パンくず・前後ページ） ---- */
+
+/* パンくず: 本文冒頭の現在位置。小さめ・muted、区切り記号は CSS で挿入する */
+.breadcrumb {
+  font-size: 0.85rem;
+  line-height: 1.6; /* UI ラベルは本文の 1.8 より詰める */
+  color: var(--fg-muted);
+  margin-bottom: 1rem;
+}
+
+.breadcrumb ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+}
+
+.breadcrumb li + li::before {
+  content: "/";
+  margin-right: 0.5rem;
+  color: var(--border-strong); /* 記号は文字より一段弱く */
+}
+
+.breadcrumb a {
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  color: var(--accent-fg);
+  text-decoration: underline;
+}
+
+.breadcrumb-current {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* 前/次ページ: 本文末尾の左右カード（フラット＋細ボーダー＋小さめ角丸） */
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.pager a {
+  display: block;
+  max-width: 48%;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  line-height: 1.6;
+}
+
+.pager a:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.pager-next {
+  margin-left: auto; /* prev が無いページでも右端に寄せる */
+  text-align: right;
+}
+
+.pager-dir {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}
+
+.pager-prev .pager-dir::before {
+  content: "← ";
+}
+
+.pager-next .pager-dir::after {
+  content: " →";
+}
+
+.pager-title {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent-fg);
+}
+
 /* ---- スクロールバー（独立スクロール領域は控えめに） ---- */
 
 .sidebar,
@@ -984,5 +1075,18 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
 
   body.has-nav-js.nav-open .sidebar {
     display: block;
+  }
+
+  /* 狭幅では前/次ページを縦積みに */
+  .pager {
+    flex-direction: column;
+  }
+
+  .pager a {
+    max-width: none;
+  }
+
+  .pager-next {
+    margin-left: 0;
   }
 }

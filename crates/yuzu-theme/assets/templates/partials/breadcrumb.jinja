@@ -1,0 +1,9 @@
+{# 階層パンくず（ホーム > セクション > 現在ページ）。トップページ等、
+   遡る先がないときは breadcrumbs が空 = 何も出力しない。
+   区切り記号は CSS（li + li::before）で挿入する -#}
+{% if breadcrumbs %}<nav class="breadcrumb" aria-label="現在位置">
+<ol>
+{% for item in breadcrumbs %}<li>{% if item.url %}<a href="{{ item.url | safe }}">{{ item.title }}</a>{% elif loop.last %}<span class="breadcrumb-current" aria-current="page">{{ item.title }}</span>{% else %}<span class="breadcrumb-label">{{ item.title }}</span>{% endif %}</li>
+{% endfor %}</ol>
+</nav>
+{% endif %}

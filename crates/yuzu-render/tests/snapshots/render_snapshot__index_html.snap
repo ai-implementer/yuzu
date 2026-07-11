@@ -75,6 +75,7 @@ expression: index
 
 
 
+
 <article class="markdown-body">
 <h1><a href="#fixture-docs" aria-hidden="true" class="anchor" id="fixture-docs"></a>Fixture Docs</h1>
 <p><a href="/docs/guide/getting-started/">はじめに</a>を読む。</p>
@@ -102,6 +103,10 @@ expression: index
 </pre>
 
 </article>
+<nav class="pager" aria-label="前後のページ">
+<a class="pager-next" rel="next" href="/docs/guide/getting-started/"><span class="pager-dir">次のページ</span><span class="pager-title">はじめに</span></a>
+</nav>
+
 
 </main>
 

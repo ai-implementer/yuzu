@@ -38,6 +38,8 @@ mod tests {
             "templates/partials/toc.jinja",
             "templates/partials/toc-mobile.jinja",
             "templates/partials/header.jinja",
+            "templates/partials/breadcrumb.jinja",
+            "templates/partials/pager.jinja",
             "static/css/theme.css",
             "static/js/theme.js",
             "static/js/nav.js",

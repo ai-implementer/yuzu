@@ -1,0 +1,7 @@
+{# 前/次ページリンク（サイドバー表示順で全ページを 1 列に連結した順）。
+   prev 欠落時の右寄せ・矢印は CSS 側で処理する -#}
+{% if pager.prev or pager.next %}<nav class="pager" aria-label="前後のページ">
+{% if pager.prev %}<a class="pager-prev" rel="prev" href="{{ pager.prev.url | safe }}"><span class="pager-dir">前のページ</span><span class="pager-title">{{ pager.prev.title }}</span></a>
+{% endif %}{% if pager.next %}<a class="pager-next" rel="next" href="{{ pager.next.url | safe }}"><span class="pager-dir">次のページ</span><span class="pager-title">{{ pager.next.title }}</span></a>
+{% endif %}</nav>
+{% endif %}

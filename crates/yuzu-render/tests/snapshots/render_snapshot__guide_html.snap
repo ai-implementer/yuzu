@@ -86,6 +86,14 @@ expression: guide
 </details>
 
 
+<nav class="breadcrumb" aria-label="現在位置">
+<ol>
+<li><a href="/docs/">ホーム</a></li>
+<li><span class="breadcrumb-label">guide</span></li>
+<li><span class="breadcrumb-current" aria-current="page">はじめに</span></li>
+</ol>
+</nav>
+
 <article class="markdown-body">
 <h1><a href="#はじめに" aria-hidden="true" class="anchor" id="はじめに"></a>はじめに</h1>
 <h2><a href="#インストール" aria-hidden="true" class="anchor" id="インストール"></a>インストール</h2>
@@ -99,6 +107,10 @@ expression: guide
 <p>本文。</p>
 
 </article>
+<nav class="pager" aria-label="前後のページ">
+<a class="pager-prev" rel="prev" href="/docs/"><span class="pager-dir">前のページ</span><span class="pager-title">ホーム</span></a>
+</nav>
+
 
 </main>
 
