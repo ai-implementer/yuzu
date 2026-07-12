@@ -84,6 +84,9 @@ html {
      見出しの id は comrak header_ids が埋め込む内側の <a class="anchor"> に
      付くため、要素側の scroll-margin ではなくルートの scroll-padding で受ける */
   scroll-padding-top: calc(var(--header-height) + 1rem);
+  /* ページの長短（ウィンドウスクロールバーの有無）で中央寄せレイアウトが
+     横にずれないよう、ガターを常時確保する（オーバーレイでは幅 0 のまま） */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -326,6 +329,10 @@ body {
   align-self: start;
   max-height: calc(100vh - var(--header-height));
   overflow-y: auto;
+  /* クラシックスクロールバー環境でも内容の長短でテキスト幅が変わらないよう
+     ガターを常時確保する（オーバーレイスクロールバーでは幅 0 のまま） */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 
 .content {
@@ -343,6 +350,9 @@ body {
   align-self: start;
   max-height: calc(100vh - var(--header-height));
   overflow-y: auto;
+  /* sidebar と同じくスクロールバーのガターを常時確保（テキスト幅を一定に） */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   font-size: 0.85rem;
   line-height: 1.6; /* UI ラベルは本文の 1.8 より詰める */
 }
