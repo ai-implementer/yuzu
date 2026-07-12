@@ -34,9 +34,13 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
     let ok = |()| ExitCode::SUCCESS;
     match cli.command {
         cli::Command::New { dir } => commands::new::run(&dir).map(ok),
-        cli::Command::Build { watch, base_url } => commands::build::run(watch, base_url).map(ok),
+        cli::Command::Build {
+            watch,
+            base_url,
+            force,
+        } => commands::build::run(watch, base_url, force).map(ok),
         cli::Command::Preview { port } => commands::preview::run(port).map(ok),
-        cli::Command::Dev { port } => commands::dev::run(port).map(ok),
+        cli::Command::Dev { port, force } => commands::dev::run(port, force).map(ok),
         cli::Command::Search { query, limit, json } => {
             commands::search::run(&query, limit, json).map(ok)
         }

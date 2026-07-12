@@ -56,6 +56,7 @@ fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
         config: &rc,
         site: &site,
         live_reload,
+        ctx: yuzu_render::RenderCtx::default(),
     })
     .unwrap();
     dir
@@ -150,6 +151,7 @@ fn build_fixture_with(edit: impl FnOnce(&Path)) -> tempfile::TempDir {
         config: &rc,
         site: &site,
         live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
     })
     .unwrap();
     dir
@@ -436,6 +438,7 @@ fn search_有効なら検索_ui_が入り_無効なら出ない() {
         config: &rc,
         site: &site,
         live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
     })
     .unwrap();
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();

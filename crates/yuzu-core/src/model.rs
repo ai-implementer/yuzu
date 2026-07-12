@@ -36,7 +36,7 @@ impl Default for Frontmatter {
 }
 
 /// ソース上の位置（1 始まりの行・列）。将来の Linter 診断用に保持する
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceSpan {
     pub start_line: usize,
     pub start_col: usize,
@@ -46,7 +46,7 @@ pub struct SourceSpan {
 
 /// ページ内 TOC の 1 エントリ（見出し）。
 /// ID は本文 HTML の見出しアンカーと一致することを保証する
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TocEntry {
     /// 見出しレベル（1〜6）。表示対象の絞り込みは利用側で行う
     pub level: u8,

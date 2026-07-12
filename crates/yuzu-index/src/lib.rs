@@ -12,7 +12,10 @@ mod builder;
 mod error;
 mod query;
 
-pub use builder::{IndexParams, IndexStats, build_search_index};
+pub use builder::{
+    IndexCtx, IndexParams, IndexSession, IndexStats, build_search_index, build_search_index_with,
+    model_fingerprint,
+};
 pub use error::IndexError;
 pub use query::{SearchResult, search_dist};
 

@@ -11,7 +11,7 @@ use yuzu_server::{ReloadNotifier, ServeOptions};
 
 use crate::commands::build;
 
-pub fn run(port: Option<u16>) -> anyhow::Result<()> {
+pub fn run(port: Option<u16>, force: bool) -> anyhow::Result<()> {
     let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
     let root = yuzu_config::find_project_root(&cwd)?;
     let rc = yuzu_config::load(&root)?;
@@ -23,7 +23,8 @@ pub fn run(port: Option<u16>) -> anyhow::Result<()> {
     } else {
         LiveReloadMode::None
     };
-    build::build_once(&rc, mode)?;
+    let mut session = build::BuildSession::new(&rc, force)?;
+    build::build_once(&rc, mode, &mut session)?;
 
     let notifier = rc.config.dev.live_reload.then(ReloadNotifier::new);
 
@@ -35,9 +36,10 @@ pub fn run(port: Option<u16>) -> anyhow::Result<()> {
     }
     let rc_for_watch = rc.clone();
     let notifier_for_watch = notifier.clone();
+    // session はクロージャへ move してセッション全体で再利用する
     let _watch_handle = yuzu_server::watch(&paths, build::DEBOUNCE, move || {
         tracing::info!("変更を検知 → 再ビルド");
-        match build::build_once(&rc_for_watch, mode) {
+        match build::build_once(&rc_for_watch, mode, &mut session) {
             // 通知は必ず再ビルド成功後（失敗時に通知すると壊れた dist を読ませる）
             Ok(()) => {
                 if let Some(n) = &notifier_for_watch {

@@ -11,6 +11,7 @@
 //! 2. [`render_body_html`] — 本文の HTML 化（コードブロック差し替え・
 //!    リンク書き換えのフックを通す）
 
+pub mod cache;
 mod diagnostics;
 mod error;
 mod frontmatter;
@@ -19,6 +20,7 @@ mod lint;
 mod markdown;
 mod model;
 mod nav;
+pub mod output;
 mod scan;
 mod traits;
 pub mod urlpath;
@@ -26,9 +28,11 @@ pub mod urlpath;
 use std::fs;
 use std::path::Path;
 
+pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{Diagnostic, Severity};
 pub use error::CoreError;
 pub use model::{Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry};
+pub use output::{OutputTracker, WriteOutcome};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
 
 /// Markdown パースの挙動設定（設定ファイルの `markdown` セクションから写す）
@@ -67,7 +71,18 @@ pub fn build_site_model(
     ignore: &[String],
     opts: &MarkdownOptions,
 ) -> Result<SiteModel, CoreError> {
-    let mut pages = load_pages(content_dir, ignore, opts)?;
+    build_site_model_cached(content_dir, ignore, opts, None)
+}
+
+/// [`build_site_model`] のキャッシュ対応版。
+/// cache があれば未変更ページのメタ抽出（comrak パース）をスキップする
+pub fn build_site_model_cached(
+    content_dir: &Path,
+    ignore: &[String],
+    opts: &MarkdownOptions,
+    cache: Option<&BuildCache>,
+) -> Result<SiteModel, CoreError> {
+    let mut pages = load_pages_cached(content_dir, ignore, opts, cache)?;
     pages.retain(|page| {
         if page.frontmatter.draft {
             tracing::debug!(path = %page.rel.display(), "draft のため除外");
@@ -97,6 +112,15 @@ fn load_pages(
     ignore: &[String],
     opts: &MarkdownOptions,
 ) -> Result<Vec<Page>, CoreError> {
+    load_pages_cached(content_dir, ignore, opts, None)
+}
+
+fn load_pages_cached(
+    content_dir: &Path,
+    ignore: &[String],
+    opts: &MarkdownOptions,
+    cache: Option<&BuildCache>,
+) -> Result<Vec<Page>, CoreError> {
     let files = scan::scan_markdown_files(content_dir, ignore)?;
     let mut pages = Vec::new();
 
@@ -105,23 +129,51 @@ fn load_pages(
             path: file.abs.clone(),
             source,
         })?;
-        let meta = markdown::extract_meta(&source, opts, &file.abs)?;
+        let rel_key = file
+            .rel
+            .iter()
+            .map(|c| c.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let source_hash = cache.map(|_| BuildCache::source_hash(&source));
+
+        // キャッシュヒットならメタ抽出（comrak パース）をスキップ
+        let cached = cache
+            .zip(source_hash.as_deref())
+            .and_then(|(c, h)| c.meta(&rel_key, h));
+        let (frontmatter, title, toc) = match cached {
+            Some(meta) => (meta.frontmatter, meta.title, meta.toc),
+            None => {
+                let meta = markdown::extract_meta(&source, opts, &file.abs)?;
+                let title = meta
+                    .frontmatter
+                    .title
+                    .clone()
+                    .or(meta.first_h1)
+                    .unwrap_or_else(|| scan::stem_title(&file.rel));
+                if let Some((c, h)) = cache.zip(source_hash.as_deref()) {
+                    c.store_meta(
+                        &rel_key,
+                        h,
+                        cache::CachedMeta {
+                            frontmatter: meta.frontmatter.clone(),
+                            title: title.clone(),
+                            toc: meta.toc.clone(),
+                        },
+                    );
+                }
+                (meta.frontmatter, title, meta.toc)
+            }
+        };
 
         let route = scan::route_for_rel(&file.rel);
-        let title = meta
-            .frontmatter
-            .title
-            .clone()
-            .or(meta.first_h1)
-            .unwrap_or_else(|| scan::stem_title(&file.rel));
-
         pages.push(Page {
             src: file.abs,
             rel: file.rel,
             route,
-            frontmatter: meta.frontmatter,
+            frontmatter,
             title,
-            toc: meta.toc,
+            toc,
             source,
         });
     }

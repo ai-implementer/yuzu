@@ -3,11 +3,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
 
-use yuzu_core::{MarkdownOptions, SiteModel};
+use yuzu_core::{BuildCache, CachedSection, MarkdownOptions, OutputTracker, Page, SiteModel};
 use yuzu_index_format::{
     Bm25Params, FORMAT_VERSION, Fragment, Manifest, ShardMeta, Tokenizer, TokenizerMeta,
     TypoParams, encode_shard,
@@ -59,12 +60,63 @@ pub struct IndexStats {
     pub shards: usize,
 }
 
+/// `_search/` 相対パスへの書き出し関数（インクリメンタル分岐を隠蔽）
+type WriteFn<'a> = dyn Fn(&str, &[u8]) -> Result<(), IndexError> + 'a;
+
+/// インクリメンタルビルドの文脈（すべて None = 従来のフル生成と同一動作）
+#[derive(Default)]
+pub struct IndexCtx<'a> {
+    /// セクション tf のキャッシュ（全ヒット時はトークナイザ構築ごとスキップ）
+    pub cache: Option<&'a BuildCache>,
+    /// 出力トラッキング（Some なら _search の全削除をやめ compare-write）
+    pub outputs: Option<&'a OutputTracker>,
+    /// watch/dev セッションで Tokenizer を再利用する
+    pub session: Option<&'a IndexSession>,
+}
+
+/// vaporetto Tokenizer のセッション共有（初回 miss 時に遅延構築）
+#[derive(Default)]
+pub struct IndexSession {
+    tokenizer: OnceLock<Tokenizer>,
+}
+
+impl IndexSession {
+    /// 構築済みならそれを返し、なければ model_bytes から構築して保持する
+    fn tokenizer(&self, model_bytes: &[u8]) -> Result<&Tokenizer, IndexError> {
+        if let Some(t) = self.tokenizer.get() {
+            return Ok(t);
+        }
+        let t = Tokenizer::from_zstd_model_bytes(model_bytes)?;
+        Ok(self.tokenizer.get_or_init(|| t))
+    }
+}
+
+/// envKey 用: 辞書（または同梱モデル）バイトの sha256
+pub fn model_fingerprint(dictionary: Option<&Path>) -> Result<String, IndexError> {
+    let bytes: Vec<u8> = match dictionary {
+        Some(path) => fs::read(path).map_err(IndexError::io(path))?,
+        None => yuzu_index_format::builtin_model_zst().to_vec(),
+    };
+    Ok(hex(&Sha256::digest(&bytes)))
+}
+
 /// `output_dir/_search/` に検索インデックス一式を書き出す
 pub fn build_search_index(
     site: &SiteModel,
     md_opts: &MarkdownOptions,
     params: &IndexParams,
     output_dir: &Path,
+) -> Result<IndexStats, IndexError> {
+    build_search_index_with(site, md_opts, params, output_dir, &IndexCtx::default())
+}
+
+/// [`build_search_index`] のインクリメンタル対応版
+pub fn build_search_index_with(
+    site: &SiteModel,
+    md_opts: &MarkdownOptions,
+    params: &IndexParams,
+    output_dir: &Path,
+    ctx: &IndexCtx,
 ) -> Result<IndexStats, IndexError> {
     let search_dir = output_dir.join(SEARCH_DIR_NAME);
 
@@ -74,7 +126,10 @@ pub fn build_search_index(
         Some(path) => fs::read(path).map_err(IndexError::io(path))?,
         None => yuzu_index_format::builtin_model_zst().to_vec(),
     };
-    let tokenizer = Tokenizer::from_zstd_model_bytes(&model_bytes)?;
+    // Tokenizer はキャッシュ miss が出たときだけ遅延構築する（zstd 展開が重い）。
+    // セッション（watch/dev）があればそちらに保持して再利用する
+    let local_session = IndexSession::default();
+    let session = ctx.session.unwrap_or(&local_session);
 
     // セクション（h2/h3 境界）ごとの tf 集計（重み付き）。1 doc = 1 セクション
     let mut doc_lens: Vec<u32> = Vec::new();
@@ -83,40 +138,28 @@ pub fn build_search_index(
     let mut doc_id: u32 = 0;
 
     for page in &site.pages {
-        let sections = yuzu_core::extract_plain_sections(page, md_opts)?;
-        for (sec_idx, section) in sections.iter().enumerate() {
-            let mut tf: HashMap<String, u32> = HashMap::new();
-            let mut doc_len = 0u32;
-            let mut add = |tokens: Vec<String>, weight: u32, tf: &mut HashMap<String, u32>| {
-                for token in tokens {
-                    *tf.entry(token).or_insert(0) += weight;
-                    doc_len += weight;
+        let sections = match ctx.cache.and_then(|c| c.search(&page.rel, &page.source)) {
+            Some(cached) => cached,
+            None => {
+                let computed = compute_sections(page, md_opts, session.tokenizer(&model_bytes)?)?;
+                if let Some(cache) = ctx.cache {
+                    cache.store_search(&page.rel, &page.source, computed.clone());
                 }
-            };
-            add(tokenizer.tokenize(&section.body), 1, &mut tf);
-            if let Some(heading) = &section.heading {
-                add(tokenizer.tokenize(heading), HEADING_WEIGHT, &mut tf);
+                computed
             }
-            // ページタイトルは**リード doc（先頭セクション）だけ**に載せる。
-            // 全セクションに載せると同一ページの全 doc がタイトル語で同点ヒットして
-            // 重複ノイズになり、df も膨らんで idf が下がる。リード doc は空本文でも
-            // 必ず生成されるため「タイトル検索 → ページ先頭 1 件」の挙動が保たれる
-            if sec_idx == 0 {
-                add(tokenizer.tokenize(&page.title), TITLE_WEIGHT, &mut tf);
-            }
-            doc_lens.push(doc_len);
-
+        };
+        for section in sections {
+            doc_lens.push(section.doc_len);
             // doc_id 昇順で処理しているので postings は自然に昇順になる
-            for (term, count) in tf {
+            for (term, count) in section.tf {
                 terms.entry(term).or_default().push((doc_id, count));
             }
-
             fragments.push(Fragment {
                 title: page.title.clone(),
-                heading: section.heading.clone(),
+                heading: section.heading,
                 url: page.route.clone(),
-                anchor: section.anchor.clone(),
-                text: single_line(&section.body),
+                anchor: section.anchor,
+                text: section.text,
             });
             doc_id += 1;
         }
@@ -135,19 +178,37 @@ pub fn build_search_index(
         p.sort_unstable_by_key(|&(doc, _)| doc);
     }
 
-    // シャード分割（term_id の連続範囲）と書き出し
-    if search_dir.exists() {
+    // 書き出し。インクリメンタル時（outputs あり）は全削除をやめ、
+    // compare-write ＋孤児掃除マニフェスト（cli 側）で差分管理する
+    if ctx.outputs.is_none() && search_dir.exists() {
         fs::remove_dir_all(&search_dir).map_err(IndexError::io(&search_dir))?;
     }
-    let index_dir = search_dir.join("index");
-    fs::create_dir_all(&index_dir).map_err(IndexError::io(&index_dir))?;
+    fs::create_dir_all(search_dir.join("index")).map_err(IndexError::io(&search_dir))?;
+    let write = |rel: &str, data: &[u8]| -> Result<(), IndexError> {
+        let rel_from_dist = format!("{SEARCH_DIR_NAME}/{rel}");
+        match ctx.outputs {
+            Some(tracker) => {
+                tracker
+                    .write(&rel_from_dist, data)
+                    .map_err(IndexError::io(search_dir.join(rel)))?;
+            }
+            None => {
+                let path = search_dir.join(rel);
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent).map_err(IndexError::io(parent))?;
+                }
+                fs::write(&path, data).map_err(IndexError::io(&path))?;
+            }
+        }
+        Ok(())
+    };
 
+    // シャード分割（term_id の連続範囲）と書き出し
     let chunk = params.max_terms_per_shard.max(1) as usize;
     let mut shards_meta: Vec<ShardMeta> = Vec::new();
     for (i, chunk_postings) in postings.chunks(chunk).enumerate() {
         let file = format!("index/{i:04}.bin");
-        let bytes = encode_shard(chunk_postings);
-        fs::write(search_dir.join(&file), bytes).map_err(IndexError::io(search_dir.join(&file)))?;
+        write(&file, &encode_shard(chunk_postings))?;
         let start = (i * chunk) as u32;
         shards_meta.push(ShardMeta {
             file,
@@ -157,16 +218,15 @@ pub fn build_search_index(
     }
 
     // fragment（JS が直接読むので 1 doc = 1 JSON）
-    let fragment_dir = search_dir.join("fragment");
-    fs::create_dir_all(&fragment_dir).map_err(IndexError::io(&fragment_dir))?;
     for (doc_id, fragment) in fragments.iter().enumerate() {
-        let path = fragment_dir.join(format!("{doc_id}.json"));
-        fs::write(&path, serde_json::to_vec(fragment)?).map_err(IndexError::io(&path))?;
+        write(
+            &format!("fragment/{doc_id}.json"),
+            &serde_json::to_vec(fragment)?,
+        )?;
     }
 
     // モデルと manifest
-    fs::write(search_dir.join("model.zst"), &model_bytes)
-        .map_err(IndexError::io(search_dir.join("model.zst")))?;
+    write("model.zst", &model_bytes)?;
 
     let avg_doc_len = if doc_lens.is_empty() {
         0.0
@@ -192,15 +252,10 @@ pub fn build_search_index(
         terms_file: "terms.fst".to_string(),
         shards: shards_meta,
     };
-    fs::write(
-        search_dir.join("manifest.json"),
-        serde_json::to_vec_pretty(&manifest)?,
-    )
-    .map_err(IndexError::io(search_dir.join("manifest.json")))?;
-    fs::write(search_dir.join("terms.fst"), &terms_fst)
-        .map_err(IndexError::io(search_dir.join("terms.fst")))?;
+    write("manifest.json", &serde_json::to_vec_pretty(&manifest)?)?;
+    write("terms.fst", &terms_fst)?;
 
-    copy_wasm_assets(&search_dir)?;
+    copy_wasm_assets(&search_dir, &write)?;
 
     let stats = IndexStats {
         pages: site.pages.len(),
@@ -220,7 +275,7 @@ pub fn build_search_index(
 
 /// vendor 済み wasm 成果物を dist へコピーする。
 /// 未 vendor（プレースホルダのみ）の場合は警告してスキップ（ビルドは失敗させない）
-fn copy_wasm_assets(search_dir: &Path) -> Result<(), IndexError> {
+fn copy_wasm_assets(_search_dir: &Path, write: &WriteFn<'_>) -> Result<(), IndexError> {
     let required = ["search.js", "search_bg.wasm"];
     let missing: Vec<&str> = required
         .iter()
@@ -237,10 +292,51 @@ fn copy_wasm_assets(search_dir: &Path) -> Result<(), IndexError> {
     }
     for name in required {
         let data = SearchAssets::get(name).expect("存在確認済み");
-        let path = search_dir.join(name);
-        fs::write(&path, data.data.as_ref()).map_err(IndexError::io(&path))?;
+        write(name, data.data.as_ref())?;
     }
     Ok(())
+}
+
+/// 1 ページぶんのセクション tf を計算する（キャッシュ miss 時のみ呼ばれる）
+fn compute_sections(
+    page: &Page,
+    md_opts: &MarkdownOptions,
+    tokenizer: &Tokenizer,
+) -> Result<Vec<CachedSection>, IndexError> {
+    let sections = yuzu_core::extract_plain_sections(page, md_opts)?;
+    let mut out = Vec::with_capacity(sections.len());
+    for (sec_idx, section) in sections.iter().enumerate() {
+        let mut tf: HashMap<String, u32> = HashMap::new();
+        let mut doc_len = 0u32;
+        let mut add = |tokens: Vec<String>, weight: u32, tf: &mut HashMap<String, u32>| {
+            for token in tokens {
+                *tf.entry(token).or_insert(0) += weight;
+                doc_len += weight;
+            }
+        };
+        add(tokenizer.tokenize(&section.body), 1, &mut tf);
+        if let Some(heading) = &section.heading {
+            add(tokenizer.tokenize(heading), HEADING_WEIGHT, &mut tf);
+        }
+        // ページタイトルは**リード doc（先頭セクション）だけ**に載せる。
+        // 全セクションに載せると同一ページの全 doc がタイトル語で同点ヒットして
+        // 重複ノイズになり、df も膨らんで idf が下がる。リード doc は空本文でも
+        // 必ず生成されるため「タイトル検索 → ページ先頭 1 件」の挙動が保たれる
+        if sec_idx == 0 {
+            add(tokenizer.tokenize(&page.title), TITLE_WEIGHT, &mut tf);
+        }
+        // postings の決定性（バイト同一の出力）のため tf はソートして保存する
+        let mut tf: Vec<(String, u32)> = tf.into_iter().collect();
+        tf.sort_unstable();
+        out.push(CachedSection {
+            anchor: section.anchor.clone(),
+            heading: section.heading.clone(),
+            text: single_line(&section.body),
+            doc_len,
+            tf,
+        });
+    }
+    Ok(out)
 }
 
 /// セクション本文を 1 行に折り畳む（fragment.text 用。改行・連続空白を空白 1 つに）

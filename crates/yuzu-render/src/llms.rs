@@ -45,10 +45,12 @@ pub fn generate_llms_txt(rc: &ResolvedConfig, site: &SiteModel) -> Result<String
     Ok(out)
 }
 
-/// llms-full.txt 本文を生成する（nav 順で正規化 Markdown を連結）
+/// llms-full.txt 本文を生成する（nav 順で正規化 Markdown を連結）。
+/// cache があれば未変更ページの正規化（comrak パース）をスキップする
 pub fn generate_llms_full_txt(
     rc: &ResolvedConfig,
     site: &SiteModel,
+    cache: Option<&yuzu_core::BuildCache>,
 ) -> Result<String, RenderError> {
     let resolver = UrlResolver::new(&rc.base_url, site);
     let md_opts = MarkdownOptions {
@@ -67,7 +69,16 @@ pub fn generate_llms_full_txt(
             // ページ本文は自身の H1 を含むため、区切りは URL 行のみ
             out.push_str("\n---\n\n");
             out.push_str(&format!("URL: {}\n\n", resolver.page_url(&page.route)));
-            let normalized = yuzu_core::normalize_markdown(page, &md_opts)?;
+            let normalized = match cache.and_then(|c| c.llms(&page.rel, &page.source)) {
+                Some(cached) => cached,
+                None => {
+                    let normalized = yuzu_core::normalize_markdown(page, &md_opts)?;
+                    if let Some(c) = cache {
+                        c.store_llms(&page.rel, &page.source, normalized.clone());
+                    }
+                    normalized
+                }
+            };
             out.push_str(normalized.trim_end());
             out.push('\n');
         }
@@ -80,13 +91,14 @@ pub(crate) fn write_llms_files(
     rc: &ResolvedConfig,
     site: &SiteModel,
     output_dir: &Path,
+    ctx: &crate::pipeline::RenderCtx,
 ) -> Result<(), RenderError> {
     let llms_txt = generate_llms_txt(rc, site)?;
-    assets::write_file(&output_dir.join("llms.txt"), llms_txt.as_bytes())?;
+    assets::write_output(ctx.outputs, output_dir, "llms.txt", llms_txt.as_bytes())?;
 
     if rc.config.llms.full {
-        let full = generate_llms_full_txt(rc, site)?;
-        assets::write_file(&output_dir.join("llms-full.txt"), full.as_bytes())?;
+        let full = generate_llms_full_txt(rc, site, ctx.cache)?;
+        assets::write_output(ctx.outputs, output_dir, "llms-full.txt", full.as_bytes())?;
     }
     Ok(())
 }

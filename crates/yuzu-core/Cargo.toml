@@ -12,7 +12,10 @@ authors.workspace = true
 comrak = { workspace = true }
 globset = { workspace = true }
 serde = { workspace = true }
+# インクリメンタルビルドのキャッシュ（.yuzu/cache/ の JSON とハッシュキー）用
+serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 walkdir = { workspace = true }

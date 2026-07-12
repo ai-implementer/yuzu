@@ -35,6 +35,9 @@ pub enum Command {
         /// CI から configure-pages の base_path を渡す用途）
         #[arg(long)]
         base_url: Option<String>,
+        /// インクリメンタルキャッシュ（.yuzu/cache/）を破棄してフルビルドする
+        #[arg(long)]
+        force: bool,
     },
 
     /// dist/ を配信する最小静的サーバ
@@ -49,6 +52,9 @@ pub enum Command {
         /// ポート番号（既定: 設定の dev.port）
         #[arg(long)]
         port: Option<u16>,
+        /// インクリメンタルキャッシュ（.yuzu/cache/）を破棄してフルビルドする
+        #[arg(long)]
+        force: bool,
     },
 
     /// ビルド済みサイトの全文検索（dist/_search をブラウザと同じエンジンで検索）

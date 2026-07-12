@@ -21,7 +21,7 @@ pub fn run(full: bool) -> anyhow::Result<()> {
     )?;
 
     let text = if full {
-        yuzu_render::generate_llms_full_txt(&rc, &site)?
+        yuzu_render::generate_llms_full_txt(&rc, &site, None)?
     } else {
         yuzu_render::generate_llms_txt(&rc, &site)?
     };
