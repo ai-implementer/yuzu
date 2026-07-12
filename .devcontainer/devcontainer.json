@@ -1,0 +1,28 @@
+// yuzu の Dev Container 定義（Docker / Podman 系ランタイム用）。
+// 環境の実体は Dockerfile が唯一の定義 — このファイルには配線だけを書き、
+// env・ユーザ・作業ディレクトリを再定義しない（containerEnv / runArgs 禁止）。
+//
+// mac + apple container の場合はこのファイルは使えない（Dev Containers 拡張の
+// Reopen in Container は Docker/Podman 前提）。scripts/dev-container.sh で起動し、
+// 必要なら VS Code の「Attach to Running Apple Container」で接続する。
+// 詳細: .devcontainer/README.md
+{
+  "name": "yuzu",
+  "build": { "dockerfile": "Dockerfile", "context": "." },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/yuzu,type=bind",
+  "workspaceFolder": "/workspaces/yuzu",
+  // 不変条件: volume 名とマウント先は scripts/dev-container.sh の VOLUMES と一致させること
+  "mounts": [
+    "source=yuzu-cargo-registry,target=/home/vscode/.cargo/registry,type=volume",
+    "source=yuzu-target,target=/cargo-target,type=volume",
+    "source=yuzu-claude,target=/home/vscode/.claude,type=volume"
+  ],
+  "remoteUser": "vscode",
+  "forwardPorts": [5173],
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": ["rust-lang.rust-analyzer"]
+    }
+  }
+}

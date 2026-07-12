@@ -188,6 +188,10 @@ cargo fmt --all
 ```
 
 - **MSRV**: 1.85（edition 2024）
+- **コンテナ開発環境**: CI 相当の Linux 環境（stable + wasm32 + cargo-insta）を
+  ホストを汚さず使える。mac（apple container）は `scripts/dev-container.sh build` →
+  `up` → `shell`、Docker / VS Code は `.devcontainer/`（Reopen in Container）。
+  移行手順・落とし穴は [.devcontainer/README.md](.devcontainer/README.md)
 - **スナップショット**: レンダリング結果は `insta` で回帰検証。syntect のバージョン更新で
   ハイライト HTML の差分が出た場合は `cargo insta review` で確認のうえ更新する
 - **rust-embed の注意**: debug ビルドはテーマをファイルシステムから読む
