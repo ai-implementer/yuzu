@@ -1,0 +1,114 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-class" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1119.5 231" width="1119.5" height="231" role="img" aria-label="Class diagram" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-class { fill: #ffffff; stroke: #d1d9e0; }
+.tankan .tk-class-title { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-class-name { font-weight: bold; }
+.tankan .tk-class-anno { fill: #59636e; font-style: italic; }
+.tankan .tk-class-line { stroke: #d1d9e0; }
+.tankan .tk-rel { stroke: #1f2328; fill: none; }
+.tankan .tk-marker { fill: #ffffff; stroke: #1f2328; stroke-width: 1.2; }
+.tankan .tk-marker-fill { fill: #1f2328; stroke: #1f2328; stroke-width: 1.2; }
+.tankan .tk-marker-open { fill: none; stroke: #1f2328; stroke-width: 1.2; }
+.tankan .tk-rel-label rect { fill: #ffffff; stroke: none; }
+.tankan .tk-card { fill: #59636e; }
+</style>
+<defs>
+<marker id="tk-cls-tri" viewBox="0 0 20 16" refX="18" refY="8" markerWidth="20" markerHeight="16" orient="auto-start-reverse"><path class="tk-marker" d="M2,2 L18,8 L2,14 Z"/></marker>
+<marker id="tk-cls-diamond" viewBox="0 0 24 12" refX="22" refY="6" markerWidth="24" markerHeight="12" orient="auto-start-reverse"><path class="tk-marker-fill" d="M22,6 L12,2 L2,6 L12,10 Z"/></marker>
+<marker id="tk-cls-odiamond" viewBox="0 0 24 12" refX="22" refY="6" markerWidth="24" markerHeight="12" orient="auto-start-reverse"><path class="tk-marker" d="M22,6 L12,2 L2,6 L12,10 Z"/></marker>
+<marker id="tk-cls-arrow" viewBox="0 0 16 12" refX="14" refY="6" markerWidth="14" markerHeight="12" orient="auto-start-reverse"><path class="tk-marker-open" d="M2,2 L14,6 L2,10"/></marker>
+</defs>
+<path class="tk-rel" d="M 65,51.5 L 65,109.5 Q 65,115.5 65,121.5 L 65,179" marker-start="url(#tk-cls-tri)"/>
+<g class="tk-rel-label">
+<rect class="" x="26.5" y="103.5" width="77.5" height="23.5"/>
+<text class="" x="65" y="117.5" text-anchor="middle">Inheritance</text>
+</g>
+<path class="tk-rel" d="M 203.5,51.5 L 197,109.5 Q 196.5,115.5 197,121.5 L 203.5,179" marker-start="url(#tk-cls-diamond)"/>
+<g class="tk-rel-label">
+<rect class="" x="153.5" y="103.5" width="86" height="23.5"/>
+<text class="" x="196.5" y="117.5" text-anchor="middle">Composition</text>
+</g>
+<path class="tk-rel" d="M 345,51.5 L 345,109.5 Q 345,115.5 345,121.5 L 345,179" marker-start="url(#tk-cls-odiamond)"/>
+<g class="tk-rel-label">
+<rect class="" x="303.5" y="103.5" width="83.5" height="23.5"/>
+<text class="" x="345" y="117.5" text-anchor="middle">Aggregation</text>
+</g>
+<path class="tk-rel" d="M 485,51.5 L 485,109.5 Q 485,115.5 485,121.5 L 485,179" marker-end="url(#tk-cls-arrow)"/>
+<g class="tk-rel-label">
+<rect class="" x="445" y="103.5" width="79.5" height="23.5"/>
+<text class="" x="485" y="117.5" text-anchor="middle">Association</text>
+</g>
+<path class="tk-rel" d="M 625,51.5 L 625,109.5 Q 625,115.5 625,121.5 L 625,179"/>
+<g class="tk-rel-label">
+<rect class="" x="608" y="103.5" width="33.5" height="23.5"/>
+<text class="" x="625" y="117.5" text-anchor="middle">Link</text>
+</g>
+<path class="tk-rel" d="M 765,51.5 L 765,109.5 Q 765,115.5 765,121.5 L 765,179" stroke-dasharray="4,4" marker-end="url(#tk-cls-arrow)"/>
+<g class="tk-rel-label">
+<rect class="" x="721.5" y="103.5" width="86.5" height="23.5"/>
+<text class="" x="765" y="117.5" text-anchor="middle">Dependency</text>
+</g>
+<path class="tk-rel" d="M 905,51.5 L 905,109.5 Q 905,115.5 905,121.5 L 905,179" stroke-dasharray="4,4" marker-end="url(#tk-cls-tri)"/>
+<g class="tk-rel-label">
+<rect class="" x="866.5" y="103.5" width="77" height="23.5"/>
+<text class="" x="905" y="117.5" text-anchor="middle">Realization</text>
+</g>
+<path class="tk-rel" d="M 1051.5,51.5 L 1051.5,109.5 Q 1051.5,115.5 1051.5,121.5 L 1051.5,179" stroke-dasharray="4,4"/>
+<g class="tk-rel-label">
+<rect class="" x="1023" y="103.5" width="56" height="23.5"/>
+<text class="" x="1051.5" y="117.5" text-anchor="middle">Dashed</text>
+</g>
+<rect class="tk-class" x="20" y="20" width="90" height="31.5"/>
+<rect class="tk-class-title" x="20" y="20" width="90" height="31.5"/>
+<text class="tk-class-name" x="65" y="38" text-anchor="middle">ClassA</text>
+<rect class="tk-class" x="20" y="179" width="90" height="31.5"/>
+<rect class="tk-class-title" x="20" y="179" width="90" height="31.5"/>
+<text class="tk-class-name" x="65" y="197" text-anchor="middle">ClassB</text>
+<rect class="tk-class" x="160" y="20" width="90" height="31.5"/>
+<rect class="tk-class-title" x="160" y="20" width="90" height="31.5"/>
+<text class="tk-class-name" x="205" y="38" text-anchor="middle">ClassC</text>
+<rect class="tk-class" x="160" y="179" width="90" height="31.5"/>
+<rect class="tk-class-title" x="160" y="179" width="90" height="31.5"/>
+<text class="tk-class-name" x="205" y="197" text-anchor="middle">ClassD</text>
+<rect class="tk-class" x="300" y="20" width="90" height="31.5"/>
+<rect class="tk-class-title" x="300" y="20" width="90" height="31.5"/>
+<text class="tk-class-name" x="345" y="38" text-anchor="middle">ClassE</text>
+<rect class="tk-class" x="300" y="179" width="90" height="31.5"/>
+<rect class="tk-class-title" x="300" y="179" width="90" height="31.5"/>
+<text class="tk-class-name" x="345" y="197" text-anchor="middle">ClassF</text>
+<rect class="tk-class" x="440" y="20" width="90" height="31.5"/>
+<rect class="tk-class-title" x="440" y="20" width="90" height="31.5"/>
+<text class="tk-class-name" x="485" y="38" text-anchor="middle">ClassG</text>
+<rect class="tk-class" x="440" y="179" width="90" height="31.5"/>
+<rect class="tk-class-title" x="440" y="179" width="90" height="31.5"/>
+<text class="tk-class-name" x="485" y="197" text-anchor="middle">ClassH</text>
+<rect class="tk-class" x="580" y="20" width="90" height="31.5"/>
+<rect class="tk-class-title" x="580" y="20" width="90" height="31.5"/>
+<text class="tk-class-name" x="625" y="38" text-anchor="middle">ClassI</text>
+<rect class="tk-class" x="580" y="179" width="90" height="31.5"/>
+<rect class="tk-class-title" x="580" y="179" width="90" height="31.5"/>
+<text class="tk-class-name" x="625" y="197" text-anchor="middle">ClassJ</text>
+<rect class="tk-class" x="720" y="20" width="90" height="31.5"/>
+<rect class="tk-class-title" x="720" y="20" width="90" height="31.5"/>
+<text class="tk-class-name" x="765" y="38" text-anchor="middle">ClassK</text>
+<rect class="tk-class" x="720" y="179" width="90" height="31.5"/>
+<rect class="tk-class-title" x="720" y="179" width="90" height="31.5"/>
+<text class="tk-class-name" x="765" y="197" text-anchor="middle">ClassL</text>
+<rect class="tk-class" x="860" y="20" width="90" height="31.5"/>
+<rect class="tk-class-title" x="860" y="20" width="90" height="31.5"/>
+<text class="tk-class-name" x="905" y="38" text-anchor="middle">ClassM</text>
+<rect class="tk-class" x="860" y="179" width="90" height="31.5"/>
+<rect class="tk-class-title" x="860" y="179" width="90" height="31.5"/>
+<text class="tk-class-name" x="905" y="197" text-anchor="middle">ClassN</text>
+<rect class="tk-class" x="1006.5" y="20" width="90" height="31.5"/>
+<rect class="tk-class-title" x="1006.5" y="20" width="90" height="31.5"/>
+<text class="tk-class-name" x="1051.5" y="38" text-anchor="middle">ClassO</text>
+<rect class="tk-class" x="1006.5" y="179" width="90" height="31.5"/>
+<rect class="tk-class-title" x="1006.5" y="179" width="90" height="31.5"/>
+<text class="tk-class-name" x="1051.5" y="197" text-anchor="middle">ClassP</text>
+</svg>

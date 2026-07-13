@@ -1,0 +1,33 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-pie" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 292.5 240" width="292.5" height="240" role="img" aria-label="Pets adopted by volunteers" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-pie-title { font-weight: bold; }
+.tankan .tk-pie-slice { stroke: #ffffff; stroke-width: 2; }
+.tankan .tk-pie-pct { fill: #ffffff; font-weight: bold; }
+.tankan .tk-pie-c0 { fill: var(--tankan-pie-1, #5778a4); }
+.tankan .tk-pie-c1 { fill: var(--tankan-pie-2, #e49444); }
+.tankan .tk-pie-c2 { fill: var(--tankan-pie-3, #d1615d); }
+.tankan .tk-pie-c3 { fill: var(--tankan-pie-4, #85b6b2); }
+.tankan .tk-pie-c4 { fill: var(--tankan-pie-5, #6a9f58); }
+.tankan .tk-pie-c5 { fill: var(--tankan-pie-6, #e7ca60); }
+.tankan .tk-pie-c6 { fill: var(--tankan-pie-7, #a87c9f); }
+.tankan .tk-pie-c7 { fill: var(--tankan-pie-8, #967662); }
+</style>
+<text class="tk-pie-title" x="146.5" y="30" text-anchor="middle">Pets adopted by volunteers</text>
+<path class="tk-pie-slice tk-pie-c0" d="M106,134 L106,44 A90,90 0 1 1 19.5,109.5 Z"/>
+<text class="tk-pie-pct" x="139.5" y="183.5" text-anchor="middle">79%</text>
+<path class="tk-pie-slice tk-pie-c1" d="M106,134 L19.5,109.5 A90,90 0 0 1 88.5,45.5 Z"/>
+<text class="tk-pie-pct" x="68" y="98" text-anchor="middle">17%</text>
+<path class="tk-pie-slice tk-pie-c2" d="M106,134 L88.5,45.5 A90,90 0 0 1 106,44 Z"/>
+<text class="tk-pie-pct" x="100.5" y="83.5" text-anchor="middle">3%</text>
+<rect class="tk-pie-c0" x="224" y="105.5" width="12" height="12"/>
+<text class="tk-pie-legend" x="244" y="116.5" text-anchor="start">Dogs</text>
+<rect class="tk-pie-c1" x="224" y="128" width="12" height="12"/>
+<text class="tk-pie-legend" x="244" y="139" text-anchor="start">Cats</text>
+<rect class="tk-pie-c2" x="224" y="150.5" width="12" height="12"/>
+<text class="tk-pie-legend" x="244" y="161.5" text-anchor="start">Rats</text>
+</svg>

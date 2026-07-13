@@ -50,7 +50,7 @@ tankan は yuzu-* 非依存の汎用ライブラリ（将来 crates.io へ分離
 - **yuzu-render**: サイトモデル → HTML（minijinja テンプレート、syntect ハイライト、Mermaid 変換、数式は comrak math 出力を同梱 KaTeX がクライアント描画、baseUrl 解決）
 - **yuzu-config**: `yuzu.jsonc` を cwd から上方向に探索してプロジェクトルートを確定 → 解決済み設定を `.yuzu/settings.json` に書き出す
 - **yuzu-theme**: デフォルトテーマを rust-embed でバイナリ埋め込み。プロジェクトの `theme/` に同じ相対パスのファイルを置くとファイル単位で上書き
-- **tankan**: Mermaid 互換 SSR（sequence / flowchart / state / ER / gantt → SVG）。render_svg が Err を返すと yuzu 側が自動でクライアント描画にフォールバックするため、図種追加は tankan の `kind.rs::is_supported` と `lib.rs` の match アーム接続だけでよい
+- **tankan**: Mermaid 互換 SSR（sequence / flowchart / class / state / ER / gantt / pie → SVG）。render_svg が Err を返すと yuzu 側が自動でクライアント描画にフォールバックするため、図種追加は tankan の `kind.rs::is_supported` と `lib.rs` の match アーム接続だけでよい
 
 ### 凍結した設計判断（README「凍結した設計判断」参照。差し替えないこと）
 

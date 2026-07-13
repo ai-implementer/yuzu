@@ -1,0 +1,10 @@
+classDiagram
+    class BankAccount {
+        +String owner
+        -BigDecimal balance
+        #int id
+        ~String note
+        +deposit(amount) bool
+        -audit()* void
+        +getBalance()$ BigDecimal
+    }

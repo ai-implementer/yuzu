@@ -24,6 +24,8 @@ Mermaid 互換のダイアグラムテキストを **SVG** に変換する純 Ru
 | flowchart / graph | ✅ M2（ノード形状 15 種・エッジ全種（実線/点線/太線/不可視・長さ・端点・ラベル 2 形）・チェーン/`&`・TB/BT/LR/RL・subgraph（ネスト・内部 direction）。スタイル系（style/classDef/class/linkStyle/click/`:::`）と `@{}` 新記法はフォールバック） |
 | stateDiagram / stateDiagram-v2 | ✅ M3（`[*]`・ラベル付き遷移・`state "説明" as s`・composite（ネスト）・direction・`<<choice/fork/join>>`・note・concurrency `--`。レイアウトは flowchart エンジンを共用。classDef 等はフォールバック） |
 | erDiagram | ✅ M4（全基数×識別/非識別・属性ブロック（PK/FK/UK・引用符コメント）・エイリアス `E[表示名]`・引用符名・単独エンティティ宣言・direction は受理して無視。style/classDef/`:::` はフォールバック） |
+| classDiagram / classDiagram-v2 | ✅ v0.3（クラス定義（波括弧ブロック・`X : member`）・可視性 `+ - # ~`・末尾 `* $`・関係 8 種（継承/コンポジション/集約/関連/リンク/依存/実現/点線）・ラベル・多重度・ジェネリクス `~T~`→`<T>`・`<<interface>>` 等アノテーション。note/click/namespace/`:::` 等はフォールバック） |
+| pie | ✅ v0.3（`showData`・`title`（ヘッダ/単独行/frontmatter）・扇形＋凡例。塗りは CSS 変数 `--tankan-pie-1`〜`8` で上書き可） |
 | gantt | ✅ M4（`dateFormat YYYY-MM-DD`・section・done/active/crit/milestone・after 依存・開始省略・excludes（weekends/曜日/日付 = 働き日消化＋網掛け）・weekend・axisFormat・tickInterval。時分単位・until 等はフォールバック。**today 線は描かない**＝時刻非依存。`todayMarker off` のみ受理） |
 | その他 | フォールバック |
 

@@ -1,0 +1,41 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-class" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 148.5 319" width="148.5" height="319" role="img" aria-label="Class diagram" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-class { fill: #ffffff; stroke: #d1d9e0; }
+.tankan .tk-class-title { fill: #f6f8fa; stroke: #d1d9e0; }
+.tankan .tk-class-name { font-weight: bold; }
+.tankan .tk-class-anno { fill: #59636e; font-style: italic; }
+.tankan .tk-class-line { stroke: #d1d9e0; }
+.tankan .tk-rel { stroke: #1f2328; fill: none; }
+.tankan .tk-marker { fill: #ffffff; stroke: #1f2328; stroke-width: 1.2; }
+.tankan .tk-marker-fill { fill: #1f2328; stroke: #1f2328; stroke-width: 1.2; }
+.tankan .tk-marker-open { fill: none; stroke: #1f2328; stroke-width: 1.2; }
+.tankan .tk-rel-label rect { fill: #ffffff; stroke: none; }
+.tankan .tk-card { fill: #59636e; }
+</style>
+<defs>
+<marker id="tk-cls-tri" viewBox="0 0 20 16" refX="18" refY="8" markerWidth="20" markerHeight="16" orient="auto-start-reverse"><path class="tk-marker" d="M2,2 L18,8 L2,14 Z"/></marker>
+<marker id="tk-cls-diamond" viewBox="0 0 24 12" refX="22" refY="6" markerWidth="24" markerHeight="12" orient="auto-start-reverse"><path class="tk-marker-fill" d="M22,6 L12,2 L2,6 L12,10 Z"/></marker>
+<marker id="tk-cls-odiamond" viewBox="0 0 24 12" refX="22" refY="6" markerWidth="24" markerHeight="12" orient="auto-start-reverse"><path class="tk-marker" d="M22,6 L12,2 L2,6 L12,10 Z"/></marker>
+<marker id="tk-cls-arrow" viewBox="0 0 16 12" refX="14" refY="6" markerWidth="14" markerHeight="12" orient="auto-start-reverse"><path class="tk-marker-open" d="M2,2 L14,6 L2,10"/></marker>
+</defs>
+<path class="tk-rel" d="M 74,154 L 74,204" marker-start="url(#tk-cls-tri)"/>
+<rect class="tk-class" x="20.5" y="20" width="107.5" height="134"/>
+<rect class="tk-class-title" x="20.5" y="20" width="107.5" height="31.5"/>
+<text class="tk-class-name" x="74" y="38" text-anchor="middle">Animal</text>
+<line class="tk-class-line" x1="20.5" y1="103" x2="128" y2="103"/>
+<text class="tk-class-member" x="32.5" y="69.5" text-anchor="start">+String name</text>
+<text class="tk-class-member" x="32.5" y="89" text-anchor="start">+int age</text>
+<text class="tk-class-member" x="32.5" y="120.5" text-anchor="start">+run() void</text>
+<text class="tk-class-member" x="32.5" y="140.5" text-anchor="start">+sleep() void</text>
+<rect class="tk-class" x="20" y="204" width="108.5" height="95"/>
+<rect class="tk-class-title" x="20" y="204" width="108.5" height="31.5"/>
+<text class="tk-class-name" x="74" y="222" text-anchor="middle">Dog</text>
+<line class="tk-class-line" x1="20" y1="267" x2="128.5" y2="267"/>
+<text class="tk-class-member" x="32" y="253.5" text-anchor="start">+String breed</text>
+<text class="tk-class-member" x="32" y="285" text-anchor="start">+bark() void</text>
+</svg>

@@ -12,6 +12,7 @@
 //! assert!(svg.starts_with("<svg"));
 //! ```
 
+mod class;
 mod common;
 mod er;
 mod error;
@@ -19,6 +20,7 @@ mod flowchart;
 mod gantt;
 mod kind;
 mod options;
+mod pie;
 mod sequence;
 mod state;
 
@@ -39,9 +41,11 @@ pub fn render_svg(source: &str, options: &Options) -> Result<String, Error> {
     match detect(source) {
         DiagramKind::Sequence => sequence::render(source, options),
         DiagramKind::Flowchart => flowchart::render(source, options),
+        DiagramKind::Class => class::render(source, options),
         DiagramKind::State => state::render(source, options),
         DiagramKind::Er => er::render(source, options),
         DiagramKind::Gantt => gantt::render(source, options),
+        DiagramKind::Pie => pie::render(source, options),
         kind => Err(Error::UnsupportedDiagram { kind }),
     }
 }

@@ -1,0 +1,13 @@
+classDiagram
+    class Box~T~ {
+        +T value
+        +set(T element) void
+        +get() T
+    }
+    class Shape {
+        <<interface>>
+        +area() double
+    }
+    class Color
+    <<enumeration>> Color
+    class List~int~
