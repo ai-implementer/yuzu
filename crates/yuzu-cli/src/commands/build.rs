@@ -163,6 +163,14 @@ pub(crate) fn build_once(
             .with_context(|| format!("dist を削除できません: {}", rc.output_dir.display()))?;
     }
 
+    // git 連携メタ（有効時のみ。git 不在・リポジトリ外は None に縮退）
+    let git_dates = rc
+        .config
+        .git
+        .last_updated
+        .then(|| collect_git_dates(rc))
+        .flatten();
+
     let tracker = OutputTracker::new(&rc.output_dir);
     yuzu_render::render_site(&RenderParams {
         config: rc,
@@ -173,6 +181,7 @@ pub(crate) fn build_once(
             outputs: Some(&tracker),
             shared: Some(&session.shared),
         },
+        git_dates: git_dates.as_ref(),
     })?;
 
     // 検索インデックスは render の後（描画結果とは独立だが、ログ順を保つ）
@@ -219,4 +228,55 @@ pub(crate) fn build_once(
         "インクリメンタルビルド"
     );
     Ok(())
+}
+
+/// content 配下ファイルの最終コミット日（YYYY-MM-DD）を 1 回の `git log` で収集する。
+/// キーは content 相対の `/` 区切りパス。git 不在・リポジトリ外・失敗時は None（表示なしに縮退）
+fn collect_git_dates(rc: &ResolvedConfig) -> Option<std::collections::HashMap<String, String>> {
+    // core.quotepath=false: 日本語ファイル名がオクタルエスケープされるのを防ぐ
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&rc.root)
+        .args([
+            "-c",
+            "core.quotepath=false",
+            "log",
+            "--format=\u{1}%cs",
+            "--name-only",
+            "--",
+        ])
+        .arg(&rc.content_dir)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        tracing::debug!("git log が失敗したため最終更新日は表示しません");
+        return None;
+    }
+
+    // repo ルート相対 → content 相対への変換用プレフィクス（例: "content/"）
+    let content_prefix = rc
+        .content_dir
+        .strip_prefix(&rc.root)
+        .ok()?
+        .iter()
+        .map(|c| c.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+        + "/";
+
+    // 出力は新しいコミット順なので、最初に現れた日付がそのファイルの最終コミット日
+    let mut dates = std::collections::HashMap::new();
+    let mut current_date = String::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        if let Some(date) = line.strip_prefix('\u{1}') {
+            current_date = date.to_string();
+        } else if let Some(rel) = line.strip_prefix(&content_prefix) {
+            if !rel.is_empty() && !current_date.is_empty() {
+                dates
+                    .entry(rel.to_string())
+                    .or_insert_with(|| current_date.clone());
+            }
+        }
+    }
+    Some(dates)
 }

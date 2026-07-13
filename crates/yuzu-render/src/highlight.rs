@@ -239,8 +239,9 @@ mod tests {
     fn ssr_で未対応図種はフォールバックして記録される() {
         let r = SyntectCodeRenderer::new(true, &ssr_config());
         r.begin_page();
+        // mindmap は未対応図種（classDiagram / pie は Phase 16 で対応済み）
         let html = r
-            .render(Some("mermaid"), "classDiagram\n    Animal <|-- Duck\n")
+            .render(Some("mermaid"), "mindmap\n  root((中心))\n")
             .unwrap();
         assert!(html.starts_with("<pre class=\"mermaid\">"));
         assert!(r.mermaid_fallback_occurred());

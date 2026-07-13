@@ -397,6 +397,27 @@ body {
   color: var(--accent-fg);
 }
 
+/* ページメタ（最終更新日・編集リンク。git.lastUpdated / git.editUrl 有効時のみ） */
+.page-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 2.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+
+.page-meta-edit {
+  color: var(--fg-muted);
+}
+
+.page-meta-edit:hover {
+  color: var(--accent-fg);
+}
+
 /* draft ページのプレビューバナー（--drafts 指定時のみ出力される） */
 .draft-banner {
   margin: 1rem 0 0;

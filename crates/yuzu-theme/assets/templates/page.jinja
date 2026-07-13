@@ -5,5 +5,9 @@
 {% endif %}<article class="markdown-body" data-md-url="{{ page.md_url | safe }}">
 {{ page.body | safe }}
 </article>
-{% include "partials/pager.jinja" %}
+{% if page.last_updated or page.edit_url %}<div class="page-meta">
+{% if page.last_updated %}<span class="page-meta-updated">最終更新: {{ page.last_updated }}</span>
+{% endif %}{% if page.edit_url %}<a class="page-meta-edit" href="{{ page.edit_url | safe }}" rel="noopener">このページを編集</a>
+{% endif %}</div>
+{% endif %}{% include "partials/pager.jinja" %}
 {% endblock %}

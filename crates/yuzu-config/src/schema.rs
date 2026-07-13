@@ -21,6 +21,19 @@ pub struct Config {
     pub llms: LlmsConfig,
     pub build: BuildConfig,
     pub dev: DevConfig,
+    pub git: GitConfig,
+}
+
+/// git 連携メタ（ページフッターの最終更新日・編集リンク）
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GitConfig {
+    /// ページの最終更新日（最終コミット日）をフッターに表示する。
+    /// git が無い・リポジトリ外・未コミットのファイルでは表示しない（縮退）
+    pub last_updated: bool,
+    /// 「このページを編集」リンクの URL テンプレート。`{path}` が content 相対パスに
+    /// 置換される（例: `https://github.com/me/docs/edit/main/content/{path}`）
+    pub edit_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

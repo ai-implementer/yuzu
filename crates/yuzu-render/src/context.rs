@@ -39,11 +39,21 @@ pub(crate) struct PageCtx<'a> {
     pub md_url: String,
     /// draft ページか（`--drafts` プレビュー時のバナー表示用。通常ビルドでは常に false）
     pub draft: bool,
+    /// 最終コミット日（YYYY-MM-DD。git.lastUpdated 有効かつ追跡済みのときのみ）
+    pub last_updated: Option<String>,
+    /// 「このページを編集」リンク（git.editUrl の {path} 置換済み）
+    pub edit_url: Option<String>,
     pub toc: Vec<TocCtx<'a>>,
 }
 
 impl<'a> PageCtx<'a> {
-    pub fn new(page: &'a Page, body: &'a str, resolver: &UrlResolver) -> Self {
+    pub fn new(
+        page: &'a Page,
+        body: &'a str,
+        resolver: &UrlResolver,
+        last_updated: Option<String>,
+        edit_url: Option<String>,
+    ) -> Self {
         Self {
             title: &page.title,
             description: page.frontmatter.description.as_deref(),
@@ -51,6 +61,8 @@ impl<'a> PageCtx<'a> {
             url: resolver.page_url(&page.route),
             md_url: resolver.md_url(&page.route),
             draft: page.frontmatter.draft,
+            last_updated,
+            edit_url,
             toc: page
                 .toc
                 .iter()

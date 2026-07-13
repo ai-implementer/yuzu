@@ -43,6 +43,10 @@ pub struct RenderParams<'a> {
     pub site: &'a SiteModel,
     pub live_reload: LiveReloadMode,
     pub ctx: RenderCtx<'a>,
+    /// ページ（content 相対 `/` 区切り）→ 最終コミット日（YYYY-MM-DD）。
+    /// git の実行は cli 層の責務で、render はデータを受け取るだけ。
+    /// None = 最終更新日を表示しない
+    pub git_dates: Option<&'a std::collections::HashMap<String, String>>,
 }
 
 /// サイト全体を `dist/` に書き出す
@@ -120,9 +124,25 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         // data-math-style="…" 属性を持つ。本文テキスト中の同じ文字列は comrak が
         // `"` を &quot; にエスケープするため、引用符込みのこの判定は誤検出しない
         let math_needed = cfg.markdown.math.enabled && body.contains("data-math-style=\"");
+        // git 連携メタ（rel を / 区切りへ正規化してキーにする）
+        let rel_key = page
+            .rel
+            .iter()
+            .map(|c| c.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let last_updated = params
+            .git_dates
+            .and_then(|dates| dates.get(&rel_key))
+            .cloned();
+        let edit_url = cfg
+            .git
+            .edit_url
+            .as_ref()
+            .map(|tpl| tpl.replace("{path}", &rel_key));
         let html = template.render(context! {
             site => site_ctx,
-            page => PageCtx::new(page, &body, &resolver),
+            page => PageCtx::new(page, &body, &resolver, last_updated, edit_url),
             nav => NavCtx::build(&params.site.nav, &page.route, &resolver),
             pager => nav_order.pager(&page.route, &resolver),
             breadcrumbs => build_breadcrumbs(&params.site.nav, &page.route, &resolver),

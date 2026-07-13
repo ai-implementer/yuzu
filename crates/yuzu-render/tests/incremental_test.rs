@@ -72,6 +72,7 @@ fn build_incremental(root: &Path, cache: &BuildCache) -> (BTreeSet<String>, Cach
             outputs: Some(&tracker),
             shared: None,
         },
+        git_dates: None,
     })
     .unwrap();
 

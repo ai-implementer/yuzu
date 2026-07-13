@@ -57,6 +57,7 @@ fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
         site: &site,
         live_reload,
         ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
     })
     .unwrap();
     dir
@@ -152,6 +153,7 @@ fn build_fixture_with(edit: impl FnOnce(&Path)) -> tempfile::TempDir {
         site: &site,
         live_reload: LiveReloadMode::None,
         ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
     })
     .unwrap();
     dir
@@ -251,8 +253,8 @@ fn mermaid_ssr_はページ単位で_mermaid_js_の要否が決まる() {
         )
         .unwrap();
         fs::write(
-            root.join("content/class.md"),
-            "---\ntitle: クラス図\n---\n# 図\n\n```mermaid\nclassDiagram\n    Animal <|-- Duck\n```\n",
+            root.join("content/fallback.md"),
+            "---\ntitle: マインドマップ\n---\n# 図\n\n```mermaid\nmindmap\n  root((中心))\n```\n",
         )
         .unwrap();
     });
@@ -266,11 +268,12 @@ fn mermaid_ssr_はページ単位で_mermaid_js_の要否が決まる() {
     assert!(!seq.contains("pre class=\"mermaid\""), "フォールバックなし");
     assert!(!seq.contains("mermaid.min.js"), "mermaid.js 不要");
 
-    // 未対応図種（classDiagram）のページ: フォールバックして mermaid.js を読み込む
-    let class = fs::read_to_string(dist.join("class/index.html")).unwrap();
-    assert!(class.contains("pre class=\"mermaid\""), "フォールバック");
-    assert!(class.contains("mermaid.min.js"), "mermaid.js 必要");
-    assert!(!class.contains("mermaid-ssr"));
+    // 未対応図種（mindmap）のページ: フォールバックして mermaid.js を読み込む
+    // （classDiagram / pie は Phase 16 で SSR 対応済みのため例に使えない）
+    let fallback = fs::read_to_string(dist.join("fallback/index.html")).unwrap();
+    assert!(fallback.contains("pre class=\"mermaid\""), "フォールバック");
+    assert!(fallback.contains("mermaid.min.js"), "mermaid.js 必要");
+    assert!(!fallback.contains("mermaid-ssr"));
 
     // 既存 fixture の index.md（```mermaid の graph TD）は M2 から SSR 側
     let index = fs::read_to_string(dist.join("index.html")).unwrap();
@@ -439,6 +442,7 @@ fn search_有効なら検索_ui_が入り_無効なら出ない() {
         site: &site,
         live_reload: LiveReloadMode::None,
         ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
     })
     .unwrap();
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
@@ -511,6 +515,7 @@ fn include_drafts_で_draft_ページがバナー付きで出力される() {
         site: &site,
         live_reload: LiveReloadMode::None,
         ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
     })
     .unwrap();
 
@@ -532,6 +537,7 @@ fn include_drafts_で_draft_ページがバナー付きで出力される() {
         site: &site,
         live_reload: LiveReloadMode::None,
         ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
     })
     .unwrap();
     assert!(
@@ -567,4 +573,59 @@ fn ページ単位_md_が原文そのままで配信される() {
         "llms.txt:\n{llms}"
     );
     assert!(!llms.contains("(/docs/guide/getting-started/)"));
+}
+
+#[test]
+fn git_メタは日付マップと_edit_url_設定から出る() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "site": { "title": "Fixture Docs" }, "build": { "baseUrl": "/docs/" },
+             "git": { "lastUpdated": true, "editUrl": "https://example.com/edit/main/content/{path}" } }"#,
+    )
+    .unwrap();
+
+    let rc = yuzu_config::load(dir.path()).unwrap();
+    let site = yuzu_core::build_site_model(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &MarkdownOptions::default(),
+    )
+    .unwrap();
+    // git の実行は cli 層の責務なので、テストでは日付マップを直接注入する
+    let mut dates = std::collections::HashMap::new();
+    dates.insert("index.md".to_string(), "2026-07-14".to_string());
+    render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
+        git_dates: Some(&dates),
+    })
+    .unwrap();
+
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(index.contains("最終更新: 2026-07-14"), "日付が出る");
+    assert!(
+        index.contains(r#"href="https://example.com/edit/main/content/index.md""#),
+        "editUrl の {{path}} が置換される"
+    );
+
+    // 日付マップに無いページは編集リンクだけ（最終更新は出ない）
+    let guide =
+        fs::read_to_string(dir.path().join("dist/guide/getting-started/index.html")).unwrap();
+    assert!(!guide.contains("最終更新"), "未追跡ページは日付なし");
+    assert!(
+        guide.contains("content/guide/getting-started.md\""),
+        "編集リンクは出る"
+    );
+}
+
+#[test]
+fn git_メタ未設定なら_page_meta_を出さない() {
+    let dir = build_fixture(LiveReloadMode::None);
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(!index.contains("page-meta"));
 }
