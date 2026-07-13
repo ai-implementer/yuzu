@@ -82,6 +82,9 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         lang: &cfg.site.lang,
         logo_url: cfg.site.logo.as_deref().map(|p| resolver.public_url(p)),
     };
+    // theme.cssVars / cssVarsDark → head に注入する CSS 変数上書き（全ページ共通）
+    let theme_css_vars =
+        crate::css::generate_theme_var_overrides(&cfg.theme.css_vars, &cfg.theme.css_vars_dark);
 
     for page in &params.site.pages {
         // 本文 HTML はキャッシュヒットなら comrak パースごとスキップする
@@ -131,6 +134,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             math_enabled => math_needed,
             dark_enabled => cfg.theme.dark,
             search_enabled => cfg.search.enabled,
+            theme_css_vars => theme_css_vars,
         })?;
         let out_rel = page.output_rel_path(); // route + "index.html"（/ 区切り）
         assets::write_output(ctx.outputs, output_dir, &out_rel, html.as_bytes())?;

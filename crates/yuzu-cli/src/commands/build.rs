@@ -19,7 +19,7 @@ use crate::commands::preview;
 /// エディタの連続保存をまとめる debounce 幅（build --watch / dev 共通）
 pub(crate) const DEBOUNCE: Duration = Duration::from_millis(300);
 
-pub fn run(watch: bool, base_url: Option<String>, force: bool) -> anyhow::Result<()> {
+pub fn run(watch: bool, base_url: Option<String>, force: bool, drafts: bool) -> anyhow::Result<()> {
     let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
     let root = yuzu_config::find_project_root(&cwd)?;
     let mut rc = yuzu_config::load(&root)?;
@@ -37,7 +37,7 @@ pub fn run(watch: bool, base_url: Option<String>, force: bool) -> anyhow::Result
         LiveReloadMode::None
     };
     let mut session = BuildSession::new(&rc, force)?;
-    build_once(&rc, mode, &mut session)?;
+    build_once(&rc, mode, &mut session, drafts)?;
 
     if !watch {
         return Ok(());
@@ -54,7 +54,7 @@ pub fn run(watch: bool, base_url: Option<String>, force: bool) -> anyhow::Result
     //（キャッシュ・テンプレート Env・ハイライタ・トークナイザ）
     let _watch_handle = yuzu_server::watch(&paths, DEBOUNCE, move || {
         tracing::info!("変更を検知 → 再ビルド");
-        if let Err(e) = build_once(&rc_for_watch, LiveReloadMode::Poll, &mut session) {
+        if let Err(e) = build_once(&rc_for_watch, LiveReloadMode::Poll, &mut session, drafts) {
             // 執筆中の一時的な構文エラー等でプロセスは落とさない
             tracing::error!("再ビルドに失敗しました: {e:#}");
         }
@@ -121,6 +121,7 @@ pub(crate) fn build_once(
     rc: &ResolvedConfig,
     live_reload: LiveReloadMode,
     session: &mut BuildSession,
+    include_drafts: bool,
 ) -> anyhow::Result<()> {
     session.cache.begin_build();
     // watch 中のテーマ編集を拾うため、theme/ があれば毎回 Env だけ再構築する
@@ -138,6 +139,7 @@ pub(crate) fn build_once(
         &rc.config.input.ignore,
         &md_opts,
         Some(&session.cache),
+        include_drafts,
     )?;
 
     // routesKey: 非 draft ページの rel→route 集合（`.md` リンク解決の入力）。

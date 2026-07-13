@@ -357,6 +357,17 @@ body {
   line-height: 1.6; /* UI ラベルは本文の 1.8 より詰める */
 }
 
+/* draft ページのプレビューバナー（--drafts 指定時のみ出力される） */
+.draft-banner {
+  margin: 1rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--accent-2);
+  border-radius: 4px;
+  background: var(--accent-2-subtle);
+  color: var(--accent-2-fg);
+  font-size: 0.85rem;
+}
+
 /* ---- サイドバーナビ ---- */
 
 .sidebar-nav ul {

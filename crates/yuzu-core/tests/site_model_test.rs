@@ -25,6 +25,28 @@ fn draft_は除外される() {
 }
 
 #[test]
+fn include_drafts_なら_draft_も含まれナビにも載る() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    write(dir.path(), "wip.md", "---\ndraft: true\n---\n# wip\n");
+
+    let site = yuzu_core::build_site_model_cached(
+        dir.path(),
+        &[],
+        &MarkdownOptions::default(),
+        None,
+        true,
+    )
+    .unwrap();
+    assert_eq!(site.pages.len(), 2);
+    assert!(site.pages.iter().any(|p| p.frontmatter.draft));
+    assert!(
+        site.nav.iter().any(|n| n.title == "wip"),
+        "draft ページもナビに載る（プレビュー用途）"
+    );
+}
+
+#[test]
 fn build_source_pages_は_draft_を含む() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "index.md", "# top\n");

@@ -3,6 +3,8 @@
 //! すべてのキーは省略可能で、省略時は各 `Default` 実装の値になる。
 //! JSON 側のキーは camelCase（`baseUrl` など）。
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -86,6 +88,11 @@ pub struct ThemeConfig {
     pub name: String,
     /// ダークモード切替 UI を有効にするか
     pub dark: bool,
+    /// テーマ CSS 変数の上書き（キーは `--` 省略可。例: `"accent": "#0a6cff"`）。
+    /// 変数名は theme.css の `:root` 定義を参照。BTreeMap なので出力は決定的
+    pub css_vars: BTreeMap<String, String>,
+    /// ダークモード時にのみ適用する上書き（`html[data-theme="dark"]` スコープ）
+    pub css_vars_dark: BTreeMap<String, String>,
 }
 
 impl Default for ThemeConfig {
@@ -93,6 +100,8 @@ impl Default for ThemeConfig {
         Self {
             name: "default".to_string(),
             dark: true,
+            css_vars: BTreeMap::new(),
+            css_vars_dark: BTreeMap::new(),
         }
     }
 }

@@ -49,6 +49,7 @@ fn build_incremental(root: &Path, cache: &BuildCache) -> (BTreeSet<String>, Cach
         &rc.config.input.ignore,
         &md_opts,
         Some(cache),
+        false,
     )
     .unwrap();
 

@@ -63,6 +63,41 @@ fn scope_css(css: &str, scope: &str) -> String {
     out
 }
 
+/// `theme.cssVars` / `cssVarsDark` から CSS 変数の上書きスタイルを生成する。
+/// 空なら None。不正な変数名・値（スタイル注入になり得る文字）は警告してスキップする
+pub(crate) fn generate_theme_var_overrides(
+    vars: &std::collections::BTreeMap<String, String>,
+    dark_vars: &std::collections::BTreeMap<String, String>,
+) -> Option<String> {
+    let block = |scope: &str, map: &std::collections::BTreeMap<String, String>| -> String {
+        let mut decls = String::new();
+        for (name, value) in map {
+            let name = name.trim_start_matches("--");
+            // 変数名は CSS ident のサブセットに限定、値は宣言を壊す文字を禁止
+            let name_ok = !name.is_empty()
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+            let value_ok = !value.is_empty()
+                && !value.contains(['<', '>', '{', '}', ';'])
+                && !value.contains("/*");
+            if !name_ok || !value_ok {
+                tracing::warn!(name, value, "theme.cssVars の不正なエントリをスキップ");
+                continue;
+            }
+            decls.push_str(&format!("  --{name}: {value};\n"));
+        }
+        if decls.is_empty() {
+            String::new()
+        } else {
+            format!("{scope} {{\n{decls}}}\n")
+        }
+    };
+
+    let css = format!("{}{}", block(":root", vars), block(DARK_SCOPE, dark_vars));
+    (!css.is_empty()).then_some(css)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,5 +125,41 @@ mod tests {
     #[test]
     fn 不明なテーマ名はエラー() {
         assert!(generate_syntect_css("no-such-theme", "base16-ocean.dark").is_err());
+    }
+
+    #[test]
+    fn テーマ変数上書きの生成と不正エントリのスキップ() {
+        use std::collections::BTreeMap;
+        let vars = BTreeMap::from([
+            ("accent".to_string(), "#0a6cff".to_string()),
+            // -- 前置済みでも受け付ける
+            (
+                "--font-sans".to_string(),
+                "\"Noto Sans JP\", sans-serif".to_string(),
+            ),
+            // 変数名に空白 → スキップ
+            ("bad name".to_string(), "#fff".to_string()),
+            // 宣言を壊す値（注入） → スキップ
+            ("evil".to_string(), "red;} body{display:none".to_string()),
+        ]);
+        let dark = BTreeMap::from([("accent".to_string(), "#7fb2ff".to_string())]);
+
+        let css = generate_theme_var_overrides(&vars, &dark).unwrap();
+        assert!(css.contains(":root {"));
+        assert!(css.contains("  --accent: #0a6cff;"));
+        assert!(css.contains("  --font-sans: \"Noto Sans JP\", sans-serif;"));
+        assert!(!css.contains("bad name"));
+        assert!(!css.contains("display:none"));
+        assert!(css.contains("html[data-theme=\"dark\"] {"));
+        assert!(css.contains("  --accent: #7fb2ff;"));
+    }
+
+    #[test]
+    fn テーマ変数が空なら_none() {
+        use std::collections::BTreeMap;
+        assert!(generate_theme_var_overrides(&BTreeMap::new(), &BTreeMap::new()).is_none());
+        // 全部不正でも None（空の style を出さない）
+        let bad = BTreeMap::from([("a b".to_string(), "x".to_string())]);
+        assert!(generate_theme_var_overrides(&bad, &BTreeMap::new()).is_none());
     }
 }

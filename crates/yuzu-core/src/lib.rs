@@ -71,24 +71,28 @@ pub fn build_site_model(
     ignore: &[String],
     opts: &MarkdownOptions,
 ) -> Result<SiteModel, CoreError> {
-    build_site_model_cached(content_dir, ignore, opts, None)
+    build_site_model_cached(content_dir, ignore, opts, None, false)
 }
 
 /// [`build_site_model`] のキャッシュ対応版。
-/// cache があれば未変更ページのメタ抽出（comrak パース）をスキップする
+/// cache があれば未変更ページのメタ抽出（comrak パース）をスキップする。
+/// `include_drafts` はプレビュー用途（`--drafts`）で draft ページも含める
 pub fn build_site_model_cached(
     content_dir: &Path,
     ignore: &[String],
     opts: &MarkdownOptions,
     cache: Option<&BuildCache>,
+    include_drafts: bool,
 ) -> Result<SiteModel, CoreError> {
     let mut pages = load_pages_cached(content_dir, ignore, opts, cache)?;
-    pages.retain(|page| {
-        if page.frontmatter.draft {
-            tracing::debug!(path = %page.rel.display(), "draft のため除外");
-        }
-        !page.frontmatter.draft
-    });
+    if !include_drafts {
+        pages.retain(|page| {
+            if page.frontmatter.draft {
+                tracing::debug!(path = %page.rel.display(), "draft のため除外");
+            }
+            !page.frontmatter.draft
+        });
+    }
     let nav = nav::build_nav(&pages);
     Ok(SiteModel { pages, nav })
 }

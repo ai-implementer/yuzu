@@ -456,3 +456,88 @@ fn base_url_がリンクとアセットに反映される() {
     assert!(index.contains("src=\"/docs/images/logo.svg\""));
     assert!(index.contains("href=\"/docs/_assets/css/theme.css\""));
 }
+
+#[test]
+fn theme_css_vars_が_head_に注入される() {
+    let dir = build_fixture_with(|root| {
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replacen(
+                '{',
+                r##"{ "theme": { "cssVars": { "accent": "#0a6cff" }, "cssVarsDark": { "accent": "#7fb2ff" } },"##,
+                1,
+            ),
+        )
+        .unwrap();
+    });
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(index.contains("--accent: #0a6cff;"), "light の上書きが入る");
+    assert!(index.contains("html[data-theme=\"dark\"] {"));
+    assert!(index.contains("--accent: #7fb2ff;"), "dark の上書きが入る");
+}
+
+#[test]
+fn theme_css_vars_未設定なら_style_を注入しない() {
+    let dir = build_fixture(LiveReloadMode::None);
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(!index.contains("theme.cssVars 由来"));
+}
+
+#[test]
+fn include_drafts_で_draft_ページがバナー付きで出力される() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    fs::write(
+        dir.path().join("content/wip.md"),
+        "---\ntitle: 下書きページ\ndraft: true\n---\n# 下書きページ\n\n執筆中。\n",
+    )
+    .unwrap();
+
+    let rc = yuzu_config::load(dir.path()).unwrap();
+    // --drafts 相当: include_drafts = true でモデル構築
+    let site = yuzu_core::build_site_model_cached(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &MarkdownOptions::default(),
+        None,
+        true,
+    )
+    .unwrap();
+    render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
+    })
+    .unwrap();
+
+    let wip = fs::read_to_string(dir.path().join("dist/wip/index.html")).unwrap();
+    assert!(wip.contains("draft-banner"), "draft バナーが出る");
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(!index.contains("draft-banner"), "非 draft ページには出ない");
+    assert!(index.contains("下書きページ"), "draft がナビに載る");
+
+    // 通常ビルド（include_drafts = false）では draft ページ自体が出力されない
+    let site = yuzu_core::build_site_model(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &MarkdownOptions::default(),
+    )
+    .unwrap();
+    render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
+    })
+    .unwrap();
+    assert!(
+        !dir.path().join("dist/wip").exists() || {
+            // output.clean 既定 true なら dist が作り直されて消えている
+            !dir.path().join("dist/wip/index.html").exists()
+        }
+    );
+}

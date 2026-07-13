@@ -1,7 +1,8 @@
 {% extends "base.jinja" %}
 {% block content %}
 {% include "partials/breadcrumb.jinja" %}
-<article class="markdown-body">
+{% if page.draft %}<div class="draft-banner">このページは下書き（draft: true）です — <code>--drafts</code> 指定時のみ出力されます</div>
+{% endif %}<article class="markdown-body">
 {{ page.body | safe }}
 </article>
 {% include "partials/pager.jinja" %}

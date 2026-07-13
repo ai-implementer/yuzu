@@ -8,7 +8,9 @@
 {% endif %}{# URL 系の値はこちらで生成した安全な文字列なので safe を通す（/ の実体参照化を避ける） #}
 <link rel="stylesheet" href="{{ asset_url | safe }}css/theme.css">
 <link rel="stylesheet" href="{{ asset_url | safe }}css/syntect.css">
-{% if math_enabled %}<link rel="stylesheet" href="{{ asset_url | safe }}vendor/katex/katex.min.css">
+{% if theme_css_vars %}{# yuzu.jsonc theme.cssVars 由来（値は render 側で検証済み） #}<style>
+{{ theme_css_vars | safe }}</style>
+{% endif %}{% if math_enabled %}<link rel="stylesheet" href="{{ asset_url | safe }}vendor/katex/katex.min.css">
 {% endif %}{% if dark_enabled %}<script>
 // FOUC 回避: CSS 適用前に保存済みテーマ（なければ OS 設定）を反映する
 (function () {

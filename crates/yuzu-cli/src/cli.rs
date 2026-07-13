@@ -38,6 +38,9 @@ pub enum Command {
         /// インクリメンタルキャッシュ（.yuzu/cache/）を破棄してフルビルドする
         #[arg(long)]
         force: bool,
+        /// draft ページ（frontmatter `draft: true`）も含めてビルドする（プレビュー用途）
+        #[arg(long)]
+        drafts: bool,
     },
 
     /// dist/ を配信する最小静的サーバ
@@ -55,6 +58,9 @@ pub enum Command {
         /// インクリメンタルキャッシュ（.yuzu/cache/）を破棄してフルビルドする
         #[arg(long)]
         force: bool,
+        /// draft ページ（frontmatter `draft: true`）も含めて表示する（プレビュー用途）
+        #[arg(long)]
+        drafts: bool,
     },
 
     /// ビルド済みサイトの全文検索（dist/_search をブラウザと同じエンジンで検索）
