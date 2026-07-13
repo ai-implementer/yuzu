@@ -138,6 +138,14 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         })?;
         let out_rel = page.output_rel_path(); // route + "index.html"（/ 区切り）
         assets::write_output(ctx.outputs, output_dir, &out_rel, html.as_bytes())?;
+        // ページ単位 Markdown（原文バイトそのまま）。コピーボタンと llms.txt の
+        // .md リンクの実体。`yuzu fmt` 運用なら正規形と一致する
+        assets::write_output(
+            ctx.outputs,
+            output_dir,
+            &page.md_rel_path(),
+            page.source.as_bytes(),
+        )?;
         tracing::debug!(page = %page.rel.display(), out = %out_rel, "ページ出力");
     }
 

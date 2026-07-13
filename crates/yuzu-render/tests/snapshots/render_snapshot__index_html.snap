@@ -76,7 +76,7 @@ expression: index
 
 
 
-<article class="markdown-body">
+<article class="markdown-body" data-md-url="/docs/index.md">
 <h1><a href="#fixture-docs" aria-hidden="true" class="anchor" id="fixture-docs"></a>Fixture Docs</h1>
 <p><a href="/docs/guide/getting-started/">はじめに</a>を読む。</p>
 <table>
@@ -117,6 +117,7 @@ expression: index
 <script src="/docs/_assets/js/nav.js"></script>
 <script src="/docs/_assets/js/scrollspy.js"></script>
 <script src="/docs/_assets/js/copy-button.js"></script>
+<script src="/docs/_assets/js/page-copy.js"></script>
 <script src="/docs/_assets/vendor/mermaid.min.js"></script>
 <script src="/docs/_assets/js/mermaid-init.js"></script>
 <script type="module" src="/docs/_assets/js/search-ui.js" data-search-base="/docs/_search/" data-base="/docs/"></script>

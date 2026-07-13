@@ -94,7 +94,7 @@ expression: guide
 </ol>
 </nav>
 
-<article class="markdown-body">
+<article class="markdown-body" data-md-url="/docs/guide/getting-started.md">
 <h1><a href="#はじめに" aria-hidden="true" class="anchor" id="はじめに"></a>はじめに</h1>
 <h2><a href="#インストール" aria-hidden="true" class="anchor" id="インストール"></a>インストール</h2>
 <pre class="highlight" data-lang="rust"><code class="language-rust"><span class="yz-source yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-storage yz-type yz-function yz-rust">fn</span> </span><span class="yz-entity yz-name yz-function yz-rust">main</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-begin yz-rust">(</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-end yz-rust">)</span></span></span></span><span class="yz-meta yz-function yz-rust"> </span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-block yz-rust"><span class="yz-punctuation yz-section yz-block yz-begin yz-rust">{</span>
@@ -131,6 +131,7 @@ expression: guide
 <script src="/docs/_assets/js/nav.js"></script>
 <script src="/docs/_assets/js/scrollspy.js"></script>
 <script src="/docs/_assets/js/copy-button.js"></script>
+<script src="/docs/_assets/js/page-copy.js"></script>
 <script src="/docs/_assets/vendor/mermaid.min.js"></script>
 <script src="/docs/_assets/js/mermaid-init.js"></script>
 <script type="module" src="/docs/_assets/js/search-ui.js" data-search-base="/docs/_search/" data-base="/docs/"></script>

@@ -8,8 +8,8 @@ expression: llms
 
 ## Docs
 
-- [ホーム](/docs/): フィクスチャのトップページ
+- [ホーム](/docs/index.md): フィクスチャのトップページ
 
 ## guide
 
-- [はじめに](/docs/guide/getting-started/)
+- [はじめに](/docs/guide/getting-started.md)

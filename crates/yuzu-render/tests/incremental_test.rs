@@ -166,10 +166,15 @@ fn ページ削除で孤児の出力が掃除される() {
     let removed = output::remove_orphans(&dir.path().join("dist"), &previous, &written2).unwrap();
     output::save_manifest(&manifest, &written2).unwrap();
 
-    assert_eq!(removed, 1);
+    // ページ 1 枚につき index.html とページ単位 .md の 2 ファイルが孤児になる
+    assert_eq!(removed, 2);
     assert!(
         !dir.path().join("dist/guide/b").exists(),
         "孤児 HTML と空ディレクトリが消える"
+    );
+    assert!(
+        !dir.path().join("dist/guide/b.md").exists(),
+        "ページ単位 .md も消える"
     );
     assert!(dir.path().join("dist/guide/a/index.html").exists());
 }

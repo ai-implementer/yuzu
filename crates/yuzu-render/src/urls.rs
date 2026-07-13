@@ -39,6 +39,15 @@ impl UrlResolver {
         format!("{}{}", self.base, route)
     }
 
+    /// route → ページ単位 Markdown の配信 URL（例: `guide/intro/` → `/docs/guide/intro.md`）
+    pub fn md_url(&self, route: &str) -> String {
+        if route.is_empty() {
+            format!("{}index.md", self.base)
+        } else {
+            format!("{}{}.md", self.base, route.trim_end_matches('/'))
+        }
+    }
+
     /// テーマアセットのベース URL（末尾スラッシュ付き）
     pub fn asset_url(&self) -> String {
         format!("{}_assets/", self.base)

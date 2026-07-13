@@ -2,7 +2,7 @@
 {% block content %}
 {% include "partials/breadcrumb.jinja" %}
 {% if page.draft %}<div class="draft-banner">このページは下書き（draft: true）です — <code>--drafts</code> 指定時のみ出力されます</div>
-{% endif %}<article class="markdown-body">
+{% endif %}<article class="markdown-body" data-md-url="{{ page.md_url | safe }}">
 {{ page.body | safe }}
 </article>
 {% include "partials/pager.jinja" %}

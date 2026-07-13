@@ -370,8 +370,8 @@ fn 前後ページリンクは_nav_順で全ページを連結する() {
         llms.find(needle)
             .unwrap_or_else(|| panic!("{needle} が llms.txt にない"))
     };
-    assert!(pos("(/docs/)") < pos("(/docs/guide/getting-started/)"));
-    assert!(pos("(/docs/guide/getting-started/)") < pos("(/docs/guide/advanced/)"));
+    assert!(pos("(/docs/index.md)") < pos("(/docs/guide/getting-started.md)"));
+    assert!(pos("(/docs/guide/getting-started.md)") < pos("(/docs/guide/advanced.md)"));
 }
 
 #[test]
@@ -540,4 +540,31 @@ fn include_drafts_で_draft_ページがバナー付きで出力される() {
             !dir.path().join("dist/wip/index.html").exists()
         }
     );
+}
+
+#[test]
+fn ページ単位_md_が原文そのままで配信される() {
+    let dir = build_fixture(LiveReloadMode::None);
+    let dist = dir.path().join("dist");
+
+    // ルートは index.md、下層は route 末尾スラッシュを外した .md
+    let root_md = fs::read_to_string(dist.join("index.md")).unwrap();
+    let source = fs::read_to_string(dir.path().join("content/index.md")).unwrap();
+    assert_eq!(root_md, source, "原文バイトそのまま（frontmatter 込み）");
+    assert!(dist.join("guide/getting-started.md").is_file());
+
+    // HTML にはコピーボタン用の data-md-url と page-copy.js が入る
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(index.contains(r#"data-md-url="/docs/index.md""#));
+    assert!(index.contains("js/page-copy.js"));
+    let guide = fs::read_to_string(dist.join("guide/getting-started/index.html")).unwrap();
+    assert!(guide.contains(r#"data-md-url="/docs/guide/getting-started.md""#));
+
+    // llms.txt のリンクは .md を指す
+    let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
+    assert!(
+        llms.contains("(/docs/guide/getting-started.md)"),
+        "llms.txt:\n{llms}"
+    );
+    assert!(!llms.contains("(/docs/guide/getting-started/)"));
 }

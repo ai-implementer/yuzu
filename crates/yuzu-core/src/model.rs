@@ -95,6 +95,17 @@ impl Page {
     pub fn output_rel_path(&self) -> String {
         format!("{}index.html", self.route)
     }
+
+    /// ページ単位 Markdown の配信相対パス。
+    /// route の末尾スラッシュを落として `.md` を付ける（`guide/intro/` → `guide/intro.md`）。
+    /// ルート（route 空）は `index.md`。HTML と競合しない（`<route>index.html` はディレクトリ内）
+    pub fn md_rel_path(&self) -> String {
+        if self.route.is_empty() {
+            "index.md".to_string()
+        } else {
+            format!("{}.md", self.route.trim_end_matches('/'))
+        }
+    }
 }
 
 /// ナビツリーの 1 ノード（ページ、またはページを束ねるディレクトリ）

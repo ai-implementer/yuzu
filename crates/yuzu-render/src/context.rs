@@ -35,6 +35,8 @@ pub(crate) struct PageCtx<'a> {
     pub body: &'a str,
     /// 配信 URL（base 付き）
     pub url: String,
+    /// ページ単位 Markdown の配信 URL（コピーボタンの fetch 先）
+    pub md_url: String,
     /// draft ページか（`--drafts` プレビュー時のバナー表示用。通常ビルドでは常に false）
     pub draft: bool,
     pub toc: Vec<TocCtx<'a>>,
@@ -47,6 +49,7 @@ impl<'a> PageCtx<'a> {
             description: page.frontmatter.description.as_deref(),
             body,
             url: resolver.page_url(&page.route),
+            md_url: resolver.md_url(&page.route),
             draft: page.frontmatter.draft,
             toc: page
                 .toc
