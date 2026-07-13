@@ -222,6 +222,25 @@ pub(crate) fn extract_link_refs(source: &str, opts: &MarkdownOptions) -> Vec<Lin
     refs
 }
 
+/// 本文のテキストノードを span 付きで列挙する（用語 lint 用）。
+/// コードブロック・インラインコード・HTML・数式・リンク URL は Text ノードに
+/// ならないため対象外になる（見出し・リンクラベル・強調中のテキストは含む）
+pub(crate) fn extract_text_spans(
+    source: &str,
+    opts: &MarkdownOptions,
+) -> Vec<(String, SourceSpan)> {
+    let arena = Arena::new();
+    let root = parse_document(&arena, source, &comrak_options(opts));
+    let mut out = Vec::new();
+    for node in root.descendants() {
+        let data = node.data.borrow();
+        if let NodeValue::Text(text) = &data.value {
+            out.push((text.to_string(), span_of(&data.sourcepos)));
+        }
+    }
+    out
+}
+
 /// frontmatter の生テキスト（`---` 区切り行込み）とソース上の位置を返す。
 /// frontmatter がなければ None（lint の未知キー検出用）
 pub(crate) fn frontmatter_raw(

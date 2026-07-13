@@ -18,6 +18,7 @@ pub fn run() -> anyhow::Result<ExitCode> {
     };
     let lint_opts = LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,
+        terms: rc.config.lint.terms.clone(),
     };
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;

@@ -59,6 +59,9 @@ pub struct LintOptions {
     /// content 配下で許容するディレクトリ階層の最大深さ
     /// （直下 = 0。例: 1 なら `guide/x.md` まで）。`None` なら無制限（チェックしない）
     pub max_directory_depth: Option<u32>,
+    /// 用語統一の辞書（正しい表記 → ゆれ表記のリスト）。
+    /// 本文テキスト（コード・URL を除く）にゆれ表記が現れたら警告する
+    pub terms: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// パス1: `content_dir` 以下の `*.md` を走査し、サイトモデルを構築する。

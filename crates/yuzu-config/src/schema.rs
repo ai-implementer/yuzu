@@ -211,6 +211,9 @@ pub struct LintConfig {
     /// content 配下で許容するディレクトリ階層の最大深さ
     /// （直下 = 0。例: 1 なら `content/guide/x.md` まで）。未指定なら無制限
     pub max_directory_depth: Option<u32>,
+    /// 用語統一の辞書（正しい表記 → ゆれ表記のリスト）。
+    /// 例: `"terms": { "サーバー": ["サーバ"], "ユーザー": ["ユーザ"] }`
+    pub terms: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

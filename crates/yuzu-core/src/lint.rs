@@ -1,11 +1,12 @@
 //! 文書規約の lint ルール（`yuzu lint` / `yuzu check`）。
 //!
-//! 初期ルール:
+//! ルール:
 //! - `duplicate-h1` — 本文 h1 が 2 個以上（テーマはページタイトルを h1 相当で表示する）
 //! - `heading-level-skip` — 隣接見出し間でレベルが 2 以上深くなる（markdownlint MD001 相当）
 //! - `frontmatter-unknown-key` — 既知キー以外のトップレベルキー（typo 検出）
 //! - `directory-too-deep` — content 配下のディレクトリ階層が深すぎる
 //!   （`lint.maxDirectoryDepth` 設定時のみ）
+//! - `term-variant` — 用語ゆれ（`lint.terms` の辞書設定時のみ。正表記への統一を促す）
 
 use crate::diagnostics::{Diagnostic, Severity};
 use crate::error::CoreError;
@@ -25,8 +26,58 @@ pub(crate) fn lint_page(
     if let Some(max_depth) = lint.max_directory_depth {
         check_directory_depth(page, max_depth, &mut out);
     }
+    if !lint.terms.is_empty() {
+        check_terms(page, opts, &lint.terms, &mut out);
+    }
     out.sort_by_key(|d| d.span.map_or((0, 0), |s| (s.start_line, s.start_col)));
     Ok(out)
+}
+
+/// term-variant: 用語ゆれの検出（辞書ベース）。
+/// 本文のテキストノード（コード・URL は対象外）にゆれ表記が現れたら報告する。
+/// 正表記の一部としての出現（例: 正「サーバー」の中の「サーバ」）は誤検出なので除外する
+fn check_terms(
+    page: &Page,
+    opts: &MarkdownOptions,
+    terms: &std::collections::BTreeMap<String, Vec<String>>,
+    out: &mut Vec<Diagnostic>,
+) {
+    let texts = markdown::extract_text_spans(&page.source, opts);
+    for (text, span) in &texts {
+        for (canonical, variants) in terms {
+            // 正表記の出現区間（バイト範囲）。この中の variant マッチは除外する
+            let canon_ranges: Vec<(usize, usize)> = text
+                .match_indices(canonical.as_str())
+                .map(|(i, m)| (i, i + m.len()))
+                .collect();
+            for variant in variants {
+                if variant.is_empty() || variant == canonical {
+                    continue;
+                }
+                for (i, m) in text.match_indices(variant.as_str()) {
+                    let end = i + m.len();
+                    if canon_ranges.iter().any(|&(s, e)| s <= i && end <= e) {
+                        continue;
+                    }
+                    out.push(Diagnostic {
+                        rule: "term-variant",
+                        severity: Severity::Warning,
+                        rel: page.rel.clone(),
+                        // comrak の列はバイト基準なので、ノード内バイトオフセットを足す
+                        span: Some(SourceSpan {
+                            start_line: span.start_line,
+                            start_col: span.start_col + i,
+                            end_line: span.start_line,
+                            end_col: span.start_col + end,
+                        }),
+                        message: format!(
+                            "「{variant}」は「{canonical}」に統一してください（lint.terms）"
+                        ),
+                    });
+                }
+            }
+        }
+    }
 }
 
 /// 見出し規約（toc だけで判定する。span は toc 由来）
@@ -168,6 +219,7 @@ mod tests {
     fn lint_depth(rel: &str, max_directory_depth: Option<u32>) -> Vec<crate::Diagnostic> {
         let opts = LintOptions {
             max_directory_depth,
+            ..LintOptions::default()
         };
         super::lint_page(
             &page_from_rel(rel, "# t\n"),
@@ -248,6 +300,91 @@ mod tests {
     fn 制限_1_で_1_階層のディレクトリは許容() {
         assert!(lint_depth("index.md", Some(1)).is_empty(), "content 直下");
         assert!(lint_depth("guide/x.md", Some(1)).is_empty(), "1 階層");
+    }
+
+    fn lint_terms(source: &str, terms: &[(&str, &[&str])]) -> Vec<crate::Diagnostic> {
+        let opts = LintOptions {
+            terms: terms
+                .iter()
+                .map(|(c, vs)| (c.to_string(), vs.iter().map(|v| v.to_string()).collect()))
+                .collect(),
+            ..LintOptions::default()
+        };
+        super::lint_page(&page_from(source), &MarkdownOptions::default(), &opts).unwrap()
+    }
+
+    #[test]
+    fn 用語ゆれを行番号付きで検出する() {
+        let diags = lint_terms(
+            "# t\n\n本文でサーバを再起動する。\n",
+            &[("サーバー", &["サーバ"])],
+        );
+        let hits: Vec<_> = diags.iter().filter(|d| d.rule == "term-variant").collect();
+        assert_eq!(hits.len(), 1, "{diags:?}");
+        assert_eq!(hits[0].span.unwrap().start_line, 3);
+        assert!(
+            hits[0].message.contains("「サーバ」は「サーバー」に統一"),
+            "{}",
+            hits[0].message
+        );
+    }
+
+    #[test]
+    fn 正表記の一部としての出現は誤検出しない() {
+        // 「サーバー」の中に「サーバ」が含まれるが、正表記そのものなので報告しない
+        let diags = lint_terms(
+            "# t\n\nサーバーを再起動する。\n",
+            &[("サーバー", &["サーバ"])],
+        );
+        assert!(diags.iter().all(|d| d.rule != "term-variant"), "{diags:?}");
+
+        // 同一テキスト内に正とゆれが混在 → ゆれの方だけ報告
+        let diags = lint_terms(
+            "# t\n\nサーバーとサーバが混在。\n",
+            &[("サーバー", &["サーバ"])],
+        );
+        let hits: Vec<_> = diags.iter().filter(|d| d.rule == "term-variant").collect();
+        assert_eq!(hits.len(), 1, "{diags:?}");
+    }
+
+    #[test]
+    fn コードブロックとインラインコードは対象外() {
+        let diags = lint_terms(
+            "# t\n\n```\nサーバ再起動\n```\n\n`サーバ` の説明。\n",
+            &[("サーバー", &["サーバ"])],
+        );
+        assert!(diags.iter().all(|d| d.rule != "term-variant"), "{diags:?}");
+    }
+
+    #[test]
+    fn 見出しの用語ゆれも検出する() {
+        let diags = lint_terms("# サーバの設定\n", &[("サーバー", &["サーバ"])]);
+        let hits: Vec<_> = diags.iter().filter(|d| d.rule == "term-variant").collect();
+        assert_eq!(hits.len(), 1, "{diags:?}");
+        assert_eq!(hits[0].span.unwrap().start_line, 1);
+    }
+
+    #[test]
+    fn 複数のゆれと複数エントリを検出する() {
+        let diags = lint_terms(
+            "# t\n\nユーザがサーバへ接続。ユーザーは正しい。\n",
+            &[("サーバー", &["サーバ"]), ("ユーザー", &["ユーザ"])],
+        );
+        let mut rules: Vec<&str> = diags
+            .iter()
+            .filter(|d| d.rule == "term-variant")
+            .map(|d| d.message.as_str())
+            .collect();
+        rules.sort();
+        assert_eq!(rules.len(), 2, "{diags:?}");
+        assert!(rules[0].contains("サーバ"));
+        assert!(rules[1].contains("ユーザ"));
+    }
+
+    #[test]
+    fn 辞書が空なら何もしない() {
+        let diags = lint_terms("# t\n\nサーバ。\n", &[]);
+        assert!(diags.iter().all(|d| d.rule != "term-variant"));
     }
 
     #[test]
