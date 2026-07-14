@@ -262,6 +262,9 @@ pub struct SearchConfig {
     pub dictionary: Option<String>,
     pub typo_tolerance: TypoToleranceConfig,
     pub shard: ShardConfig,
+    /// 同義語グループ（例: `[["ログイン", "サインイン"]]`）。
+    /// `lint.terms` の辞書と合成され、ゆれ表記での検索が正表記の文書にヒットする
+    pub synonyms: Vec<Vec<String>>,
 }
 
 impl Default for SearchConfig {
@@ -271,6 +274,7 @@ impl Default for SearchConfig {
             dictionary: None,
             typo_tolerance: TypoToleranceConfig::default(),
             shard: ShardConfig::default(),
+            synonyms: Vec::new(),
         }
     }
 }

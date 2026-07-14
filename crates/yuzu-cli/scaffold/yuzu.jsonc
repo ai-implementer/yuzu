@@ -40,6 +40,9 @@
   //     "katakanaChoon": true // 長音符ゆれの混在（サーバ/サーバー）をプロジェクト横断で検出
   //   }
   // },
+  // "search": {
+  //   "synonyms": [["ログイン", "サインイン"]] // 同義語グループ。lint.terms と合成され、ゆれ表記の検索が正表記にヒット
+  // },
   // "git": {
   //   "lastUpdated": true, // ページフッターに最終コミット日（git が無い環境では自動で非表示）
   //   "editUrl": "https://github.com/me/docs/edit/main/content/{path}" // 「このページを編集」リンク

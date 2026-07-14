@@ -24,6 +24,8 @@ const LEV_EXPANSION_LIMIT: usize = 8;
 const LEV_WEIGHT: f32 = 0.5;
 /// タイポ展開する token の最小文字数（1 文字は広範囲マッチしすぎる）
 const LEV_MIN_CHARS: usize = 2;
+/// 同義語展開で生成するクエリ変形の上限（元クエリ含む。暴走ガード）
+const SYN_EXPANSION_LIMIT: usize = 8;
 
 /// 検索ヒット（doc_id は SiteModel.pages の並び順の添字）
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -159,13 +161,52 @@ impl SearchEngine {
         self.tokenizer.tokenize(query)
     }
 
-    /// fragment.text からクエリ一致箇所周辺の抜粋を作る（native / wasm 共通の入口）
+    /// fragment.text からクエリ一致箇所周辺の抜粋を作る（native / wasm 共通の入口）。
+    /// 同義語展開後の全変形のトークンを渡すため、ゆれ表記で検索しても
+    /// 本文側の正表記がハイライトされる
     pub fn excerpt(&self, text: &str, query: &str, max_chars: usize) -> Vec<crate::ExcerptSegment> {
-        crate::excerpt::make_excerpt(text, &self.tokenizer.tokenize(query), max_chars)
+        let mut tokens: Vec<String> = Vec::new();
+        for variant in self.expand_queries(query) {
+            for token in self.tokenizer.tokenize(&variant) {
+                if !tokens.contains(&token) {
+                    tokens.push(token);
+                }
+            }
+        }
+        crate::excerpt::make_excerpt(text, &tokens, max_chars)
+    }
+
+    /// 同義語グループによるクエリ変形を列挙する（先頭は必ず元クエリ）。
+    /// グループのメンバーが生クエリに部分一致したら、他メンバーへ置換した
+    /// 変形を追加する（リテラル照合。上限 SYN_EXPANSION_LIMIT で暴走を防ぐ）
+    fn expand_queries(&self, query: &str) -> Vec<String> {
+        let mut variants = vec![query.to_string()];
+        'outer: for group in &self.manifest.synonyms {
+            for member in group {
+                if member.is_empty() || !query.contains(member.as_str()) {
+                    continue;
+                }
+                for other in group {
+                    if other == member {
+                        continue;
+                    }
+                    let variant = query.replace(member.as_str(), other);
+                    if !variants.contains(&variant) {
+                        variants.push(variant);
+                        if variants.len() >= SYN_EXPANSION_LIMIT {
+                            break 'outer;
+                        }
+                    }
+                }
+            }
+        }
+        variants
     }
 
     /// クエリを token → term_id（重み付き）へ解決する。
-    /// 完全一致を優先し、未ヒット token だけタイポ展開する
+    /// 完全一致を優先し、未ヒット token だけタイポ展開する。
+    /// 同義語変形（expand_queries）のトークンは完全一致のみ weight 1.0 で加える
+    /// （辞書で同一視された語なのでペナルティなし。変形へのタイポ展開はしない）
     fn resolve_terms(&self, query: &str) -> HashMap<u32, f32> {
         let mut resolved: HashMap<u32, f32> = HashMap::new();
         let merge = |resolved: &mut HashMap<u32, f32>, id: u64, weight: f32| {
@@ -173,30 +214,36 @@ impl SearchEngine {
             *entry = entry.max(weight);
         };
 
-        for token in self.tokenizer.tokenize(query) {
-            if let Some(id) = self.terms.get(&token) {
-                merge(&mut resolved, id, 1.0);
-                continue;
-            }
+        for (i, variant) in self.expand_queries(query).iter().enumerate() {
+            let is_original = i == 0;
+            for token in self.tokenizer.tokenize(variant) {
+                if let Some(id) = self.terms.get(&token) {
+                    merge(&mut resolved, id, 1.0);
+                    continue;
+                }
+                if !is_original {
+                    continue; // 同義語変形は完全一致のみ（タイポ展開しない）
+                }
 
-            let max_edits = self.manifest.typo.max_edits.min(1);
-            if !self.manifest.typo.enabled
-                || max_edits == 0
-                || token.chars().count() < LEV_MIN_CHARS
-            {
-                continue;
-            }
-            // DFA 構築の失敗（過長クエリ等）はタイポ補正なしで続行
-            let Ok(automaton) = Levenshtein::new(&token, u32::from(max_edits)) else {
-                continue;
-            };
-            let mut stream = self.terms.search(&automaton).into_stream();
-            let mut expanded = 0;
-            while let Some((_, id)) = stream.next() {
-                merge(&mut resolved, id, LEV_WEIGHT);
-                expanded += 1;
-                if expanded >= LEV_EXPANSION_LIMIT {
-                    break;
+                let max_edits = self.manifest.typo.max_edits.min(1);
+                if !self.manifest.typo.enabled
+                    || max_edits == 0
+                    || token.chars().count() < LEV_MIN_CHARS
+                {
+                    continue;
+                }
+                // DFA 構築の失敗（過長クエリ等）はタイポ補正なしで続行
+                let Ok(automaton) = Levenshtein::new(&token, u32::from(max_edits)) else {
+                    continue;
+                };
+                let mut stream = self.terms.search(&automaton).into_stream();
+                let mut expanded = 0;
+                while let Some((_, id)) = stream.next() {
+                    merge(&mut resolved, id, LEV_WEIGHT);
+                    expanded += 1;
+                    if expanded >= LEV_EXPANSION_LIMIT {
+                        break;
+                    }
                 }
             }
         }
@@ -223,6 +270,14 @@ mod tests {
 
     /// テスト用の極小インデクサ（本物は yuzu-index 側。ここではエンジンの検証用）
     fn build_index(docs: &[&str], max_terms_per_shard: u32) -> SearchEngine {
+        build_index_with_synonyms(docs, max_terms_per_shard, Vec::new())
+    }
+
+    fn build_index_with_synonyms(
+        docs: &[&str],
+        max_terms_per_shard: u32,
+        synonyms: Vec<Vec<String>>,
+    ) -> SearchEngine {
         let tokenizer = Tokenizer::from_zstd_model_bytes(MODEL).unwrap();
 
         let mut terms: BTreeMap<String, Vec<(u32, u32)>> = BTreeMap::new();
@@ -282,6 +337,7 @@ mod tests {
             term_count: postings.len() as u32,
             terms_file: "terms.fst".into(),
             shards: shards_meta,
+            synonyms,
         };
 
         let mut engine =
@@ -377,5 +433,90 @@ mod tests {
         );
         let empty_fst = fst::MapBuilder::memory().into_inner().unwrap();
         assert!(SearchEngine::new(json.as_bytes(), empty_fst, MODEL).is_err());
+    }
+
+    #[test]
+    fn 同義語でゆれ表記のクエリが正表記の文書にヒットする() {
+        let docs = ["サーバーを再起動する", "テーマを上書きする"];
+        let syn = vec![vec!["サーバー".to_string(), "サーバ".to_string()]];
+        let engine = build_index_with_synonyms(&docs, 1024, syn);
+
+        let exact = engine.search("サーバー", 10);
+        let variant = engine.search("サーバ", 10);
+        assert_eq!(exact[0].doc_id, 0);
+        assert_eq!(variant[0].doc_id, 0);
+        // 同義語は weight 1.0 = 完全一致と同スコア（typo の 0.5 と違う）
+        assert!(
+            (exact[0].score - variant[0].score).abs() < 1e-6,
+            "exact={} variant={}",
+            exact[0].score,
+            variant[0].score
+        );
+
+        // 同義語なしでは届かない（fst の Levenshtein はバイト距離のため
+        // 日本語の 1 文字ゆれは編集距離 1 に収まらない = 同義語辞書が唯一の経路）
+        let engine_plain = build_index(&docs, 1024);
+        assert!(
+            engine_plain.search("サーバ", 10).is_empty(),
+            "同義語なしのゆれ表記はヒットしない前提が崩れた"
+        );
+    }
+
+    #[test]
+    fn 編集距離で届かない同義語もヒットしハイライトされる() {
+        let docs = ["ブラウザで検索できます", "テーマを上書きする"];
+        let syn = vec![vec!["ブラウザ".to_string(), "閲覧ソフト".to_string()]];
+        let engine = build_index_with_synonyms(&docs, 1024, syn);
+
+        let hits = engine.search("閲覧ソフト", 10);
+        assert!(!hits.is_empty(), "編集距離 1 では届かない語もヒットする");
+        assert_eq!(hits[0].doc_id, 0);
+
+        // 抜粋のハイライトにも同義語側（本文の正表記）が乗る
+        let segments = engine.excerpt("ブラウザで検索できます", "閲覧ソフト", 100);
+        assert!(
+            segments
+                .iter()
+                .any(|s| s.mark && s.text.contains("ブラウザ")),
+            "{segments:?}"
+        );
+    }
+
+    #[test]
+    fn 同義語の必要シャードが_needed_shards_に含まれる() {
+        // 1 term = 1 シャードに分割し、拡張後 term のシャード要求を確認する
+        let docs = ["ブラウザで検索できます", "テーマを上書きする"];
+        let syn = vec![vec!["ブラウザ".to_string(), "閲覧ソフト".to_string()]];
+        let mut engine = build_index_with_synonyms(&docs, 1, syn);
+        // ハーネスは全シャードロード済みなので、いったん空にして要求を見る
+        engine.shards.clear();
+
+        let needed = engine.needed_shards("閲覧ソフト");
+        // ブラウザ term のシャード id を特定して包含を確認
+        let browser_term = engine.terms.get("ブラウザ").expect("索引済み") as u32;
+        let browser_shard = engine.shard_for_term(browser_term).unwrap();
+        assert!(
+            needed.contains(&browser_shard),
+            "needed={needed:?} browser_shard={browser_shard}"
+        );
+    }
+
+    #[test]
+    fn クエリ変形は上限で打ち切られ元クエリが先頭に残る() {
+        let docs = ["ダミー"];
+        let group: Vec<String> = (0..20).map(|i| format!("ワード{i}")).collect();
+        let engine = build_index_with_synonyms(&docs, 1024, vec![group]);
+
+        let variants = engine.expand_queries("ワード0 の説明");
+        assert_eq!(variants[0], "ワード0 の説明", "先頭は元クエリ");
+        assert!(variants.len() <= 8, "上限 8: {}", variants.len());
+    }
+
+    #[test]
+    fn 同義語が空なら挙動が変わらない() {
+        let docs = ["サーバーを再起動する"];
+        let engine = build_index(&docs, 1024);
+        assert_eq!(engine.expand_queries("サーバー"), ["サーバー"]);
+        assert!(!engine.search("サーバー", 10).is_empty());
     }
 }

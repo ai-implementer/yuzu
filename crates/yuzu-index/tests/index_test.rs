@@ -136,3 +136,40 @@ fn インデックスが無ければ_missing_エラー() {
     let err = search_dist(dist.path(), "x", 10).unwrap_err();
     assert!(err.to_string().contains("yuzu build"));
 }
+
+#[test]
+fn 同義語グループでゆれ表記の検索が正表記の文書にヒットする() {
+    let content = tempfile::tempdir().unwrap();
+    write(
+        content.path(),
+        "index.md",
+        "---\ntitle: ホーム\n---\n# ホーム\n\nブラウザで検索できます。\n",
+    );
+    let md_opts = MarkdownOptions::default();
+    let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+
+    let dist = tempfile::tempdir().unwrap();
+    let params = IndexParams {
+        synonyms: vec![vec!["ブラウザ".to_string(), "閲覧ソフト".to_string()]],
+        ..IndexParams::default()
+    };
+    build_search_index(&site, &md_opts, &params, dist.path()).unwrap();
+
+    // manifest に正規化済みグループが焼き込まれる
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(dist.path().join("_search/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest["synonyms"][0][0], "ブラウザ");
+
+    // ゆれ表記（編集距離では届かない語）で正表記の文書がヒットし、
+    // 抜粋には正表記側がハイライトされる
+    let results = search_dist(dist.path(), "閲覧ソフト", 10).unwrap();
+    assert_eq!(results.len(), 1, "{results:?}");
+    assert_eq!(results[0].title, "ホーム");
+    assert!(
+        results[0].excerpt.contains("ブラウザ"),
+        "{}",
+        results[0].excerpt
+    );
+}

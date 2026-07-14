@@ -38,6 +38,9 @@ pub struct IndexParams {
     /// v1 では 0..=1 に clamp される
     pub max_edits: u8,
     pub max_terms_per_shard: u32,
+    /// 同義語グループ（lint.terms ＋ search.synonyms を cli が合成）。
+    /// manifest に焼き込まれ、クエリ拡張に使われる
+    pub synonyms: Vec<Vec<String>>,
 }
 
 impl Default for IndexParams {
@@ -47,6 +50,7 @@ impl Default for IndexParams {
             typo_enabled: true,
             max_edits: 1,
             max_terms_per_shard: 16384,
+            synonyms: Vec::new(),
         }
     }
 }
@@ -89,6 +93,25 @@ impl IndexSession {
         let t = Tokenizer::from_zstd_model_bytes(model_bytes)?;
         Ok(self.tokenizer.get_or_init(|| t))
     }
+}
+
+/// 同義語グループを正規化する（決定的な manifest のため）:
+/// グループ内の重複・空文字列を除去してソートし、1 語以下のグループを捨て、
+/// グループ列自体もソートする
+fn normalized_synonyms(groups: &[Vec<String>]) -> Vec<Vec<String>> {
+    let mut out: Vec<Vec<String>> = groups
+        .iter()
+        .map(|group| {
+            let mut g: Vec<String> = group.iter().filter(|m| !m.is_empty()).cloned().collect();
+            g.sort();
+            g.dedup();
+            g
+        })
+        .filter(|g| g.len() >= 2)
+        .collect();
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// envKey 用: 辞書（または同梱モデル）バイトの sha256
@@ -251,6 +274,7 @@ pub fn build_search_index_with(
         term_count: postings.len() as u32,
         terms_file: "terms.fst".to_string(),
         shards: shards_meta,
+        synonyms: normalized_synonyms(&params.synonyms),
     };
     write("manifest.json", &serde_json::to_vec_pretty(&manifest)?)?;
     write("terms.fst", &terms_fst)?;

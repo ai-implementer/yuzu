@@ -187,6 +187,20 @@ pub(crate) fn build_once(
     // 検索インデックスは render の後（描画結果とは独立だが、ログ順を保つ）
     if rc.config.search.enabled {
         let search = &rc.config.search;
+        // 同義語グループ = lint.terms（正表記＋ゆれ表記で 1 グループ）＋ search.synonyms。
+        // lint が本文を正表記へ寄せ、検索がゆれ側を吸収する対の設計（Phase 20）
+        let synonyms: Vec<Vec<String>> = rc
+            .config
+            .lint
+            .terms
+            .iter()
+            .map(|(canonical, variants)| {
+                let mut group = vec![canonical.clone()];
+                group.extend(variants.iter().cloned());
+                group
+            })
+            .chain(search.synonyms.iter().cloned())
+            .collect();
         yuzu_index::build_search_index_with(
             &site,
             &md_opts,
@@ -196,6 +210,7 @@ pub(crate) fn build_once(
                 typo_enabled: search.typo_tolerance.enabled,
                 max_edits: search.typo_tolerance.max_edits.min(1),
                 max_terms_per_shard: search.shard.max_terms_per_shard.max(1),
+                synonyms,
             },
             &rc.output_dir,
             &yuzu_index::IndexCtx {

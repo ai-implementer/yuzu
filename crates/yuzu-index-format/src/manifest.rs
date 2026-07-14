@@ -19,6 +19,10 @@ pub struct Manifest {
     pub terms_file: String,
     /// term_id の連続範囲で分割されたシャード（添字 = shard_id）
     pub shards: Vec<ShardMeta>,
+    /// 同義語グループ（lint.terms ＋ search.synonyms 由来。クエリ拡張に使う）。
+    /// v0.3 以前の manifest には無いフィールドなので default で互換を保つ
+    #[serde(default)]
+    pub synonyms: Vec<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
