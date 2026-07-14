@@ -15,6 +15,9 @@
   "theme": {
     "name": "default",
     "dark": true // ダークモード切替ボタンを出す
+    // テーマ CSS 変数の上書き（変数名は theme.css の :root を参照）
+    // "cssVars": { "accent": "#0a6cff" },
+    // "cssVarsDark": { "accent": "#7fb2ff" } // ダークモード時のみの上書き
   },
   "nav": { "auto": true },
   "markdown": {
@@ -28,7 +31,14 @@
       "enabled": true // $...$ / $$...$$ / ```math を同梱 KaTeX で描画（数式のあるページだけ読み込む）
     }
   },
-  // "lint": { "maxDirectoryDepth": 1 }, // content 配下のディレクトリ階層を制限（直下 = 0。未設定なら無制限）
+  // "lint": {
+  //   "maxDirectoryDepth": 1, // content 配下のディレクトリ階層を制限（直下 = 0。未設定なら無制限）
+  //   "terms": { "サーバー": ["サーバ"] } // 用語統一の辞書（正しい表記 → ゆれ表記）。lint/check が表記ゆれを報告
+  // },
+  // "git": {
+  //   "lastUpdated": true, // ページフッターに最終コミット日（git が無い環境では自動で非表示）
+  //   "editUrl": "https://github.com/me/docs/edit/main/content/{path}" // 「このページを編集」リンク
+  // },
   "dev": {
     "port": 5173
     // "liveReload": true, // yuzu dev の WS ライブリロード（false で注入なし）

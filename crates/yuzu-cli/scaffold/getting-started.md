@@ -33,6 +33,7 @@ yuzu preview
 ```
 
 ビルド済みの `dist/` を `http://127.0.0.1:5173/` で配信します。
+`--port` / `--host` で上書きできます（コンテナ内からは `--host 0.0.0.0`）。
 
 ## frontmatter
 
@@ -46,6 +47,10 @@ draft: true # ビルドから除外する
 description: 説明 # meta description
 ---
 ```
+
+`draft: true` のページは通常ビルドから除外されますが、`yuzu dev --drafts` /
+`yuzu build --drafts` で**下書きバナー付き**でプレビューできます
+（通常ビルドに戻すと下書きの出力は自動で掃除されます）。
 
 ## ナビゲーション
 
@@ -117,10 +122,11 @@ a^2 + b^2 = c^2
 
 ` ```mermaid ` ブロックで図が描けます。既定は同梱 mermaid.js によるクライアント描画です。
 
-`yuzu.jsonc` で `"backend": "ssr"` にすると、**sequence・flowchart・state・
-ER・gantt の 5 図種はビルド時に SVG 化**されます（JS 不要・ダークモードに即追従）。
-未対応の図種は自動でクライアント描画にフォールバックし、
-フォールバックが発生したページだけ mermaid.js が読み込まれます。
+`yuzu.jsonc` で `"backend": "ssr"` にすると、**sequence・flowchart・class・
+state・ER・gantt・pie の 7 図種はビルド時に SVG 化**されます（JS 不要・
+ダークモードに即追従）。未対応の図種は自動でクライアント描画にフォールバックし、
+フォールバックが発生したページだけ mermaid.js が読み込まれます
+（クライアント描画もダークモード切替に追従して再描画されます）。
 
 ```mermaid
 flowchart TD
@@ -171,6 +177,62 @@ erDiagram
         int order
         bool draft
     }
+```
+
+クラス図（classDiagram）:
+
+```mermaid
+classDiagram
+    class ページ {
+        +String title
+        +int order
+        +本文() String
+    }
+    ページ <|-- 下書きページ : draft
+    サイト "1" *-- "many" ページ : contains
+```
+
+円グラフ（pie）:
+
+```mermaid
+pie showData title コンテンツの内訳（例）
+    "ガイド" : 12
+    "リファレンス" : 8
+    "リリースノート" : 5
+```
+
+## ページを LLM に渡す
+
+各ページの右上にある「**Markdown をコピー**」ボタンで、そのページの
+原文 Markdown をそのままクリップボードへコピーできます（LLM に貼る用途）。
+同じ内容は `dist/<ページのパス>.md` としても配信され、サイト全体の索引
+`llms.txt`（リンク先は各 `.md`）と全文連結 `llms-full.txt` も自動生成されます。
+
+## 用語統一 lint
+
+`yuzu.jsonc` の `lint.terms` に「正しい表記 → ゆれ表記」の辞書を書くと、
+`yuzu lint` / `yuzu check` が本文・見出しの表記ゆれを行番号付きで報告します
+（コードブロック・URL は対象外）:
+
+```jsonc
+"lint": { "terms": { "サーバー": ["サーバ"], "ユーザー": ["ユーザ"] } }
+```
+
+```bash
+yuzu lint
+# content/guide/api.md:12:5: warning[term-variant] 「サーバ」は「サーバー」に統一してください
+```
+
+## 最終更新日と編集リンク
+
+`yuzu.jsonc` の `git` セクションを有効にすると、ページフッターに
+最終コミット日と「このページを編集」リンクが出ます:
+
+```jsonc
+"git": {
+  "lastUpdated": true, // 最終コミット日（git が無い環境では自動で非表示）
+  "editUrl": "https://github.com/me/docs/edit/main/content/{path}"
+}
 ```
 
 ## 全文検索
