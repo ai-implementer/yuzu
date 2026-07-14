@@ -52,6 +52,14 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
         source,
     })?;
 
+    // JSONC の重複キーは後勝ちで黙って上書きされ「設定したのに効かない」事故に
+    // なりやすい（実運用で複数回発生）ため、検出して警告する
+    for dup in duplicate_key_paths(&text) {
+        tracing::warn!(
+            "yuzu.jsonc のキー `{dup}` が重複しています（JSONC は後勝ちのため、先に書いた方は無視されます）"
+        );
+    }
+
     let base_url = normalize_base_url(
         config
             .build
@@ -73,6 +81,51 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
         root: root.to_path_buf(),
         config,
     })
+}
+
+/// JSONC テキスト中の重複キーを `site.title` 形式のパスで列挙する。
+/// 構文エラー時は空（本体パースが別途エラーを報告する）
+fn duplicate_key_paths(text: &str) -> Vec<String> {
+    use jsonc_parser::ast::Value;
+
+    fn walk(value: &Value, path: &str, dups: &mut Vec<String>) {
+        match value {
+            Value::Object(obj) => {
+                let mut seen = std::collections::HashSet::new();
+                for prop in &obj.properties {
+                    let name = prop.name.as_str();
+                    let child = if path.is_empty() {
+                        name.to_string()
+                    } else {
+                        format!("{path}.{name}")
+                    };
+                    if !seen.insert(name.to_string()) {
+                        dups.push(child.clone());
+                    }
+                    walk(&prop.value, &child, dups);
+                }
+            }
+            Value::Array(arr) => {
+                for (i, v) in arr.elements.iter().enumerate() {
+                    walk(v, &format!("{path}[{i}]"), dups);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let Ok(result) = jsonc_parser::parse_to_ast(
+        text,
+        &jsonc_parser::CollectOptions::default(),
+        &jsonc_parser::ParseOptions::default(),
+    ) else {
+        return Vec::new();
+    };
+    let mut dups = Vec::new();
+    if let Some(root) = &result.value {
+        walk(root, "", &mut dups);
+    }
+    dups
 }
 
 /// 解決済み設定を `.yuzu/settings.json` に書き出す
@@ -137,7 +190,28 @@ pub fn normalize_base_url(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_base_url;
+    use super::{duplicate_key_paths, normalize_base_url};
+
+    #[test]
+    fn 重複キーをパス付きで検出する() {
+        let text = r#"{
+          // コメントや入れ子があっても検出できる
+          "dev": { "port": 5173 },
+          "site": { "title": "a", "title": "b" },
+          "dev": { "host": "0.0.0.0" }
+        }"#;
+        let dups = duplicate_key_paths(text);
+        assert_eq!(dups, ["site.title", "dev"]);
+    }
+
+    #[test]
+    fn 重複がなければ空() {
+        assert!(duplicate_key_paths(r#"{ "a": 1, "b": { "a": 2 } }"#).is_empty());
+        assert!(
+            duplicate_key_paths("{ broken").is_empty(),
+            "構文エラーは対象外"
+        );
+    }
 
     #[test]
     fn base_url_の正規化() {

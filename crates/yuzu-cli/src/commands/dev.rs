@@ -11,10 +11,20 @@ use yuzu_server::{ReloadNotifier, ServeOptions};
 
 use crate::commands::build;
 
-pub fn run(port: Option<u16>, force: bool, drafts: bool) -> anyhow::Result<()> {
+pub fn run(
+    port: Option<u16>,
+    host: Option<String>,
+    force: bool,
+    drafts: bool,
+) -> anyhow::Result<()> {
     let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
     let root = yuzu_config::find_project_root(&cwd)?;
-    let rc = yuzu_config::load(&root)?;
+    let mut rc = yuzu_config::load(&root)?;
+    // --host は dev.host の設定より優先（コンテナ内から 0.0.0.0 で配信する用途）。
+    // write_resolved より前に上書きし、.yuzu/settings.json にも反映する
+    if let Some(host) = host {
+        rc.config.dev.host = host;
+    }
     yuzu_config::write_resolved(&rc)?;
 
     // dev.liveReload=false は「WS 注入なしの監視ビルド＋配信のみ」

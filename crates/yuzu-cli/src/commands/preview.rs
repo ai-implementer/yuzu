@@ -7,10 +7,14 @@ use anyhow::{Context, bail};
 use yuzu_config::ResolvedConfig;
 use yuzu_server::ServeOptions;
 
-pub fn run(port: Option<u16>) -> anyhow::Result<()> {
+pub fn run(port: Option<u16>, host: Option<String>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
     let root = yuzu_config::find_project_root(&cwd)?;
-    let rc = yuzu_config::load(&root)?;
+    let mut rc = yuzu_config::load(&root)?;
+    // --host は dev.host の設定より優先（コンテナ内から 0.0.0.0 で配信する用途）
+    if let Some(host) = host {
+        rc.config.dev.host = host;
+    }
 
     if !rc.output_dir.is_dir() {
         bail!(

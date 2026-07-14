@@ -48,6 +48,9 @@ pub enum Command {
         /// ポート番号（既定: 設定の dev.port）
         #[arg(long)]
         port: Option<u16>,
+        /// バインドアドレス（既定: 設定の dev.host。コンテナ内からは 0.0.0.0）
+        #[arg(long)]
+        host: Option<String>,
     },
 
     /// 開発サーバ（監視ビルド＋配信＋WS ライブリロード）
@@ -55,6 +58,9 @@ pub enum Command {
         /// ポート番号（既定: 設定の dev.port）
         #[arg(long)]
         port: Option<u16>,
+        /// バインドアドレス（既定: 設定の dev.host。コンテナ内からは 0.0.0.0）
+        #[arg(long)]
+        host: Option<String>,
         /// インクリメンタルキャッシュ（.yuzu/cache/）を破棄してフルビルドする
         #[arg(long)]
         force: bool,

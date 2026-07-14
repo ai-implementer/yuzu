@@ -40,12 +40,13 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
             force,
             drafts,
         } => commands::build::run(watch, base_url, force, drafts).map(ok),
-        cli::Command::Preview { port } => commands::preview::run(port).map(ok),
+        cli::Command::Preview { port, host } => commands::preview::run(port, host).map(ok),
         cli::Command::Dev {
             port,
+            host,
             force,
             drafts,
-        } => commands::dev::run(port, force, drafts).map(ok),
+        } => commands::dev::run(port, host, force, drafts).map(ok),
         cli::Command::Search { query, limit, json } => {
             commands::search::run(&query, limit, json).map(ok)
         }

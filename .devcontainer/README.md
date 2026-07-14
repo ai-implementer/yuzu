@@ -68,10 +68,9 @@ cargo build -p yuzu-cli
 - **ホスト編集 → コンテナ内 `yuzu dev` のホットリロードは効かない**（apple container）:
   virtiofs はホスト側で発生した変更の inotify をゲストへ伝播しない。
   **`yuzu dev` はホストで動かすのが既定運用**。例外として、コンテナ内の Claude Code が
-  編集する場合はゲスト内 inotify が効くので、`yuzu.jsonc` の**既存の** `dev` セクションに
-  `"host": "0.0.0.0"` を追加（`--host` フラグは無い。別の `dev` セクションを新設すると
-  JSONC の重複キーは後勝ちで無視される）すればコンテナ内 dev ＋ ホストブラウザ
-  http://127.0.0.1:5173 で動く（publish 経由の疎通は実機確認済み）
+  編集する場合はゲスト内 inotify が効くので、`yuzu dev --host 0.0.0.0` で起動すれば
+  コンテナ内 dev ＋ ホストブラウザ http://127.0.0.1:5173 で動く
+  （publish 経由の疎通は実機確認済み）
 - **stable の追従**: イメージ内の toolchain はビルド時点の stable で固定。CI（常に最新
   stable）と clippy 結果がズレたら `scripts/dev-container.sh build --no-cache` で焼き直す
 - **メモリ**: apple container はコンテナ = 軽量 VM。ラッパーが既定 8g を割り当てる
