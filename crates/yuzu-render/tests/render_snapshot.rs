@@ -629,3 +629,53 @@ fn git_メタ未設定なら_page_meta_を出さない() {
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
     assert!(!index.contains("page-meta"));
 }
+
+#[test]
+fn openapi_ブロックは_api_spec_として_ssr_される() {
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("content/api.md"),
+            concat!(
+                "---\ntitle: API 仕様\n---\n# API\n\n",
+                "```openapi\n",
+                "openapi: 3.0.3\n",
+                "info:\n  title: ペット API\n  version: 1.2.3\n",
+                "paths:\n",
+                "  /pets:\n",
+                "    get:\n",
+                "      summary: ペット一覧\n",
+                "      responses:\n",
+                "        \"200\":\n",
+                "          description: 成功\n",
+                "```\n",
+            ),
+        )
+        .unwrap();
+    });
+    let html = fs::read_to_string(dir.path().join("dist/api/index.html")).unwrap();
+    assert!(html.contains("api-spec"), "SSR の器が出る:\n{html}");
+    assert!(html.contains("api-method-get"), "メソッドバッジ");
+    assert!(html.contains("ペット API"), "info.title");
+    assert!(html.contains("/pets"), "パス");
+    assert!(
+        !html.contains("markdown-alert-caution"),
+        "正常系はエラーボックスにならない"
+    );
+}
+
+#[test]
+fn 壊れた_openapi_はエラーボックスでビルドは継続する() {
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("content/broken-api.md"),
+            "---\ntitle: 壊れた API\n---\n# 壊れた API\n\n```openapi\nfoo: [unclosed\n```\n\n後続の本文。\n",
+        )
+        .unwrap();
+    });
+    let html = fs::read_to_string(dir.path().join("dist/broken-api/index.html")).unwrap();
+    assert!(
+        html.contains("markdown-alert-caution"),
+        "エラーボックスが出る:\n{html}"
+    );
+    assert!(html.contains("後続の本文。"), "ページ自体は生成される");
+}

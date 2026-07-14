@@ -67,6 +67,17 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" fmt --check
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint
           "$GITHUB_WORKSPACE/target/debug/yuzu" check
+          # Phase 22: openapi/jsonschema SSR — scaffold の jsonschema ブロックが
+          # 静的 HTML 化されていること＋ file: 参照は仕様ファイルの変更だけで反映されること
+          grep -q 'class="api-spec"' dist/guide/getting-started/index.html
+          mkdir -p specs
+          printf 'openapi: 3.0.3\ninfo:\n  title: E2E API v1\n  version: 1.0.0\npaths: {}\n' > specs/api.yaml
+          printf -- '---\ntitle: API\n---\n\n# API\n\n```openapi\nfile: specs/api.yaml\n```\n' > content/api.md
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          grep -q 'E2E API v1' dist/api/index.html
+          printf 'openapi: 3.0.3\ninfo:\n  title: E2E API v2\n  version: 1.0.0\npaths: {}\n' > specs/api.yaml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          grep -q 'E2E API v2' dist/api/index.html
           echo '[壊れリンク](missing.md)' >> content/index.md
           if "$GITHUB_WORKSPACE/target/debug/yuzu" check; then
             echo "check が壊れリンクを検出しなかった" >&2

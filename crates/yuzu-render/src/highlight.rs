@@ -10,6 +10,7 @@
 //!   フォールバックし、その事実をページ単位で記録する（mermaid.js の読込判定用）
 
 use std::cell::Cell;
+use std::path::PathBuf;
 
 use syntect::html::{ClassStyle, ClassedHTMLGenerator};
 use syntect::parsing::SyntaxSet;
@@ -17,6 +18,8 @@ use syntect::util::LinesWithEndings;
 
 use yuzu_config::{MermaidBackend, MermaidConfig};
 use yuzu_core::CodeBlockRenderer;
+
+use crate::apispec::{self, SpecKind};
 
 /// syntect のクラス名接頭辞。テーマ CSS のクラスと衝突しないようにする。
 /// `css.rs` の CSS 生成と必ず同じ値を使うこと
@@ -32,6 +35,18 @@ pub struct SyntectCodeRenderer {
     mermaid_enabled: bool,
     /// backend == Ssr のときだけ Some
     mermaid_ssr: Option<MermaidSsr>,
+    /// OpenAPI / JSON Schema ブロックのページ単位状態
+    apispec: ApiSpecState,
+}
+
+/// ` ```openapi ` / ` ```jsonschema ` のページ単位状態（Cell パターンは MermaidSsr と同じ）
+#[derive(Default)]
+struct ApiSpecState {
+    /// `file:` 参照の基準ディレクトリ（プロジェクトルート）。
+    /// 未設定（単体テスト等）ではファイル参照をエラーボックスにする
+    root: Option<PathBuf>,
+    /// このページで外部ファイル参照を使ったか（= 本文キャッシュ不可の印）
+    external_deps: Cell<bool>,
 }
 
 /// SSR のページ単位状態。
@@ -78,7 +93,13 @@ impl SyntectCodeRenderer {
             highlight_enabled,
             mermaid_enabled: mermaid.enabled,
             mermaid_ssr,
+            apispec: ApiSpecState::default(),
         }
+    }
+
+    /// `file:` 参照の基準ディレクトリ（プロジェクトルート）を設定する
+    pub fn set_project_root(&mut self, root: PathBuf) {
+        self.apispec.root = Some(root);
     }
 
     /// ページ処理の直前に呼ぶ（SSR のページ単位状態をリセット）
@@ -87,6 +108,7 @@ impl SyntectCodeRenderer {
             ssr.fallback.set(false);
             ssr.counter.set(0);
         }
+        self.apispec.external_deps.set(false);
     }
 
     /// 直前ページでクライアント描画へのフォールバックが発生したか
@@ -95,6 +117,56 @@ impl SyntectCodeRenderer {
         self.mermaid_ssr
             .as_ref()
             .is_some_and(|ssr| ssr.fallback.get())
+    }
+
+    /// 直前ページで外部ファイル参照（`file:`）を使ったか。
+    /// 使ったページは本文キャッシュに保存しない（仕様ファイルの変更を即反映するため）
+    pub fn external_deps_used(&self) -> bool {
+        self.apispec.external_deps.get()
+    }
+
+    /// ` ```openapi ` / ` ```jsonschema ` の変換。
+    /// 中身が `file: <パス>` の 1 行なら外部ファイル（プロジェクトルート相対）を読む
+    fn render_apispec(&self, kind: SpecKind, code: &str) -> Option<String> {
+        let trimmed = code.trim();
+        let source = match parse_file_ref(trimmed) {
+            Some(rel) => {
+                self.apispec.external_deps.set(true);
+                match self.read_spec_file(rel) {
+                    Ok(text) => text,
+                    Err(message) => {
+                        tracing::warn!(file = rel, "{message}");
+                        return Some(apispec::error_box(&message, code));
+                    }
+                }
+            }
+            None => code.to_string(),
+        };
+        Some(apispec::render_spec(kind, &source))
+    }
+
+    /// プロジェクトルート相対の仕様ファイルを読む。
+    /// canonicalize してルート配下であることを強制する（ルート外参照は拒否）
+    fn read_spec_file(&self, rel: &str) -> Result<String, String> {
+        let Some(root) = &self.apispec.root else {
+            return Err(
+                "このビルドではファイル参照が使えません（基準ディレクトリ未設定）".to_string(),
+            );
+        };
+        let root = root
+            .canonicalize()
+            .map_err(|e| format!("プロジェクトルートを解決できません: {e}"))?;
+        let path = root.join(rel);
+        let canonical = path
+            .canonicalize()
+            .map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))?;
+        if !canonical.starts_with(&root) {
+            return Err(format!(
+                "仕様ファイル {rel} はプロジェクトルートの外を指しています"
+            ));
+        }
+        std::fs::read_to_string(&canonical)
+            .map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))
     }
 
     fn render_mermaid(&self, code: &str) -> Option<String> {
@@ -147,11 +219,26 @@ impl SyntectCodeRenderer {
     }
 }
 
+/// 中身が `file: <パス>` の 1 行だけならそのパスを返す（外部ファイル参照の記法）
+fn parse_file_ref(trimmed: &str) -> Option<&str> {
+    if trimmed.lines().count() != 1 {
+        return None;
+    }
+    let rel = trimmed.strip_prefix("file:")?.trim();
+    (!rel.is_empty()).then_some(rel)
+}
+
 impl CodeBlockRenderer for SyntectCodeRenderer {
     fn render(&self, lang: Option<&str>, code: &str) -> Option<String> {
         let lang = lang?;
         if lang == "mermaid" {
             return self.render_mermaid(code);
+        }
+        if lang == "openapi" {
+            return self.render_apispec(SpecKind::OpenApi, code);
+        }
+        if lang == "jsonschema" {
+            return self.render_apispec(SpecKind::JsonSchema, code);
         }
         // ```math は comrak の特殊化（<pre><code class="language-math"
         // data-math-style="display">）に任せる。syntect のトークン一致で
@@ -316,5 +403,67 @@ mod tests {
     fn ハイライト無効なら_none() {
         let r = SyntectCodeRenderer::new(false, &client_config());
         assert!(r.render(Some("rust"), "fn main() {}").is_none());
+    }
+
+    #[test]
+    fn openapi_の_file_参照はルート相対で読み外部依存を記録する() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("specs")).unwrap();
+        std::fs::write(dir.path().join("specs/api.yaml"), "type: object\n").unwrap();
+
+        let mut r = SyntectCodeRenderer::new(true, &client_config());
+        r.set_project_root(dir.path().to_path_buf());
+        r.begin_page();
+        assert!(!r.external_deps_used());
+
+        let html = r
+            .render(Some("jsonschema"), "file: specs/api.yaml\n")
+            .unwrap();
+        assert!(r.external_deps_used(), "file: 参照で外部依存が立つ");
+        // スタブ実装でも「レンダラを通った」ことは HTML の存在で確認できる
+        assert!(!html.is_empty());
+
+        // begin_page でリセットされる
+        r.begin_page();
+        assert!(!r.external_deps_used());
+    }
+
+    #[test]
+    fn openapi_の_file_参照はルート外と不在を拒否する() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut r = SyntectCodeRenderer::new(true, &client_config());
+        r.set_project_root(dir.path().to_path_buf());
+        r.begin_page();
+
+        // ルート外（.. 逸脱）
+        let html = r
+            .render(Some("openapi"), "file: ../outside.yaml\n")
+            .unwrap();
+        assert!(html.contains("markdown-alert-caution"), "{html}");
+
+        // 不在ファイル
+        let html = r.render(Some("openapi"), "file: missing.yaml\n").unwrap();
+        assert!(html.contains("markdown-alert-caution"), "{html}");
+    }
+
+    #[test]
+    fn インラインの_openapi_は外部依存を立てない() {
+        let r = SyntectCodeRenderer::new(true, &client_config());
+        r.begin_page();
+        let _ = r.render(Some("openapi"), "openapi: 3.0.3\n").unwrap();
+        assert!(!r.external_deps_used(), "インラインはキャッシュ可能");
+    }
+
+    #[test]
+    fn file_参照の判定は一行のみ() {
+        assert_eq!(super::parse_file_ref("file: a.yaml"), Some("a.yaml"));
+        assert_eq!(super::parse_file_ref("file:a.yaml"), Some("a.yaml"));
+        assert_eq!(super::parse_file_ref("file:"), None);
+        assert_eq!(
+            super::parse_file_ref("file: a.yaml\nx: 1"),
+            None,
+            "複数行はインライン扱い"
+        );
+        assert_eq!(super::parse_file_ref("openapi: 3.0.3"), None);
     }
 }

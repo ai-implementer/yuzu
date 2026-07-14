@@ -201,6 +201,39 @@ pie showData title コンテンツの内訳（例）
     "リリースノート" : 5
 ```
 
+## API 仕様（OpenAPI / JSON Schema）
+
+` ```openapi ` / ` ```jsonschema ` ブロックに API 仕様（YAML / JSON）を書くと、
+ビルド時に整形済みの HTML へ変換されます（JS 不要・ダークモードに追従）。
+
+```jsonschema
+title: 記事
+type: object
+required: [title, body]
+properties:
+  title:
+    type: string
+    description: 記事タイトル
+  body:
+    type: string
+    description: 本文（Markdown）
+  tags:
+    type: array
+    items:
+      type: string
+    description: タグ一覧
+  status:
+    type: string
+    enum: [draft, published]
+    description: 公開状態
+```
+
+OpenAPI 3.x の文書全体は ` ```openapi ` ブロックで描画できます（info・paths・
+パラメータ・レスポンスを操作ごとの開閉式パネルで表示）。ブロックの中身を
+`file: specs/api.yaml` の 1 行だけにすると、**プロジェクトルート相対**の
+仕様ファイルを参照できます（仕様ファイル側の変更は次のビルドで必ず反映されます）。
+`$ref` はドキュメント内参照（`#/components/schemas/...` など）のみ解決されます。
+
 ## ページを LLM に渡す
 
 各ページの右上にある「**Markdown をコピー**」ボタンで、そのページの

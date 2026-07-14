@@ -100,7 +100,11 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 let body =
                     yuzu_core::render_body_html(page, &md_opts, &shared.highlighter, &resolver)?;
                 let fallback = shared.highlighter.mermaid_fallback_occurred();
-                if let Some(cache) = ctx.cache {
+                // 外部ファイル参照（openapi/jsonschema の file:）を使ったページは
+                // キャッシュしない: ページ source が変わらなくても仕様ファイルの
+                // 変更を次ビルドで反映するため、毎回レンダリングする
+                let cacheable = !shared.highlighter.external_deps_used();
+                if let (Some(cache), true) = (ctx.cache, cacheable) {
                     cache.store_body(
                         &page.rel,
                         &page.source,

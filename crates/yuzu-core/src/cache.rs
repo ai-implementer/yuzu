@@ -27,7 +27,8 @@ use crate::model::{Frontmatter, TocEntry};
 
 /// キャッシュフォーマットのバージョン。ビルドロジックが変わって
 /// キャッシュ内容の意味が変わるときに上げる（安全弁）
-pub const CACHE_FORMAT_VERSION: u32 = 1;
+/// - v2: openapi/jsonschema ブロックの SSR 追加（本文 HTML の生成ロジック変更）
+pub const CACHE_FORMAT_VERSION: u32 = 2;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

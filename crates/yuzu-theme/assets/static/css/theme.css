@@ -1126,6 +1126,188 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
   scrollbar-color: var(--border) transparent;
 }
 
+/* ---- API 仕様（OpenAPI / JSON Schema の SSR） ----
+   色はすべて既存のテーマ変数経由なのでライト/ダークに自動追従する。
+   スキーマテーブルは素の table で `.markdown-body table` のスタイルが当たる。 */
+
+.markdown-body .api-spec {
+  margin: 1.25rem 0;
+}
+
+.markdown-body .api-info {
+  margin-bottom: 1rem;
+}
+
+.markdown-body .api-title strong {
+  font-size: 1.05rem;
+}
+
+.markdown-body .api-version {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05em 0.5em;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  color: var(--fg-muted);
+}
+
+.markdown-body .api-desc {
+  color: var(--fg-muted);
+  margin: 0.35rem 0;
+}
+
+/* オペレーション（method + path の details。padding/border は details 既定に乗る） */
+.markdown-body .api-op > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-weight: 500;
+}
+
+.markdown-body .api-op > summary:hover {
+  background: var(--bg-hover);
+  color: inherit;
+}
+
+.markdown-body .api-summary {
+  color: var(--fg-muted);
+  font-weight: 400;
+}
+
+/* メソッドバッジ: 面色は種別ごとの --api-method-color、文字は面の色 --bg
+   （ライトは白文字・ダークは濃紺文字となり、どちらも AA を満たす） */
+.markdown-body .api-method {
+  display: inline-block;
+  padding: 0.1em 0.5em;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--bg);
+  background: var(--api-method-color, var(--fg-muted));
+}
+
+.markdown-body .api-method-get {
+  --api-method-color: var(--accent-fg);
+}
+.markdown-body .api-method-post {
+  --api-method-color: var(--alert-tip);
+}
+.markdown-body .api-method-put {
+  --api-method-color: var(--alert-warning);
+}
+.markdown-body .api-method-delete {
+  --api-method-color: var(--alert-caution);
+}
+.markdown-body .api-method-patch {
+  --api-method-color: var(--alert-important);
+}
+.markdown-body .api-method-head,
+.markdown-body .api-method-options {
+  --api-method-color: var(--fg-muted);
+}
+
+/* セクション見出し・本文パーツ */
+.markdown-body .api-section-label {
+  font-weight: 600;
+  margin: 0.85rem 0 0.35rem;
+}
+
+.markdown-body .api-required-note {
+  color: var(--alert-caution);
+  font-weight: 600;
+  margin: 0.25rem 0;
+}
+
+.markdown-body .api-media {
+  margin: 0.5rem 0 0.25rem;
+  color: var(--fg-muted);
+}
+
+/* レスポンスのステータス行（バッジは method と同じ配色ロジック） */
+.markdown-body .api-response {
+  margin: 0.4rem 0 0.2rem;
+}
+
+.markdown-body .api-status {
+  display: inline-block;
+  padding: 0.05em 0.5em;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.85em;
+  color: var(--bg);
+  background: var(--api-status-color, var(--fg-muted));
+}
+
+.markdown-body .api-status-2xx {
+  --api-status-color: var(--alert-tip);
+}
+.markdown-body .api-status-3xx {
+  --api-status-color: var(--accent-fg);
+}
+.markdown-body .api-status-4xx {
+  --api-status-color: var(--alert-warning);
+}
+.markdown-body .api-status-5xx {
+  --api-status-color: var(--alert-caution);
+}
+
+.markdown-body .api-status-desc {
+  color: var(--fg-muted);
+}
+
+/* テーブル内の必須マーク・注記チップ */
+.markdown-body .api-req {
+  text-align: center;
+  color: var(--alert-tip);
+  font-weight: 700;
+}
+
+.markdown-body .api-anno {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.85em;
+  color: var(--fg-muted);
+}
+
+.markdown-body .api-ref,
+.markdown-body .api-scalar,
+.markdown-body .api-array-items,
+.markdown-body .api-omitted {
+  margin: 0.35rem 0;
+  color: var(--fg-muted);
+}
+
+.markdown-body .api-ref-name {
+  margin: 0.35rem 0;
+  font-weight: 600;
+}
+
+/* 入れ子スキーマ: テーブル行の下に details（既定の枠に乗る）で畳む */
+.markdown-body .api-nested {
+  margin: 0.35rem 0;
+}
+
+.markdown-body .api-nested-row > td {
+  padding: 0.3rem 0.5rem;
+  background: var(--bg-subtle);
+}
+
+.markdown-body .api-combinator {
+  margin: 0.35rem 0;
+}
+
+.markdown-body .api-combinator-label {
+  font-weight: 600;
+  margin: 0.35rem 0 0.2rem;
+}
+
 /* ---- レスポンシブ ---- */
 
 @media (max-width: 72rem) {

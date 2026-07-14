@@ -10,6 +10,7 @@
 //! `llms.txt` / `llms-full.txt`（正規化 md の連結）もこの crate が担う（Phase 4）。
 //! `yuzu fmt` の整形コアは yuzu-core の `format_document`（Phase 6）。
 
+mod apispec;
 mod assets;
 mod context;
 mod css;

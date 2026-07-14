@@ -15,6 +15,9 @@ yuzu-theme = { workspace = true }
 tankan = { workspace = true }
 minijinja = { workspace = true }
 serde = { workspace = true }
+# OpenAPI / JSON Schema の SSR（YAML/JSON → Value 走査 → HTML）用
+serde_json = { workspace = true, features = ["preserve_order"] }
+serde_yaml_ng = { workspace = true }
 syntect = { workspace = true }
 thiserror = { workspace = true }
 two-face = { workspace = true }

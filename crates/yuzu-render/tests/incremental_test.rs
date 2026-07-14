@@ -196,6 +196,57 @@ fn env_key_が変わると全ページ再計算になる() {
 }
 
 #[test]
+fn file_参照ページは_body_キャッシュに載らず仕様変更が反映される() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_project(dir.path());
+    write(
+        dir.path(),
+        "specs/api.yaml",
+        "openapi: 3.0.3\ninfo:\n  title: 仕様タイトルv1\n  version: 1.0.0\npaths: {}\n",
+    );
+    write(
+        dir.path(),
+        "content/api.md",
+        "---\ntitle: API\n---\n# API\n\n```openapi\nfile: specs/api.yaml\n```\n",
+    );
+    let cache_dir = dir.path().join(".yuzu/cache");
+
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (_, stats1) = build_incremental(dir.path(), &cache);
+    assert_eq!(stats1.body_misses, 4, "初回は全ミス: {stats1:?}");
+
+    let api_html = dir.path().join("dist/api/index.html");
+    assert!(
+        fs::read_to_string(&api_html)
+            .unwrap()
+            .contains("仕様タイトルv1"),
+        "仕様ファイルの内容がページに埋まる"
+    );
+
+    // 2 回目: file: 参照ページだけ body キャッシュに載らず毎回再レンダされる
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (_, stats2) = build_incremental(dir.path(), &cache);
+    assert_eq!(
+        stats2.body_misses, 1,
+        "file: 参照ページは毎回ミス: {stats2:?}"
+    );
+    assert_eq!(stats2.body_hits, 3);
+
+    // ページ .md は無変更のまま仕様ファイルだけ変更 → 次ビルドで反映される
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    write(
+        dir.path(),
+        "specs/api.yaml",
+        "openapi: 3.0.3\ninfo:\n  title: 仕様タイトルv2\n  version: 1.0.0\npaths: {}\n",
+    );
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    let html = fs::read_to_string(&api_html).unwrap();
+    assert!(html.contains("仕様タイトルv2"), "仕様変更が反映される");
+    assert!(!html.contains("仕様タイトルv1"), "古い内容が残らない");
+}
+
+#[test]
 fn ページ追加は_routes_key_の変化で全_body_を再計算する() {
     let dir = tempfile::tempdir().unwrap();
     setup_project(dir.path());
