@@ -347,13 +347,11 @@ fn match_token_at(s: &str, i: usize) -> Option<RelToken> {
         (Marker::None, rest)
     };
 
-    // 線種（必須）
+    // 線種（必須。実線 `--` でなければ点線 `..` を要求）
     let (dashed, after_line) = if let Some(r) = after_left.strip_prefix("--") {
         (false, r)
-    } else if let Some(r) = after_left.strip_prefix("..") {
-        (true, r)
     } else {
-        return None;
+        (true, after_left.strip_prefix("..")?)
     };
 
     // 右マーカー（同様に `o` は後続の語境界を要求）
