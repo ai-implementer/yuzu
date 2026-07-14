@@ -44,6 +44,8 @@ unicode-width = "0.2"
 # SVG の well-formed 検証（dev 用）
 roxmltree = "0.21"
 # wasm-bindgen-cli と完全同一バージョンが必須のため = でピン（scripts/build-search-wasm.sh が照合）
+# 文字単位の Levenshtein DFA（日本語タイポトレランス用。fst 標準はバイト距離）
+levenshtein_automata = { version = "0.2", features = ["fst_automaton"] }
 wasm-bindgen = "=0.2.126"
 thiserror = "2"
 anyhow = "1"

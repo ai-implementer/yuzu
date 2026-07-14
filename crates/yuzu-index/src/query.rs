@@ -31,11 +31,11 @@ pub struct SearchResult {
 }
 
 /// `dist/_search/` を読み込んで検索する
-pub fn search_dist(
+pub fn search_dist_with_total(
     dist: &Path,
     query: &str,
     limit: usize,
-) -> Result<Vec<SearchResult>, IndexError> {
+) -> Result<(Vec<SearchResult>, usize), IndexError> {
     let search_dir = dist.join(SEARCH_DIR_NAME);
     let manifest_path = search_dir.join("manifest.json");
     if !manifest_path.is_file() {
@@ -61,7 +61,7 @@ pub fn search_dist(
         engine.load_shard(shard_id, &bytes)?;
     }
 
-    let hits = engine.search(query, limit);
+    let (hits, total) = engine.search_with_total(query, limit);
     let mut results = Vec::with_capacity(hits.len());
     for hit in hits {
         let path = search_dir.join(format!("fragment/{}.json", hit.doc_id));
@@ -83,5 +83,14 @@ pub fn search_dist(
             excerpt,
         });
     }
-    Ok(results)
+    Ok((results, total))
+}
+
+/// [`search_dist_with_total`] の従来形（総ヒット数なし）
+pub fn search_dist(
+    dist: &Path,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<SearchResult>, IndexError> {
+    Ok(search_dist_with_total(dist, query, limit)?.0)
 }

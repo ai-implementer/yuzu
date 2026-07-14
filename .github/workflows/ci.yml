@@ -60,7 +60,9 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" build --base-url /docs/
           grep -q '/docs/_assets/' dist/index.html
           "$GITHUB_WORKSPACE/target/debug/yuzu" search "はじめに" | grep "はじめに"
-          "$GITHUB_WORKSPACE/target/debug/yuzu" search "ダーくモード" | grep -q "."
+          # タイポトレランスの実ヒット確認（Phase 21: 出力の有無だけでは日本語 typo の
+          # 不具合を見逃した反省から、ヒット内容まで検証する）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search "ダーくモード" | grep -q "ダークモード"
           # Phase 6: fmt/lint/check（正常系 = 0、違反注入で = 1 の終了コード契約）
           "$GITHUB_WORKSPACE/target/debug/yuzu" fmt --check
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint

@@ -21,6 +21,7 @@ function setup() {
   const fragmentCache = new Map();
   let timer = null;
   let selected = -1;
+  let composing = false; // IME 変換中フラグ
 
   // "/" or Cmd/Ctrl+K でフォーカス
   document.addEventListener("keydown", (ev) => {
@@ -31,15 +32,39 @@ function setup() {
     }
   });
 
-  // 初回フォーカスでエンジンを遅延初期化
-  input.addEventListener("focus", () => ensureEngine().catch(showError));
+  // 初回フォーカスでエンジンを遅延初期化（読み込み中の表示付き）
+  input.addEventListener("focus", () => {
+    if (!engine && !enginePromise) {
+      showMessage("検索インデックスを読み込み中…");
+      ensureEngine()
+        .then(() => {
+          // 読み込み中メッセージだけが出ている状態なら閉じる
+          if (resultsBox.querySelector(".search-loading")) close();
+        })
+        .catch(showError);
+    }
+  });
+
+  // IME 変換中は未確定文字列で検索しない（確定時に 1 回だけ実行）
+  input.addEventListener("compositionstart", () => {
+    composing = true;
+    clearTimeout(timer);
+  });
+  input.addEventListener("compositionend", () => {
+    composing = false;
+    clearTimeout(timer);
+    timer = setTimeout(() => runSearch(input.value.trim()).catch(showError), DEBOUNCE_MS);
+  });
 
   input.addEventListener("input", () => {
+    if (composing) return;
     clearTimeout(timer);
     timer = setTimeout(() => runSearch(input.value.trim()).catch(showError), DEBOUNCE_MS);
   });
 
   input.addEventListener("keydown", (ev) => {
+    // IME 変換中のキー操作（候補の移動・確定）を奪わない
+    if (ev.isComposing || ev.keyCode === 229) return;
     const items = resultsBox.querySelectorAll("a.search-hit");
     if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
       ev.preventDefault();
@@ -47,10 +72,11 @@ function setup() {
       selected = ev.key === "ArrowDown"
         ? (selected + 1) % items.length
         : (selected - 1 + items.length) % items.length;
-      items.forEach((el, i) => el.classList.toggle("selected", i === selected));
+      updateSelection(items);
       items[selected].scrollIntoView({ block: "nearest" });
-    } else if (ev.key === "Enter" && selected >= 0 && items[selected]) {
-      location.href = items[selected].href;
+    } else if (ev.key === "Enter" && items.length) {
+      // 未選択の Enter は先頭ヒットへ（コンボボックスの一般的挙動）
+      location.href = items[Math.max(selected, 0)].href;
     } else if (ev.key === "Escape") {
       close();
       input.blur();
@@ -60,6 +86,19 @@ function setup() {
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest("#yuzu-search")) close();
   });
+
+  // 選択状態を class と aria（aria-selected / aria-activedescendant）へ同期する
+  function updateSelection(items) {
+    items.forEach((el, i) => {
+      el.classList.toggle("selected", i === selected);
+      el.setAttribute("aria-selected", i === selected ? "true" : "false");
+    });
+    if (selected >= 0 && items[selected]) {
+      input.setAttribute("aria-activedescendant", items[selected].id);
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  }
 
   async function ensureEngine() {
     if (engine) return engine;
@@ -94,9 +133,9 @@ function setup() {
       }),
     );
 
-    const hits = JSON.parse(instance.search(query, LIMIT));
+    const { total, hits } = JSON.parse(instance.search(query, LIMIT));
     const fragments = await Promise.all(hits.map((h) => fetchFragment(h.docId)));
-    render(query, instance, fragments);
+    render(query, instance, fragments, total);
   }
 
   async function fetchFragment(docId) {
@@ -107,17 +146,30 @@ function setup() {
     return fragmentCache.get(docId);
   }
 
-  function render(query, instance, fragments) {
+  function render(query, instance, fragments, total) {
     selected = -1;
+    input.removeAttribute("aria-activedescendant");
     resultsBox.innerHTML = "";
     if (!fragments.length) {
-      resultsBox.innerHTML = `<div class="search-empty">一致するページはありません</div>`;
+      // クエリ文字列は textContent 経由で入れる（XSS 安全）
+      const empty = document.createElement("div");
+      empty.className = "search-empty";
+      empty.textContent = `「${query}」に一致するページはありません`;
+      resultsBox.append(empty);
       open();
       return;
     }
-    for (const fragment of fragments) {
+    const count = document.createElement("div");
+    count.className = "search-count";
+    count.textContent =
+      total > fragments.length ? `${total} 件（上位 ${fragments.length} 件を表示）` : `${total} 件`;
+    resultsBox.append(count);
+    for (const [i, fragment] of fragments.entries()) {
       const a = document.createElement("a");
       a.className = "search-hit";
+      a.id = `yuzu-search-hit-${i}`;
+      a.setAttribute("role", "option");
+      a.setAttribute("aria-selected", "false");
       // セクション doc は見出しアンカーへ直接ジャンプする
       a.href = BASE + fragment.url + (fragment.anchor ? "#" + fragment.anchor : "");
       const title = document.createElement("div");
@@ -159,7 +211,18 @@ function setup() {
   function close() {
     resultsBox.hidden = true;
     input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
     selected = -1;
+  }
+
+  // 一時メッセージ（読み込み中等）。検索結果が来たら render が上書きする
+  function showMessage(text) {
+    resultsBox.innerHTML = "";
+    const div = document.createElement("div");
+    div.className = "search-empty search-loading";
+    div.textContent = text;
+    resultsBox.append(div);
+    open();
   }
 
   function showError(err) {

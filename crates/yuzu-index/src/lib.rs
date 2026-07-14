@@ -17,7 +17,7 @@ pub use builder::{
     model_fingerprint,
 };
 pub use error::IndexError;
-pub use query::{SearchResult, search_dist};
+pub use query::{SearchResult, search_dist, search_dist_with_total};
 
 /// `dist/` 内の検索成果物ディレクトリ名
 pub const SEARCH_DIR_NAME: &str = "_search";

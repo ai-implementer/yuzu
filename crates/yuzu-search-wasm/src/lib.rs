@@ -49,15 +49,15 @@ impl YuzuSearch {
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
-    /// BM25 の上位 `limit` 件を JSON 文字列で返す: `[{"docId":0,"score":1.2},…]`
+    /// BM25 の上位 `limit` 件と総ヒット数を JSON 文字列で返す:
+    /// `{"total":12,"hits":[{"docId":0,"score":1.2},…]}`
     pub fn search(&self, query: &str, limit: usize) -> String {
-        let hits: Vec<String> = self
-            .inner
-            .search(query, limit)
+        let (hits, total) = self.inner.search_with_total(query, limit);
+        let hits: Vec<String> = hits
             .into_iter()
             .map(|h| format!(r#"{{"docId":{},"score":{}}}"#, h.doc_id, h.score))
             .collect();
-        format!("[{}]", hits.join(","))
+        format!(r#"{{"total":{total},"hits":[{}]}}"#, hits.join(","))
     }
 
     /// クエリをエンジンと同一の分かち書きで token 配列（JSON）にする: `["検索","エンジン"]`

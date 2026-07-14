@@ -283,6 +283,14 @@ body {
   padding: 0 0.1em;
 }
 
+/* 結果件数（ドロップダウン先頭） */
+.search-count {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+}
+
 .search-empty {
   padding: 0.8rem;
   color: var(--fg-muted);

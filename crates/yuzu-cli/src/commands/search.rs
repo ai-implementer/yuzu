@@ -9,7 +9,7 @@ pub fn run(query: &str, limit: usize, json: bool) -> anyhow::Result<()> {
     let root = yuzu_config::find_project_root(&cwd)?;
     let rc = yuzu_config::load(&root)?;
 
-    let results = yuzu_index::search_dist(&rc.output_dir, query, limit)?;
+    let (results, total) = yuzu_index::search_dist_with_total(&rc.output_dir, query, limit)?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&results)?);
@@ -19,6 +19,11 @@ pub fn run(query: &str, limit: usize, json: bool) -> anyhow::Result<()> {
     if results.is_empty() {
         println!("「{query}」に一致するページはありませんでした");
         return Ok(());
+    }
+    if total > results.len() {
+        println!("全 {total} 件（上位 {} 件を表示）", results.len());
+    } else {
+        println!("全 {total} 件");
     }
     for (rank, result) in results.iter().enumerate() {
         let title = match &result.heading {

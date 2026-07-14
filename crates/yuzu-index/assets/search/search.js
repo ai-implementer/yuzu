@@ -82,7 +82,8 @@ export class YuzuSearch {
         return this;
     }
     /**
-     * BM25 の上位 `limit` 件を JSON 文字列で返す: `[{"docId":0,"score":1.2},…]`
+     * BM25 の上位 `limit` 件と総ヒット数を JSON 文字列で返す:
+     * `{"total":12,"hits":[{"docId":0,"score":1.2},…]}`
      * @param {string} query
      * @param {number} limit
      * @returns {string}

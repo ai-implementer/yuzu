@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 fst = { workspace = true }
+levenshtein_automata = { workspace = true }
 ruzstd = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

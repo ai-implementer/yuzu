@@ -9,8 +9,8 @@
 
 use std::collections::HashMap;
 
-use fst::automaton::Levenshtein;
 use fst::{IntoStreamer, Map, Streamer};
+use levenshtein_automata::LevenshteinAutomatonBuilder;
 
 use crate::FORMAT_VERSION;
 use crate::error::FormatError;
@@ -39,6 +39,10 @@ pub struct SearchEngine {
     manifest: Manifest,
     terms: Map<Vec<u8>>,
     shards: HashMap<u32, Shard>,
+    /// 編集距離 1 の Levenshtein DFA ビルダー（**文字単位**の距離。
+    /// fst 標準の Levenshtein はバイト距離で日本語に効かないため置換した）。
+    /// パラメトリックテーブルの構築が重いのでエンジンごとに 1 回だけ作る
+    lev_builder: LevenshteinAutomatonBuilder,
 }
 
 impl SearchEngine {
@@ -62,6 +66,7 @@ impl SearchEngine {
             manifest,
             terms,
             shards: HashMap::new(),
+            lev_builder: LevenshteinAutomatonBuilder::new(1, false),
         })
     }
 
@@ -107,6 +112,11 @@ impl SearchEngine {
     /// 未ロードのシャードに載っている term は無視される
     /// （[`Self::needed_shards`] → [`Self::load_shard`] を先に済ませる規約）
     pub fn search(&self, query: &str, limit: usize) -> Vec<Hit> {
+        self.search_with_total(query, limit).0
+    }
+
+    /// [`Self::search`] に加えて、truncate 前の総ヒット数を返す（件数表示用）
+    pub fn search_with_total(&self, query: &str, limit: usize) -> (Vec<Hit>, usize) {
         let resolved = self.resolve_terms(query);
         let doc_count = self.manifest.doc_count as f32;
         let avg_len = self.manifest.avg_doc_len.max(1.0);
@@ -152,8 +162,9 @@ impl SearchEngine {
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then(a.doc_id.cmp(&b.doc_id))
         });
+        let total = hits.len();
         hits.truncate(limit);
-        hits
+        (hits, total)
     }
 
     /// クエリをエンジンと同一の正規化・分かち書きで token 列にする（UI の補助 API）
@@ -232,11 +243,11 @@ impl SearchEngine {
                 {
                     continue;
                 }
-                // DFA 構築の失敗（過長クエリ等）はタイポ補正なしで続行
-                let Ok(automaton) = Levenshtein::new(&token, u32::from(max_edits)) else {
-                    continue;
-                };
-                let mut stream = self.terms.search(&automaton).into_stream();
+                // 文字単位の Levenshtein DFA（levenshtein_automata）。
+                // UTF-8 バイト列を辿りながら Unicode 文字の編集距離を数えるため、
+                // 「ダーく」→「ダーク」のような日本語 1 文字のゆれにも効く
+                let dfa = self.lev_builder.build_dfa(&token);
+                let mut stream = self.terms.search(&dfa).into_stream();
                 let mut expanded = 0;
                 while let Some((_, id)) = stream.next() {
                     merge(&mut resolved, id, LEV_WEIGHT);
@@ -453,12 +464,16 @@ mod tests {
             variant[0].score
         );
 
-        // 同義語なしでは届かない（fst の Levenshtein はバイト距離のため
-        // 日本語の 1 文字ゆれは編集距離 1 に収まらない = 同義語辞書が唯一の経路）
+        // 同義語なしだと typo 展開（weight 0.5）でしか届かず、スコアが半分になる
+        // （Phase 21 で編集距離が文字単位になり、日本語 1 文字のゆれに typo が効く）
         let engine_plain = build_index(&docs, 1024);
+        let typo_only = engine_plain.search("サーバ", 10);
+        assert_eq!(typo_only[0].doc_id, 0);
         assert!(
-            engine_plain.search("サーバ", 10).is_empty(),
-            "同義語なしのゆれ表記はヒットしない前提が崩れた"
+            (typo_only[0].score - exact[0].score * 0.5).abs() < 1e-6,
+            "typo={} exact={}",
+            typo_only[0].score,
+            exact[0].score
         );
     }
 
@@ -518,5 +533,40 @@ mod tests {
         let engine = build_index(&docs, 1024);
         assert_eq!(engine.expand_queries("サーバー"), ["サーバー"]);
         assert!(!engine.search("サーバー", 10).is_empty());
+    }
+
+    #[test]
+    fn 日本語の一文字ゆれもタイポ展開でヒットする() {
+        let engine = build_index(&["ダークモードの切り替え", "無関係な文書です"], 10_000);
+
+        // 置換（ダーく→ダーク）・挿入（サーバ→サーバー相当）が文字単位の距離 1
+        let hits = engine.search("ダーくモード", 10);
+        assert!(!hits.is_empty(), "ひらがな 1 文字の置換でヒットする");
+        assert_eq!(hits[0].doc_id, 0);
+
+        // 完全一致よりスコアが低い（ペナルティ 0.5）
+        let exact = engine.search("ダークモード", 10);
+        assert!(exact[0].score > hits[0].score);
+
+        // 2 文字のゆれ（だーく: 2 置換）は距離 1 に収まらない
+        let far = engine.search("だあくモオド", 10);
+        assert!(
+            far.iter().all(|h| h.score < exact[0].score),
+            "2 編集以上の語は完全一致と同列にならない: {far:?}"
+        );
+    }
+
+    #[test]
+    fn search_with_total_は切り詰め前の総数を返す() {
+        let docs = [
+            "検索の説明その一",
+            "検索の説明その二",
+            "検索の説明その三",
+            "無関係",
+        ];
+        let engine = build_index(&docs, 10_000);
+        let (hits, total) = engine.search_with_total("検索", 2);
+        assert_eq!(hits.len(), 2, "limit で切り詰め");
+        assert_eq!(total, 3, "総ヒット数は切り詰め前");
     }
 }
