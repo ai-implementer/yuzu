@@ -296,7 +296,7 @@ scripts/dev-container.sh down     # 停止・削除（volume 保持）
 ## yuzu 固有の罠
 
 - **ホスト編集 → コンテナ内 `yuzu dev` のホットリロードは効かない**（上記 inotify 制限）。**`yuzu dev` はホスト実行が既定運用**。コンテナ内の Claude Code が編集する場合はゲスト内 inotify が効くので動く
-- **コンテナ内 `yuzu dev/preview` にホストから繋ぐには** `yuzu.jsonc` の**既存の** `dev` セクションに `"host": "0.0.0.0"` を追加する（`--host` フラグは無い。**JSONC の重複キーは後勝ち** — 新しい `dev` セクションを別に足しても無視される）
+- **コンテナ内 `yuzu dev/preview` にホストから繋ぐには** `--host 0.0.0.0` を付けて起動する（v0.3 で追加。設定ファイルなら `dev.host` — **JSONC の重複キーは後勝ち**なので既存の `dev` セクションに追記する。重複時は build が警告を出す）
 - **メモリ圧が上がったら** `scripts/dev-container.sh down && up` で作り直す（上記メモリ返却の制限。キャッシュは volume なので失われない）
 
 ## 環境定義を変えたときの検証
