@@ -69,7 +69,8 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" check
           # Phase 22: openapi/jsonschema SSR — scaffold の jsonschema ブロックが
           # 静的 HTML 化されていること＋ file: 参照は仕様ファイルの変更だけで反映されること
-          grep -q 'class="api-spec"' dist/guide/getting-started/index.html
+          # （jsonschema は class="api-spec api-schema" なので閉じ引用符まで書かない）
+          grep -q 'class="api-spec' dist/guide/getting-started/index.html
           mkdir -p specs
           printf 'openapi: 3.0.3\ninfo:\n  title: E2E API v1\n  version: 1.0.0\npaths: {}\n' > specs/api.yaml
           printf -- '---\ntitle: API\n---\n\n# API\n\n```openapi\nfile: specs/api.yaml\n```\n' > content/api.md
