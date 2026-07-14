@@ -227,6 +227,30 @@ pub struct LintConfig {
     /// 用語統一の辞書（正しい表記 → ゆれ表記のリスト）。
     /// 例: `"terms": { "サーバー": ["サーバ"], "ユーザー": ["ユーザ"] }`
     pub terms: BTreeMap<String, Vec<String>>,
+    /// 組み込みの表記ゆれルール（既定はすべて有効。ルール単位で無効化できる）
+    pub rules: LintRulesConfig,
+}
+
+/// 組み込み表記ゆれルールの有効/無効
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LintRulesConfig {
+    /// 全角英数字（Ｗｅｂ１２３）を検出する
+    pub fullwidth_alphanumeric: bool,
+    /// 半角カナ（ｶﾀｶﾅ）を検出する
+    pub halfwidth_kana: bool,
+    /// 長音符ゆれの混在（サーバ/サーバー）をプロジェクト横断で検出する
+    pub katakana_choon: bool,
+}
+
+impl Default for LintRulesConfig {
+    fn default() -> Self {
+        Self {
+            fullwidth_alphanumeric: true,
+            halfwidth_kana: true,
+            katakana_choon: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

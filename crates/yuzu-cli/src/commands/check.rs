@@ -19,6 +19,11 @@ pub fn run() -> anyhow::Result<ExitCode> {
     let lint_opts = LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,
         terms: rc.config.lint.terms.clone(),
+        rules: yuzu_core::LintRules {
+            fullwidth_alphanumeric: rc.config.lint.rules.fullwidth_alphanumeric,
+            halfwidth_kana: rc.config.lint.rules.halfwidth_kana,
+            katakana_choon: rc.config.lint.rules.katakana_choon,
+        },
     };
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
@@ -38,6 +43,8 @@ pub fn run() -> anyhow::Result<ExitCode> {
             });
         }
     }
+    // プロジェクト横断ルール（長音符ゆれの混在等）
+    diags.extend(yuzu_core::lint_project(&pages, &opts, &lint_opts)?);
     // 内部リンク・アンカー
     diags.extend(yuzu_core::check_links(
         &pages,

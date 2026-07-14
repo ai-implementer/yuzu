@@ -223,6 +223,14 @@ yuzu lint
 # content/guide/api.md:12:5: warning[term-variant] 「サーバ」は「サーバー」に統一してください
 ```
 
+辞書がなくても、**組み込みルール**が機械的なゆれを既定で検出します
+（`lint.rules` でルール単位の無効化が可能）:
+
+- 全角英数字（`fullwidth-alphanumeric`）: Ｗｅｂ１２３ → Web123 を提案
+- 半角カナ（`halfwidth-kana`）: ﾃﾞｰﾀ → データ を提案
+- 長音符ゆれの混在（`katakana-choon`）: プロジェクト内に `サーバ` と `サーバー` が
+  混在していたら少数派の側に警告（コードブロック・URL は対象外）
+
 ## 最終更新日と編集リンク
 
 `yuzu.jsonc` の `git` セクションを有効にすると、ページフッターに

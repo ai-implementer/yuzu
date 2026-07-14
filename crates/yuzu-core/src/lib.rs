@@ -62,6 +62,29 @@ pub struct LintOptions {
     /// 用語統一の辞書（正しい表記 → ゆれ表記のリスト）。
     /// 本文テキスト（コード・URL を除く）にゆれ表記が現れたら警告する
     pub terms: std::collections::BTreeMap<String, Vec<String>>,
+    /// 組み込みの表記ゆれルール（設定の `lint.rules` から写す）
+    pub rules: LintRules,
+}
+
+/// 組み込み表記ゆれルールの有効/無効（既定はすべて有効）
+#[derive(Debug, Clone)]
+pub struct LintRules {
+    /// 全角英数字（Ｗｅｂ１２３）
+    pub fullwidth_alphanumeric: bool,
+    /// 半角カナ（ｶﾀｶﾅ）
+    pub halfwidth_kana: bool,
+    /// 長音符ゆれの混在（サーバ/サーバー。プロジェクト横断）
+    pub katakana_choon: bool,
+}
+
+impl Default for LintRules {
+    fn default() -> Self {
+        Self {
+            fullwidth_alphanumeric: true,
+            halfwidth_kana: true,
+            katakana_choon: true,
+        }
+    }
 }
 
 /// パス1: `content_dir` 以下の `*.md` を走査し、サイトモデルを構築する。
@@ -245,6 +268,17 @@ pub fn lint_page(
     lint: &LintOptions,
 ) -> Result<Vec<Diagnostic>, CoreError> {
     lint::lint_page(page, opts, lint)
+}
+
+/// プロジェクト横断の文書規約 lint（ページ間の整合を見るルール）。
+/// 現在は `katakana-choon`（長音符ゆれの混在）のみ。
+/// [`lint_page`] の後に呼んで診断を合流させる。診断は (rel, 行, 列) 順でソート済み
+pub fn lint_project(
+    pages: &[Page],
+    opts: &MarkdownOptions,
+    lint: &LintOptions,
+) -> Result<Vec<Diagnostic>, CoreError> {
+    lint::lint_project(pages, opts, lint)
 }
 
 /// 内部リンク・アンカーの静的検査（`yuzu check` 用）。

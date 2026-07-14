@@ -33,7 +33,12 @@
   },
   // "lint": {
   //   "maxDirectoryDepth": 1, // content 配下のディレクトリ階層を制限（直下 = 0。未設定なら無制限）
-  //   "terms": { "サーバー": ["サーバ"] } // 用語統一の辞書（正しい表記 → ゆれ表記）。lint/check が表記ゆれを報告
+  //   "terms": { "サーバー": ["サーバ"] }, // 用語統一の辞書（正しい表記 → ゆれ表記）。lint/check が表記ゆれを報告
+  //   "rules": { // 組み込みの表記ゆれルール（既定はすべて有効。false で個別に無効化）
+  //     "fullwidthAlphanumeric": true, // 全角英数字（Ｗｅｂ１２３）
+  //     "halfwidthKana": true, // 半角カナ（ｶﾀｶﾅ）
+  //     "katakanaChoon": true // 長音符ゆれの混在（サーバ/サーバー）をプロジェクト横断で検出
+  //   }
   // },
   // "git": {
   //   "lastUpdated": true, // ページフッターに最終コミット日（git が無い環境では自動で非表示）
