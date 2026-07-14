@@ -1498,7 +1498,7 @@ dependencies = [
 
 [[package]]
 name = "tankan"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "insta",
  "roxmltree",
@@ -2096,7 +2096,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2114,7 +2114,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-config"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jsonc-parser",
  "serde",
@@ -2126,7 +2126,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "comrak",
  "globset",
@@ -2143,7 +2143,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-index"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "fst",
  "rust-embed",
@@ -2159,7 +2159,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-index-format"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "fst",
  "insta",
@@ -2174,7 +2174,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-render"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "insta",
  "minijinja",
@@ -2193,7 +2193,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-search-wasm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde_json",
  "wasm-bindgen",
@@ -2202,7 +2202,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-server"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "axum",
  "futures-util",
@@ -2218,7 +2218,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-theme"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rust-embed",
 ]
