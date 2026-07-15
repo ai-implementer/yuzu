@@ -47,6 +47,45 @@ pub(crate) fn scan_markdown_files(
     Ok(files)
 }
 
+/// `content_dir` 以下の `.md` 以外のファイル（ページ横の画像等の同伴アセット）を
+/// パスのソート順で列挙する。`ignore` glob の評価は [`scan_markdown_files`] と同一。
+/// 隠しファイル（`.` 始まりの構成要素を含むパス。`.DS_Store` やエディタの
+/// 管理ディレクトリ等）は既定で除外する
+pub(crate) fn scan_content_assets(
+    content_dir: &Path,
+    ignore: &[String],
+) -> Result<Vec<ScannedFile>, CoreError> {
+    let ignore_set = build_ignore_set(ignore)?;
+    let mut files = Vec::new();
+
+    for entry in WalkDir::new(content_dir)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let abs = entry.path().to_path_buf();
+        if abs.extension().and_then(|e| e.to_str()) == Some("md") {
+            continue;
+        }
+        let rel = abs
+            .strip_prefix(content_dir)
+            .expect("walkdir は content_dir 配下のみ返す")
+            .to_path_buf();
+        if rel.iter().any(|c| c.to_string_lossy().starts_with('.')) {
+            continue;
+        }
+        if ignore_set.is_match(crate::urlpath::rel_to_slash(&rel)) {
+            tracing::debug!(path = %rel.display(), "ignore パターンに一致したため除外");
+            continue;
+        }
+        files.push(ScannedFile { abs, rel });
+    }
+    Ok(files)
+}
+
 fn build_ignore_set(patterns: &[String]) -> Result<GlobSet, CoreError> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {

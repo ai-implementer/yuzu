@@ -664,6 +664,29 @@ fn openapi_ブロックは_api_spec_として_ssr_される() {
 }
 
 #[test]
+fn content_同伴の画像はコピーされ_src_が絶対_url_になる() {
+    let dir = build_fixture_with(|root| {
+        fs::write(root.join("content/guide/shot.png"), b"PNG-DUMMY").unwrap();
+        fs::write(root.join("content/top.png"), b"PNG-TOP").unwrap();
+        fs::write(
+            root.join("content/guide/pics.md"),
+            "---\ntitle: 画像\n---\n# 画像\n\n![ページ横](shot.png)\n\n![上の階層](../top.png)\n",
+        )
+        .unwrap();
+    });
+    let dist = dir.path().join("dist");
+
+    // 同伴アセットが content と同じ相対パスへコピーされる
+    assert_eq!(fs::read(dist.join("guide/shot.png")).unwrap(), b"PNG-DUMMY");
+    assert!(dist.join("top.png").is_file());
+
+    // 相対 src は base 付き絶対 URL へ解決される（pretty URL の階層ずれ対策）
+    let html = fs::read_to_string(dist.join("guide/pics/index.html")).unwrap();
+    assert!(html.contains(r#"src="/docs/guide/shot.png""#), "{html}");
+    assert!(html.contains(r#"src="/docs/top.png""#));
+}
+
+#[test]
 fn 壊れた_openapi_はエラーボックスでビルドは継続する() {
     let dir = build_fixture_with(|root| {
         fs::write(

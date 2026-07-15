@@ -79,6 +79,13 @@ jobs:
           printf 'openapi: 3.0.3\ninfo:\n  title: E2E API v2\n  version: 1.0.0\npaths: {}\n' > specs/api.yaml
           "$GITHUB_WORKSPACE/target/debug/yuzu" build
           grep -q 'E2E API v2' dist/api/index.html
+          # content 同伴アセット: ページ横の画像が dist へコピーされ src が解決される
+          printf 'PNG-E2E' > content/guide/pic.png
+          printf -- '\n![図](pic.png)\n' >> content/guide/getting-started.md
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          test -f dist/guide/pic.png
+          grep -q 'src="/guide/pic.png"' dist/guide/getting-started/index.html
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check
           echo '[壊れリンク](missing.md)' >> content/index.md
           if "$GITHUB_WORKSPACE/target/debug/yuzu" check; then
             echo "check が壊れリンクを検出しなかった" >&2

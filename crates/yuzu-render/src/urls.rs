@@ -98,7 +98,18 @@ impl UrlRewriter for UrlResolver {
             return Some(format!("{}{}{}", self.base, route, suffix));
         }
 
-        // その他の相対参照（画像等）はそのまま
+        // その他の相対参照のうち拡張子付き（画像・添付等）は content の同伴
+        // アセットとして dist の同じ相対パスへコピーされるため、base 付き絶対
+        // URL へ解決する（ページは `guide/foo/index.html` に置かれるので相対の
+        // ままでは階層がずれる）。判定はリンク検査（linkcheck）と同じ
+        // 「末尾セグメントに `.` を含む」。ディレクトリ風リンクは配信形態
+        // 依存のため従来どおり触らない
+        let last = path.rsplit('/').next().unwrap_or(path);
+        if last.contains('.') {
+            let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
+            let resolved = resolve_relative(&dir, path);
+            return Some(format!("{}{}{}", self.base, resolved, suffix));
+        }
         None
     }
 }
@@ -182,6 +193,36 @@ mod tests {
             r.rewrite(&p, "missing.md").as_deref(),
             Some("/guide/missing/")
         );
+    }
+
+    #[test]
+    fn 相対の同伴アセット参照は_content_相対パスの絶対_url_へ解決される() {
+        let (r, p) = resolver("/docs/");
+        // ページは guide/getting-started.md → 画像は content/guide/ 基準
+        assert_eq!(
+            r.rewrite(&p, "diagram.png").as_deref(),
+            Some("/docs/guide/diagram.png")
+        );
+        assert_eq!(
+            r.rewrite(&p, "./img/shot.png").as_deref(),
+            Some("/docs/guide/img/shot.png")
+        );
+        assert_eq!(
+            r.rewrite(&p, "../top.png").as_deref(),
+            Some("/docs/top.png")
+        );
+        // 添付ファイル（画像以外）も同じ規則
+        assert_eq!(
+            r.rewrite(&p, "spec.pdf").as_deref(),
+            Some("/docs/guide/spec.pdf")
+        );
+    }
+
+    #[test]
+    fn 拡張子のないディレクトリ風リンクは触らない() {
+        let (r, p) = resolver("/docs/");
+        assert!(r.rewrite(&p, "guide/").is_none());
+        assert!(r.rewrite(&p, "some-page").is_none());
     }
 
     #[test]

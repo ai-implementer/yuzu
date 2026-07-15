@@ -26,7 +26,7 @@ mod traits;
 pub mod urlpath;
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{Diagnostic, Severity};
@@ -85,6 +85,19 @@ impl Default for LintRules {
             katakana_choon: true,
         }
     }
+}
+
+/// `content_dir` 以下の `.md` 以外の同伴アセット（ページ横の画像等）を列挙する。
+/// 戻り値は（絶対パス, content 相対パス）のソート順。
+/// `ignore` glob は [`build_site_model`] と同一の評価で、隠しファイルは除外する
+pub fn collect_content_assets(
+    content_dir: &Path,
+    ignore: &[String],
+) -> Result<Vec<(PathBuf, PathBuf)>, CoreError> {
+    Ok(scan::scan_content_assets(content_dir, ignore)?
+        .into_iter()
+        .map(|f| (f.abs, f.rel))
+        .collect())
 }
 
 /// パス1: `content_dir` 以下の `*.md` を走査し、サイトモデルを構築する。

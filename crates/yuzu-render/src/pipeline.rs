@@ -187,6 +187,9 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         crate::llms::write_llms_files(rc, params.site, output_dir, ctx)?;
     }
 
+    // content の同伴アセット（ページ横の画像等）。copy_public より前 = 同じパスに
+    // public/ のファイルがあればそちらが上書きして優先される（テーマ上書きと同じ思想）
+    assets::copy_content_assets(&rc.content_dir, &cfg.input.ignore, output_dir, ctx.outputs)?;
     assets::copy_public(rc.public_dir.as_deref(), output_dir, ctx.outputs)?;
     assets::write_build_id(output_dir, ctx.outputs)?;
 

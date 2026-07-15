@@ -247,6 +247,38 @@ fn file_参照ページは_body_キャッシュに載らず仕様変更が反映
 }
 
 #[test]
+fn content_同伴アセットは出力管理され削除で孤児掃除される() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_project(dir.path());
+    write(dir.path(), "content/guide/pic.png", "PNG1");
+    let cache_dir = dir.path().join(".yuzu/cache");
+    let manifest = cache_dir.join("output-manifest.json");
+
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (written1, _) = build_incremental(dir.path(), &cache);
+    output::save_manifest(&manifest, &written1).unwrap();
+    let pic = dir.path().join("dist/guide/pic.png");
+    assert!(pic.is_file(), "同伴アセットがコピーされる");
+    assert!(written1.contains("guide/pic.png"), "出力管理に載る");
+    let mtime1 = mtime(&pic);
+
+    // 無変更再ビルド → 内容一致で書き込みスキップ（mtime 温存）
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (written2, _) = build_incremental(dir.path(), &cache);
+    assert_eq!(mtime(&pic), mtime1, "mtime 温存");
+    output::save_manifest(&manifest, &written2).unwrap();
+
+    // 元画像を削除 → 孤児掃除で dist からも消える
+    fs::remove_file(dir.path().join("content/guide/pic.png")).unwrap();
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (written3, _) = build_incremental(dir.path(), &cache);
+    let previous = output::load_manifest(&manifest).unwrap();
+    output::remove_orphans(&dir.path().join("dist"), &previous, &written3).unwrap();
+    assert!(!pic.exists(), "削除した画像の出力が掃除される");
+}
+
+#[test]
 fn インラインブロックのファイル_ref_も毎回再レンダされ変更が反映される() {
     let dir = tempfile::tempdir().unwrap();
     setup_project(dir.path());

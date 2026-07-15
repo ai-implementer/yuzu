@@ -66,6 +66,27 @@ pub(crate) fn copy_public(
     Ok(())
 }
 
+/// content/ の同伴アセット（`.md` 以外。ページ横の画像等）を dist の
+/// 同じ相対パスへコピーする。本文の相対参照は UrlResolver が同じ相対パスの
+/// 絶対 URL へ書き換えるため、コピー先とリンクが必ず一致する
+pub(crate) fn copy_content_assets(
+    content_dir: &Path,
+    ignore: &[String],
+    output_dir: &Path,
+    outputs: Option<&OutputTracker>,
+) -> Result<(), RenderError> {
+    for (abs, rel) in yuzu_core::collect_content_assets(content_dir, ignore)? {
+        let data = fs::read(&abs).map_err(RenderError::io(&abs))?;
+        write_output(
+            outputs,
+            output_dir,
+            &yuzu_core::urlpath::rel_to_slash(&rel),
+            &data,
+        )?;
+    }
+    Ok(())
+}
+
 /// オートリフレッシュ用のビルド ID を `dist/__yuzu/build_id` に書く。
 /// HTML には埋め込まない（通常ビルドの出力を決定的に保つため）。
 /// 内容が毎回変わるため常に書き込まれる（--watch のポーリング変更シグナル）
