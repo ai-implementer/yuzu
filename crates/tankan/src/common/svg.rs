@@ -56,9 +56,13 @@ impl SvgBuilder {
     }
 
     pub fn circle(&mut self, class: &str, cx: f32, cy: f32, r: f32) {
+        self.circle_with(class, cx, cy, r, "");
+    }
+
+    pub fn circle_with(&mut self, class: &str, cx: f32, cy: f32, r: f32, extra: &str) {
         let _ = writeln!(
             self.out,
-            r#"<circle class="{class}" cx="{}" cy="{}" r="{}"/>"#,
+            r#"<circle class="{class}" cx="{}" cy="{}" r="{}"{extra}/>"#,
             fmt_num(cx),
             fmt_num(cy),
             fmt_num(r),
@@ -70,13 +74,17 @@ impl SvgBuilder {
     }
 
     pub fn polygon(&mut self, class: &str, points: &[(f32, f32)]) {
+        self.polygon_with(class, points, "");
+    }
+
+    pub fn polygon_with(&mut self, class: &str, points: &[(f32, f32)], extra: &str) {
         let pts: Vec<String> = points
             .iter()
             .map(|&(x, y)| format!("{},{}", fmt_num(x), fmt_num(y)))
             .collect();
         let _ = writeln!(
             self.out,
-            r#"<polygon class="{class}" points="{}"/>"#,
+            r#"<polygon class="{class}" points="{}"{extra}/>"#,
             pts.join(" ")
         );
     }
@@ -91,10 +99,25 @@ impl SvgBuilder {
         anchor: &str,
         lines: &[String],
     ) {
+        self.text_lines_with(class, x, y, line_height, anchor, lines, "");
+    }
+
+    /// `text_lines` に `<text>` 要素へ付ける追加属性 `extra` を加えた変種
+    #[allow(clippy::too_many_arguments)]
+    pub fn text_lines_with(
+        &mut self,
+        class: &str,
+        x: f32,
+        y: f32,
+        line_height: f32,
+        anchor: &str,
+        lines: &[String],
+        extra: &str,
+    ) {
         for (i, line) in lines.iter().enumerate() {
             let _ = writeln!(
                 self.out,
-                r#"<text class="{class}" x="{}" y="{}" text-anchor="{anchor}">{}</text>"#,
+                r#"<text class="{class}" x="{}" y="{}" text-anchor="{anchor}"{extra}>{}</text>"#,
                 fmt_num(x),
                 fmt_num(y + i as f32 * line_height),
                 escape_xml(line),

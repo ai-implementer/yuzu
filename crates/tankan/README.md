@@ -21,7 +21,7 @@ Mermaid 互換のダイアグラムテキストを **SVG** に変換する純 Ru
 | 図種 | 状態 |
 |---|---|
 | sequenceDiagram | ✅ M1（participant/actor・矢印 10 種・activation・Note・loop/alt/opt/par/critical/break/rect・autonumber・box・title） |
-| flowchart / graph | ✅ M2（ノード形状 15 種・エッジ全種（実線/点線/太線/不可視・長さ・端点・ラベル 2 形）・チェーン/`&`・TB/BT/LR/RL・subgraph（ネスト・内部 direction）。スタイル系（style/classDef/class/linkStyle/click/`:::`）と `@{}` 新記法はフォールバック） |
+| flowchart / graph | ✅ M2（ノード形状 15 種・エッジ全種（実線/点線/太線/不可視・長さ・端点・ラベル 2 形）・チェーン/`&`・TB/BT/LR/RL・subgraph（ネスト・内部 direction）・ノードのスタイル（`style`/`classDef`（`default` 含む）/`class`/`:::`。fill/stroke/stroke-width/stroke-dasharray/color をインライン適用）。linkStyle/click と `@{}` 新記法はフォールバック） |
 | stateDiagram / stateDiagram-v2 | ✅ M3（`[*]`・ラベル付き遷移・`state "説明" as s`・composite（ネスト）・direction・`<<choice/fork/join>>`・note・concurrency `--`。レイアウトは flowchart エンジンを共用。classDef 等はフォールバック） |
 | erDiagram | ✅ M4（全基数×識別/非識別・属性ブロック（PK/FK/UK・引用符コメント）・エイリアス `E[表示名]`・引用符名・単独エンティティ宣言・direction は受理して無視。style/classDef/`:::` はフォールバック） |
 | classDiagram / classDiagram-v2 | ✅ v0.3（クラス定義（波括弧ブロック・`X : member`）・可視性 `+ - # ~`・末尾 `* $`・関係 8 種（継承/コンポジション/集約/関連/リンク/依存/実現/点線）・ラベル・多重度・ジェネリクス `~T~`→`<T>`・`<<interface>>` 等アノテーション。note/click/namespace/`:::` 等はフォールバック） |

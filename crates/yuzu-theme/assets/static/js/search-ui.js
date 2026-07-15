@@ -22,6 +22,7 @@ function setup() {
   let timer = null;
   let selected = -1;
   let composing = false; // IME 変換中フラグ
+  let compositionEndedAt = -1; // 直前の compositionend の時刻（確定 Enter の除外用）
 
   // "/" or Cmd/Ctrl+K でフォーカス
   document.addEventListener("keydown", (ev) => {
@@ -50,8 +51,9 @@ function setup() {
     composing = true;
     clearTimeout(timer);
   });
-  input.addEventListener("compositionend", () => {
+  input.addEventListener("compositionend", (ev) => {
     composing = false;
+    compositionEndedAt = ev.timeStamp;
     clearTimeout(timer);
     timer = setTimeout(() => runSearch(input.value.trim()).catch(showError), DEBOUNCE_MS);
   });
@@ -75,7 +77,11 @@ function setup() {
       updateSelection(items);
       items[selected].scrollIntoView({ block: "nearest" });
     } else if (ev.key === "Enter" && items.length) {
-      // 未選択の Enter は先頭ヒットへ（コンボボックスの一般的挙動）
+      // 未選択の Enter は先頭ヒットへ（コンボボックスの一般的挙動）。
+      // ただし Safari は IME 確定の Enter を compositionend の後に
+      // isComposing: false の素の keydown として発火するため、同一キーストローク
+      // 由来（compositionend と時刻が近接）の Enter は遷移させない
+      if (ev.timeStamp - compositionEndedAt < 100) return;
       location.href = items[Math.max(selected, 0)].href;
     } else if (ev.key === "Escape") {
       close();

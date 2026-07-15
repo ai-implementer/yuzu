@@ -10,7 +10,7 @@
 //!   フォールバックし、その事実をページ単位で記録する（mermaid.js の読込判定用）
 
 use std::cell::Cell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use syntect::html::{ClassStyle, ClassedHTMLGenerator};
 use syntect::parsing::SyntaxSet;
@@ -19,7 +19,7 @@ use syntect::util::LinesWithEndings;
 use yuzu_config::{MermaidBackend, MermaidConfig};
 use yuzu_core::CodeBlockRenderer;
 
-use crate::apispec::{self, SpecKind};
+use crate::apispec::{self, SpecFiles, SpecKind};
 
 /// syntect のクラス名接頭辞。テーマ CSS のクラスと衝突しないようにする。
 /// `css.rs` の CSS 生成と必ず同じ値を使うこと
@@ -47,6 +47,40 @@ struct ApiSpecState {
     root: Option<PathBuf>,
     /// このページで外部ファイル参照を使ったか（= 本文キャッシュ不可の印）
     external_deps: Cell<bool>,
+}
+
+/// apispec への仕様ファイル読み込み口。canonicalize によるルート配下の強制と、
+/// 「このページは外部ファイルに依存した」の記録（本文キャッシュ非対象化）を担う
+struct ProjectSpecFiles<'a> {
+    root: Option<&'a Path>,
+    external_deps: &'a Cell<bool>,
+}
+
+impl apispec::SpecFiles for ProjectSpecFiles<'_> {
+    fn read(&self, rel: &str) -> Result<String, String> {
+        // 読み込みの単一チョークポイント: `file:` 参照も文書内のファイル $ref も
+        // 必ずここを通るため、依存フラグの立て漏れが構造的に起きない
+        self.external_deps.set(true);
+        let Some(root) = self.root else {
+            return Err(
+                "このビルドではファイル参照が使えません（基準ディレクトリ未設定）".to_string(),
+            );
+        };
+        let root = root
+            .canonicalize()
+            .map_err(|e| format!("プロジェクトルートを解決できません: {e}"))?;
+        let path = root.join(rel);
+        let canonical = path
+            .canonicalize()
+            .map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))?;
+        if !canonical.starts_with(&root) {
+            return Err(format!(
+                "仕様ファイル {rel} はプロジェクトルートの外を指しています"
+            ));
+        }
+        std::fs::read_to_string(&canonical)
+            .map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))
+    }
 }
 
 /// SSR のページ単位状態。
@@ -126,47 +160,24 @@ impl SyntectCodeRenderer {
     }
 
     /// ` ```openapi ` / ` ```jsonschema ` の変換。
-    /// 中身が `file: <パス>` の 1 行なら外部ファイル（プロジェクトルート相対）を読む
+    /// 中身が `file: <パス>` の 1 行なら外部ファイル（プロジェクトルート相対）を読む。
+    /// 文書内のファイル $ref も同じ読み込み口（[`ProjectSpecFiles`]）を通る
     fn render_apispec(&self, kind: SpecKind, code: &str) -> Option<String> {
+        let files = ProjectSpecFiles {
+            root: self.apispec.root.as_deref(),
+            external_deps: &self.apispec.external_deps,
+        };
         let trimmed = code.trim();
-        let source = match parse_file_ref(trimmed) {
-            Some(rel) => {
-                self.apispec.external_deps.set(true);
-                match self.read_spec_file(rel) {
-                    Ok(text) => text,
-                    Err(message) => {
-                        tracing::warn!(file = rel, "{message}");
-                        return Some(apispec::error_box(&message, code));
-                    }
+        match parse_file_ref(trimmed) {
+            Some(rel) => match files.read(rel) {
+                Ok(text) => Some(apispec::render_spec(kind, &text, Some(rel), &files)),
+                Err(message) => {
+                    tracing::warn!(file = rel, "{message}");
+                    Some(apispec::error_box(&message, code))
                 }
-            }
-            None => code.to_string(),
-        };
-        Some(apispec::render_spec(kind, &source))
-    }
-
-    /// プロジェクトルート相対の仕様ファイルを読む。
-    /// canonicalize してルート配下であることを強制する（ルート外参照は拒否）
-    fn read_spec_file(&self, rel: &str) -> Result<String, String> {
-        let Some(root) = &self.apispec.root else {
-            return Err(
-                "このビルドではファイル参照が使えません（基準ディレクトリ未設定）".to_string(),
-            );
-        };
-        let root = root
-            .canonicalize()
-            .map_err(|e| format!("プロジェクトルートを解決できません: {e}"))?;
-        let path = root.join(rel);
-        let canonical = path
-            .canonicalize()
-            .map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))?;
-        if !canonical.starts_with(&root) {
-            return Err(format!(
-                "仕様ファイル {rel} はプロジェクトルートの外を指しています"
-            ));
+            },
+            None => Some(apispec::render_spec(kind, code, None, &files)),
         }
-        std::fs::read_to_string(&canonical)
-            .map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))
     }
 
     fn render_mermaid(&self, code: &str) -> Option<String> {
@@ -323,6 +334,24 @@ mod tests {
     }
 
     #[test]
+    fn ssr_で_classdef_付き_flowchart_はフォールバックせず色が埋まる() {
+        let r = SyntectCodeRenderer::new(true, &ssr_config());
+        r.begin_page();
+        let html = r
+            .render(
+                Some("mermaid"),
+                "flowchart TD\n    A[開始]:::hot --> B[終了]\n    classDef hot fill:#f96\n",
+            )
+            .unwrap();
+        assert!(
+            html.starts_with("<figure class=\"mermaid-ssr\">"),
+            "スタイル構文でも SSR される:\n{html}"
+        );
+        assert!(html.contains("fill:#f96"), "ユーザ指定色が埋まる");
+        assert!(!r.mermaid_fallback_occurred());
+    }
+
+    #[test]
     fn ssr_で未対応図種はフォールバックして記録される() {
         let r = SyntectCodeRenderer::new(true, &ssr_config());
         r.begin_page();
@@ -465,5 +494,35 @@ mod tests {
             "複数行はインライン扱い"
         );
         assert_eq!(super::parse_file_ref("openapi: 3.0.3"), None);
+    }
+
+    #[test]
+    fn インラインブロック内のファイル_ref_も外部依存を立てる() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("specs")).unwrap();
+        std::fs::write(
+            dir.path().join("specs/common.yaml"),
+            "components:\n  schemas:\n    User:\n      type: object\n      properties:\n        id:\n          type: string\n",
+        )
+        .unwrap();
+
+        let mut r = SyntectCodeRenderer::new(true, &client_config());
+        r.set_project_root(dir.path().to_path_buf());
+        r.begin_page();
+
+        let src = concat!(
+            "openapi: 3.0.3\n",
+            "info:\n  title: T\n  version: \"1\"\n",
+            "paths:\n  /u:\n    get:\n      responses:\n        \"200\":\n",
+            "          description: ok\n          content:\n            application/json:\n",
+            "              schema:\n",
+            "                $ref: \"specs/common.yaml#/components/schemas/User\"\n",
+        );
+        let html = r.render(Some("openapi"), src).unwrap();
+        assert!(
+            r.external_deps_used(),
+            "文書内のファイル $ref でもキャッシュ非対象の印が立つ"
+        );
+        assert!(html.contains("<code>id</code>"), "{html}");
     }
 }

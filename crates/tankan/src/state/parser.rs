@@ -408,6 +408,7 @@ impl StateParser {
             },
             shape: NodeShape::NoteBox,
             subgraph: self.diagram.nodes[target].subgraph,
+            style: None,
         });
         self.diagram.edges.push(Edge {
             from: EndRef::Node(target),
@@ -462,6 +463,7 @@ impl StateParser {
                     NodeShape::StateEnd
                 },
                 subgraph: self.effective_scope(),
+                style: None,
             });
             self.star_index.insert(key, id);
             return Ok(EndRef::Node(id));
@@ -487,6 +489,7 @@ impl StateParser {
             label: vec![name.to_string()],
             shape: NodeShape::Round,
             subgraph: self.effective_scope(),
+            style: None,
         });
         self.node_index.insert(name.to_string(), id);
         Ok(id)

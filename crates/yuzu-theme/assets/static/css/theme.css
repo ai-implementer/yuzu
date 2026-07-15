@@ -80,13 +80,21 @@ html[data-theme="dark"] {
 
 html {
   height: 100%;
-  /* アンカー遷移時に sticky ヘッダーへ隠れないようにする。
-     見出しの id は comrak header_ids が埋め込む内側の <a class="anchor"> に
-     付くため、要素側の scroll-margin ではなくルートの scroll-padding で受ける */
-  scroll-padding-top: calc(var(--header-height) + 1rem);
   /* ページの長短（ウィンドウスクロールバーの有無）で中央寄せレイアウトが
      横にずれないよう、ガターを常時確保する（オーバーレイでは幅 0 のまま） */
   scrollbar-gutter: stable;
+}
+
+/* アンカー遷移時に sticky ヘッダーへ隠れないよう、遷移先要素側の scroll-margin
+   で受ける。ルート html の scroll-padding-top で受けると、Chromium が文字入力の
+   キャレット追従スクロールにも scroll-padding を適用するため、sticky ヘッダー内の
+   検索欄（常に padding ラインより上にある）へ 1 文字入力するたびにページが
+   上へスクロールしてしまう。対象は遷移先になりうる id 持ち:
+   見出し内の <a class="anchor">・脚注参照 <a data-footnote-ref>・脚注定義 <li> */
+.markdown-body .anchor,
+.markdown-body [data-footnote-ref],
+.markdown-body .footnotes li {
+  scroll-margin-top: calc(var(--header-height) + 1rem);
 }
 
 body {
@@ -1208,7 +1216,8 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
   --api-method-color: var(--alert-important);
 }
 .markdown-body .api-method-head,
-.markdown-body .api-method-options {
+.markdown-body .api-method-options,
+.markdown-body .api-method-trace {
   --api-method-color: var(--fg-muted);
 }
 

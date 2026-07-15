@@ -6,15 +6,17 @@
 //! - **エッジは最長一致**: ダッシュ/イコール列を貪欲に消費してから分類。
 //!   単発の `-` はノード id の一部（`A-1` は id）。`o`/`x` は「直後にエッジ本体が
 //!   続く」ときだけ端点（`A---oB` = 丸端点＋ノード B）
-//! - スタイル系（style/classDef/class/linkStyle/click/`:::`）・`@{}`・markdown
-//!   文字列・`fa:` は UnsupportedSyntax（フォールバック）
+//! - スタイル系のうち style/classDef/class/`:::` はノードのインラインスタイルとして
+//!   解釈する（`resolve()` で一括適用）。linkStyle/click・`@{}`・markdown 文字列・
+//!   `fa:` は UnsupportedSyntax（フォールバック）
 
 use std::collections::HashMap;
 
 use crate::common::text::{decode_entities, split_br_lines};
 use crate::error::Error;
 use crate::flowchart::model::{
-    Direction, Edge, EdgeLine, EdgeTip, EndRef, FlowchartDiagram, Node, NodeShape, Subgraph,
+    Direction, Edge, EdgeLine, EdgeTip, EndRef, FlowchartDiagram, Node, NodeShape, NodeStyle,
+    Subgraph,
 };
 use crate::kind::trim_line;
 
@@ -114,6 +116,12 @@ struct Parser {
     subgraph_index: HashMap<String, usize>,
     subgraph_stack: Vec<usize>,
     pending_edges: Vec<PendingEdge>,
+    /// classDef で定義したクラス（名前 → スタイル。同名再定義はプロパティ単位後勝ち）
+    class_defs: HashMap<String, NodeStyle>,
+    /// ノード id → 適用クラス名列（`:::` と class 文を出現順に蓄積）
+    node_classes: HashMap<String, Vec<String>>,
+    /// ノード id → style 文のスタイル（プロパティ単位後勝ち）
+    node_styles: HashMap<String, NodeStyle>,
 }
 
 impl Parser {
@@ -133,8 +141,9 @@ impl Parser {
     }
 
     fn statement(&mut self, statement: &str, line_no: usize) -> Result<(), Error> {
-        // 未対応構文の検出（引用符の外にあるかは問わず安全側に倒す）
-        for needle in ["@{", "\"`", ":::"] {
+        // 未対応構文の検出（引用符の外にあるかは問わず安全側に倒す）。
+        // `:::` は node() 内で厳密 3 連としてのみ解釈するのでここには含めない
+        for needle in ["@{", "\"`"] {
             if statement.contains(needle) {
                 return Err(Error::UnsupportedSyntax {
                     line: line_no,
@@ -146,12 +155,13 @@ impl Parser {
         let keyword = statement.split_whitespace().next().unwrap_or("");
         let rest = trim_line(&statement[keyword.len().min(statement.len())..]);
         match keyword {
-            "style" | "classDef" | "class" | "linkStyle" | "click" => {
-                Err(Error::UnsupportedSyntax {
-                    line: line_no,
-                    construct: keyword.to_string(),
-                })
-            }
+            "classDef" => self.class_def(rest),
+            "class" => self.apply_class(rest),
+            "style" => self.apply_style(rest),
+            "linkStyle" | "click" => Err(Error::UnsupportedSyntax {
+                line: line_no,
+                construct: keyword.to_string(),
+            }),
             "subgraph" => self.begin_subgraph(rest),
             "end" if rest.is_empty() => {
                 if self.subgraph_stack.pop().is_none() {
@@ -201,6 +211,99 @@ impl Parser {
         self.subgraph_index.entry(id).or_insert(sub_id);
         self.subgraph_stack.push(sub_id);
         Ok(())
+    }
+
+    /// `classDef name1,name2 fill:#f9f,...`（`default` = 全ノード既定）
+    fn class_def(&mut self, rest: &str) -> Result<(), Error> {
+        let (names, props) = split_first_ws(rest);
+        let style = parse_style_props(props);
+        for name in names.split(',') {
+            let name = name.trim();
+            if name.is_empty() {
+                continue;
+            }
+            let entry = self.class_defs.entry(name.to_string()).or_default();
+            merge_style(entry, &style);
+        }
+        Ok(())
+    }
+
+    /// `class nodeId1,nodeId2 className`（適用先はノードのみ。解決は resolve で）
+    fn apply_class(&mut self, rest: &str) -> Result<(), Error> {
+        let (ids, class_name) = split_first_ws(rest);
+        let class_name = class_name.trim();
+        if class_name.is_empty() {
+            return Ok(());
+        }
+        for id in ids.split(',') {
+            let id = id.trim();
+            if id.is_empty() {
+                continue;
+            }
+            self.node_classes
+                .entry(id.to_string())
+                .or_default()
+                .push(class_name.to_string());
+        }
+        Ok(())
+    }
+
+    /// `style nodeId1,nodeId2 fill:#bbf,...`（プロパティ単位後勝ち）
+    fn apply_style(&mut self, rest: &str) -> Result<(), Error> {
+        let (ids, props) = split_first_ws(rest);
+        let style = parse_style_props(props);
+        for id in ids.split(',') {
+            let id = id.trim();
+            if id.is_empty() {
+                continue;
+            }
+            let entry = self.node_styles.entry(id.to_string()).or_default();
+            merge_style(entry, &style);
+        }
+        Ok(())
+    }
+
+    /// 全ノードへ default → クラス列 → style 文の順にプロパティ単位でマージする。
+    /// スタイル指定が一切なければ何もしない（フルビルドとバイト一致を保つ）
+    fn apply_styles(&mut self) {
+        if self.class_defs.is_empty() && self.node_classes.is_empty() && self.node_styles.is_empty()
+        {
+            return;
+        }
+        let default = self.class_defs.get("default").cloned();
+        // idx → id 名の逆引き（node_index は名前 → idx の全単射）
+        let mut names = vec![String::new(); self.nodes.len()];
+        for (name, &idx) in &self.node_index {
+            names[idx] = name.clone();
+        }
+        // 各ノードのスタイルを先に計算し（self を不変借用）、その後まとめて代入する
+        let resolved: Vec<Option<NodeStyle>> = names
+            .iter()
+            .map(|name| {
+                let mut style = NodeStyle::default();
+                if let Some(def) = &default {
+                    merge_style(&mut style, def);
+                }
+                if let Some(classes) = self.node_classes.get(name) {
+                    for class_name in classes {
+                        // 未定義クラスはスキップ
+                        if let Some(cs) = self.class_defs.get(class_name) {
+                            merge_style(&mut style, cs);
+                        }
+                    }
+                }
+                if let Some(ns) = self.node_styles.get(name) {
+                    merge_style(&mut style, ns);
+                }
+                // 1 つでも値があれば Some
+                (style != NodeStyle::default()).then_some(style)
+            })
+            .collect();
+        for (node, style) in self.nodes.iter_mut().zip(resolved) {
+            if style.is_some() {
+                node.style = style;
+            }
+        }
     }
 
     /// チェーン文: ノード群 (エッジ ノード群)*
@@ -268,6 +371,10 @@ impl Parser {
             if c.is_whitespace() || c == '&' || c == '|' {
                 break;
             }
+            // 厳密 3 連の `:::` はインラインクラス指定の開始（単発の `:` は id 文字）
+            if starts_with(chars, *pos, ":::") {
+                break;
+            }
             if is_shape_open(chars, *pos) || edge_lookahead(chars, *pos).is_some() {
                 break;
             }
@@ -288,6 +395,7 @@ impl Parser {
         }
 
         // 形状ブラケット
+        let mut resolved: Option<usize> = None;
         if is_shape_open(chars, *pos) {
             let (shape, text) = parse_shape(chars, pos, line_no)?;
             if text.contains("fa:") {
@@ -296,12 +404,47 @@ impl Parser {
                     construct: "fa:".to_string(),
                 });
             }
-            let node_id = self.intern_node(&id, Some(shape), Some(split_text(&text)));
-            return Ok(PendingEnd::Resolved(EndRef::Node(node_id)));
+            resolved = Some(self.intern_node(&id, Some(shape), Some(split_text(&text))));
         }
 
-        // 裸 id は解決を遅延（後で宣言される subgraph かもしれない）
-        Ok(PendingEnd::Name(id, self.subgraph_stack.last().copied()))
+        // `:::className` インラインクラス指定（id・形状の直後）。
+        // 裸 id でもその場で intern して確定させる（単独 `A:::c` も定義になる）
+        if starts_with(chars, *pos, ":::") {
+            *pos += 3;
+            let cstart = *pos;
+            while *pos < chars.len() {
+                let c = chars[*pos];
+                if c.is_whitespace() || c == '&' || c == '|' || is_shape_open(chars, *pos) {
+                    break;
+                }
+                // エッジ先頭で停止する。ただし id スキャンと違い `o`/`x` は識別子の一部
+                // として許す（`A:::foo-->B` の末尾 `o` を丸端点と誤認しないため）
+                if matches!(c, '-' | '=' | '~' | '<') && edge_lookahead(chars, *pos).is_some() {
+                    break;
+                }
+                *pos += 1;
+            }
+            let class_name: String = chars[cstart..*pos].iter().collect();
+            if class_name.is_empty() {
+                return Err(Error::Parse {
+                    line: line_no,
+                    message: "`:::` の後にクラス名がありません".to_string(),
+                });
+            }
+            let idx = resolved.unwrap_or_else(|| self.intern_node(&id, None, None));
+            self.node_classes
+                .entry(id.clone())
+                .or_default()
+                .push(class_name);
+            resolved = Some(idx);
+        }
+
+        match resolved {
+            // 形状・`:::` で確定済み
+            Some(idx) => Ok(PendingEnd::Resolved(EndRef::Node(idx))),
+            // 裸 id は解決を遅延（後で宣言される subgraph かもしれない）
+            None => Ok(PendingEnd::Name(id, self.subgraph_stack.last().copied())),
+        }
     }
 
     /// ノードを登録/更新して添字を返す（形状・ラベルは後勝ちで上書き）
@@ -319,6 +462,7 @@ impl Parser {
                     label: vec![name.to_string()],
                     shape: NodeShape::Rect,
                     subgraph: self.subgraph_stack.last().copied(),
+                    style: None,
                 });
                 self.node_index.insert(name.to_string(), id);
                 id
@@ -352,6 +496,8 @@ impl Parser {
                 label: pe.label,
             });
         }
+        // 全ノードの確定後にスタイルを解決する（classDef の後置定義に対応）
+        self.apply_styles();
         Ok(FlowchartDiagram {
             direction: self.direction,
             title: self.title,
@@ -377,6 +523,7 @@ impl Parser {
                     label: vec![name.clone()],
                     shape: NodeShape::Rect,
                     subgraph: ctx,
+                    style: None,
                 });
                 self.node_index.insert(name, id);
                 EndRef::Node(id)
@@ -822,6 +969,59 @@ fn split_text(text: &str) -> Vec<String> {
     split_br_lines(&decode_entities(trim_line(text)))
 }
 
+/// 先頭の空白で「id 群 / クラス名」「id 群 / プロパティ群」を 2 分割する
+fn split_first_ws(s: &str) -> (&str, &str) {
+    match s.find(char::is_whitespace) {
+        Some(i) => (&s[..i], s[i..].trim_start()),
+        None => (s, ""),
+    }
+}
+
+/// `fill:#f9f, stroke:#333, stroke-dasharray: 5 5` 形のスタイル宣言を解析する。
+/// カンマ区切り・各要素は最初の `:` で k:v 分割・両端 trim。未知プロパティ・
+/// `:` 無し・空値の要素は黙って無視する
+fn parse_style_props(s: &str) -> NodeStyle {
+    let mut style = NodeStyle::default();
+    for item in s.split(',') {
+        let Some((key, value)) = item.split_once(':') else {
+            continue;
+        };
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        let value = Some(value.to_string());
+        match key.trim() {
+            "fill" => style.fill = value,
+            "stroke" => style.stroke = value,
+            "stroke-width" => style.stroke_width = value,
+            "stroke-dasharray" => style.stroke_dasharray = value,
+            "color" => style.color = value,
+            _ => {}
+        }
+    }
+    style
+}
+
+/// src の Some プロパティだけを dst に上書きする（プロパティ単位の後勝ち）
+fn merge_style(dst: &mut NodeStyle, src: &NodeStyle) {
+    if src.fill.is_some() {
+        dst.fill = src.fill.clone();
+    }
+    if src.stroke.is_some() {
+        dst.stroke = src.stroke.clone();
+    }
+    if src.stroke_width.is_some() {
+        dst.stroke_width = src.stroke_width.clone();
+    }
+    if src.stroke_dasharray.is_some() {
+        dst.stroke_dasharray = src.stroke_dasharray.clone();
+    }
+    if src.color.is_some() {
+        dst.color = src.color.clone();
+    }
+}
+
 /// `;` で文に分割（引用符内は保護）
 fn split_statements(line: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -1058,19 +1258,135 @@ mod tests {
     }
 
     #[test]
-    fn スタイル系は_unsupported() {
+    fn linkstyle_と_click_と_atshape_は_unsupported() {
         for src in [
-            "style A fill:#f9f",
-            "classDef green fill:#9f6",
-            "class A green",
             "linkStyle 0 stroke:#f00",
             "click A callback",
-            "A:::green --> B",
             "A@{ shape: rounded } --> B",
         ] {
             let err = parse(&flow(src)).unwrap_err();
             assert!(err.is_unsupported(), "{src}: {err}");
         }
+    }
+
+    /// ノードの解決済みスタイルを取り出す
+    fn node_style(d: &super::FlowchartDiagram, label: &str) -> super::NodeStyle {
+        let n = d
+            .nodes
+            .iter()
+            .find(|n| n.label == [label])
+            .unwrap_or_else(|| panic!("ノード {label} が見つかりません"));
+        n.style.clone().unwrap_or_default()
+    }
+
+    #[test]
+    fn 後置_classdef_が効く() {
+        // classDef が使用行より後にあっても解決される
+        let d = parse(&flow("A:::warn --> B\nclassDef warn fill:#f96,stroke:#333")).unwrap();
+        let s = node_style(&d, "A");
+        assert_eq!(s.fill.as_deref(), Some("#f96"));
+        assert_eq!(s.stroke.as_deref(), Some("#333"));
+        // クラスなしノードはスタイルなし
+        assert!(
+            d.nodes
+                .iter()
+                .find(|n| n.label == ["B"])
+                .unwrap()
+                .style
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn classdef_default_が全ノード既定になる() {
+        let d = parse(&flow("A --> B\nclassDef default fill:#eee,stroke:#999")).unwrap();
+        for label in ["A", "B"] {
+            let s = node_style(&d, label);
+            assert_eq!(s.fill.as_deref(), Some("#eee"), "{label}");
+            assert_eq!(s.stroke.as_deref(), Some("#999"), "{label}");
+        }
+    }
+
+    #[test]
+    fn class_文で複数ノードに適用できる() {
+        let d = parse(&flow(
+            "A --> B --> C\nclassDef important fill:#f96\nclass B,C important",
+        ))
+        .unwrap();
+        assert!(node_style(&d, "A").fill.is_none());
+        assert_eq!(node_style(&d, "B").fill.as_deref(), Some("#f96"));
+        assert_eq!(node_style(&d, "C").fill.as_deref(), Some("#f96"));
+    }
+
+    #[test]
+    fn style_文はクラスより優先される() {
+        // クラスが fill を与え、style 文が同じ fill を上書き（プロパティ単位後勝ち）
+        let d = parse(&flow(
+            "A:::warn --> B\nclassDef warn fill:#f96,stroke:#333\nstyle A fill:#0f0",
+        ))
+        .unwrap();
+        let s = node_style(&d, "A");
+        assert_eq!(s.fill.as_deref(), Some("#0f0"), "style が fill を上書き");
+        assert_eq!(
+            s.stroke.as_deref(),
+            Some("#333"),
+            "stroke はクラス由来が残る"
+        );
+    }
+
+    #[test]
+    fn 未知プロパティは無視される() {
+        let d = parse(&flow("A --> B\nstyle A fill:#f9f,rx:10,color:#fff")).unwrap();
+        let s = node_style(&d, "A");
+        assert_eq!(s.fill.as_deref(), Some("#f9f"));
+        assert_eq!(s.color.as_deref(), Some("#fff"));
+        // rx は保持されない（NodeStyle にフィールドがない＝黙って無視）
+    }
+
+    #[test]
+    fn stroke_dasharray_の空白入り値を保持する() {
+        let d = parse(&flow("A --> B\nstyle A stroke-dasharray: 5 5")).unwrap();
+        assert_eq!(node_style(&d, "A").stroke_dasharray.as_deref(), Some("5 5"));
+    }
+
+    #[test]
+    fn 引用符内ラベルの三連コロンはテキスト扱い() {
+        // 引用符付きラベル内の `:::` は未対応構文でもクラス指定でもなくテキスト
+        let d = parse(&flow("A[\"a:::b\"] --> B")).unwrap();
+        assert_eq!(d.nodes[0].label, ["a:::b"]);
+        assert!(d.nodes[0].style.is_none());
+    }
+
+    #[test]
+    fn inline_class_とエッジが正しく分解される() {
+        // `A:::foo-->B`（空白なし）が「クラス付き A」「-->」「B」に分かれる
+        let d = parse(&flow("A:::foo-->B\nclassDef foo fill:#f96")).unwrap();
+        assert_eq!(d.edges.len(), 1);
+        assert_eq!(
+            d.edges[0].tail,
+            EdgeTip::None,
+            "末尾 o を丸端点と誤認しない"
+        );
+        assert_eq!(d.edges[0].from, EndRef::Node(0));
+        assert_eq!(d.nodes[0].label, ["A"]);
+        assert_eq!(d.nodes[1].label, ["B"]);
+        assert_eq!(node_style(&d, "A").fill.as_deref(), Some("#f96"));
+    }
+
+    #[test]
+    fn 空クラス名の三連コロンはパースエラー() {
+        assert!(matches!(
+            parse(&flow("A::: --> B")).unwrap_err(),
+            Error::Parse { .. }
+        ));
+    }
+
+    #[test]
+    fn 未定義クラスと未知ノードは黙って無視される() {
+        // 未定義クラス named・存在しないノード Z への class 文はエラーにならない
+        let d = parse(&flow("A --> B\nclass A undefinedclass\nclass Z someclass")).unwrap();
+        assert!(node_style(&d, "A").fill.is_none());
+        assert_eq!(d.nodes.len(), 2, "Z は作られない");
     }
 
     #[test]

@@ -128,11 +128,16 @@ state・ER・gantt・pie の 7 図種はビルド時に SVG 化**されます（
 フォールバックが発生したページだけ mermaid.js が読み込まれます
 （クライアント描画もダークモード切替に追従して再描画されます）。
 
+flowchart は `classDef` / `class` / `:::` / `style` によるスタイル指定にも
+対応しています（`"backend": "ssr"` でもビルド時の SVG に反映されます。
+指定した色はダークモードでも意図どおり固定されます）:
+
 ```mermaid
 flowchart TD
     A[Markdown を書く] --> B{図の種類は?}
-    B -->|対応 5 図種| C[tankan がビルド時に SVG 化]
+    B -->|対応 7 図種| C[tankan がビルド時に SVG 化]:::ssr
     B -->|それ以外| D[mermaid.js でクライアント描画]
+    classDef ssr fill:#d5e7fe,stroke:#014ba5
 ```
 
 シーケンス図（sequenceDiagram）— `yuzu dev` のライブリロードの流れ:

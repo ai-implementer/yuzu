@@ -32,6 +32,9 @@ const CORPORA: &[(&str, &[&str])] = &[
             "05-edge-labels",
             "07-subgraph",
             "14-japanese",
+            "15-classdef",
+            "16-style",
+            "17-class-default",
         ],
     ),
     (

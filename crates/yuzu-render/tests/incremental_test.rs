@@ -247,6 +247,114 @@ fn file_参照ページは_body_キャッシュに載らず仕様変更が反映
 }
 
 #[test]
+fn インラインブロックのファイル_ref_も毎回再レンダされ変更が反映される() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_project(dir.path());
+    write(
+        dir.path(),
+        "specs/common.yaml",
+        "components:\n  schemas:\n    User:\n      type: object\n      properties:\n        id:\n          type: string\n          description: 識別子v1\n",
+    );
+    write(
+        dir.path(),
+        "content/api.md",
+        concat!(
+            "---\ntitle: API\n---\n# API\n\n",
+            "```openapi\n",
+            "openapi: 3.0.3\n",
+            "info:\n  title: 参照API\n  version: \"1\"\n",
+            "paths:\n  /u:\n    get:\n      responses:\n        \"200\":\n",
+            "          description: ok\n          content:\n            application/json:\n",
+            "              schema:\n",
+            "                $ref: \"specs/common.yaml#/components/schemas/User\"\n",
+            "```\n",
+        ),
+    );
+    let cache_dir = dir.path().join(".yuzu/cache");
+
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    let api_html = dir.path().join("dist/api/index.html");
+    assert!(
+        fs::read_to_string(&api_html).unwrap().contains("識別子v1"),
+        "参照先の内容が埋まる"
+    );
+
+    // インラインブロックでも文書内ファイル $ref があればキャッシュ非対象
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (_, stats) = build_incremental(dir.path(), &cache);
+    assert_eq!(stats.body_misses, 1, "$ref ページは毎回ミス: {stats:?}");
+
+    // 参照先ファイルだけ変更 → 次ビルドで反映される
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    write(
+        dir.path(),
+        "specs/common.yaml",
+        "components:\n  schemas:\n    User:\n      type: object\n      properties:\n        id:\n          type: string\n          description: 識別子v2\n",
+    );
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    let html = fs::read_to_string(&api_html).unwrap();
+    assert!(html.contains("識別子v2"), "参照先の変更が反映される");
+    assert!(!html.contains("識別子v1"));
+}
+
+#[test]
+fn file_参照先のネストした_ref_の変更も反映される() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_project(dir.path());
+    // specs/api.yaml → （ファイル相対で）schemas/user.yaml を参照
+    write(
+        dir.path(),
+        "specs/api.yaml",
+        concat!(
+            "openapi: 3.0.3\n",
+            "info:\n  title: ネストAPI\n  version: \"1\"\n",
+            "paths:\n  /u:\n    get:\n      responses:\n        \"200\":\n",
+            "          description: ok\n          content:\n            application/json:\n",
+            "              schema:\n",
+            "                $ref: \"schemas/user.yaml#/User\"\n",
+        ),
+    );
+    write(
+        dir.path(),
+        "specs/schemas/user.yaml",
+        "User:\n  type: object\n  properties:\n    name:\n      type: string\n      description: ネスト説明v1\n",
+    );
+    write(
+        dir.path(),
+        "content/api.md",
+        "---\ntitle: API\n---\n# API\n\n```openapi\nfile: specs/api.yaml\n```\n",
+    );
+    let cache_dir = dir.path().join(".yuzu/cache");
+
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    let api_html = dir.path().join("dist/api/index.html");
+    assert!(
+        fs::read_to_string(&api_html)
+            .unwrap()
+            .contains("ネスト説明v1"),
+        "参照元ファイル相対の $ref が解決される"
+    );
+
+    // ネストした参照先だけ変更 → 反映（file: ページは毎回再レンダのため）
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    write(
+        dir.path(),
+        "specs/schemas/user.yaml",
+        "User:\n  type: object\n  properties:\n    name:\n      type: string\n      description: ネスト説明v2\n",
+    );
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    let html = fs::read_to_string(&api_html).unwrap();
+    assert!(
+        html.contains("ネスト説明v2"),
+        "ネスト参照の変更が反映される"
+    );
+}
+
+#[test]
 fn ページ追加は_routes_key_の変化で全_body_を再計算する() {
     let dir = tempfile::tempdir().unwrap();
     setup_project(dir.path());

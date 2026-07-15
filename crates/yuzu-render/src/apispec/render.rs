@@ -5,17 +5,26 @@
 //!   yuzu-render の serde_json は `preserve_order` 有効なので Map は記述順を保つ
 //!   （= 出力は決定的。HashMap の非決定順序を混ぜない）
 //! - 走査中の全テキストは [`escape_html`] を通してから埋め込む（XSS 安全）
-//! - `$ref` はローカル（`#/...`）のみ解決。訪問スタック `stack` で循環をガードし、
-//!   循環・未解決・リモート参照は本文の外に注記を出すに留める
+//! - `$ref` は文書内（`#/...`）とプロジェクト内ファイル（`path#/pointer`）を解決。
+//!   パス基準は「仕様ファイル内は参照元ファイル相対（OpenAPI ツールチェーン標準）、
+//!   インラインブロック内はプロジェクトルート相対（`file:` と同じ規約）」。
+//!   到達可能なファイルは描画前に全ロードし（[`DocSet`]、借用の自己参照を避ける
+//!   二相方式）、訪問スタック `stack`（文書キー＋ポインタ）で循環をガードする。
+//!   循環・未解決・リモート参照・読み込み失敗は本文の外に注記を出すに留める
+
+use std::collections::HashMap;
 
 use serde_json::Value;
 
 use crate::highlight::escape_html as esc;
 
-use super::SpecKind;
+use super::{SpecFiles, SpecKind};
 
 /// 入れ子スキーマ描画の深さ上限（これを超えたら「以降省略」）
 const MAX_DEPTH: usize = 8;
+
+/// 1 ブロックから到達できる参照ファイル数の上限（暴走・参照爆発のガード）
+const MAX_FILES: usize = 16;
 
 /// スキーマ合成キーワードと、そのセクション見出しラベル
 const COMBINATORS: [(&str, &str); 3] = [
@@ -25,7 +34,12 @@ const COMBINATORS: [(&str, &str); 3] = [
 ];
 
 /// 仕様テキストを HTML に変換する（[`super::render_spec`] から委譲される本体）
-pub(super) fn render(kind: SpecKind, source: &str) -> String {
+pub(super) fn render(
+    kind: SpecKind,
+    source: &str,
+    origin: Option<&str>,
+    files: &dyn SpecFiles,
+) -> String {
     let value: Value = match serde_yaml_ng::from_str(source) {
         Ok(v) => v,
         Err(e) => {
@@ -34,39 +48,198 @@ pub(super) fn render(kind: SpecKind, source: &str) -> String {
         }
     };
 
+    if kind == SpecKind::OpenApi {
+        // openapi フィールドが 3 で始まらない（Swagger 2.0 等）なら未対応
+        let is_v3 = value
+            .get("openapi")
+            .map(plain_value)
+            .is_some_and(|v| v.starts_with('3'));
+        if !is_v3 {
+            let msg = "OpenAPI 3.x のみ対応しています（`openapi: 3.x.y` が必要です）";
+            tracing::warn!("{msg}");
+            return super::error_box(msg, source);
+        }
+    }
+
+    // インラインブロックは空キー = プロジェクトルート基準。file: 参照は
+    // そのパスがキーになり、文書内の相対 $ref の基準ディレクトリを与える
+    let main_key = origin
+        .map(|o| normalize_rel_path("", o).unwrap_or_else(|_| o.to_string()))
+        .unwrap_or_default();
+    let docs = load_documents(&main_key, value, files);
+    let root = docs
+        .docs
+        .get(&main_key)
+        .expect("load_documents はメイン文書を必ず登録する");
+    let mut r = Renderer::new(&docs, main_key.clone());
+
     match kind {
-        SpecKind::OpenApi => {
-            // openapi フィールドが 3 で始まらない（Swagger 2.0 等）なら未対応
-            let is_v3 = value
-                .get("openapi")
-                .map(plain_value)
-                .is_some_and(|v| v.starts_with('3'));
-            if !is_v3 {
-                let msg = "OpenAPI 3.x のみ対応しています（`openapi: 3.x.y` が必要です）";
-                tracing::warn!("{msg}");
-                return super::error_box(msg, source);
-            }
-            let mut r = Renderer::new(&value);
-            r.render_openapi_document(&value)
-        }
-        SpecKind::JsonSchema => {
-            let mut r = Renderer::new(&value);
-            r.render_jsonschema_document(&value)
-        }
+        SpecKind::OpenApi => r.render_openapi_document(root),
+        SpecKind::JsonSchema => r.render_jsonschema_document(root),
     }
 }
 
-/// 走査状態。`root` は `$ref` 解決の基点、`stack` は解決中の参照ポインタ（循環ガード）
+/// メイン文書と、そこから `$ref` で到達できる参照先ファイル群（描画前に全ロード済み）
+struct DocSet {
+    /// 正規化済みルート相対パス → パース済み文書（メイン文書は origin キーか空文字）
+    docs: HashMap<String, Value>,
+    /// 読み込み・パースに失敗したファイル → 理由（描画時に注記として出す）
+    failed: HashMap<String, String>,
+}
+
+/// メイン文書から到達可能な参照ファイルをワークリストで全ロードする。
+/// 既にキーがあるファイルは再ロードしない = ロード段の循環は構造的に起きない
+fn load_documents(main_key: &str, main: Value, files: &dyn SpecFiles) -> DocSet {
+    let mut docs = HashMap::new();
+    let mut failed: HashMap<String, String> = HashMap::new();
+    let mut pending: Vec<String> = Vec::new();
+
+    collect_file_refs(main_key, &main, &mut pending);
+    docs.insert(main_key.to_string(), main);
+
+    while let Some(path) = pending.pop() {
+        if docs.contains_key(&path) || failed.contains_key(&path) {
+            continue;
+        }
+        // メイン文書を除いた参照ファイル数で上限を判定する
+        if docs.len() > MAX_FILES {
+            failed.insert(
+                path,
+                format!("参照ファイルが多すぎます（上限 {MAX_FILES}）"),
+            );
+            continue;
+        }
+        match files.read(&path) {
+            Err(reason) => {
+                tracing::warn!(file = %path, "仕様ファイルの読み込みに失敗: {reason}");
+                failed.insert(path, reason);
+            }
+            Ok(text) => match serde_yaml_ng::from_str::<Value>(&text) {
+                Err(e) => {
+                    tracing::warn!(file = %path, error = %e, "仕様ファイルのパースに失敗");
+                    failed.insert(path, format!("パースに失敗しました: {e}"));
+                }
+                Ok(v) => {
+                    collect_file_refs(&path, &v, &mut pending);
+                    docs.insert(path, v);
+                }
+            },
+        }
+    }
+    DocSet { docs, failed }
+}
+
+/// 文書 `doc_key` 内の全 `$ref` からファイル参照を集める（正規化済みパスで push）。
+/// 正規化に失敗する参照（ルート外等）は描画時に同じ分類が注記を出すのでここでは捨てる
+fn collect_file_refs(doc_key: &str, v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Object(map) => {
+            if let Some(Value::String(r)) = map.get("$ref") {
+                if let Some((path, _)) = split_file_ref(r) {
+                    if let Ok(norm) = normalize_rel_path(&parent_dir(doc_key), path) {
+                        out.push(norm);
+                    }
+                }
+            }
+            for val in map.values() {
+                collect_file_refs(doc_key, val, out);
+            }
+        }
+        Value::Array(arr) => {
+            for val in arr {
+                collect_file_refs(doc_key, val, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// `$ref` の解決結果
+enum Resolved<'a> {
+    /// 解決成功（doc = 参照先の文書キー、pointer = 文書内 JSON ポインタ）
+    Ok {
+        doc: String,
+        pointer: String,
+        value: &'a Value,
+    },
+    /// 解決中の参照へ戻ってきた（循環）
+    Cycle,
+    /// リモート参照など対応しない形式
+    Unsupported,
+    /// ファイルの読み込み・パース・パス正規化の失敗（理由つき）
+    Failed(String),
+    /// 文書は読めたがポインタ先が存在しない
+    Unresolved,
+}
+
+/// 走査状態。`docs` は `$ref` 解決の基点となる文書群、`cur_doc` は現在の文書キー、
+/// `stack` は解決中の（文書キー, ポインタ）（循環ガード）
 struct Renderer<'a> {
-    root: &'a Value,
-    stack: Vec<String>,
+    docs: &'a DocSet,
+    cur_doc: String,
+    stack: Vec<(String, String)>,
 }
 
 impl<'a> Renderer<'a> {
-    fn new(root: &'a Value) -> Self {
+    fn new(docs: &'a DocSet, main_key: String) -> Self {
         Self {
-            root,
+            docs,
+            cur_doc: main_key,
             stack: Vec::new(),
+        }
+    }
+
+    /// `cur_doc` を `doc` に切り替えて `f` を実行し、必ず元へ戻す
+    fn with_doc<T>(&mut self, doc: String, f: impl FnOnce(&mut Self) -> T) -> T {
+        let saved = std::mem::replace(&mut self.cur_doc, doc);
+        let out = f(self);
+        self.cur_doc = saved;
+        out
+    }
+
+    /// `$ref` を現在の文書基準で分類・解決する
+    fn resolve(&self, r: &str) -> Resolved<'a> {
+        self.resolve_in(&self.cur_doc.clone(), r)
+    }
+
+    /// `$ref` を `base_doc` 基準で分類・解決する（描画はしない）。循環チェックまで行う
+    fn resolve_in(&self, base_doc: &str, r: &str) -> Resolved<'a> {
+        let (doc_key, pointer) = if let Some(ptr) = r.strip_prefix('#') {
+            (base_doc.to_string(), ptr.to_string())
+        } else if let Some((path, ptr)) = split_file_ref(r) {
+            match normalize_rel_path(&parent_dir(base_doc), path) {
+                Ok(norm) => (norm, ptr.to_string()),
+                Err(reason) => return Resolved::Failed(reason),
+            }
+        } else {
+            return Resolved::Unsupported;
+        };
+        if let Some(reason) = self.docs.failed.get(&doc_key) {
+            return Resolved::Failed(reason.clone());
+        }
+        let Some(root) = self.docs.docs.get(&doc_key) else {
+            // load_documents が到達可能な参照を全て処理するため通常来ない
+            return Resolved::Failed("参照先を読み込めませんでした".to_string());
+        };
+        let value = if pointer.is_empty() {
+            root
+        } else {
+            match root.pointer(&pointer) {
+                Some(v) => v,
+                None => return Resolved::Unresolved,
+            }
+        };
+        if self
+            .stack
+            .iter()
+            .any(|(d, p)| *d == doc_key && *p == pointer)
+        {
+            return Resolved::Cycle;
+        }
+        Resolved::Ok {
+            doc: doc_key,
+            pointer,
+            value,
         }
     }
 
@@ -94,8 +267,12 @@ impl<'a> Renderer<'a> {
                 esc(title)
             ));
         }
-        if let Some(d) = root.get("description").and_then(|v| v.as_str()) {
-            out.push_str(&format!("<p class=\"api-desc\">{}</p>\n", esc(d)));
+        // スカラ型ルートは render_scalar が description を自前で出すため、
+        // ここでも出すと二重表示になる（object/array/combinator/$ref は出さないので担う）
+        if !is_scalar_like(root) {
+            if let Some(d) = root.get("description").and_then(|v| v.as_str()) {
+                out.push_str(&format!("<p class=\"api-desc\">{}</p>\n", esc(d)));
+            }
         }
         out.push_str(&self.render_schema(root, 0));
         out.push_str("</section>\n");
@@ -130,12 +307,14 @@ impl<'a> Renderer<'a> {
     // ---- パス / オペレーション ----
 
     fn render_path_item(&mut self, path: &str, item: &'a Value) -> String {
-        let item = self.deref(item);
+        let (item_doc, item) = self.deref(item);
         let path_params = item.get("parameters").and_then(|v| v.as_array());
         let mut out = String::new();
-        for method in ["get", "put", "post", "delete", "patch", "head", "options"] {
+        for method in [
+            "get", "put", "post", "delete", "patch", "head", "options", "trace",
+        ] {
             if let Some(op) = item.get(method) {
-                out.push_str(&self.render_operation(path, method, op, path_params));
+                out.push_str(&self.render_operation(path, method, op, &item_doc, path_params));
             }
         }
         out
@@ -146,9 +325,10 @@ impl<'a> Renderer<'a> {
         path: &str,
         method: &str,
         op: &'a Value,
+        item_doc: &str,
         path_params: Option<&'a Vec<Value>>,
     ) -> String {
-        let op = self.deref(op);
+        let (op_doc, op) = self.deref_in(item_doc, op);
         let upper = method.to_uppercase();
         let mut out = format!(
             "<details class=\"api-op api-op-{method}\">\n<summary><span class=\"api-method api-method-{method}\">{upper}</span> <code>{path}</code>",
@@ -164,59 +344,70 @@ impl<'a> Renderer<'a> {
         }
 
         let op_params = op.get("parameters").and_then(|v| v.as_array());
-        let merged = self.merge_parameters(path_params, op_params);
+        let merged = self.merge_parameters(item_doc, path_params, &op_doc, op_params);
         if !merged.is_empty() {
             out.push_str(&self.render_parameters(&merged));
         }
-        if let Some(rb) = op.get("requestBody") {
-            out.push_str(&self.render_request_body(rb, 0));
-        }
-        if let Some(resp) = op.get("responses") {
-            out.push_str(&self.render_responses(resp, 0));
-        }
+        self.with_doc(op_doc, |s| {
+            if let Some(rb) = op.get("requestBody") {
+                out.push_str(&s.render_request_body(rb, 0));
+            }
+            if let Some(resp) = op.get("responses") {
+                out.push_str(&s.render_responses(resp, 0));
+            }
+        });
         out.push_str("</details>\n");
         out
     }
 
     /// path-item レベルと operation レベルの parameters をマージする。
-    /// 同名・同 in の重複は operation を優先し、path-item 側を落とす
+    /// 同名・同 in の重複は operation を優先し、path-item 側を落とす。
+    /// 各要素はファイル跨ぎ deref 済みで、実体が属する文書キーを伴う
     fn merge_parameters(
         &self,
+        item_doc: &str,
         path_params: Option<&'a Vec<Value>>,
+        op_doc: &str,
         op_params: Option<&'a Vec<Value>>,
-    ) -> Vec<&'a Value> {
-        let op: Vec<&Value> = op_params
-            .map(|a| a.iter().map(|p| self.deref(p)).collect())
+    ) -> Vec<(String, &'a Value)> {
+        let op: Vec<(String, &Value)> = op_params
+            .map(|a| a.iter().map(|p| self.deref_in(op_doc, p)).collect())
             .unwrap_or_default();
-        let op_keys: Vec<(String, String)> = op.iter().map(|p| param_key(p)).collect();
+        let op_keys: Vec<(String, String)> = op.iter().map(|(_, p)| param_key(p)).collect();
 
-        let mut result: Vec<&Value> = Vec::new();
+        let mut result: Vec<(String, &Value)> = Vec::new();
         if let Some(pp) = path_params {
             for p in pp {
-                let p = self.deref(p);
+                let (doc, p) = self.deref_in(item_doc, p);
                 let key = param_key(p);
                 if op_keys.contains(&key) {
                     continue; // operation 側で上書きされる
                 }
-                result.push(p);
+                result.push((doc, p));
             }
         }
         result.extend(op);
         result
     }
 
-    fn render_parameters(&self, params: &[&'a Value]) -> String {
+    fn render_parameters(&mut self, params: &[(String, &'a Value)]) -> String {
         let mut out = String::from(
             "<div class=\"api-params\"><p class=\"api-section-label\">パラメータ</p>\n\
              <table class=\"api-schema-table\">\n\
              <thead><tr><th>名前</th><th>場所</th><th>型</th><th>必須</th><th>説明</th></tr></thead>\n\
              <tbody>\n",
         );
-        for p in params {
+        for (doc, p) in params {
             let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let loc = p.get("in").and_then(|v| v.as_str()).unwrap_or("");
             let schema = p.get("schema");
-            let ty = schema.map_or_else(|| "—".to_string(), |s| self.type_label(s));
+            // 型ラベル・注記内の $ref はパラメータ実体が属する文書を基準に解決する
+            let (ty, annos) = self.with_doc(doc.clone(), |s| {
+                (
+                    schema.map_or_else(|| "—".to_string(), |sc| s.type_label(sc)),
+                    schema.map(|sc| s.annotations_html(sc)).unwrap_or_default(),
+                )
+            });
             // path パラメータは仕様上つねに必須
             let required =
                 p.get("required").and_then(|v| v.as_bool()) == Some(true) || loc == "path";
@@ -226,9 +417,7 @@ impl<'a> Renderer<'a> {
             if let Some(d) = p.get("description").and_then(|v| v.as_str()) {
                 desc.push_str(&esc(d));
             }
-            if let Some(s) = schema {
-                desc.push_str(&self.annotations_html(s));
-            }
+            desc.push_str(&annos);
 
             out.push_str(&format!(
                 "<tr><td>{name_c}</td><td><code>{loc_e}</code></td><td>{ty_c}</td>\
@@ -243,7 +432,7 @@ impl<'a> Renderer<'a> {
     }
 
     fn render_request_body(&mut self, rb: &'a Value, depth: usize) -> String {
-        let rb = self.deref(rb);
+        let (doc, rb) = self.deref(rb);
         let mut out = String::from(
             "<div class=\"api-request-body\"><p class=\"api-section-label\">リクエストボディ</p>\n",
         );
@@ -254,7 +443,8 @@ impl<'a> Renderer<'a> {
             out.push_str(&format!("<p class=\"api-desc\">{}</p>\n", esc(d)));
         }
         if let Some(content) = rb.get("content") {
-            out.push_str(&self.render_content(content, depth));
+            let inner = self.with_doc(doc, |s| s.render_content(content, depth));
+            out.push_str(&inner);
         }
         out.push_str("</div>\n");
         out
@@ -268,7 +458,7 @@ impl<'a> Renderer<'a> {
             "<div class=\"api-responses\"><p class=\"api-section-label\">レスポンス</p>\n",
         );
         for (code_str, r) in obj {
-            let r = self.deref(r);
+            let (doc, r) = self.deref(r);
             let cls = status_class(code_str);
             let desc = r.get("description").and_then(|v| v.as_str()).unwrap_or("");
             out.push_str(&format!(
@@ -279,7 +469,8 @@ impl<'a> Renderer<'a> {
                 desc_e = esc(desc),
             ));
             if let Some(content) = r.get("content") {
-                out.push_str(&self.render_content(content, depth));
+                let inner = self.with_doc(doc, |s| s.render_content(content, depth));
+                out.push_str(&inner);
             }
         }
         out.push_str("</div>\n");
@@ -335,24 +526,17 @@ impl<'a> Renderer<'a> {
         self.render_scalar(schema)
     }
 
-    /// `$ref` を解決して描画する。ローカル参照のみ・循環はスタックで止める
+    /// `$ref` を解決して描画する。ファイル跨ぎは cur_doc を切り替えて再帰し、
+    /// 循環は（文書キー, ポインタ）のスタックで止める
     fn render_ref(&mut self, r: &str, depth: usize) -> String {
-        if !is_local_ref(r) {
-            return format!(
-                "<p class=\"api-ref\">{}（未対応の参照）</p>\n",
-                code(ref_name(r))
-            );
-        }
-        if self.stack.iter().any(|s| s == r) {
-            return format!(
-                "<p class=\"api-ref\">{}（循環参照）</p>\n",
-                code(ref_name(r))
-            );
-        }
-        match self.resolve_local_ref(r) {
-            Some(target) => {
-                self.stack.push(r.to_string());
-                let body = self.render_schema(target, depth);
+        match self.resolve(r) {
+            Resolved::Ok {
+                doc,
+                pointer,
+                value,
+            } => {
+                self.stack.push((doc.clone(), pointer));
+                let body = self.with_doc(doc, |s| s.render_schema(value, depth));
                 self.stack.pop();
                 // どのスキーマを展開したかを見出しに示す
                 format!(
@@ -360,7 +544,20 @@ impl<'a> Renderer<'a> {
                     code(ref_name(r))
                 )
             }
-            None => format!(
+            Resolved::Cycle => format!(
+                "<p class=\"api-ref\">{}（循環参照）</p>\n",
+                code(ref_name(r))
+            ),
+            Resolved::Unsupported => format!(
+                "<p class=\"api-ref\">{}（未対応の参照）</p>\n",
+                code(ref_name(r))
+            ),
+            Resolved::Failed(reason) => format!(
+                "<p class=\"api-ref\">{}（読み込み失敗: {}）</p>\n",
+                code(ref_name(r)),
+                esc(&reason)
+            ),
+            Resolved::Unresolved => format!(
                 "<p class=\"api-ref\">{}（未解決の参照）</p>\n",
                 code(ref_name(r))
             ),
@@ -471,13 +668,10 @@ impl<'a> Renderer<'a> {
     }
 
     /// プロパティ行を入れ子で展開すべきか（object / 複合型を持つ array / combinator /
-    /// 解決可能で循環しないローカル `$ref` のみ true）
+    /// 解決可能で循環しない `$ref` のみ true）
     fn should_expand(&self, schema: &Value) -> bool {
         if let Some(r) = ref_str(schema) {
-            if !is_local_ref(r) || self.stack.iter().any(|s| s == r) {
-                return false;
-            }
-            return self.resolve_local_ref(r).is_some();
+            return matches!(self.resolve(r), Resolved::Ok { .. });
         }
         if COMBINATORS
             .iter()
@@ -504,16 +698,13 @@ impl<'a> Renderer<'a> {
     fn type_label(&self, schema: &Value) -> String {
         if let Some(r) = ref_str(schema) {
             let name = ref_name(r);
-            if !is_local_ref(r) {
-                return format!("{name}（未対応の参照）");
-            }
-            if self.stack.iter().any(|s| s == r) {
-                return format!("{name}（循環参照）");
-            }
-            if self.resolve_local_ref(r).is_none() {
-                return format!("{name}（未解決の参照）");
-            }
-            return name.to_string();
+            return match self.resolve(r) {
+                Resolved::Ok { .. } => name.to_string(),
+                Resolved::Cycle => format!("{name}（循環参照）"),
+                Resolved::Unsupported => format!("{name}（未対応の参照）"),
+                Resolved::Failed(_) => format!("{name}（読み込み失敗）"),
+                Resolved::Unresolved => format!("{name}（未解決の参照）"),
+            };
         }
         for key in ["oneOf", "anyOf", "allOf"] {
             if schema.get(key).is_some() {
@@ -597,25 +788,34 @@ impl<'a> Renderer<'a> {
         out
     }
 
-    /// ローカル JSON ポインタ（`#/a/b`）を解決する。RFC6901 のデコードは pointer が担う
-    fn resolve_local_ref(&self, r: &str) -> Option<&'a Value> {
-        let pointer = r.strip_prefix('#')?;
-        self.root.pointer(pointer)
+    /// パラメータ / requestBody / response ラッパの `$ref` を実体まで剥がす
+    /// （現在の文書基準）。実体が属する文書キーも返す
+    fn deref(&self, v: &'a Value) -> (String, &'a Value) {
+        self.deref_in(&self.cur_doc.clone(), v)
     }
 
-    /// パラメータ / requestBody / response ラッパの `$ref` を実体まで剥がす
-    fn deref(&self, v: &'a Value) -> &'a Value {
+    /// パラメータ / requestBody / response ラッパの `$ref` を `base_doc` 基準で
+    /// 実体まで剥がす。ファイル跨ぎに対応するため、実体が属する文書キーも返す
+    /// （呼び出し側が with_doc で cur_doc を切り替えてから中身を使う）。
+    /// 解決できない参照はそこで止めてラッパをそのまま返す（下流は素通しで描画）
+    fn deref_in(&self, base_doc: &str, v: &'a Value) -> (String, &'a Value) {
+        let mut doc = base_doc.to_string();
         let mut cur = v;
         for _ in 0..MAX_DEPTH {
-            match ref_str(cur) {
-                Some(r) if is_local_ref(r) => match self.resolve_local_ref(r) {
-                    Some(t) => cur = t,
-                    None => return cur,
-                },
-                _ => return cur,
+            let Some(r) = ref_str(cur) else { break };
+            match self.resolve_in(&doc, r) {
+                Resolved::Ok {
+                    doc: next_doc,
+                    value,
+                    ..
+                } => {
+                    doc = next_doc;
+                    cur = value;
+                }
+                _ => break,
             }
         }
-        cur
+        (doc, cur)
     }
 }
 
@@ -631,9 +831,74 @@ fn ref_str(schema: &Value) -> Option<&str> {
     schema.get("$ref").and_then(|v| v.as_str())
 }
 
-/// ローカル参照（`#/...`）か
-fn is_local_ref(r: &str) -> bool {
-    r.starts_with('#')
+/// render_schema がスカラ分岐（render_scalar）に落とすスキーマか。
+/// render_scalar は description を自前で出すため、jsonschema 文書ヘッダ側の
+/// description 出力と二重にならないよう出し分けに使う。
+/// **render_schema の dispatch と同期を保つこと**（$ref / combinator /
+/// object / array のいずれでもない → スカラ）
+fn is_scalar_like(schema: &Value) -> bool {
+    if ref_str(schema).is_some() {
+        return false;
+    }
+    if COMBINATORS
+        .iter()
+        .any(|(k, _)| schema.get(k).and_then(|v| v.as_array()).is_some())
+    {
+        return false;
+    }
+    let ty = schema.get("type").and_then(|v| v.as_str());
+    if ty == Some("object") || (ty.is_none() && schema.get("properties").is_some()) {
+        return false;
+    }
+    if ty == Some("array") || (ty.is_none() && schema.get("items").is_some()) {
+        return false;
+    }
+    true
+}
+
+/// ファイル参照（`path#/pointer` または `path`）ならパスとポインタに分割する。
+/// ローカル参照（`#...`）とリモート参照（`scheme://`）は None
+fn split_file_ref(r: &str) -> Option<(&str, &str)> {
+    if r.starts_with('#') || r.contains("://") || r.is_empty() {
+        return None;
+    }
+    match r.split_once('#') {
+        Some((path, ptr)) => Some((path, ptr)),
+        None => Some((r, "")), // fragment なし = 文書全体を参照
+    }
+}
+
+/// 文書キー（ルート相対パス）の親ディレクトリ。インライン（空文字）はルート
+fn parent_dir(doc_key: &str) -> String {
+    match doc_key.rsplit_once('/') {
+        Some((dir, _)) => dir.to_string(),
+        None => String::new(),
+    }
+}
+
+/// `base_dir` 基準の相対パスを `.` / `..` を字句処理してルート相対の正規形にする。
+/// ルートを突き抜けたら Err（loader 側の canonicalize 検査と二重防御）
+fn normalize_rel_path(base_dir: &str, rel: &str) -> Result<String, String> {
+    let mut parts: Vec<&str> = if base_dir.is_empty() {
+        Vec::new()
+    } else {
+        base_dir.split('/').collect()
+    };
+    for seg in rel.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                if parts.pop().is_none() {
+                    return Err(format!("参照 {rel} はプロジェクトルートの外を指しています"));
+                }
+            }
+            s => parts.push(s),
+        }
+    }
+    if parts.is_empty() {
+        return Err(format!("参照 {rel} のパスが空です"));
+    }
+    Ok(parts.join("/"))
 }
 
 /// 参照の表示名（末尾セグメント）。`#/components/schemas/User` → `User`
@@ -693,7 +958,7 @@ fn plain_value(v: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{SpecKind, render_spec};
+    use super::super::{NoFiles, SpecKind, render_spec};
 
     /// 最小 OpenAPI: 1 path・GET・パラメータ 1・レスポンス 200
     #[test]
@@ -726,7 +991,7 @@ paths:
                   name:
                     type: string
 "#;
-        let html = render_spec(SpecKind::OpenApi, src);
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
         assert!(html.contains("<section class=\"api-spec\">"));
         assert!(html.contains("api-method api-method-get"));
         assert!(html.contains(">GET<"));
@@ -771,7 +1036,7 @@ components:
         name:
           type: string
 "##;
-        let html = render_spec(SpecKind::OpenApi, src);
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
         // 参照先の型名が「型」列に出る
         assert!(html.contains("<code>User</code>"));
         // 展開されて User のプロパティが出る
@@ -807,7 +1072,7 @@ components:
         next:
           $ref: "#/components/schemas/Node"
 "##;
-        let html = render_spec(SpecKind::OpenApi, src);
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
         // ここまで到達すれば無限ループしていない
         assert!(html.contains("<code>Node</code>"));
         assert!(html.contains("<code>value</code>"));
@@ -833,7 +1098,7 @@ properties:
     items:
       type: string
 "#;
-        let html = render_spec(SpecKind::JsonSchema, src);
+        let html = render_spec(SpecKind::JsonSchema, src, None, &NoFiles);
         // enum の値
         assert!(html.contains("<code>active</code>"));
         assert!(html.contains("<code>inactive</code>"));
@@ -867,8 +1132,8 @@ properties:
   }
 }
 "#;
-        let from_yaml = render_spec(SpecKind::JsonSchema, yaml);
-        let from_json = render_spec(SpecKind::JsonSchema, json);
+        let from_yaml = render_spec(SpecKind::JsonSchema, yaml, None, &NoFiles);
+        let from_json = render_spec(SpecKind::JsonSchema, json, None, &NoFiles);
         assert_eq!(from_yaml, from_json);
     }
 
@@ -885,7 +1150,7 @@ properties:
   city:
     type: string
 "#;
-        let html = render_spec(SpecKind::JsonSchema, src);
+        let html = render_spec(SpecKind::JsonSchema, src, None, &NoFiles);
         assert!(html.contains("<section class=\"api-spec api-schema\">"));
         assert!(html.contains("<strong>住所</strong>"));
         assert!(html.contains("郵送先"));
@@ -897,7 +1162,7 @@ properties:
     #[test]
     fn パース失敗はエラーボックスになる() {
         let src = "openapi: 3.0.0\n  : : invalid : :\n\t bad";
-        let html = render_spec(SpecKind::OpenApi, src);
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
         assert!(html.contains("markdown-alert-caution"));
     }
 
@@ -909,7 +1174,7 @@ swagger: "2.0"
 info: { title: 旧API, version: "1" }
 paths: {}
 "#;
-        let html = render_spec(SpecKind::OpenApi, src);
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
         assert!(html.contains("markdown-alert-caution"));
         assert!(html.contains("OpenAPI 3.x のみ対応"));
     }
@@ -930,7 +1195,7 @@ paths:
         "200":
           description: "<i>ok</i>"
 "#;
-        let html = render_spec(SpecKind::OpenApi, src);
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
         assert!(!html.contains("<script>alert(1)</script>"));
         assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
         assert!(!html.contains("<b>bad</b>"));
@@ -946,10 +1211,181 @@ oneOf:
   - type: string
   - $ref: "https://example.com/schema.json#/Foo"
 "#;
-        let html = render_spec(SpecKind::JsonSchema, src);
+        let html = render_spec(SpecKind::JsonSchema, src, None, &NoFiles);
         assert!(html.contains("いずれか（oneOf）"));
         // リモート参照は未対応表示に留める
         assert!(html.contains("未対応の参照"));
+    }
+
+    /// root がスカラ型の jsonschema では description が 1 回だけ出る
+    #[test]
+    fn スカラルートの_description_は二重にならない() {
+        let src = r#"
+title: 識別子
+description: 一意な文字列
+type: string
+"#;
+        let html = render_spec(SpecKind::JsonSchema, src, None, &NoFiles);
+        assert_eq!(
+            html.matches("一意な文字列").count(),
+            1,
+            "render_scalar 側の 1 回だけ:\n{html}"
+        );
+        // object ルートは従来どおり文書ヘッダ側が出す
+        // （「説明」はプロパティ表の <th> と衝突するため一意な文言で数える）
+        let src = "title: T\ndescription: オブジェクト全体の説明文\ntype: object\nproperties:\n  a:\n    type: string\n";
+        let html = render_spec(SpecKind::JsonSchema, src, None, &NoFiles);
+        assert_eq!(html.matches("オブジェクト全体の説明文").count(), 1);
+    }
+
+    /// trace オペレーションもメソッドバッジ付きで描画される
+    #[test]
+    fn trace_メソッドが描画される() {
+        let src = r#"
+openapi: "3.1.0"
+info: { title: T, version: "1" }
+paths:
+  /debug:
+    trace:
+      summary: トレース
+      responses:
+        "200":
+          description: ok
+"#;
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(html.contains("api-method-trace"), "{html}");
+        assert!(html.contains(">TRACE<"));
+    }
+
+    /// テスト用: メモリ上のファイル群（キー = 正規化済みルート相対パス）
+    struct MapFiles(std::collections::HashMap<String, String>);
+
+    impl super::super::SpecFiles for MapFiles {
+        fn read(&self, rel: &str) -> Result<String, String> {
+            self.0
+                .get(rel)
+                .cloned()
+                .ok_or_else(|| format!("{rel} が見つかりません"))
+        }
+    }
+
+    fn map_files(entries: &[(&str, &str)]) -> MapFiles {
+        MapFiles(
+            entries
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        )
+    }
+
+    /// ファイル $ref（インラインブロック = ルート相対）で別ファイルのスキーマが展開される
+    #[test]
+    fn ファイル_ref_で別ファイルのスキーマが展開される() {
+        let files = map_files(&[(
+            "schemas/common.yaml",
+            "components:\n  schemas:\n    User:\n      type: object\n      required: [id]\n      properties:\n        id:\n          type: string\n",
+        )]);
+        let src = r#"
+openapi: "3.1.0"
+info: { title: T, version: "1" }
+paths:
+  /users:
+    get:
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "schemas/common.yaml#/components/schemas/User"
+"#;
+        let html = render_spec(SpecKind::OpenApi, src, None, &files);
+        assert!(html.contains("<code>User</code>"), "{html}");
+        assert!(html.contains("<code>id</code>"), "参照先が展開される");
+        assert!(!html.contains("markdown-alert-caution"));
+    }
+
+    /// 参照先ファイル内のローカル `#/...` はそのファイルの root で解決される
+    #[test]
+    fn 参照先ファイル内のローカル_ref_はそのファイルの_root_で解決される() {
+        let files = map_files(&[(
+            "common.yaml",
+            concat!(
+                "components:\n  schemas:\n",
+                "    User:\n      type: object\n      properties:\n        address:\n          $ref: \"#/components/schemas/Address\"\n",
+                "    Address:\n      type: object\n      properties:\n        zip:\n          type: string\n",
+            ),
+        )]);
+        // メイン文書（インライン）には Address が無い = common.yaml 側で解決された証拠
+        let src = "$ref: \"common.yaml#/components/schemas/User\"\n";
+        let html = render_spec(SpecKind::JsonSchema, src, None, &files);
+        assert!(html.contains("<code>address</code>"), "{html}");
+        assert!(
+            html.contains("<code>zip</code>"),
+            "ネスト解決が正しい root で行われる"
+        );
+    }
+
+    /// 仕様ファイル内の相対 $ref は参照元ファイルのディレクトリ基準で解決される
+    #[test]
+    fn 仕様ファイル内の相対_ref_は参照元ディレクトリ基準() {
+        let files = map_files(&[(
+            // specs/api.yaml（origin）から "schemas/x.yaml" → specs/schemas/x.yaml
+            "specs/schemas/x.yaml",
+            "type: object\nproperties:\n  ok:\n    type: string\n",
+        )]);
+        let src = "$ref: \"schemas/x.yaml\"\n"; // fragment なし = 文書全体
+        let html = render_spec(SpecKind::JsonSchema, src, Some("specs/api.yaml"), &files);
+        assert!(html.contains("<code>ok</code>"), "{html}");
+    }
+
+    /// ファイル間の循環 $ref（a→b→a）はガードされる
+    #[test]
+    fn ファイル間の循環_ref_はガードされる() {
+        let files = map_files(&[
+            (
+                "a.yaml",
+                "A:\n  type: object\n  properties:\n    next:\n      $ref: \"b.yaml#/B\"\n",
+            ),
+            (
+                "b.yaml",
+                "B:\n  type: object\n  properties:\n    prev:\n      $ref: \"a.yaml#/A\"\n",
+            ),
+        ]);
+        let src = "$ref: \"a.yaml#/A\"\n";
+        let html = render_spec(SpecKind::JsonSchema, src, None, &files);
+        // ここまで到達すれば無限ループ・無限ロードしていない
+        assert!(html.contains("<code>next</code>"), "{html}");
+        assert!(html.contains("循環参照"), "戻り参照は循環と表示される");
+    }
+
+    /// ルート外への `../` 参照は正規化段で拒否され注記になる
+    #[test]
+    fn ルート外への_ref_は拒否され注記になる() {
+        let files = map_files(&[]);
+        let src = "$ref: \"../outside.yaml#/X\"\n";
+        let html = render_spec(SpecKind::JsonSchema, src, None, &files);
+        assert!(html.contains("ルートの外"), "{html}");
+        assert!(
+            !html.contains("markdown-alert-caution"),
+            "ブロック全体は生きる"
+        );
+    }
+
+    /// 不在ファイル・参照先のパース失敗は注記で描画継続する（error_box にしない）
+    #[test]
+    fn 不在ファイルとパース失敗は注記で描画継続() {
+        let files = map_files(&[("broken.yaml", "foo: [unclosed")]);
+        let src = concat!(
+            "type: object\nproperties:\n",
+            "  a:\n    $ref: \"missing.yaml#/X\"\n",
+            "  b:\n    $ref: \"broken.yaml#/X\"\n",
+        );
+        let html = render_spec(SpecKind::JsonSchema, src, None, &files);
+        assert!(html.contains("読み込み失敗"), "{html}");
+        assert!(html.contains("<code>a</code>"), "残りは描画される");
+        assert!(html.contains("<code>b</code>"));
+        assert!(!html.contains("markdown-alert-caution"));
     }
 
     /// 出力の構造がおおむね well-formed（section とタグの対応）
@@ -965,7 +1401,7 @@ paths:
         "200":
           description: ok
 "#;
-        let html = render_spec(SpecKind::OpenApi, src);
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
         assert_eq!(html.matches("<section").count(), 1);
         assert_eq!(html.matches("</section>").count(), 1);
         assert_eq!(
