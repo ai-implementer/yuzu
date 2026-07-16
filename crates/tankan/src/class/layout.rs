@@ -6,6 +6,7 @@ use crate::class::model::{Class, ClassDiagram, Marker};
 use crate::common::geom;
 use crate::common::layered::{self, LayeredConfig, LayeredEdge, LayeredNode, Size};
 use crate::common::path::{offset_amount, offset_polyline};
+use crate::common::style::Style;
 use crate::common::text::{max_width, text_width};
 
 const TITLE_PAD_Y: f32 = 6.0;
@@ -43,6 +44,8 @@ pub(crate) struct ClassBox {
     pub attr_h: f32,
     /// 属性・メソッド区画（仕切り線）を描くか
     pub has_body: bool,
+    /// 解決済みインラインスタイル（無ければ None）
+    pub style: Option<Style>,
 }
 
 pub(crate) struct RelationPath {
@@ -240,6 +243,7 @@ fn build_box(c: &Class, fs: f32, line_h: f32) -> ClassBox {
         title_h,
         attr_h,
         has_body,
+        style: c.style.clone(),
     }
 }
 

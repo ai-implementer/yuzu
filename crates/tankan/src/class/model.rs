@@ -1,5 +1,7 @@
 //! classDiagram の AST
 
+use crate::common::style::Style;
+
 /// クラスボックス（3 区画: 名前＋アノテーション / 属性 / メソッド）
 #[derive(Debug, Default)]
 pub(crate) struct Class {
@@ -11,6 +13,8 @@ pub(crate) struct Class {
     pub attributes: Vec<String>,
     /// メソッド行（`(` を含む行）
     pub methods: Vec<String>,
+    /// 解決済みインラインスタイル（classDef / cssClass / `:::` / style。無ければ None）
+    pub style: Option<Style>,
 }
 
 /// 関係線の端に付くマーカー形状。左右どちらの端に付くかで意味が決まる

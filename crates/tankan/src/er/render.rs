@@ -5,6 +5,7 @@ use std::fmt::Write;
 
 use crate::Options;
 use crate::common::path::rounded_polyline;
+use crate::common::style::{box_attr, line_attr, text_attr};
 use crate::common::svg::{SvgBuilder, fmt_num};
 use crate::common::text::{escape_xml, max_width};
 use crate::er::layout::Layout;
@@ -127,24 +128,29 @@ pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
         }
     }
 
-    // エンティティ（テーブル）
+    // エンティティ（テーブル）。ユーザ指定色はボックス全体（タイトル帯含む）を塗り、
+    // 区切り線には stroke 系のみ、全テキストには明度から選んだ読みやすい文字色を当てる
     for e in &layout.entities {
-        svg.rect("tk-entity", e.x, e.y, e.w, e.h, "");
-        svg.rect("tk-entity-title", e.x, e.y, e.w, e.title_h, "");
-        svg.text_lines(
+        let box_s = box_attr(e.style.as_ref());
+        let line_s = line_attr(e.style.as_ref());
+        let text_s = text_attr(e.style.as_ref());
+        svg.rect("tk-entity", e.x, e.y, e.w, e.h, &box_s);
+        svg.rect("tk-entity-title", e.x, e.y, e.w, e.title_h, &box_s);
+        svg.text_lines_with(
             "tk-entity-title-text",
             e.x + e.w / 2.0,
             e.y + e.title_h / 2.0 + fs * 0.35,
             line_h,
             "middle",
             std::slice::from_ref(&e.title),
+            &text_s,
         );
         // 行と列
         let col_x = |i: usize| e.x + e.col_w[..i].iter().sum::<f32>();
         for (ri, row) in e.rows.iter().enumerate() {
             let ry = e.y + e.title_h + ri as f32 * e.row_h;
             if ri > 0 {
-                svg.line("tk-entity-line", e.x, ry, e.x + e.w, ry, "");
+                svg.line("tk-entity-line", e.x, ry, e.x + e.w, ry, &line_s);
             }
             let baseline = ry + e.row_h / 2.0 + fs * 0.35;
             for (ci, cell) in row.iter().enumerate() {
@@ -156,13 +162,14 @@ pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
                     3 => "tk-entity-comment",
                     _ => "tk-entity-cell",
                 };
-                svg.text_lines(
+                svg.text_lines_with(
                     class,
                     col_x(ci) + 10.0,
                     baseline,
                     line_h,
                     "start",
                     std::slice::from_ref(cell),
+                    &text_s,
                 );
             }
         }
@@ -171,7 +178,7 @@ pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
         for ci in 1..cols {
             let x = col_x(ci);
             if x > e.x && x < e.x + e.w && !e.rows.is_empty() {
-                svg.line("tk-entity-line", x, e.y + e.title_h, x, e.y + e.h, "");
+                svg.line("tk-entity-line", x, e.y + e.title_h, x, e.y + e.h, &line_s);
             }
         }
     }

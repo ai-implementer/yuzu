@@ -12,6 +12,7 @@
 
 use std::collections::HashMap;
 
+use crate::common::style::StyleCollector;
 use crate::common::text::{decode_entities, split_br_lines};
 use crate::error::Error;
 use crate::flowchart::model::{
@@ -125,6 +126,8 @@ struct StateParser {
     /// (実効スコープ, is_start) → [*] ノード
     star_index: HashMap<(Option<usize>, bool), usize>,
     scope_stack: Vec<ScopeCtx>,
+    /// classDef / class / `:::` / style を蓄積し、finish で各状態ノードへ配る
+    styles: StyleCollector,
 }
 
 impl StateParser {
@@ -175,12 +178,6 @@ impl StateParser {
         line_no: usize,
     ) -> Result<Option<(usize, Vec<String>)>, Error> {
         let keyword = line.split_whitespace().next().unwrap_or("");
-        if matches!(keyword, "classDef" | "class" | "style") || line.contains(":::") {
-            return Err(Error::UnsupportedSyntax {
-                line: line_no,
-                construct: keyword.to_string(),
-            });
-        }
 
         if line == "}" {
             if self.scope_stack.pop().is_none() {
@@ -197,6 +194,18 @@ impl StateParser {
         }
 
         match keyword {
+            "classDef" => {
+                self.styles.class_def(trim_line(&line["classDef".len()..]));
+                Ok(None)
+            }
+            "class" => {
+                self.styles.apply_class(trim_line(&line["class".len()..]));
+                Ok(None)
+            }
+            "style" => {
+                self.styles.apply_style(trim_line(&line["style".len()..]));
+                Ok(None)
+            }
             "direction" => {
                 let dir = parse_direction(trim_line(&line["direction".len()..]), line_no)?;
                 match self.scope_stack.last() {
@@ -212,6 +221,12 @@ impl StateParser {
             "note" => self.note_stmt(trim_line(&line["note".len()..]), line_no),
             _ if line.contains("-->") => {
                 self.transition(line, line_no)?;
+                Ok(None)
+            }
+            // `Ident:::class`（遷移でも説明でもない、インラインクラス付きの状態宣言）。
+            // 説明の `:` より先に判定して `:::` の誤分割を防ぐ
+            _ if line.contains(":::") => {
+                self.inline_decl(line, line_no)?;
                 Ok(None)
             }
             _ if line.contains(':') => {
@@ -421,17 +436,18 @@ impl StateParser {
         });
     }
 
-    /// `A --> B : label`
+    /// `A --> B : label`（両端に `A:::cls` インラインクラス可）
     fn transition(&mut self, line: &str, line_no: usize) -> Result<(), Error> {
-        let (left, label) = match line.split_once(':') {
-            Some((l, t)) => (trim_line(l), split_text(t)),
-            None => (line, Vec::new()),
-        };
-        let Some((from, to)) = left.split_once("-->") else {
+        // 先に `-->` で分割する（`:::` の `:` を説明の `:` と誤分割しないため）
+        let Some((from, rhs)) = line.split_once("-->") else {
             return Err(Error::Parse {
                 line: line_no,
                 message: "遷移として解釈できません".to_string(),
             });
+        };
+        let (to, label) = match split_label(rhs) {
+            (to, Some(text)) => (to, split_text(text)),
+            (to, None) => (to, Vec::new()),
         };
         let from = self.intern_end(trim_line(from), true, line_no)?;
         let to = self.intern_end(trim_line(to), false, line_no)?;
@@ -447,8 +463,50 @@ impl StateParser {
         Ok(())
     }
 
+    /// `Ident:::class` の裸宣言（任意で ` : 説明` 付き）。`:::` は状態名直後の
+    /// 3 連コロンのみ対象。遷移との併記は transition 側で扱う
+    fn inline_decl(&mut self, line: &str, line_no: usize) -> Result<(), Error> {
+        let (token, rest) = match line.find(char::is_whitespace) {
+            Some(i) => (&line[..i], trim_line(&line[i..])),
+            None => (line, ""),
+        };
+        // 素の状態名（`:::` を剥がした側）。説明適用時の既存ラベル判定に使う
+        let clean = token.split_once(":::").map_or(token, |(b, _)| b.trim());
+        let id = self.intern(token, line_no)?;
+        if let Some(desc) = rest.strip_prefix(':') {
+            let desc = split_text(desc);
+            let node = &mut self.diagram.nodes[id];
+            if node.label == [clean] {
+                node.label = desc;
+            } else {
+                node.label.extend(desc);
+            }
+        } else if !rest.is_empty() {
+            return Err(Error::Parse {
+                line: line_no,
+                message: "文として解釈できません".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// `name:::class` の末尾 `:::class` を剥がしてクラス登録し、素の名前を返す。
+    /// `:::` が無ければそのまま返す（冪等）
+    fn take_inline<'a>(&mut self, name: &'a str) -> &'a str {
+        let Some((base, cls)) = name.split_once(":::") else {
+            return name;
+        };
+        let base = base.trim();
+        let cls = cls.trim();
+        if !base.is_empty() && !cls.is_empty() {
+            self.styles.add_inline(base, cls);
+        }
+        base
+    }
+
     /// 遷移の端点（`[*]` はスコープ×方向ごとに別ノード、composite はクラスタ参照）
     fn intern_end(&mut self, name: &str, is_source: bool, line_no: usize) -> Result<EndRef, Error> {
+        let name = self.take_inline(name);
         if name == "[*]" {
             let key = (self.effective_scope(), is_source);
             if let Some(&id) = self.star_index.get(&key) {
@@ -475,6 +533,7 @@ impl StateParser {
     }
 
     fn intern(&mut self, name: &str, line_no: usize) -> Result<usize, Error> {
+        let name = self.take_inline(name);
         if name.is_empty() || name.contains([' ', '{', '}']) {
             return Err(Error::Parse {
                 line: line_no,
@@ -495,13 +554,29 @@ impl StateParser {
         Ok(id)
     }
 
-    /// 後処理: fork/join バーの向きを実効 direction から決める
+    /// 後処理: fork/join バーの向きを実効 direction から決める＋インラインスタイル配布
     fn finish(mut self) -> FlowchartDiagram {
         for i in 0..self.diagram.nodes.len() {
             if let NodeShape::ForkBar(_) = self.diagram.nodes[i].shape {
                 let dir = self.effective_direction(self.diagram.nodes[i].subgraph);
                 let vertical = matches!(dir, Direction::Lr | Direction::Rl);
                 self.diagram.nodes[i].shape = NodeShape::ForkBar(vertical);
+            }
+        }
+        // classDef / class / `:::` / style を各状態ノードへ配る。
+        // [*]（Start/End）・note・composite クラスタは node_index に無いので対象外
+        if !self.styles.is_empty() {
+            let mut names = vec![String::new(); self.diagram.nodes.len()];
+            for (name, &idx) in &self.node_index {
+                names[idx] = name.clone();
+            }
+            for (node, name) in self.diagram.nodes.iter_mut().zip(&names) {
+                if name.is_empty() {
+                    continue;
+                }
+                if let Some(style) = self.styles.resolve(name) {
+                    node.style = Some(style);
+                }
             }
         }
         self.diagram
@@ -523,6 +598,24 @@ fn split_text(text: &str) -> Vec<String> {
     split_br_lines(&decode_entities(trim_line(text)))
 }
 
+/// 遷移右辺 `TO[:::cls][ : label]` を (TO トークン, ラベル文字列) に分ける。
+/// `:::` インラインクラスの `:` はラベル区切り（単独 `:`）と誤認しない
+fn split_label(s: &str) -> (&str, Option<&str>) {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b':' {
+            if s[i..].starts_with(":::") {
+                i += 3; // `:::` インラインクラスは読み飛ばす
+                continue;
+            }
+            return (&s[..i], Some(&s[i + 1..]));
+        }
+        i += 1;
+    }
+    (s, None)
+}
+
 fn parse_direction(token: &str, line_no: usize) -> Result<Direction, Error> {
     match token {
         "TB" | "TD" => Ok(Direction::Tb),
@@ -539,7 +632,7 @@ fn parse_direction(token: &str, line_no: usize) -> Result<Direction, Error> {
 #[cfg(test)]
 mod tests {
     use super::parse;
-    use crate::flowchart::model::{EndRef, NodeShape};
+    use crate::flowchart::model::{EndRef, FlowchartDiagram, NodeShape};
 
     fn st(body: &str) -> String {
         format!("stateDiagram-v2\n{body}")
@@ -674,16 +767,77 @@ mod tests {
     }
 
     #[test]
-    fn スタイル系と未知の修飾は_unsupported() {
-        for src in [
-            "classDef bad fill:#f00",
-            "s1 --> s2\nclass s1 bad",
-            "state h <<history>>",
-            "s1:::style1 --> s2",
-        ] {
-            let err = parse(&st(src)).unwrap_err();
-            assert!(err.is_unsupported(), "{src}: {err}");
+    fn 未対応の修飾は_unsupported() {
+        // `<<history>>` は未対応（choice/fork/join のみ受理）
+        let err = parse(&st("state h <<history>>")).unwrap_err();
+        assert!(err.is_unsupported(), "{err}");
+    }
+
+    /// 状態名から解決済みスタイルを取り出す
+    fn state_style(d: &FlowchartDiagram, label: &str) -> crate::common::style::Style {
+        let n = d
+            .nodes
+            .iter()
+            .find(|n| n.label == [label])
+            .unwrap_or_else(|| panic!("状態 {label} が見つかりません"));
+        n.style.clone().unwrap_or_default()
+    }
+
+    #[test]
+    fn インラインクラスと後置_classdef_が効く() {
+        // classDef が使用行より後にあっても解決される
+        let d = parse(&st("s1:::warn --> s2\nclassDef warn fill:#f96,stroke:#333")).unwrap();
+        let s = state_style(&d, "s1");
+        assert_eq!(s.fill.as_deref(), Some("#f96"));
+        assert_eq!(s.stroke.as_deref(), Some("#333"));
+        // クラスなしの状態はスタイルなし
+        assert!(
+            d.nodes
+                .iter()
+                .find(|n| n.label == ["s2"])
+                .unwrap()
+                .style
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn classdef_default_が全状態既定になる() {
+        let d = parse(&st("s1 --> s2\nclassDef default fill:#eee")).unwrap();
+        for label in ["s1", "s2"] {
+            assert_eq!(
+                state_style(&d, label).fill.as_deref(),
+                Some("#eee"),
+                "{label}"
+            );
         }
+    }
+
+    #[test]
+    fn class_文と_style_文が適用される() {
+        // class 文で複数状態へ、style 文はプロパティ単位で後勝ち
+        let d = parse(&st(
+            "s1 --> s2\nclassDef hot fill:#f96\nclass s1,s2 hot\nstyle s1 stroke:#111",
+        ))
+        .unwrap();
+        assert_eq!(state_style(&d, "s2").fill.as_deref(), Some("#f96"));
+        let s1 = state_style(&d, "s1");
+        assert_eq!(s1.fill.as_deref(), Some("#f96"));
+        assert_eq!(s1.stroke.as_deref(), Some("#111"));
+    }
+
+    #[test]
+    fn インラインクラスと説明を併記できる() {
+        let d = parse(&st("s1:::warn : 開始\nclassDef warn fill:#f96")).unwrap();
+        let n = d
+            .nodes
+            .iter()
+            .find(|n| n.label == ["開始"])
+            .expect("説明が反映される");
+        assert_eq!(
+            n.style.clone().unwrap_or_default().fill.as_deref(),
+            Some("#f96")
+        );
     }
 
     #[test]

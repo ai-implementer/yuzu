@@ -1,10 +1,14 @@
 //! erDiagram の AST
 
+use crate::common::style::Style;
+
 #[derive(Debug)]
 pub(crate) struct Entity {
     /// 表示名（エイリアス `E[表示名]` があればそちら）
     pub display: String,
     pub attributes: Vec<Attribute>,
+    /// 解決済みインラインスタイル（classDef / class / `:::` / style。無ければ None）
+    pub style: Option<Style>,
 }
 
 #[derive(Debug)]

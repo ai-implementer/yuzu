@@ -30,7 +30,8 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v2: openapi/jsonschema ブロックの SSR 追加（本文 HTML の生成ロジック変更）
 /// - v3: flowchart スタイル構文の SSR ＋ OpenAPI ファイル間 $ref（同上）
 /// - v4: content 同伴アセットの相対参照を絶対 URL へ書き換え（同上）
-pub const CACHE_FORMAT_VERSION: u32 = 4;
+/// - v5: state / ER / class 図のスタイル構文 SSR（従来フォールバックが SSR 成功へ）
+pub const CACHE_FORMAT_VERSION: u32 = 5;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

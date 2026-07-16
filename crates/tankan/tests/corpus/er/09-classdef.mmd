@@ -1,0 +1,6 @@
+erDiagram
+    CUSTOMER:::vip ||--o{ ORDER : places
+    ORDER ||--|{ LINE-ITEM : contains
+    classDef default fill:#eee,stroke:#999
+    classDef vip fill:#fd8,stroke:#333,stroke-width:2px
+    class LINE-ITEM vip

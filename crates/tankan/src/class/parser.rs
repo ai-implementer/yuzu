@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use crate::class::model::{Class, ClassDiagram, Marker, Relation};
+use crate::common::style::StyleCollector;
 use crate::common::text::{decode_entities, split_br_lines};
 use crate::error::Error;
 use crate::kind::trim_line;
@@ -89,6 +90,20 @@ pub(crate) fn parse(source: &str) -> Result<ClassDiagram, Error> {
             message: "閉じられていないクラス本体があります（} 不足）".to_string(),
         });
     }
+
+    // classDef / cssClass / `:::` / style を各クラスへ配る
+    if !p.styles.is_empty() {
+        let mut names = vec![String::new(); p.diagram.classes.len()];
+        for (name, &idx) in &p.index {
+            names[idx] = name.clone();
+        }
+        for (class, name) in p.diagram.classes.iter_mut().zip(&names) {
+            if let Some(style) = p.styles.resolve(name) {
+                class.style = Some(style);
+            }
+        }
+    }
+
     Ok(p.diagram)
 }
 
@@ -96,11 +111,15 @@ pub(crate) fn parse(source: &str) -> Result<ClassDiagram, Error> {
 struct ClassParser {
     diagram: ClassDiagram,
     index: HashMap<String, usize>,
+    /// classDef / cssClass / `:::` / style を蓄積し、パース後に各クラスへ配る
+    styles: StyleCollector,
 }
 
 impl ClassParser {
-    /// 生の名前でクラスを取得（なければ作成）。表示名はジェネリクス変換する
+    /// 生の名前でクラスを取得（なければ作成）。表示名はジェネリクス変換する。
+    /// 末尾 `:::class` のインラインクラス指定はここで剥がして登録する
     fn intern(&mut self, name: &str) -> usize {
+        let name = self.take_inline(name);
         if let Some(&id) = self.index.get(name) {
             return id;
         }
@@ -113,6 +132,20 @@ impl ClassParser {
         id
     }
 
+    /// `name:::class` の末尾 `:::class` を剥がしてクラス登録し、素の名前を返す。
+    /// 登録キーは index と同じ生の名前（ジェネリクス変換前）
+    fn take_inline<'a>(&mut self, name: &'a str) -> &'a str {
+        let Some((base, cls)) = name.split_once(":::") else {
+            return name;
+        };
+        let base = base.trim();
+        let cls = cls.trim();
+        if !base.is_empty() && !cls.is_empty() {
+            self.styles.add_inline(base, cls);
+        }
+        base
+    }
+
     fn statement(
         &mut self,
         line: &str,
@@ -120,21 +153,29 @@ impl ClassParser {
         body_block: &mut Option<usize>,
     ) -> Result<(), Error> {
         let keyword = line.split_whitespace().next().unwrap_or("");
-        // 未対応構文（styling・note・click・namespace 等）は静かにフォールバックさせる
-        if line.contains(":::")
-            || matches!(
-                keyword,
-                "note"
-                    | "click"
-                    | "callback"
-                    | "call"
-                    | "link"
-                    | "cssClass"
-                    | "namespace"
-                    | "style"
-                    | "classDef"
-            )
-        {
+        // スタイル構文。`class` は宣言キーワードなので、複数適用は `cssClass`（Mermaid 準拠）
+        match keyword {
+            "classDef" => {
+                self.styles.class_def(trim_line(&line["classDef".len()..]));
+                return Ok(());
+            }
+            "cssClass" => {
+                // Mermaid は ids を引用符で囲む: `cssClass "A,B" name`。引用符は除去する
+                let rest = trim_line(&line["cssClass".len()..]).replace('"', "");
+                self.styles.apply_class(&rest);
+                return Ok(());
+            }
+            "style" => {
+                self.styles.apply_style(trim_line(&line["style".len()..]));
+                return Ok(());
+            }
+            _ => {}
+        }
+        // 未対応構文（note・click・namespace 等）は静かにフォールバックさせる
+        if matches!(
+            keyword,
+            "note" | "click" | "callback" | "call" | "link" | "namespace"
+        ) {
             return Err(Error::UnsupportedSyntax {
                 line: line_no,
                 construct: keyword.to_string(),
@@ -158,25 +199,22 @@ impl ClassParser {
             return Ok(());
         }
 
-        // 関係かメンバー代入かは `:` の左側で判定する
-        let main = line
-            .split_once(':')
-            .map(|(l, _)| trim_line(l))
-            .unwrap_or(line);
-        if find_relation_token(main).is_some() {
+        // 関係かメンバー代入かは、`:::` を跨がない最初の `:` の左側で判定する
+        let (head, member) = split_label(line);
+        let head = trim_line(head);
+        if find_relation_token(head).is_some() {
             return self.relation(line, line_no);
         }
 
         // メンバー代入 `Class : member`
-        if let Some((name, member)) = line.split_once(':') {
-            let name = trim_line(name);
-            if name.is_empty() {
+        if let Some(member) = member {
+            if head.is_empty() {
                 return Err(Error::Parse {
                     line: line_no,
                     message: "メンバーの所属クラス名がありません".to_string(),
                 });
             }
-            let id = self.intern(name);
+            let id = self.intern(head);
             self.add_member(id, trim_line(member));
             return Ok(());
         }
@@ -261,11 +299,12 @@ impl ClassParser {
         }
     }
 
-    /// `A "1" <|-- "many" B : label`
+    /// `A "1" <|-- "many" B : label`（両端に `A:::cls` インラインクラス可）
     fn relation(&mut self, line: &str, line_no: usize) -> Result<(), Error> {
-        let (main, label) = match line.split_once(':') {
-            Some((l, t)) => (trim_line(l), split_text(t)),
-            None => (line, Vec::new()),
+        // ラベル区切りは `:::` インラインクラスを跨がない最初の単独 `:`
+        let (main, label) = match split_label(line) {
+            (m, Some(t)) => (trim_line(m), split_text(t)),
+            (m, None) => (trim_line(m), Vec::new()),
         };
         let Some(tok) = find_relation_token(main) else {
             return Err(Error::Parse {
@@ -478,6 +517,24 @@ fn split_text(text: &str) -> Vec<String> {
     split_br_lines(&decode_entities(text))
 }
 
+/// 行を「ラベル `:` の左側」と「ラベル文字列」に分ける。ラベル区切りは単独 `:`。
+/// `:::` インラインクラス（3 連コロン）はラベル区切りと誤認しない
+fn split_label(s: &str) -> (&str, Option<&str>) {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b':' {
+            if s[i..].starts_with(":::") {
+                i += 3; // `:::` インラインクラスは読み飛ばす
+                continue;
+            }
+            return (&s[..i], Some(&s[i + 1..]));
+        }
+        i += 1;
+    }
+    (s, None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{convert_generics, parse};
@@ -613,14 +670,81 @@ mod tests {
             "note \"これはノート\"",
             "note for Animal \"説明\"",
             "class Animal\nclick Animal href \"https://example.com\"",
-            "class Animal:::styleClass",
-            "cssClass \"Animal\" myStyle",
             "namespace BaseShapes {\n  class Triangle\n}",
-            "classDef default fill:#f00",
         ] {
             let err = parse(&cd(src)).unwrap_err();
             assert!(err.is_unsupported(), "{src}: {err}");
         }
+    }
+
+    /// クラス名から解決済みスタイルを取り出す
+    fn class_style(d: &super::ClassDiagram, display: &str) -> crate::common::style::Style {
+        let c = d
+            .classes
+            .iter()
+            .find(|c| c.display == display)
+            .unwrap_or_else(|| panic!("クラス {display} が見つかりません"));
+        c.style.clone().unwrap_or_default()
+    }
+
+    #[test]
+    fn インラインクラスと後置_classdef_が効く() {
+        // `:::` は宣言でもラベルでもなく、後置 classDef も解決される
+        let d = parse(&cd(
+            "class Animal:::warn\nclassDef warn fill:#f96,stroke:#333",
+        ))
+        .unwrap();
+        let s = class_style(&d, "Animal");
+        assert_eq!(s.fill.as_deref(), Some("#f96"));
+        assert_eq!(s.stroke.as_deref(), Some("#333"));
+    }
+
+    #[test]
+    fn cssclass_と_style_文が適用される() {
+        // cssClass（引用符付き ids・複数）と style 文（個別・後勝ち）
+        let d = parse(&cd(
+            "class A\nclass B\nclassDef hot fill:#f96\ncssClass \"A,B\" hot\nstyle A stroke:#111",
+        ))
+        .unwrap();
+        assert_eq!(class_style(&d, "B").fill.as_deref(), Some("#f96"));
+        let a = class_style(&d, "A");
+        assert_eq!(a.fill.as_deref(), Some("#f96"));
+        assert_eq!(a.stroke.as_deref(), Some("#111"));
+    }
+
+    #[test]
+    fn classdef_default_が全クラス既定になる() {
+        let d = parse(&cd("class A\nA <|-- B\nclassDef default fill:#eee")).unwrap();
+        for name in ["A", "B"] {
+            assert_eq!(
+                class_style(&d, name).fill.as_deref(),
+                Some("#eee"),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn 宣言の_class_はスタイル適用文と衝突しない() {
+        // `class Foo { ... }` は宣言、複数適用は `cssClass`。両立する
+        let d = parse(&cd(
+            "class Foo {\n  +int x\n}\nclassDef warn fill:#f96\ncssClass \"Foo\" warn",
+        ))
+        .unwrap();
+        assert_eq!(class_style(&d, "Foo").fill.as_deref(), Some("#f96"));
+        assert_eq!(
+            d.classes[0].attributes,
+            vec!["+int x".to_string()],
+            "宣言の本体も保持"
+        );
+    }
+
+    #[test]
+    fn 関係の両端にインラインクラスを付けられる() {
+        let d = parse(&cd("A:::warn <|-- B : 継承\nclassDef warn fill:#f96")).unwrap();
+        assert_eq!(class_style(&d, "A").fill.as_deref(), Some("#f96"));
+        assert_eq!(d.relations.len(), 1, "関係も正しく解釈される");
+        assert_eq!(d.relations[0].label, vec!["継承".to_string()]);
     }
 
     #[test]

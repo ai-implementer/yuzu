@@ -12,11 +12,11 @@
 
 use std::collections::HashMap;
 
+use crate::common::style::StyleCollector;
 use crate::common::text::{decode_entities, split_br_lines};
 use crate::error::Error;
 use crate::flowchart::model::{
-    Direction, Edge, EdgeLine, EdgeTip, EndRef, FlowchartDiagram, Node, NodeShape, NodeStyle,
-    Subgraph,
+    Direction, Edge, EdgeLine, EdgeTip, EndRef, FlowchartDiagram, Node, NodeShape, Subgraph,
 };
 use crate::kind::trim_line;
 
@@ -116,12 +116,8 @@ struct Parser {
     subgraph_index: HashMap<String, usize>,
     subgraph_stack: Vec<usize>,
     pending_edges: Vec<PendingEdge>,
-    /// classDef で定義したクラス（名前 → スタイル。同名再定義はプロパティ単位後勝ち）
-    class_defs: HashMap<String, NodeStyle>,
-    /// ノード id → 適用クラス名列（`:::` と class 文を出現順に蓄積）
-    node_classes: HashMap<String, Vec<String>>,
-    /// ノード id → style 文のスタイル（プロパティ単位後勝ち）
-    node_styles: HashMap<String, NodeStyle>,
+    /// classDef / class / `:::` / style を蓄積し、解決時に各ノードへ配る
+    styles: StyleCollector,
 }
 
 impl Parser {
@@ -155,9 +151,18 @@ impl Parser {
         let keyword = statement.split_whitespace().next().unwrap_or("");
         let rest = trim_line(&statement[keyword.len().min(statement.len())..]);
         match keyword {
-            "classDef" => self.class_def(rest),
-            "class" => self.apply_class(rest),
-            "style" => self.apply_style(rest),
+            "classDef" => {
+                self.styles.class_def(rest);
+                Ok(())
+            }
+            "class" => {
+                self.styles.apply_class(rest);
+                Ok(())
+            }
+            "style" => {
+                self.styles.apply_style(rest);
+                Ok(())
+            }
             "linkStyle" | "click" => Err(Error::UnsupportedSyntax {
                 line: line_no,
                 construct: keyword.to_string(),
@@ -213,95 +218,20 @@ impl Parser {
         Ok(())
     }
 
-    /// `classDef name1,name2 fill:#f9f,...`（`default` = 全ノード既定）
-    fn class_def(&mut self, rest: &str) -> Result<(), Error> {
-        let (names, props) = split_first_ws(rest);
-        let style = parse_style_props(props);
-        for name in names.split(',') {
-            let name = name.trim();
-            if name.is_empty() {
-                continue;
-            }
-            let entry = self.class_defs.entry(name.to_string()).or_default();
-            merge_style(entry, &style);
-        }
-        Ok(())
-    }
-
-    /// `class nodeId1,nodeId2 className`（適用先はノードのみ。解決は resolve で）
-    fn apply_class(&mut self, rest: &str) -> Result<(), Error> {
-        let (ids, class_name) = split_first_ws(rest);
-        let class_name = class_name.trim();
-        if class_name.is_empty() {
-            return Ok(());
-        }
-        for id in ids.split(',') {
-            let id = id.trim();
-            if id.is_empty() {
-                continue;
-            }
-            self.node_classes
-                .entry(id.to_string())
-                .or_default()
-                .push(class_name.to_string());
-        }
-        Ok(())
-    }
-
-    /// `style nodeId1,nodeId2 fill:#bbf,...`（プロパティ単位後勝ち）
-    fn apply_style(&mut self, rest: &str) -> Result<(), Error> {
-        let (ids, props) = split_first_ws(rest);
-        let style = parse_style_props(props);
-        for id in ids.split(',') {
-            let id = id.trim();
-            if id.is_empty() {
-                continue;
-            }
-            let entry = self.node_styles.entry(id.to_string()).or_default();
-            merge_style(entry, &style);
-        }
-        Ok(())
-    }
-
     /// 全ノードへ default → クラス列 → style 文の順にプロパティ単位でマージする。
     /// スタイル指定が一切なければ何もしない（フルビルドとバイト一致を保つ）
     fn apply_styles(&mut self) {
-        if self.class_defs.is_empty() && self.node_classes.is_empty() && self.node_styles.is_empty()
-        {
+        if self.styles.is_empty() {
             return;
         }
-        let default = self.class_defs.get("default").cloned();
         // idx → id 名の逆引き（node_index は名前 → idx の全単射）
         let mut names = vec![String::new(); self.nodes.len()];
         for (name, &idx) in &self.node_index {
             names[idx] = name.clone();
         }
-        // 各ノードのスタイルを先に計算し（self を不変借用）、その後まとめて代入する
-        let resolved: Vec<Option<NodeStyle>> = names
-            .iter()
-            .map(|name| {
-                let mut style = NodeStyle::default();
-                if let Some(def) = &default {
-                    merge_style(&mut style, def);
-                }
-                if let Some(classes) = self.node_classes.get(name) {
-                    for class_name in classes {
-                        // 未定義クラスはスキップ
-                        if let Some(cs) = self.class_defs.get(class_name) {
-                            merge_style(&mut style, cs);
-                        }
-                    }
-                }
-                if let Some(ns) = self.node_styles.get(name) {
-                    merge_style(&mut style, ns);
-                }
-                // 1 つでも値があれば Some
-                (style != NodeStyle::default()).then_some(style)
-            })
-            .collect();
-        for (node, style) in self.nodes.iter_mut().zip(resolved) {
-            if style.is_some() {
-                node.style = style;
+        for (node, name) in self.nodes.iter_mut().zip(&names) {
+            if let Some(style) = self.styles.resolve(name) {
+                node.style = Some(style);
             }
         }
     }
@@ -432,10 +362,7 @@ impl Parser {
                 });
             }
             let idx = resolved.unwrap_or_else(|| self.intern_node(&id, None, None));
-            self.node_classes
-                .entry(id.clone())
-                .or_default()
-                .push(class_name);
+            self.styles.add_inline(&id, &class_name);
             resolved = Some(idx);
         }
 
@@ -969,59 +896,6 @@ fn split_text(text: &str) -> Vec<String> {
     split_br_lines(&decode_entities(trim_line(text)))
 }
 
-/// 先頭の空白で「id 群 / クラス名」「id 群 / プロパティ群」を 2 分割する
-fn split_first_ws(s: &str) -> (&str, &str) {
-    match s.find(char::is_whitespace) {
-        Some(i) => (&s[..i], s[i..].trim_start()),
-        None => (s, ""),
-    }
-}
-
-/// `fill:#f9f, stroke:#333, stroke-dasharray: 5 5` 形のスタイル宣言を解析する。
-/// カンマ区切り・各要素は最初の `:` で k:v 分割・両端 trim。未知プロパティ・
-/// `:` 無し・空値の要素は黙って無視する
-fn parse_style_props(s: &str) -> NodeStyle {
-    let mut style = NodeStyle::default();
-    for item in s.split(',') {
-        let Some((key, value)) = item.split_once(':') else {
-            continue;
-        };
-        let value = value.trim();
-        if value.is_empty() {
-            continue;
-        }
-        let value = Some(value.to_string());
-        match key.trim() {
-            "fill" => style.fill = value,
-            "stroke" => style.stroke = value,
-            "stroke-width" => style.stroke_width = value,
-            "stroke-dasharray" => style.stroke_dasharray = value,
-            "color" => style.color = value,
-            _ => {}
-        }
-    }
-    style
-}
-
-/// src の Some プロパティだけを dst に上書きする（プロパティ単位の後勝ち）
-fn merge_style(dst: &mut NodeStyle, src: &NodeStyle) {
-    if src.fill.is_some() {
-        dst.fill = src.fill.clone();
-    }
-    if src.stroke.is_some() {
-        dst.stroke = src.stroke.clone();
-    }
-    if src.stroke_width.is_some() {
-        dst.stroke_width = src.stroke_width.clone();
-    }
-    if src.stroke_dasharray.is_some() {
-        dst.stroke_dasharray = src.stroke_dasharray.clone();
-    }
-    if src.color.is_some() {
-        dst.color = src.color.clone();
-    }
-}
-
 /// `;` で文に分割（引用符内は保護）
 fn split_statements(line: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -1270,7 +1144,7 @@ mod tests {
     }
 
     /// ノードの解決済みスタイルを取り出す
-    fn node_style(d: &super::FlowchartDiagram, label: &str) -> super::NodeStyle {
+    fn node_style(d: &super::FlowchartDiagram, label: &str) -> crate::common::style::Style {
         let n = d
             .nodes
             .iter()
@@ -1340,7 +1214,7 @@ mod tests {
         let s = node_style(&d, "A");
         assert_eq!(s.fill.as_deref(), Some("#f9f"));
         assert_eq!(s.color.as_deref(), Some("#fff"));
-        // rx は保持されない（NodeStyle にフィールドがない＝黙って無視）
+        // rx は保持されない（Style にフィールドがない＝黙って無視）
     }
 
     #[test]

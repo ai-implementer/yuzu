@@ -5,5 +5,6 @@ pub(crate) mod date;
 pub(crate) mod geom;
 pub(crate) mod layered;
 pub(crate) mod path;
+pub(crate) mod style;
 pub(crate) mod svg;
 pub(crate) mod text;

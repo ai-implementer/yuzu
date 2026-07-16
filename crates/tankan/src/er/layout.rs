@@ -5,6 +5,7 @@ use crate::Options;
 use crate::common::geom;
 use crate::common::layered::{self, LayeredConfig, LayeredEdge, LayeredNode, Size};
 use crate::common::path::{offset_amount, offset_polyline};
+use crate::common::style::Style;
 use crate::common::text::{max_width, text_width};
 use crate::er::model::{Cardinality, ErDiagram};
 
@@ -36,6 +37,8 @@ pub(crate) struct EntityBox {
     pub rows: Vec<[String; 4]>,
     /// 列幅（型・名前・キー・コメント。コメント列は無ければ 0）
     pub col_w: [f32; 4],
+    /// 解決済みインラインスタイル（無ければ None）
+    pub style: Option<Style>,
 }
 
 pub(crate) struct RelationPath {
@@ -97,6 +100,7 @@ pub(crate) fn layout(diagram: &ErDiagram, options: &Options) -> Layout {
                 row_h,
                 rows,
                 col_w,
+                style: e.style.clone(),
             }
         })
         .collect();

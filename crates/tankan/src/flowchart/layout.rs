@@ -9,10 +9,9 @@ use crate::Options;
 use crate::common::geom;
 use crate::common::layered::{self, LayeredConfig, LayeredEdge, LayeredNode, Size};
 use crate::common::path::{offset_amount, offset_polyline};
+use crate::common::style::Style;
 use crate::common::text::max_width;
-use crate::flowchart::model::{
-    Direction, EdgeLine, EdgeTip, EndRef, FlowchartDiagram, NodeShape, NodeStyle,
-};
+use crate::flowchart::model::{Direction, EdgeLine, EdgeTip, EndRef, FlowchartDiagram, NodeShape};
 
 const NODE_PAD_X: f32 = 15.0;
 const NODE_PAD_Y: f32 = 12.0;
@@ -42,7 +41,7 @@ pub(crate) struct NodeBox {
     pub h: f32,
     pub label: Vec<String>,
     /// 解決済みインラインスタイル（レイアウトには影響しない・描画時のみ使用）
-    pub style: Option<NodeStyle>,
+    pub style: Option<Style>,
 }
 
 pub(crate) struct ClusterBox {

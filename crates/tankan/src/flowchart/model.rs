@@ -1,5 +1,7 @@
 //! flowchart の AST
 
+use crate::common::style::Style;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum Direction {
     #[default]
@@ -50,18 +52,6 @@ pub(crate) enum NodeShape {
     NoteBox,
 }
 
-/// ノードに適用するインラインスタイル（classDef / class / `:::` / style で指定）。
-/// テーマ非追従（SVG の `style=""` 属性に直接埋める）。未指定プロパティは None。
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct NodeStyle {
-    pub fill: Option<String>,
-    pub stroke: Option<String>,
-    pub stroke_width: Option<String>,
-    pub stroke_dasharray: Option<String>,
-    /// ラベル文字色（SVG text の fill）
-    pub color: Option<String>,
-}
-
 #[derive(Debug)]
 pub(crate) struct Node {
     pub label: Vec<String>,
@@ -69,7 +59,7 @@ pub(crate) struct Node {
     /// 所属 subgraph（直近の親）
     pub subgraph: Option<usize>,
     /// 解決済みのインラインスタイル（1 つでも値があれば Some）
-    pub style: Option<NodeStyle>,
+    pub style: Option<Style>,
 }
 
 #[derive(Debug)]

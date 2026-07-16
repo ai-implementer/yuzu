@@ -7,6 +7,7 @@ use crate::Options;
 use crate::class::layout::Layout;
 use crate::class::model::Marker;
 use crate::common::path::rounded_polyline;
+use crate::common::style::{box_attr, line_attr, text_attr};
 use crate::common::svg::{SvgBuilder, fmt_num};
 use crate::common::text::{escape_xml, max_width};
 
@@ -139,59 +140,67 @@ pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
         }
     }
 
-    // クラスボックス
+    // クラスボックス。ユーザ指定色はボックス全体（タイトル区画含む）を塗り、仕切り線には
+    // stroke 系のみ、全テキストには明度から選んだ読みやすい文字色を当てる
     for c in &layout.classes {
-        svg.rect("tk-class", c.x, c.y, c.w, c.h, "");
+        let box_s = box_attr(c.style.as_ref());
+        let line_s = line_attr(c.style.as_ref());
+        let text_s = text_attr(c.style.as_ref());
+        svg.rect("tk-class", c.x, c.y, c.w, c.h, &box_s);
         // タイトル区画（下辺が名前区画の仕切り線を兼ねる）
-        svg.rect("tk-class-title", c.x, c.y, c.w, c.title_h, "");
+        svg.rect("tk-class-title", c.x, c.y, c.w, c.title_h, &box_s);
 
         let mut ty = c.y + TITLE_PAD_Y + fs * 0.85;
         if let Some(anno) = &c.annotation {
-            svg.text_lines(
+            svg.text_lines_with(
                 "tk-class-anno",
                 c.x + c.w / 2.0,
                 ty,
                 line_h,
                 "middle",
                 std::slice::from_ref(anno),
+                &text_s,
             );
             ty += line_h;
         }
-        svg.text_lines(
+        svg.text_lines_with(
             "tk-class-name",
             c.x + c.w / 2.0,
             ty,
             line_h,
             "middle",
             std::slice::from_ref(&c.name),
+            &text_s,
         );
 
         if c.has_body {
             // 属性区画とメソッド区画の仕切り線
             let mid = c.y + c.title_h + c.attr_h;
-            svg.line("tk-class-line", c.x, mid, c.x + c.w, mid, "");
+            svg.line("tk-class-line", c.x, mid, c.x + c.w, mid, &line_s);
 
             let mut ay = c.y + c.title_h + COMPART_PAD_Y + fs * 0.85;
             for a in &c.attributes {
-                svg.text_lines(
+                svg.text_lines_with(
                     "tk-class-member",
                     c.x + PAD_X,
                     ay,
                     line_h,
                     "start",
                     std::slice::from_ref(a),
+                    &text_s,
                 );
                 ay += line_h;
             }
             let mut my = c.y + c.title_h + c.attr_h + COMPART_PAD_Y + fs * 0.85;
             for m in &c.methods {
-                svg.text_lines(
+                svg.text_lines_with(
                     "tk-class-member",
                     c.x + PAD_X,
                     my,
                     line_h,
                     "start",
                     std::slice::from_ref(m),
+                    &text_s,
                 );
                 my += line_h;
             }

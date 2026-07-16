@@ -1,0 +1,13 @@
+classDiagram
+    class Animal {
+        +String name
+        +run() void
+    }
+    class Dog {
+        +bark() void
+    }
+    Animal <|-- Dog
+    classDef default fill:#eee,stroke:#999
+    classDef base fill:#f96,stroke:#333,stroke-width:2px,color:#111
+    style Dog fill:#bbf,stroke:#666,stroke-dasharray: 5 5
+    cssClass "Animal" base

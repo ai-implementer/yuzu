@@ -39,11 +39,37 @@ const CORPORA: &[(&str, &[&str])] = &[
     ),
     (
         "state",
-        &["01-basic", "03-composite", "08-concurrency", "10-japanese"],
+        &[
+            "01-basic",
+            "03-composite",
+            "08-concurrency",
+            "10-japanese",
+            "11-classdef",
+            "12-style",
+            "13-class",
+        ],
     ),
-    ("er", &["01-basic", "03-keys-comments", "07-japanese"]),
+    (
+        "er",
+        &[
+            "01-basic",
+            "03-keys-comments",
+            "07-japanese",
+            "08-style",
+            "09-classdef",
+        ],
+    ),
     ("gantt", &["01-basic", "02-excludes-tags", "05-japanese"]),
-    ("class", &["01-basic", "04-relations", "08-japanese"]),
+    (
+        "class",
+        &[
+            "01-basic",
+            "04-relations",
+            "08-japanese",
+            "09-classdef",
+            "10-cssclass",
+        ],
+    ),
     ("pie", &["01-basic", "04-japanese"]),
 ];
 
