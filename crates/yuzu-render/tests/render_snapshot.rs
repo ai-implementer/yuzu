@@ -49,6 +49,7 @@ fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
         &MarkdownOptions {
             gfm: rc.config.markdown.gfm,
             math: rc.config.markdown.math.enabled,
+            mermaid: rc.config.markdown.mermaid.enabled,
         },
     )
     .unwrap();

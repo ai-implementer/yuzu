@@ -133,6 +133,7 @@ pub(crate) fn build_once(
     let md_opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
         math: rc.config.markdown.math.enabled,
+        mermaid: rc.config.markdown.mermaid.enabled,
     };
     let site = yuzu_core::build_site_model_cached(
         &rc.content_dir,

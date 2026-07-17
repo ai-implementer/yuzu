@@ -57,6 +57,7 @@ pub fn generate_llms_full_txt(
     let md_opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
         math: rc.config.markdown.math.enabled,
+        mermaid: rc.config.markdown.mermaid.enabled,
     };
 
     let mut out = String::new();

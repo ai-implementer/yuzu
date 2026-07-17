@@ -240,6 +240,9 @@ fn parse_file_ref(trimmed: &str) -> Option<&str> {
 }
 
 impl CodeBlockRenderer for SyntectCodeRenderer {
+    // ⚠️ このディスパッチの特別レンダリング言語集合（mermaid / openapi /
+    // jsonschema / math）は yuzu_core::is_special_render_lang（検索インデックスの
+    // コード除外判定）と同期させること。言語を追加・削除したら両方を更新する
     fn render(&self, lang: Option<&str>, code: &str) -> Option<String> {
         let lang = lang?;
         if lang == "mermaid" {

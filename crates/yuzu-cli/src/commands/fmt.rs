@@ -18,6 +18,7 @@ pub fn run(check: bool) -> anyhow::Result<ExitCode> {
     let opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
         math: rc.config.markdown.math.enabled,
+        mermaid: rc.config.markdown.mermaid.enabled,
     };
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;

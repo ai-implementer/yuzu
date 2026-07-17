@@ -86,17 +86,24 @@ pub fn make_excerpt(text: &str, tokens: &[String], max_chars: usize) -> Vec<Exce
     }
 
     // 窓決定: 各一致の少し手前を開始候補とし、最も多くの一致範囲を覆う窓を選ぶ
-    // （複数語クエリで両語入りの窓が優先される。範囲数は高々数十なので O(R²) で十分）
+    // （複数語クエリで両語入りの窓が優先される）。merged はソート済み・非重複なので
+    // start / end とも単調増加し、窓内の範囲 [lo, hi) は two-pointer で O(R) に数えられる
+    // （コードブロック索引時は短い token が数千の一致を生むため O(R²) は不可）
     let mut best_start = 0usize;
     let mut best_covered = 0usize;
+    let mut lo = 0usize; // rs >= start を満たす最初の添字
+    let mut hi = 0usize; // re <= end を満たす範囲の個数（= 最初に re > end となる添字）
     for &(s, _) in &merged {
         let start = s.saturating_sub(max_chars / 4);
         let start = start.min(chars.len().saturating_sub(max_chars));
         let end = (start + max_chars).min(chars.len());
-        let covered = merged
-            .iter()
-            .filter(|&&(rs, re)| rs >= start && re <= end)
-            .count();
+        while lo < merged.len() && merged[lo].0 < start {
+            lo += 1;
+        }
+        while hi < merged.len() && merged[hi].1 <= end {
+            hi += 1;
+        }
+        let covered = hi.saturating_sub(lo);
         if covered > best_covered {
             best_covered = covered;
             best_start = start;

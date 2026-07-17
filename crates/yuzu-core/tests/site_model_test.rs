@@ -261,58 +261,69 @@ fn extract_plain_sections_は_h2_h3_で分割しリード文を先頭に置く()
     }
 }
 
+/// セクション列のどこかに needle を含むか
+fn any_body_contains(sections: &[yuzu_core::PlainSection], needle: &str) -> bool {
+    sections.iter().any(|s| s.body.contains(needle))
+}
+
 #[test]
-fn index_code_true_はコード本文を含めるが特別言語は除外する() {
+fn index_code_true_はフェンスコードを含めるが特別言語とインデントは除外する() {
     let dir = tempfile::tempdir().unwrap();
     write(
         dir.path(),
         "index.md",
-        "---\ntitle: コード索引\n---\n# 見出し\n\n本文の段落。\n\n```rust\nfn connectTimeout() {}\n```\n\n## 図\n\n```mermaid\nflowchart TD\n  A-->B\n```\n\n```math\n\\alpha + \\beta\n```\n",
+        concat!(
+            "---\ntitle: コード索引\n---\n# 見出し\n\n本文の段落。\n\n",
+            "```rust\nfn connectTimeout() {}\n```\n\n",
+            "    indented_secret();\n\n",
+            "## 図\n\n",
+            "```mermaid\nflowchart TD\n  A-->B\n```\n\n",
+            "```math\n\\alpha + \\beta\n```\n\n",
+            "```openapi\nopenapi: 3.0.3\npaths: {}\n```\n\n",
+            "```jsonschema\ndraftSeven: true\n```\n",
+        ),
     );
 
     let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
     let page = &site.pages[0];
 
-    // index_code=true: 通常コードは含む
+    // index_code=true（既定設定 = 全特別レンダリング有効）: フェンスの通常コードだけ含む
     let on = yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), true).unwrap();
-    let joined: String = on
-        .iter()
-        .map(|s| s.body.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        joined.contains("connectTimeout"),
-        "コード本文が含まれる:\n{joined}"
-    );
-    // 特別レンダリング対象（mermaid / math）は on でも除外
-    assert!(
-        !joined.contains("flowchart"),
-        "mermaid ソースは除外:\n{joined}"
-    );
-    assert!(!joined.contains("alpha"), "math ソースは除外:\n{joined}");
+    assert!(any_body_contains(&on, "connectTimeout"), "{on:?}");
+    // 特別レンダリングされる 4 言語はすべて除外（除外集合の全数検証）
+    assert!(!any_body_contains(&on, "flowchart"), "mermaid: {on:?}");
+    assert!(!any_body_contains(&on, "alpha"), "math: {on:?}");
+    assert!(!any_body_contains(&on, "paths"), "openapi: {on:?}");
+    assert!(!any_body_contains(&on, "draftSeven"), "jsonschema: {on:?}");
+    // インデントコードブロック（非フェンス）は対象外（ドキュメントの「フェンス」と一致）
+    assert!(!any_body_contains(&on, "indented_secret"), "{on:?}");
 
-    // index_code=false（既定）: コードは含まれない
+    // mermaid / math を無効化した構成ではプレーンコード表示になるため索引対象
+    let plain_opts = MarkdownOptions {
+        math: false,
+        mermaid: false,
+        ..MarkdownOptions::default()
+    };
+    let visible = yuzu_core::extract_plain_sections(page, &plain_opts, true).unwrap();
+    assert!(
+        any_body_contains(&visible, "flowchart"),
+        "mermaid 無効なら見えるまま索引: {visible:?}"
+    );
+    assert!(
+        any_body_contains(&visible, "alpha"),
+        "math 無効なら見えるまま索引: {visible:?}"
+    );
+    // openapi / jsonschema は無効化フラグが無く常に除外
+    assert!(!any_body_contains(&visible, "paths"), "{visible:?}");
+
+    // index_code=false（既定）: コードは一切含まれない
     let off = yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), false).unwrap();
-    let joined_off: String = off
-        .iter()
-        .map(|s| s.body.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        !joined_off.contains("connectTimeout"),
-        "既定ではコードを含まない"
-    );
-
-    // llms.txt 経路（extract_plain_text）は index_code に関わらずコードを含まない
-    let plain = yuzu_core::extract_plain_text(&site.pages[0], &MarkdownOptions::default()).unwrap();
-    assert!(
-        !plain.contains("connectTimeout"),
-        "llms 用抽出はコードを含まない"
-    );
+    assert!(!any_body_contains(&off, "connectTimeout"), "{off:?}");
+    assert!(!any_body_contains(&off, "flowchart"), "{off:?}");
 }
 
 #[test]
-fn extract_plain_text_はコードブロックと_html_を除外する() {
+fn extract_plain_sections_はコードブロックと_html_を除外する() {
     let dir = tempfile::tempdir().unwrap();
     write(
         dir.path(),
@@ -321,20 +332,23 @@ fn extract_plain_text_はコードブロックと_html_を除外する() {
     );
 
     let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
-    let text = yuzu_core::extract_plain_text(&site.pages[0], &MarkdownOptions::default()).unwrap();
+    let sections =
+        yuzu_core::extract_plain_sections(&site.pages[0], &MarkdownOptions::default(), false)
+            .unwrap();
+    let lead = &sections[0].body;
 
-    // 含む: 見出し・本文（SoftBreak は空白に）・インラインコード・リスト項目
-    assert!(text.contains("見出し"));
-    assert!(text.contains("本文の一行目 続きの行"));
-    assert!(text.contains("code_api"));
-    assert!(text.contains("項目いち"));
+    // 含む: 見出し（h1 は本文に併合）・本文（SoftBreak は空白に）・インラインコード・リスト項目
+    assert!(lead.contains("見出し"));
+    assert!(lead.contains("本文の一行目 続きの行"));
+    assert!(lead.contains("code_api"));
+    assert!(lead.contains("項目いち"));
     // 含まない: フェンスコード・mermaid ソース・生 HTML・frontmatter
-    assert!(!text.contains("secret_code"));
-    assert!(!text.contains("graph TD"));
-    assert!(!text.contains("raw html"));
-    assert!(!text.contains("抽出テスト")); // frontmatter の title は本文ではない
-    // ブロック区切りで改行が入る
-    assert!(text.lines().count() >= 4, "text:\n{text}");
+    assert!(!lead.contains("secret_code"));
+    assert!(!lead.contains("graph TD"));
+    assert!(!lead.contains("raw html"));
+    assert!(!lead.contains("抽出テスト")); // frontmatter の title は本文ではない
+    // ブロック区切りで改行が入る（トークナイズの文脈を切る）
+    assert!(lead.lines().count() >= 4, "lead:\n{lead}");
 }
 
 #[test]

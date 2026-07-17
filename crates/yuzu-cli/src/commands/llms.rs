@@ -17,6 +17,7 @@ pub fn run(full: bool) -> anyhow::Result<()> {
         &MarkdownOptions {
             gfm: rc.config.markdown.gfm,
             math: rc.config.markdown.math.enabled,
+            mermaid: rc.config.markdown.mermaid.enabled,
         },
     )?;
 

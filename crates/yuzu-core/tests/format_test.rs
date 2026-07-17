@@ -166,8 +166,8 @@ fn 数式でも整形は冪等() {
 #[test]
 fn math_無効なら_dollar_はテキストのまま() {
     let opts = MarkdownOptions {
-        gfm: true,
         math: false,
+        ..MarkdownOptions::default()
     };
     let out = format_document(&page_from("# t\n\n式 $x^2$ と $5 の話。\n"), &opts).unwrap();
     assert!(out.contains("式 $x^2$ と $5 の話。"), "out:\n{out}");

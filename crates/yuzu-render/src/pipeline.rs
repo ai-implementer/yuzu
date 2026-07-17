@@ -79,6 +79,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let md_opts = MarkdownOptions {
         gfm: cfg.markdown.gfm,
         math: cfg.markdown.math.enabled,
+        mermaid: cfg.markdown.mermaid.enabled,
     };
     let site_ctx = SiteCtx {
         title: &cfg.site.title,

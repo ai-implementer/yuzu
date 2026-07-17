@@ -132,8 +132,7 @@ pub(crate) fn render_body_html(
         let replacement = {
             let data = node.data.borrow();
             if let NodeValue::CodeBlock(cb) = &data.value {
-                let lang = cb.info.split_whitespace().next().filter(|s| !s.is_empty());
-                code.render(lang, &cb.literal)
+                code.render(fence_lang(&cb.info), &cb.literal)
             } else {
                 None
             }
@@ -295,25 +294,10 @@ pub(crate) fn format_document(source: &str, opts: &MarkdownOptions) -> Result<St
     })
 }
 
-/// 本文のプレーンテキストを抽出する（検索インデックス用）。
-/// [`extract_plain_sections`] の結合として実装する（除外ルールの単一実装化）
-pub(crate) fn extract_plain_text(
-    source: &str,
-    opts: &MarkdownOptions,
-) -> Result<String, CoreError> {
-    let mut out = String::new();
-    // llms.txt にはコードを入れない（検索専用の opt-in なので false 固定）
-    for section in extract_plain_sections(source, opts, false)? {
-        if let Some(heading) = &section.heading {
-            out.push_str(heading);
-            out.push('\n');
-        }
-        if !section.body.is_empty() {
-            out.push_str(&section.body);
-            out.push('\n');
-        }
-    }
-    Ok(out.trim().to_string())
+/// フェンス info 文字列の先頭トークン（lang）。`split_whitespace` は非空トークンしか
+/// 返さないので、`None` = 言語指定なし。HTML 化と検索抽出で解釈を揃える単一実装
+fn fence_lang(info: &str) -> Option<&str> {
+    info.split_whitespace().next()
 }
 
 /// 本文を h2/h3 見出し境界で分割したプレーンテキストセクションを返す（検索インデックス用）。
@@ -324,7 +308,8 @@ pub(crate) fn extract_plain_text(
 ///   `SoftBreak` / `LineBreak` は空白、ブロック要素の末尾で改行 1 つ
 /// - 除外: frontmatter・生 HTML。**フェンスコードブロック**は既定で除外だが
 ///   `index_code = true`（`search.indexCode`）のとき本文を含める。ただし
-///   特別レンダリング対象（mermaid / openapi / jsonschema / math）は on でも除外
+///   インデントコードブロック（非フェンス）と、特別レンダリングされる言語
+///   （[`crate::is_special_render_lang`]。無効化されてプレーン表示なら索引対象）は除外
 ///
 /// ⚠️ アンカー同期: [`extract_meta`]・HTML 化と同じく Anchorizer を
 /// **全見出し（h1〜h6）文書順**で回す。境界にしない見出しも必ず anchorize する。
@@ -344,7 +329,7 @@ pub(crate) fn extract_plain_sections(
         heading: None,
         body: String::new(),
     }];
-    collect_sections(root, &mut anchorizer, &mut sections, index_code);
+    collect_sections(root, &mut anchorizer, &mut sections, opts, index_code);
     for section in &mut sections {
         section.body = section.body.trim().to_string();
     }
@@ -355,6 +340,7 @@ fn collect_sections<'a>(
     node: &'a AstNode<'a>,
     anchorizer: &mut Anchorizer,
     sections: &mut Vec<PlainSection>,
+    opts: &MarkdownOptions,
     index_code: bool,
 ) {
     {
@@ -364,10 +350,12 @@ fn collect_sections<'a>(
                 return;
             }
             NodeValue::CodeBlock(cb) => {
-                // 既定は除外。`index_code` の opt-in 時のみ本文を含める。ただし
-                // 特別レンダリング対象（図・仕様・数式ソース）は検索ノイズなので除外
-                let lang = cb.info.split_whitespace().next().unwrap_or("");
-                if !index_code || matches!(lang, "mermaid" | "openapi" | "jsonschema" | "math") {
+                // 既定は除外。`index_code` の opt-in 時のみ、フェンスコードブロックに限り
+                // 本文を含める（インデントコードは公開ドキュメントの「フェンス」に合わせ除外）。
+                // 特別レンダリングされる言語（図・仕様・数式ソース）は検索ノイズなので除外
+                // — ただし機能が無効でプレーンコード表示になる場合は見えるまま索引する
+                let lang = fence_lang(&cb.info).unwrap_or("");
+                if !index_code || !cb.fenced || crate::is_special_render_lang(lang, opts) {
                     return;
                 }
                 sections.last_mut().unwrap().body.push_str(&cb.literal);
@@ -402,7 +390,7 @@ fn collect_sections<'a>(
     }
 
     for child in node.children() {
-        collect_sections(child, anchorizer, sections, index_code);
+        collect_sections(child, anchorizer, sections, opts, index_code);
     }
 
     // 段落・リスト項目等の区切りで改行を入れる（トークナイズの文脈を切る）

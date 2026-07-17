@@ -42,6 +42,10 @@ pub struct MarkdownOptions {
     pub gfm: bool,
     /// 数式拡張（`$...$` / `$$...$$` / `` $`...`$ ``）を有効にするか。gfm とは独立
     pub math: bool,
+    /// mermaid コードブロックの描画（`markdown.mermaid.enabled`）が有効か。
+    /// パースには影響しないが、検索抽出の特別レンダリング判定
+    /// （[`is_special_render_lang`]）が参照する
+    pub mermaid: bool,
 }
 
 impl Default for MarkdownOptions {
@@ -49,7 +53,22 @@ impl Default for MarkdownOptions {
         Self {
             gfm: true,
             math: true,
+            mermaid: true,
         }
+    }
+}
+
+/// フェンス言語がビルド時に特別レンダリングされるか（＝コードブロックとして表示されない）。
+/// 検索インデックスのコード除外（`search.indexCode` 有効時）はこの述語が唯一の判定。
+/// yuzu-render 側のディスパッチ（highlight.rs の `render`）と集合を同期させること。
+/// mermaid / math は設定で無効化するとプレーンコード表示になるため対象から外れる
+/// （ページに見えるテキストは索引される）。openapi / jsonschema は常に特別レンダリング
+pub fn is_special_render_lang(lang: &str, opts: &MarkdownOptions) -> bool {
+    match lang {
+        "mermaid" => opts.mermaid,
+        "math" => opts.math,
+        "openapi" | "jsonschema" => true,
+        _ => false,
     }
 }
 
@@ -237,17 +256,11 @@ pub fn render_body_html(
     markdown::render_body_html(page, opts, code, urls)
 }
 
-/// ページ本文のプレーンテキストを抽出する（検索インデックス用）。
-/// frontmatter・生 HTML・フェンスコードブロックは含めない
-/// （インラインコードは API 名検索のため含める）
-pub fn extract_plain_text(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
-    markdown::extract_plain_text(&page.source, opts)
-}
-
 /// ページ本文を h2/h3 見出し境界で分割したプレーンテキストセクションを返す（検索用）。
 /// 先頭要素はリード文（anchor/heading = None）。h4〜h6 は直近セクションに併合される。
 /// `index_code = true`（`search.indexCode`）でフェンスコードブロックの本文も含める
-/// （特別レンダリング対象の mermaid / openapi / jsonschema / math は除く）
+/// （インデントコードブロックと、特別レンダリングされる言語
+/// [`is_special_render_lang`] は除く）
 pub fn extract_plain_sections(
     page: &Page,
     opts: &MarkdownOptions,

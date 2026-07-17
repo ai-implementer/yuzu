@@ -266,8 +266,11 @@ pub struct SearchConfig {
     /// `lint.terms` の辞書と合成され、ゆれ表記での検索が正表記の文書にヒットする
     pub synonyms: Vec<Vec<String>>,
     /// フェンスコードブロックの本文を検索インデックスに含めるか（既定 false）。
-    /// on にすると関数名・設定キー等コード内の語で引ける。特別レンダリング対象
-    /// （mermaid / openapi / jsonschema / math）は on でも索引しない
+    /// on にすると関数名・設定キー等コード内の語で引ける。特別レンダリングされる
+    /// 言語（mermaid / openapi / jsonschema / math）は on でも索引しない
+    /// （ただし mermaid / math を設定で無効化しプレーンコード表示になる場合は索引する）。
+    /// インデントコードブロック（非フェンス）は常に対象外。コード本文は抜粋用
+    /// fragment にもそのまま入るため、巨大なコードブロックは配信サイズに影響する
     pub index_code: bool,
 }
 
