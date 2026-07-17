@@ -31,7 +31,9 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v3: flowchart スタイル構文の SSR ＋ OpenAPI ファイル間 $ref（同上）
 /// - v4: content 同伴アセットの相対参照を絶対 URL へ書き換え（同上）
 /// - v5: state / ER / class 図のスタイル構文 SSR（従来フォールバックが SSR 成功へ）
-pub const CACHE_FORMAT_VERSION: u32 = 5;
+/// - v6: OpenAPI の schemas 一覧＋Swagger 2.0 対応（components を持つ既存ページの
+///   本文 HTML も変わる）
+pub const CACHE_FORMAT_VERSION: u32 = 6;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

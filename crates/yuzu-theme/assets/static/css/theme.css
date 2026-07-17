@@ -1317,6 +1317,19 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
   margin: 0.35rem 0 0.2rem;
 }
 
+/* components/schemas・definitions のスキーマ一覧（閉じた details。枠は既定に乗る） */
+.markdown-body .api-schemas {
+  margin-top: 1rem;
+}
+
+.markdown-body .api-schema-def > summary {
+  font-weight: 500;
+}
+
+.markdown-body .api-schema-def > summary:hover {
+  background: var(--bg-hover);
+}
+
 /* ---- レスポンシブ ---- */
 
 @media (max-width: 72rem) {

@@ -665,6 +665,48 @@ fn openapi_ブロックは_api_spec_として_ssr_される() {
 }
 
 #[test]
+fn swagger_2_0_ブロックも_ssr_される() {
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("content/legacy-api.md"),
+            concat!(
+                "---\ntitle: 旧 API 仕様\n---\n# 旧 API\n\n",
+                "```openapi\n",
+                "swagger: \"2.0\"\n",
+                "info:\n  title: レガシー API\n  version: 0.9.0\n",
+                "paths:\n",
+                "  /orders:\n",
+                "    get:\n",
+                "      summary: 注文一覧\n",
+                "      responses:\n",
+                "        \"200\":\n",
+                "          description: 成功\n",
+                "          schema:\n",
+                "            $ref: \"#/definitions/Order\"\n",
+                "definitions:\n",
+                "  Order:\n",
+                "    type: object\n",
+                "    properties:\n",
+                "      id:\n",
+                "        type: integer\n",
+                "```\n",
+            ),
+        )
+        .unwrap();
+    });
+    let html = fs::read_to_string(dir.path().join("dist/legacy-api/index.html")).unwrap();
+    assert!(html.contains("api-spec"), "SSR の器が出る:\n{html}");
+    assert!(html.contains("api-method-get"), "メソッドバッジ");
+    assert!(html.contains("レガシー API"), "info.title");
+    assert!(html.contains("api-schemas"), "definitions 一覧");
+    assert!(html.contains("<code>Order</code>"), "スキーマ名");
+    assert!(
+        !html.contains("markdown-alert-caution"),
+        "2.0 はエラーボックスにならない:\n{html}"
+    );
+}
+
+#[test]
 fn content_同伴の画像はコピーされ_src_が絶対_url_になる() {
     let dir = build_fixture_with(|root| {
         fs::write(root.join("content/guide/shot.png"), b"PNG-DUMMY").unwrap();

@@ -14,7 +14,7 @@ mod render;
 /// レンダリング対象の種別
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SpecKind {
-    /// OpenAPI 3.x 文書全体
+    /// OpenAPI 3.x / Swagger 2.0 文書全体
     OpenApi,
     /// 単一の JSON Schema
     JsonSchema,

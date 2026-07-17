@@ -1,4 +1,7 @@
-//! OpenAPI 3.x / JSON Schema の Value 走査 → HTML 組み立て（[`super::render_spec`] の本体）。
+//! OpenAPI 3.x・Swagger 2.0 / JSON Schema の Value 走査 → HTML 組み立て
+//! （[`super::render_spec`] の本体）。2.0 のレイアウト差（definitions /
+//! `in: body` / responses 直下の schema / produces・consumes）は
+//! [`SpecVersion::V2`] の分岐でのみ吸収し、3.x パスの挙動は変えない。
 //!
 //! 設計:
 //! - 入力（YAML / JSON）は `serde_yaml_ng` で `serde_json::Value` に読む。
@@ -48,18 +51,27 @@ pub(super) fn render(
         }
     };
 
-    if kind == SpecKind::OpenApi {
-        // openapi フィールドが 3 で始まらない（Swagger 2.0 等）なら未対応
-        let is_v3 = value
+    let version = if kind == SpecKind::OpenApi {
+        // `openapi: 3.x` → V3 / `swagger: "2.0"` → V2 / どちらでもなければ未対応。
+        // YAML の裸の `swagger: 2.0`（Number）も plain_value が "2.0" に正規化する
+        if value
             .get("openapi")
             .map(plain_value)
-            .is_some_and(|v| v.starts_with('3'));
-        if !is_v3 {
-            let msg = "OpenAPI 3.x のみ対応しています（`openapi: 3.x.y` が必要です）";
+            .is_some_and(|v| v.starts_with('3'))
+        {
+            SpecVersion::V3
+        } else if value.get("swagger").map(plain_value).as_deref() == Some("2.0") {
+            SpecVersion::V2
+        } else {
+            let msg = "OpenAPI 3.x / Swagger 2.0 のみ対応しています\
+                       （`openapi: 3.x.y` か `swagger: \"2.0\"` が必要です）";
             tracing::warn!("{msg}");
             return super::error_box(msg, source);
         }
-    }
+    } else {
+        // JSON Schema 単体に版の概念は無い（version は operation・一覧描画でしか使わない）
+        SpecVersion::V3
+    };
 
     // インラインブロックは空キー = プロジェクトルート基準。file: 参照は
     // そのパスがキーになり、文書内の相対 $ref の基準ディレクトリを与える
@@ -71,7 +83,7 @@ pub(super) fn render(
         .docs
         .get(&main_key)
         .expect("load_documents はメイン文書を必ず登録する");
-    let mut r = Renderer::new(&docs, main_key.clone());
+    let mut r = Renderer::new(&docs, main_key.clone(), version);
 
     match kind {
         SpecKind::OpenApi => r.render_openapi_document(root),
@@ -172,20 +184,36 @@ enum Resolved<'a> {
     Unresolved,
 }
 
+/// 描画対象の仕様バージョン（JSON Schema 単体は V3 扱いで固定。参照しない）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SpecVersion {
+    /// Swagger 2.0（definitions / in:body / responses.schema / produces・consumes）
+    V2,
+    /// OpenAPI 3.x（components / requestBody / content）
+    V3,
+}
+
 /// 走査状態。`docs` は `$ref` 解決の基点となる文書群、`cur_doc` は現在の文書キー、
 /// `stack` は解決中の（文書キー, ポインタ）（循環ガード）
 struct Renderer<'a> {
     docs: &'a DocSet,
     cur_doc: String,
     stack: Vec<(String, String)>,
+    version: SpecVersion,
+    /// Swagger 2.0 の top-level `consumes` / `produces`（operation 側が無いときの既定）
+    v2_consumes: Option<&'a Vec<Value>>,
+    v2_produces: Option<&'a Vec<Value>>,
 }
 
 impl<'a> Renderer<'a> {
-    fn new(docs: &'a DocSet, main_key: String) -> Self {
+    fn new(docs: &'a DocSet, main_key: String, version: SpecVersion) -> Self {
         Self {
             docs,
             cur_doc: main_key,
             stack: Vec::new(),
+            version,
+            v2_consumes: None,
+            v2_produces: None,
         }
     }
 
@@ -246,6 +274,10 @@ impl<'a> Renderer<'a> {
     // ---- 文書レベル ----
 
     fn render_openapi_document(&mut self, root: &'a Value) -> String {
+        if self.version == SpecVersion::V2 {
+            self.v2_consumes = root.get("consumes").and_then(|v| v.as_array());
+            self.v2_produces = root.get("produces").and_then(|v| v.as_array());
+        }
         let mut out = String::from("<section class=\"api-spec\">\n");
         out.push_str(&self.render_info(root.get("info")));
         if let Some(paths) = root.get("paths").and_then(|v| v.as_object()) {
@@ -255,7 +287,52 @@ impl<'a> Renderer<'a> {
             }
             out.push_str("</div>\n");
         }
+        // 操作から参照されないスキーマも読めるよう、全スキーマの一覧を末尾に置く
+        let (schemas, prefix) = match self.version {
+            SpecVersion::V3 => (root.pointer("/components/schemas"), "/components/schemas"),
+            SpecVersion::V2 => (root.get("definitions"), "/definitions"),
+        };
+        if let Some(map) = schemas.and_then(|v| v.as_object()) {
+            if !map.is_empty() {
+                out.push_str(&self.render_schema_index(map, prefix));
+            }
+        }
         out.push_str("</section>\n");
+        out
+    }
+
+    /// components/schemas（2.0 は definitions）の全スキーマ一覧。
+    /// 各エントリは閉じた details で、スキーマ名を summary に出す（記述順 = 決定的）
+    fn render_schema_index(
+        &mut self,
+        map: &'a serde_json::Map<String, Value>,
+        prefix: &str,
+    ) -> String {
+        let mut out = String::from(
+            "<div class=\"api-schemas\"><p class=\"api-section-label\">スキーマ</p>\n",
+        );
+        for (name, schema) in map {
+            out.push_str(&format!(
+                "<details class=\"api-schema-def\"><summary>{}</summary>\n",
+                code(name)
+            ));
+            // 自己参照スキーマ（Node → Node）を $ref 側の循環ガードで検出できるよう、
+            // このスキーマ自身のポインタを解決スタックに積んでから描画する
+            self.stack.push((
+                self.cur_doc.clone(),
+                format!("{prefix}/{}", pointer_escape(name)),
+            ));
+            // スカラ型は render_scalar が description を自前で出す（二重表示回避）
+            if !is_scalar_like(schema) {
+                if let Some(d) = schema.get("description").and_then(|v| v.as_str()) {
+                    out.push_str(&format!("<p class=\"api-desc\">{}</p>\n", esc(d)));
+                }
+            }
+            out.push_str(&self.render_schema(schema, 0));
+            self.stack.pop();
+            out.push_str("</details>\n");
+        }
+        out.push_str("</div>\n");
         out
     }
 
@@ -345,19 +422,115 @@ impl<'a> Renderer<'a> {
 
         let op_params = op.get("parameters").and_then(|v| v.as_array());
         let merged = self.merge_parameters(item_doc, path_params, &op_doc, op_params);
+        // Swagger 2.0 はリクエストボディを `in: body` パラメータで表す。
+        // パラメータ表からは分離してボディとして描画する（仕様上 body は最大 1 個）
+        let (body_params, merged): (Vec<_>, Vec<_>) = if self.version == SpecVersion::V2 {
+            merged
+                .into_iter()
+                .partition(|(_, p)| p.get("in").and_then(|v| v.as_str()) == Some("body"))
+        } else {
+            (Vec::new(), merged)
+        };
         if !merged.is_empty() {
             out.push_str(&self.render_parameters(&merged));
         }
-        self.with_doc(op_doc, |s| {
-            if let Some(rb) = op.get("requestBody") {
-                out.push_str(&s.render_request_body(rb, 0));
+        match self.version {
+            SpecVersion::V3 => self.with_doc(op_doc, |s| {
+                if let Some(rb) = op.get("requestBody") {
+                    out.push_str(&s.render_request_body(rb, 0));
+                }
+                if let Some(resp) = op.get("responses") {
+                    out.push_str(&s.render_responses(resp, 0));
+                }
+            }),
+            SpecVersion::V2 => {
+                if let Some((param_doc, param)) = body_params.into_iter().next() {
+                    out.push_str(&self.render_v2_request_body(param_doc, param, op));
+                }
+                if let Some(resp) = op.get("responses") {
+                    let inner = self.with_doc(op_doc, |s| s.render_v2_responses(resp, op));
+                    out.push_str(&inner);
+                }
             }
-            if let Some(resp) = op.get("responses") {
-                out.push_str(&s.render_responses(resp, 0));
-            }
-        });
+        }
         out.push_str("</details>\n");
         out
+    }
+
+    /// Swagger 2.0 の `in: body` パラメータをリクエストボディとして描画する
+    /// （3.x の requestBody と同じ見た目。メディアタイプは consumes から）
+    fn render_v2_request_body(
+        &mut self,
+        param_doc: String,
+        param: &'a Value,
+        op: &'a Value,
+    ) -> String {
+        let mut out = String::from(
+            "<div class=\"api-request-body\"><p class=\"api-section-label\">リクエストボディ</p>\n",
+        );
+        if param.get("required").and_then(|v| v.as_bool()) == Some(true) {
+            out.push_str("<p class=\"api-required-note\">必須</p>\n");
+        }
+        if let Some(d) = param.get("description").and_then(|v| v.as_str()) {
+            out.push_str(&format!("<p class=\"api-desc\">{}</p>\n", esc(d)));
+        }
+        out.push_str(&self.v2_media_line(op, "consumes"));
+        if let Some(schema) = param.get("schema") {
+            let inner = self.with_doc(param_doc, |s| s.render_schema(schema, 0));
+            out.push_str(&inner);
+        }
+        out.push_str("</div>\n");
+        out
+    }
+
+    /// Swagger 2.0 のレスポンス群（response 直下に `schema` を持つ。3.x の content は無い）
+    fn render_v2_responses(&mut self, resp: &'a Value, op: &'a Value) -> String {
+        let Some(obj) = resp.as_object() else {
+            return String::new();
+        };
+        let mut out = String::from(
+            "<div class=\"api-responses\"><p class=\"api-section-label\">レスポンス</p>\n",
+        );
+        for (code_str, r) in obj {
+            let (doc, r) = self.deref(r);
+            let cls = status_class(code_str);
+            let desc = r.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            out.push_str(&format!(
+                "<div class=\"api-response\">\
+                 <span class=\"api-status api-status-{cls}\">{code_e}</span> \
+                 <span class=\"api-status-desc\">{desc_e}</span></div>\n",
+                code_e = esc(code_str),
+                desc_e = esc(desc),
+            ));
+            if let Some(schema) = r.get("schema") {
+                out.push_str(&self.v2_media_line(op, "produces"));
+                let inner = self.with_doc(doc, |s| s.render_schema(schema, 0));
+                out.push_str(&inner);
+            }
+        }
+        out.push_str("</div>\n");
+        out
+    }
+
+    /// Swagger 2.0 の consumes / produces のメディアタイプ行。operation 側があれば
+    /// 優先し、無ければ top-level の既定を使う。どちらも無ければ空文字（行を出さない）。
+    /// 2.0 はメディアタイプごとにスキーマが分かれないため 1 行に列挙する（記述順のまま）
+    fn v2_media_line(&self, op: &'a Value, key: &str) -> String {
+        let list = op.get(key).and_then(|v| v.as_array()).or(match key {
+            "consumes" => self.v2_consumes,
+            _ => self.v2_produces,
+        });
+        let Some(list) = list else {
+            return String::new();
+        };
+        let media: Vec<String> = list
+            .iter()
+            .map(|v| format!("<code>{}</code>", esc(&plain_value(v))))
+            .collect();
+        if media.is_empty() {
+            return String::new();
+        }
+        format!("<div class=\"api-media\">{}</div>\n", media.join(", "))
     }
 
     /// path-item レベルと operation レベルの parameters をマージする。
@@ -401,6 +574,13 @@ impl<'a> Renderer<'a> {
             let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let loc = p.get("in").and_then(|v| v.as_str()).unwrap_or("");
             let schema = p.get("schema");
+            // Swagger 2.0 の非 body パラメータは型情報（type/format/items/enum）を
+            // パラメータ自身が直接持つため、schema が無ければ自身を型ソースにする。
+            // 3.x（content 持ち等で schema 無し）は従来どおり「—」表示のまま
+            let schema = match (schema, self.version) {
+                (None, SpecVersion::V2) => Some(*p),
+                (s, _) => s,
+            };
             // 型ラベル・注記内の $ref はパラメータ実体が属する文書を基準に解決する
             let (ty, annos) = self.with_doc(doc.clone(), |s| {
                 (
@@ -945,6 +1125,12 @@ fn status_class(code: &str) -> &'static str {
     }
 }
 
+/// JSON Pointer のトークンエスケープ（RFC 6901: `~` → `~0`、`/` → `~1`）。
+/// スキーマ一覧の循環ガードで $ref 側のポインタ表現と一致させるために使う
+fn pointer_escape(s: &str) -> String {
+    s.replace('~', "~0").replace('/', "~1")
+}
+
 /// Value を注記用のプレーン文字列にする（文字列は引用符なし・複合値はコンパクト JSON）
 fn plain_value(v: &Value) -> String {
     match v {
@@ -1156,6 +1342,8 @@ properties:
         assert!(html.contains("郵送先"));
         assert!(html.contains("<code>zip</code>"));
         assert!(html.contains("<code>city</code>"));
+        // スキーマ一覧は OpenAPI 文書専用（JSON Schema 単体には出ない）
+        assert!(!html.contains("api-schemas"));
     }
 
     /// パース失敗 → エラーボックス
@@ -1166,17 +1354,273 @@ properties:
         assert!(html.contains("markdown-alert-caution"));
     }
 
-    /// Swagger 2.0 → 未対応メッセージ
+    /// Swagger 2.0 の最小文書が描画される（裸の `swagger: 2.0` も Number → "2.0" で受理）
     #[test]
-    fn swagger_2_0_は未対応メッセージになる() {
+    fn swagger_2_0_が描画される() {
         let src = r#"
-swagger: "2.0"
+swagger: 2.0
 info: { title: 旧API, version: "1" }
-paths: {}
+paths:
+  /items:
+    get:
+      summary: 一覧
+      responses:
+        "200":
+          description: 成功
 "#;
         let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(!html.contains("markdown-alert-caution"), "{html}");
+        assert!(html.contains("<section class=\"api-spec\">"));
+        assert!(html.contains("api-method api-method-get"));
+        assert!(html.contains("api-status-2xx"));
+    }
+
+    /// openapi / swagger のどちらでもない文書はエラーボックス（三分岐の else を固定）
+    #[test]
+    fn バージョン不明はエラーボックスになる() {
+        let src = "info: { title: 不明, version: \"1\" }\npaths: {}\n";
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
         assert!(html.contains("markdown-alert-caution"));
-        assert!(html.contains("OpenAPI 3.x のみ対応"));
+        assert!(html.contains("OpenAPI 3.x / Swagger 2.0 のみ対応"));
+    }
+
+    /// 2.0 の `in: body` はリクエストボディとして出て、パラメータ表には出ない
+    #[test]
+    fn swagger_2_0_の_body_パラメータはリクエストボディになる() {
+        let src = r#"
+swagger: "2.0"
+info: { title: T, version: "1" }
+paths:
+  /users:
+    post:
+      consumes: [application/json]
+      parameters:
+        - name: payload
+          in: body
+          required: true
+          description: 登録内容
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+      responses:
+        "201":
+          description: 作成
+"#;
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(html.contains("リクエストボディ"), "{html}");
+        assert!(html.contains("api-required-note"));
+        assert!(html.contains("登録内容"));
+        assert!(html.contains("<code>application/json</code>"));
+        assert!(html.contains("<code>name</code>"));
+        // body パラメータはパラメータ表に混ざらない（表自体が出ない）
+        assert!(!html.contains("<th>場所</th>"), "{html}");
+    }
+
+    /// 2.0 の非 body パラメータは型情報を直下に持つ（type/enum が表に出る）
+    #[test]
+    fn swagger_2_0_のパラメータ直下の型が表に出る() {
+        let src = r#"
+swagger: "2.0"
+info: { title: T, version: "1" }
+paths:
+  /items:
+    get:
+      parameters:
+        - name: sort
+          in: query
+          type: string
+          enum: [asc, desc]
+      responses:
+        "200":
+          description: 成功
+"#;
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(html.contains("<code>sort</code>"));
+        assert!(html.contains("<code>query</code>"));
+        // 型はパラメータ直下の type から、enum は注記チップとして出る
+        assert!(html.contains("<code>string</code>"), "{html}");
+        assert!(html.contains("<code>asc</code>"), "{html}");
+        // 3.x では schema 無しパラメータは従来どおり「—」のまま（フォールバックしない）
+        let v3 = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths:
+  /items:
+    get:
+      parameters:
+        - name: raw
+          in: query
+      responses:
+        "200":
+          description: ok
+"#;
+        let html_v3 = render_spec(SpecKind::OpenApi, v3, None, &NoFiles);
+        assert!(html_v3.contains("<code>—</code>"), "{html_v3}");
+    }
+
+    /// produces は operation 側が top-level を上書きする
+    #[test]
+    fn swagger_2_0_の_produces_は_operation_が優先される() {
+        let src = r#"
+swagger: "2.0"
+info: { title: T, version: "1" }
+produces: [application/xml]
+paths:
+  /a:
+    get:
+      produces: [application/json]
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+  /b:
+    get:
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+"#;
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        // /a は op 側の application/json（top-level の xml は出ない…は /b で出るので回数で確認）
+        assert!(html.contains("<code>application/json</code>"));
+        // /b は top-level の application/xml が既定として出る
+        assert!(html.contains("<code>application/xml</code>"));
+        assert_eq!(html.matches("application/xml").count(), 1, "{html}");
+    }
+
+    /// `#/definitions/...` の $ref が解決・展開される
+    #[test]
+    fn swagger_2_0_の_definitions_ref_を解決する() {
+        let src = r##"
+swagger: "2.0"
+info: { title: T, version: "1" }
+paths:
+  /users/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          type: integer
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: "#/definitions/User"
+definitions:
+  User:
+    type: object
+    required: [name]
+    properties:
+      name:
+        type: string
+"##;
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(html.contains("<code>User</code>"), "{html}");
+        assert!(html.contains("<code>name</code>"));
+        assert!(html.contains("✓"), "required マーク: {html}");
+    }
+
+    /// components/schemas 一覧: 未参照スキーマも出て、$ref 展開と共存する
+    #[test]
+    fn components_schemas_一覧が描画される() {
+        let src = r##"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths:
+  /users:
+    get:
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+components:
+  schemas:
+    User:
+      description: 利用者
+      type: object
+      properties:
+        name:
+          type: string
+    Unused:
+      type: object
+      properties:
+        orphanField:
+          type: integer
+"##;
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(html.contains("api-schemas"), "{html}");
+        assert!(html.contains("スキーマ"));
+        // 未参照スキーマも閉じた details で出る
+        assert!(
+            html.contains(
+                "<details class=\"api-schema-def\"><summary><code>Unused</code></summary>"
+            )
+        );
+        assert!(html.contains("<code>orphanField</code>"));
+        // 参照済みスキーマは操作側のインライン展開と一覧の両方に出る（共存）
+        assert!(html.contains("<summary><code>User</code></summary>"));
+        assert!(html.contains("利用者"));
+        assert!(html.matches("<code>name</code>").count() >= 2, "{html}");
+    }
+
+    /// 一覧内の自己参照スキーマは循環表示になり無限ループしない
+    #[test]
+    fn 一覧の自己参照スキーマは循環表示で終了する() {
+        let src = r##"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths: {}
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        next:
+          $ref: "#/components/schemas/Node"
+"##;
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(html.contains("<summary><code>Node</code></summary>"));
+        assert!(html.contains("循環参照"), "{html}");
+    }
+
+    /// components が空・不在なら一覧セクション自体を出さない
+    #[test]
+    fn 空の_components_では一覧が出ない() {
+        for src in [
+            "openapi: \"3.0.0\"\ninfo: { title: T, version: \"1\" }\npaths: {}\n",
+            "openapi: \"3.0.0\"\ninfo: { title: T, version: \"1\" }\npaths: {}\ncomponents: {}\n",
+            "openapi: \"3.0.0\"\ninfo: { title: T, version: \"1\" }\npaths: {}\ncomponents:\n  schemas: {}\n",
+        ] {
+            let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+            assert!(!html.contains("api-schemas"), "{src}");
+        }
+    }
+
+    /// 2.0 の definitions も一覧描画される
+    #[test]
+    fn swagger_2_0_の_definitions_一覧が描画される() {
+        let src = r#"
+swagger: "2.0"
+info: { title: T, version: "1" }
+paths: {}
+definitions:
+  Legacy:
+    type: object
+    properties:
+      code:
+        type: string
+"#;
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(html.contains("api-schemas"), "{html}");
+        assert!(html.contains("<summary><code>Legacy</code></summary>"));
+        assert!(html.contains("<code>code</code>"));
     }
 
     /// XSS: title 等に含まれる `<script>` がエスケープされる
