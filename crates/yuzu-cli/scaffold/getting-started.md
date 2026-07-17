@@ -128,9 +128,9 @@ state・ER・gantt・pie の 7 図種はビルド時に SVG 化**されます（
 フォールバックが発生したページだけ mermaid.js が読み込まれます
 （クライアント描画もダークモード切替に追従して再描画されます）。
 
-flowchart は `classDef` / `class` / `:::` / `style` によるスタイル指定にも
-対応しています（`"backend": "ssr"` でもビルド時の SVG に反映されます。
-指定した色はダークモードでも意図どおり固定されます）:
+flowchart・state・ER・class 図は `classDef` / `:::` / `style` などの
+スタイル指定にも対応しています（`"backend": "ssr"` でもビルド時の SVG に
+反映されます。指定した色はダークモードでも意図どおり固定されます）:
 
 ```mermaid
 flowchart TD
@@ -233,11 +233,78 @@ properties:
     description: 公開状態
 ```
 
-OpenAPI 3.x の文書全体は ` ```openapi ` ブロックで描画できます（info・paths・
-パラメータ・レスポンスを操作ごとの開閉式パネルで表示）。ブロックの中身を
-`file: specs/api.yaml` の 1 行だけにすると、**プロジェクトルート相対**の
-仕様ファイルを参照できます（仕様ファイル側の変更は次のビルドで必ず反映されます）。
-`$ref` はドキュメント内参照（`#/components/schemas/...` など）のみ解決されます。
+OpenAPI 3.x / Swagger 2.0 の文書全体は ` ```openapi ` ブロックで描画できます
+（info・paths・パラメータ・レスポンスを操作ごとの開閉式パネルで表示。2.0 の
+`definitions` や `in: body` のリクエストボディにも対応）:
+
+```openapi
+openapi: 3.0.3
+info:
+  title: 記事 API
+  version: 1.0.0
+paths:
+  /articles:
+    get:
+      summary: 記事一覧を取得
+      parameters:
+        - name: status
+          in: query
+          description: 公開状態で絞り込む
+          schema:
+            type: string
+            enum: [draft, published]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Article"
+    post:
+      summary: 記事を作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Article"
+      responses:
+        "201":
+          description: 作成成功
+components:
+  schemas:
+    Article:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          description: 記事タイトル
+        status:
+          type: string
+          enum: [draft, published]
+          description: 公開状態
+    ApiError:
+      description: エラー応答（どの操作からも参照されないスキーマも一覧に載ります）
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+```
+
+文書末尾の「スキーマ」には `components/schemas`（2.0 は `definitions`）の
+**全スキーマ**が折りたたみで並びます。上の例の `ApiError` のように、
+どの操作からも参照されないスキーマもここから読めます。
+
+ブロックの中身を `file: specs/api.yaml` の 1 行だけにすると、
+**プロジェクトルート相対**の仕様ファイルを参照できます
+（仕様ファイル側の変更は次のビルドで必ず反映されます）。
+`$ref` はドキュメント内参照（`#/components/schemas/...` など）と
+**プロジェクト内の別ファイル**（`schemas/common.yaml#/...`）を解決します。
 
 ## ページを LLM に渡す
 
@@ -289,6 +356,14 @@ yuzu lint
 `lint.terms` の用語辞書と `search.synonyms` は検索の**クエリ拡張**にも使われます。
 たとえば辞書に `"サーバー": ["サーバ"]` があれば、`サーバ` で検索しても
 `サーバー` と書かれたページがヒットし、ハイライトも付きます。
+
+`search.indexCode: true` にすると**フェンスコードブロックの中身も検索対象**になり、
+関数名や設定キーで設計書を引けます（既定は off。mermaid など特別描画される
+ブロックのソースは対象外です）:
+
+```jsonc
+"search": { "indexCode": true }
+```
 
 ターミナルからも同じエンジンで検索できます:
 
