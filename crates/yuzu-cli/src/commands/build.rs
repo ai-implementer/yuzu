@@ -211,6 +211,7 @@ pub(crate) fn build_once(
                 max_edits: search.typo_tolerance.max_edits.min(1),
                 max_terms_per_shard: search.shard.max_terms_per_shard.max(1),
                 synonyms,
+                index_code: search.index_code,
             },
             &rc.output_dir,
             &yuzu_index::IndexCtx {

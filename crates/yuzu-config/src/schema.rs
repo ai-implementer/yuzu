@@ -265,6 +265,10 @@ pub struct SearchConfig {
     /// 同義語グループ（例: `[["ログイン", "サインイン"]]`）。
     /// `lint.terms` の辞書と合成され、ゆれ表記での検索が正表記の文書にヒットする
     pub synonyms: Vec<Vec<String>>,
+    /// フェンスコードブロックの本文を検索インデックスに含めるか（既定 false）。
+    /// on にすると関数名・設定キー等コード内の語で引ける。特別レンダリング対象
+    /// （mermaid / openapi / jsonschema / math）は on でも索引しない
+    pub index_code: bool,
 }
 
 impl Default for SearchConfig {
@@ -275,6 +279,7 @@ impl Default for SearchConfig {
             typo_tolerance: TypoToleranceConfig::default(),
             shard: ShardConfig::default(),
             synonyms: Vec::new(),
+            index_code: false,
         }
     }
 }

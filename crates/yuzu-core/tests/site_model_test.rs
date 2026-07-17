@@ -219,7 +219,8 @@ fn extract_plain_sections_は_h2_h3_で分割しリード文を先頭に置く()
 
     let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
     let page = &site.pages[0];
-    let sections = yuzu_core::extract_plain_sections(page, &MarkdownOptions::default()).unwrap();
+    let sections =
+        yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), false).unwrap();
 
     // リード文（h1 のテキストは本文として含む）
     assert_eq!(sections[0].anchor, None);
@@ -258,6 +259,56 @@ fn extract_plain_sections_は_h2_h3_で分割しリード文を先頭に置く()
             "HTML に id=\"{id}\" がない"
         );
     }
+}
+
+#[test]
+fn index_code_true_はコード本文を含めるが特別言語は除外する() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "index.md",
+        "---\ntitle: コード索引\n---\n# 見出し\n\n本文の段落。\n\n```rust\nfn connectTimeout() {}\n```\n\n## 図\n\n```mermaid\nflowchart TD\n  A-->B\n```\n\n```math\n\\alpha + \\beta\n```\n",
+    );
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let page = &site.pages[0];
+
+    // index_code=true: 通常コードは含む
+    let on = yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), true).unwrap();
+    let joined: String = on
+        .iter()
+        .map(|s| s.body.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("connectTimeout"),
+        "コード本文が含まれる:\n{joined}"
+    );
+    // 特別レンダリング対象（mermaid / math）は on でも除外
+    assert!(
+        !joined.contains("flowchart"),
+        "mermaid ソースは除外:\n{joined}"
+    );
+    assert!(!joined.contains("alpha"), "math ソースは除外:\n{joined}");
+
+    // index_code=false（既定）: コードは含まれない
+    let off = yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), false).unwrap();
+    let joined_off: String = off
+        .iter()
+        .map(|s| s.body.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !joined_off.contains("connectTimeout"),
+        "既定ではコードを含まない"
+    );
+
+    // llms.txt 経路（extract_plain_text）は index_code に関わらずコードを含まない
+    let plain = yuzu_core::extract_plain_text(&site.pages[0], &MarkdownOptions::default()).unwrap();
+    assert!(
+        !plain.contains("connectTimeout"),
+        "llms 用抽出はコードを含まない"
+    );
 }
 
 #[test]

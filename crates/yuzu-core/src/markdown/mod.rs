@@ -302,7 +302,8 @@ pub(crate) fn extract_plain_text(
     opts: &MarkdownOptions,
 ) -> Result<String, CoreError> {
     let mut out = String::new();
-    for section in extract_plain_sections(source, opts)? {
+    // llms.txt にはコードを入れない（検索専用の opt-in なので false 固定）
+    for section in extract_plain_sections(source, opts, false)? {
         if let Some(heading) = &section.heading {
             out.push_str(heading);
             out.push('\n');
@@ -321,9 +322,9 @@ pub(crate) fn extract_plain_text(
 /// - h4〜h6 と h1 は境界にせず、見出しテキストを現セクションの本文に含める
 /// - 収集: `Text` / インライン `Code`（API 名検索のため含める）。
 ///   `SoftBreak` / `LineBreak` は空白、ブロック要素の末尾で改行 1 つ
-/// - 除外: frontmatter・生 HTML・**フェンスコードブロック**
-///   （mermaid ソースや長いコード片が BM25 を汚すため。
-///   将来 `search.indexCode` のような opt-in を足す余地はある）
+/// - 除外: frontmatter・生 HTML。**フェンスコードブロック**は既定で除外だが
+///   `index_code = true`（`search.indexCode`）のとき本文を含める。ただし
+///   特別レンダリング対象（mermaid / openapi / jsonschema / math）は on でも除外
 ///
 /// ⚠️ アンカー同期: [`extract_meta`]・HTML 化と同じく Anchorizer を
 /// **全見出し（h1〜h6）文書順**で回す。境界にしない見出しも必ず anchorize する。
@@ -331,6 +332,7 @@ pub(crate) fn extract_plain_text(
 pub(crate) fn extract_plain_sections(
     source: &str,
     opts: &MarkdownOptions,
+    index_code: bool,
 ) -> Result<Vec<PlainSection>, CoreError> {
     let arena = Arena::new();
     let options = comrak_options(opts);
@@ -342,7 +344,7 @@ pub(crate) fn extract_plain_sections(
         heading: None,
         body: String::new(),
     }];
-    collect_sections(root, &mut anchorizer, &mut sections);
+    collect_sections(root, &mut anchorizer, &mut sections, index_code);
     for section in &mut sections {
         section.body = section.body.trim().to_string();
     }
@@ -353,14 +355,24 @@ fn collect_sections<'a>(
     node: &'a AstNode<'a>,
     anchorizer: &mut Anchorizer,
     sections: &mut Vec<PlainSection>,
+    index_code: bool,
 ) {
     {
         let data = node.data.borrow();
         match &data.value {
-            NodeValue::FrontMatter(_)
-            | NodeValue::HtmlBlock(_)
-            | NodeValue::HtmlInline(_)
-            | NodeValue::CodeBlock(_) => return,
+            NodeValue::FrontMatter(_) | NodeValue::HtmlBlock(_) | NodeValue::HtmlInline(_) => {
+                return;
+            }
+            NodeValue::CodeBlock(cb) => {
+                // 既定は除外。`index_code` の opt-in 時のみ本文を含める。ただし
+                // 特別レンダリング対象（図・仕様・数式ソース）は検索ノイズなので除外
+                let lang = cb.info.split_whitespace().next().unwrap_or("");
+                if !index_code || matches!(lang, "mermaid" | "openapi" | "jsonschema" | "math") {
+                    return;
+                }
+                sections.last_mut().unwrap().body.push_str(&cb.literal);
+                // return せず末尾のブロック改行へ流し、トークンの文脈を切る
+            }
             NodeValue::Heading(heading) => {
                 let text = collect_text(node);
                 let id = anchorizer.anchorize(&text);
@@ -390,7 +402,7 @@ fn collect_sections<'a>(
     }
 
     for child in node.children() {
-        collect_sections(child, anchorizer, sections);
+        collect_sections(child, anchorizer, sections, index_code);
     }
 
     // 段落・リスト項目等の区切りで改行を入れる（トークナイズの文脈を切る）

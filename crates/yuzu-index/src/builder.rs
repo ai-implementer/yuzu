@@ -41,6 +41,8 @@ pub struct IndexParams {
     /// 同義語グループ（lint.terms ＋ search.synonyms を cli が合成）。
     /// manifest に焼き込まれ、クエリ拡張に使われる
     pub synonyms: Vec<Vec<String>>,
+    /// フェンスコードブロックの本文を検索対象に含めるか（`search.indexCode`）
+    pub index_code: bool,
 }
 
 impl Default for IndexParams {
@@ -51,6 +53,7 @@ impl Default for IndexParams {
             max_edits: 1,
             max_terms_per_shard: 16384,
             synonyms: Vec::new(),
+            index_code: false,
         }
     }
 }
@@ -164,7 +167,12 @@ pub fn build_search_index_with(
         let sections = match ctx.cache.and_then(|c| c.search(&page.rel, &page.source)) {
             Some(cached) => cached,
             None => {
-                let computed = compute_sections(page, md_opts, session.tokenizer(&model_bytes)?)?;
+                let computed = compute_sections(
+                    page,
+                    md_opts,
+                    session.tokenizer(&model_bytes)?,
+                    params.index_code,
+                )?;
                 if let Some(cache) = ctx.cache {
                     cache.store_search(&page.rel, &page.source, computed.clone());
                 }
@@ -326,8 +334,9 @@ fn compute_sections(
     page: &Page,
     md_opts: &MarkdownOptions,
     tokenizer: &Tokenizer,
+    index_code: bool,
 ) -> Result<Vec<CachedSection>, IndexError> {
-    let sections = yuzu_core::extract_plain_sections(page, md_opts)?;
+    let sections = yuzu_core::extract_plain_sections(page, md_opts, index_code)?;
     let mut out = Vec::with_capacity(sections.len());
     for (sec_idx, section) in sections.iter().enumerate() {
         let mut tf: HashMap<String, u32> = HashMap::new();

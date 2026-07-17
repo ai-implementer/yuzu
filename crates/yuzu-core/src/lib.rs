@@ -245,12 +245,15 @@ pub fn extract_plain_text(page: &Page, opts: &MarkdownOptions) -> Result<String,
 }
 
 /// ページ本文を h2/h3 見出し境界で分割したプレーンテキストセクションを返す（検索用）。
-/// 先頭要素はリード文（anchor/heading = None）。h4〜h6 は直近セクションに併合される
+/// 先頭要素はリード文（anchor/heading = None）。h4〜h6 は直近セクションに併合される。
+/// `index_code = true`（`search.indexCode`）でフェンスコードブロックの本文も含める
+/// （特別レンダリング対象の mermaid / openapi / jsonschema / math は除く）
 pub fn extract_plain_sections(
     page: &Page,
     opts: &MarkdownOptions,
+    index_code: bool,
 ) -> Result<Vec<PlainSection>, CoreError> {
-    markdown::extract_plain_sections(&page.source, opts)
+    markdown::extract_plain_sections(&page.source, opts, index_code)
 }
 
 /// ページ本文を正規化 Markdown として出力する（frontmatter は含めない）。
