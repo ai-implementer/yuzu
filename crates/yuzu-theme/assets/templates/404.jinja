@@ -1,0 +1,11 @@
+{% extends "base.jinja" %}
+{% block content %}
+<article class="markdown-body">
+<h1>{{ page.title }}</h1>
+<p>お探しのページは見つかりませんでした。URL が変わったか、ページが削除された可能性があります。</p>
+<ul>
+<li><a href="{{ base_url | safe }}">トップページへ戻る</a></li>
+{% if search_enabled %}<li>ヘッダーの検索ボックス（<kbd>/</kbd> または <kbd>Cmd/Ctrl+K</kbd>）からページを探す</li>
+{% endif %}</ul>
+</article>
+{% endblock %}

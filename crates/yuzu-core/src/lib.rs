@@ -310,6 +310,14 @@ pub fn lint_project(
     lint::lint_project(pages, opts, lint)
 }
 
+/// [`Diagnostic::fix`] を持つ診断（表記ゆれ系）をソースへ適用する
+/// （`yuzu lint --fix` 用）。範囲が交差する fix は先勝ちでスキップするため、
+/// 適用後に再 lint → 再適用の繰り返しで不動点に到達させる想定。
+/// 戻り値は (適用後ソース, 適用件数)
+pub fn apply_fixes(source: &str, diags: &[Diagnostic]) -> (String, usize) {
+    lint::apply_fixes(source, diags)
+}
+
 /// 内部リンク・アンカーの静的検査（`yuzu check` 用）。
 ///
 /// - `pages` には draft 込みの全ページ（[`build_source_pages`]）を渡す。

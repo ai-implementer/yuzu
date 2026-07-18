@@ -3,6 +3,8 @@
 //! pretty URL（`guide/` → `guide/index.html`）の解決は `ServeDir` の既定挙動。
 //! baseUrl がサブパス（例: `/docs/`）のときはそのパスへ nest し、
 //! `/` からはリダイレクトする。
+//! 存在しないパスは `404.html` があればそれを 404 ステータスで返す
+//! （GitHub Pages と同じ挙動。無ければ素の 404）。
 //! `live_reload` に [`ReloadNotifier`] を渡すと `/__livereload` に
 //! WebSocket エンドポイントを生やす（`yuzu dev` 用）。
 
@@ -11,7 +13,8 @@ use std::path::{Path, PathBuf};
 
 use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
-use axum::response::Redirect;
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Redirect};
 use axum::routing::{any, get};
 use tower_http::services::ServeDir;
 
@@ -48,7 +51,23 @@ pub fn serve(opts: ServeOptions) -> Result<(), ServerError> {
 
 /// Router の組み立て（テスト容易性のため分離）
 fn build_router(dir: &Path, base: &str, live_reload: Option<ReloadNotifier>) -> Router {
-    let serve_dir = ServeDir::new(dir);
+    // 存在しないパスは dist/404.html を 404 ステータスで返す（毎リクエスト読み直し
+    // = watch 中の再ビルドが即反映される。無ければ素の 404）
+    let not_found_page = dir.join("404.html");
+    let serve_dir = ServeDir::new(dir).not_found_service(any(move || {
+        let page = not_found_page.clone();
+        async move {
+            match tokio::fs::read(&page).await {
+                Ok(body) => (
+                    StatusCode::NOT_FOUND,
+                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    body,
+                )
+                    .into_response(),
+                Err(_) => StatusCode::NOT_FOUND.into_response(),
+            }
+        }
+    }));
 
     let mut app = if base == "/" {
         Router::new().fallback_service(serve_dir)
@@ -175,6 +194,33 @@ mod tests {
 
         let result = tokio_tungstenite::connect_async(format!("ws://{addr}/__livereload")).await;
         assert!(result.is_err(), "preview では WS が生えない");
+    }
+
+    #[tokio::test]
+    async fn 存在しないパスは_404_html_を_404_ステータスで返す() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<html>home</html>").unwrap();
+        std::fs::write(dir.path().join("404.html"), "<html>見つかりません</html>").unwrap();
+        let addr = spawn_server(dir.path(), "/", None).await;
+
+        let resp = reqwest_lite(addr, "/no-such-page/").await;
+        assert!(resp.starts_with("HTTP/1.0 404"), "resp:\n{resp}");
+        assert!(resp.contains("見つかりません"), "resp:\n{resp}");
+
+        // 実在パスは従来どおり 200
+        let ok = reqwest_lite(addr, "/index.html").await;
+        assert!(ok.starts_with("HTTP/1.0 200"), "resp:\n{ok}");
+        assert!(ok.contains("home"));
+    }
+
+    #[tokio::test]
+    async fn フォールバック用の_404_html_が無ければ素の_404_を返す() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<html>home</html>").unwrap();
+        let addr = spawn_server(dir.path(), "/", None).await;
+
+        let resp = reqwest_lite(addr, "/no-such-page/").await;
+        assert!(resp.starts_with("HTTP/1.0 404"), "resp:\n{resp}");
     }
 
     /// 依存を増やさない最小 HTTP GET（テスト専用）

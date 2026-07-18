@@ -23,4 +23,7 @@ pub struct Diagnostic {
     pub span: Option<SourceSpan>,
     /// 説明（日本語）
     pub message: String,
+    /// 自動修正の置換文字列（`yuzu lint --fix` が `span` の範囲をこれで置き換える）。
+    /// None は機械修正できない診断（見出し規約・未知キー等）
+    pub fix: Option<String>,
 }

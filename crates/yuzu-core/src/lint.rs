@@ -85,6 +85,7 @@ fn check_char_classes(
                     rel: page.rel.clone(),
                     span: Some(run_span(span, offset, run.len())),
                     message: format!("全角英数字「{run}」は半角「{suggestion}」を推奨します"),
+                    fix: Some(suggestion),
                 });
             }
         }
@@ -97,6 +98,7 @@ fn check_char_classes(
                     rel: page.rel.clone(),
                     span: Some(run_span(span, offset, run.len())),
                     message: format!("半角カナ「{run}」は全角「{suggestion}」を推奨します"),
+                    fix: Some(suggestion),
                 });
             }
         }
@@ -221,15 +223,21 @@ fn check_katakana_choon(pages: &[Page], opts: &MarkdownOptions, out: &mut Vec<Di
             continue;
         }
         let max_count = variants.values().map(Vec::len).max().unwrap_or(0);
+        // 単独多数派の表記（同数タイなら None = 正解が決められないので自動修正なし）
+        let majority: Option<&String> = {
+            let mut top = variants.iter().filter(|(_, o)| o.len() == max_count);
+            match (top.next(), top.next()) {
+                (Some((w, _)), None) => Some(w),
+                _ => None,
+            }
+        };
         let summary = variants
             .iter()
             .map(|(w, occs)| format!("{w}: {} 回", occs.len()))
             .collect::<Vec<_>>()
             .join(" / ");
         for (word, occs) in variants {
-            if occs.len() == max_count
-                && variants.values().filter(|o| o.len() == max_count).count() == 1
-            {
+            if majority == Some(word) {
                 continue; // 単独多数派は正とみなして報告しない
             }
             for (rel, span) in occs {
@@ -241,6 +249,7 @@ fn check_katakana_choon(pages: &[Page], opts: &MarkdownOptions, out: &mut Vec<Di
                     message: format!(
                         "長音符ゆれ「{word}」が混在しています（{summary}。多数派への統一を推奨）"
                     ),
+                    fix: majority.cloned(),
                 });
             }
         }
@@ -287,6 +296,7 @@ fn check_terms(
                         message: format!(
                             "「{variant}」は「{canonical}」に統一してください（lint.terms）"
                         ),
+                        fix: Some(canonical.clone()),
                     });
                 }
             }
@@ -309,6 +319,7 @@ fn check_headings(toc: &[TocEntry], page: &Page, out: &mut Vec<Diagnostic>) {
                     "本文の h1 が複数あります（最初の h1 は {} 行目「{}」）",
                     first_h1.span.start_line, first_h1.text
                 ),
+                fix: None,
             });
         }
     }
@@ -328,6 +339,7 @@ fn check_headings(toc: &[TocEntry], page: &Page, out: &mut Vec<Diagnostic>) {
                     next.level,
                     prev.level + 1
                 ),
+                fix: None,
             });
         }
     }
@@ -346,6 +358,7 @@ fn check_directory_depth(page: &Page, max_depth: u32, out: &mut Vec<Diagnostic>)
             message: format!(
                 "content から {depth} 階層のディレクトリに置かれています（許容は {max_depth} 階層まで）"
             ),
+            fix: None,
         });
     }
 }
@@ -377,6 +390,7 @@ fn check_frontmatter_keys(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Dia
                 "frontmatter に未知のキー `{key}` があります（対応キー: {}）",
                 KNOWN_KEYS.join("/")
             ),
+            fix: None,
         });
     }
 }
@@ -396,6 +410,64 @@ fn key_span(raw: &str, fm_span: &SourceSpan, key: &str) -> SourceSpan {
         }
     }
     *fm_span
+}
+
+/// `fix` を持つ診断をソースへ適用する（`yuzu lint --fix` 用）。
+/// span の列は comrak と同じ 1 始まり・バイト基準（fix 対象ルールの end_col は排他）。
+/// 位置の後ろから適用して前方のオフセットを保ち、範囲が交差する fix は
+/// 先勝ちでスキップする（スキップ分は次の再 lint で再検出される）。
+/// 戻り値は (適用後ソース, 適用件数)
+pub(crate) fn apply_fixes(source: &str, diags: &[Diagnostic]) -> (String, usize) {
+    // 行頭のバイトオフセット（1 始まり行番号 − 1 で引く）
+    let mut line_starts = vec![0usize];
+    line_starts.extend(
+        source
+            .bytes()
+            .enumerate()
+            .filter(|&(_, b)| b == b'\n')
+            .map(|(i, _)| i + 1),
+    );
+
+    // (開始バイト, 終了バイト, 置換文字列) へ変換。範囲外・非文字境界は防御的に捨てる
+    let mut edits: Vec<(usize, usize, &str)> = Vec::new();
+    for d in diags {
+        let (Some(span), Some(fix)) = (d.span, d.fix.as_deref()) else {
+            continue;
+        };
+        if span.start_col == 0 || span.end_col == 0 {
+            continue;
+        }
+        let Some(&line_s) = line_starts.get(span.start_line.wrapping_sub(1)) else {
+            continue;
+        };
+        let Some(&line_e) = line_starts.get(span.end_line.wrapping_sub(1)) else {
+            continue;
+        };
+        let start = line_s + span.start_col - 1;
+        let end = line_e + span.end_col - 1;
+        if start >= end
+            || end > source.len()
+            || !source.is_char_boundary(start)
+            || !source.is_char_boundary(end)
+        {
+            continue;
+        }
+        edits.push((start, end, fix));
+    }
+
+    edits.sort_by_key(|&(start, end, _)| std::cmp::Reverse((start, end)));
+    let mut out = source.to_string();
+    let mut applied = 0usize;
+    let mut last_start = usize::MAX;
+    for (start, end, fix) in edits {
+        if end > last_start {
+            continue; // 適用済み範囲と交差（同一範囲の重複含む）
+        }
+        out.replace_range(start..end, fix);
+        last_start = start;
+        applied += 1;
+    }
+    (out, applied)
 }
 
 #[cfg(test)]
@@ -749,5 +821,122 @@ mod tests {
             "{}",
             deep[0].message
         );
+    }
+
+    #[test]
+    fn 表記ゆれ診断は変換候補を_fix_に持つ() {
+        let diags = lint("# t\n\nＷｅｂ１２３ と ﾃﾞｰﾀ。\n");
+        let full = diags
+            .iter()
+            .find(|d| d.rule == "fullwidth-alphanumeric")
+            .unwrap();
+        assert_eq!(full.fix.as_deref(), Some("Web123"));
+        let kana = diags.iter().find(|d| d.rule == "halfwidth-kana").unwrap();
+        assert_eq!(kana.fix.as_deref(), Some("データ"));
+
+        let diags = lint_terms("# t\n\nサーバを再起動。\n", &[("サーバー", &["サーバ"])]);
+        let term = diags.iter().find(|d| d.rule == "term-variant").unwrap();
+        assert_eq!(term.fix.as_deref(), Some("サーバー"));
+    }
+
+    #[test]
+    fn 機械修正できない診断は_fix_なし() {
+        let diags = lint("---\ntitle: x\ntags: [a]\n---\n\n# 一つ目\n\n# 二つ目\n\n#### h4\n");
+        assert!(!diags.is_empty());
+        assert!(diags.iter().all(|d| d.fix.is_none()), "{diags:?}");
+    }
+
+    #[test]
+    fn 長音ゆれの単独多数派は少数派の_fix_になる() {
+        let diags = lint_project_of(&[
+            ("a.md", "# A\n\nサーバーを起動。サーバーを停止。\n"),
+            ("b.md", "# B\n\nサーバの設定。\n"),
+        ]);
+        let hit = diags.iter().find(|d| d.rule == "katakana-choon").unwrap();
+        assert_eq!(hit.fix.as_deref(), Some("サーバー"));
+    }
+
+    #[test]
+    fn 長音ゆれの同数タイは_fix_なし() {
+        let diags = lint_project_of(&[
+            ("a.md", "# A\n\nインタフェース。\n"),
+            ("b.md", "# B\n\nインターフェース。\n"),
+        ]);
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule == "katakana-choon")
+            .collect();
+        assert_eq!(hits.len(), 2, "{diags:?}");
+        assert!(
+            hits.iter().all(|d| d.fix.is_none()),
+            "正解を決められないので自動修正しない: {hits:?}"
+        );
+    }
+
+    #[test]
+    fn apply_fixes_はマルチバイト本文の正しい位置を置換する() {
+        // 同一行に term-variant（マルチバイト）と fullwidth-alphanumeric が混在
+        let source = "# t\n\n日本語の前置きがあるサーバを再起動し、Ｘ１も直す。\n";
+        let opts = LintOptions {
+            terms: [("サーバー".to_string(), vec!["サーバ".to_string()])]
+                .into_iter()
+                .collect(),
+            ..LintOptions::default()
+        };
+        let diags =
+            super::lint_page(&page_from(source), &MarkdownOptions::default(), &opts).unwrap();
+        let (fixed, n) = super::apply_fixes(source, &diags);
+        assert_eq!(n, 2, "{diags:?}");
+        assert_eq!(
+            fixed,
+            "# t\n\n日本語の前置きがあるサーバーを再起動し、X1も直す。\n"
+        );
+    }
+
+    #[test]
+    fn apply_fixes_の適用後は再_lint_で_fix_対象が出ない() {
+        // 冪等性: 1 回の適用で表記ゆれが収束する
+        let source = "# t\n\nＷｅｂ の ﾃﾞｰﾀ をサーバへ。\n";
+        let opts = LintOptions {
+            terms: [("サーバー".to_string(), vec!["サーバ".to_string()])]
+                .into_iter()
+                .collect(),
+            ..LintOptions::default()
+        };
+        let diags =
+            super::lint_page(&page_from(source), &MarkdownOptions::default(), &opts).unwrap();
+        let (fixed, n) = super::apply_fixes(source, &diags);
+        assert_eq!(n, 3, "{diags:?}");
+        assert_eq!(fixed, "# t\n\nWeb の データ をサーバーへ。\n");
+
+        let rest =
+            super::lint_page(&page_from(&fixed), &MarkdownOptions::default(), &opts).unwrap();
+        assert!(rest.iter().all(|d| d.fix.is_none()), "{rest:?}");
+    }
+
+    #[test]
+    fn 交差する_fix_は先勝ちでスキップされる() {
+        let mk = |start_col: usize, end_col: usize, fix: &str| crate::Diagnostic {
+            rule: "term-variant",
+            severity: crate::Severity::Warning,
+            rel: "x.md".into(),
+            span: Some(crate::SourceSpan {
+                start_line: 1,
+                start_col,
+                end_line: 1,
+                end_col,
+            }),
+            message: String::new(),
+            fix: Some(fix.to_string()),
+        };
+        // [3,6) を先に適用（後ろ優先）し、交差する [1,4) はスキップ
+        let (fixed, n) = super::apply_fixes("abcdef", &[mk(1, 4, "X"), mk(3, 6, "Y")]);
+        assert_eq!(n, 1);
+        assert_eq!(fixed, "abYf");
+
+        // 同一範囲の重複（term-variant と katakana-choon の二重報告相当）は 1 回だけ
+        let (fixed, n) = super::apply_fixes("abcdef", &[mk(2, 5, "Z"), mk(2, 5, "Z")]);
+        assert_eq!(n, 1);
+        assert_eq!(fixed, "aZef");
     }
 }

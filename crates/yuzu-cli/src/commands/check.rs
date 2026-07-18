@@ -41,6 +41,7 @@ pub fn run() -> anyhow::Result<ExitCode> {
                 rel: page.rel.clone(),
                 span: None,
                 message: "整形差分があります（`yuzu fmt` を実行してください）".to_string(),
+                fix: None,
             });
         }
     }

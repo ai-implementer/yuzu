@@ -244,6 +244,7 @@ fn push(
         rel: page.rel.clone(),
         span: Some(link.span),
         message,
+        fix: None,
     });
 }
 

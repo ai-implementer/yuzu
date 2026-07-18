@@ -96,7 +96,12 @@ pub enum Command {
     },
 
     /// 文書規約の診断（見出し・frontmatter）。違反があれば非ゼロ終了
-    Lint,
+    Lint {
+        /// 表記ゆれ（全角英数字・半角カナ・長音符ゆれ・lint.terms）の
+        /// 変換候補をソースへ自動適用する（修正できない違反は残り、従来どおり報告）
+        #[arg(long)]
+        fix: bool,
+    },
 
     /// lint ＋ リンク切れ検査 ＋ fmt 差分検出の統合チェック（CI 用）
     Check,

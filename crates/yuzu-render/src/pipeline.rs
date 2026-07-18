@@ -174,6 +174,31 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         tracing::debug!(page = %page.rel.display(), out = %out_rel, "ページ出力");
     }
 
+    // 404 ページ（GitHub Pages 等の静的ホスティングは 404.html を自動で使う）。
+    // copy_public より前に書く = public/404.html を置いたプロジェクトは
+    // そちらが上書きして優先される（テーマ上書きと同じ思想）
+    let not_found = shared.env.get_template("404.jinja")?.render(context! {
+        site => site_ctx,
+        page => context! {
+            title => "ページが見つかりません",
+            description => Option::<&str>::None,
+            toc => Vec::<String>::new(),
+        },
+        // route "404.html" はどのページ route（"" か "…/" 終わり）とも一致しない
+        // = サイドバーはハイライトなしで全ツリー表示
+        nav => NavCtx::build(&params.site.nav, "404.html", &resolver),
+        base_url => resolver.base(),
+        asset_url => resolver.asset_url(),
+        live_reload_poll => params.live_reload == LiveReloadMode::Poll,
+        live_reload_ws => params.live_reload == LiveReloadMode::Ws,
+        mermaid_enabled => false,
+        math_enabled => false,
+        dark_enabled => cfg.theme.dark,
+        search_enabled => cfg.search.enabled,
+        theme_css_vars => theme_css_vars,
+    })?;
+    assets::write_output(ctx.outputs, output_dir, "404.html", not_found.as_bytes())?;
+
     assets::write_theme_assets(output_dir, rc.theme_dir.as_deref(), ctx.outputs)?;
     assets::write_output(
         ctx.outputs,

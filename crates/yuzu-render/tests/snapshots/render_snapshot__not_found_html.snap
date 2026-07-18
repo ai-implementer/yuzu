@@ -1,0 +1,98 @@
+---
+source: crates/yuzu-render/tests/render_snapshot.rs
+expression: html
+---
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ページが見つかりません | Fixture Docs</title>
+
+<link rel="stylesheet" href="/docs/_assets/css/theme.css">
+<link rel="stylesheet" href="/docs/_assets/css/syntect.css">
+<script>
+// FOUC 回避: CSS 適用前に保存済みテーマ（なければ OS 設定）を反映する
+(function () {
+  var stored = null;
+  try { stored = localStorage.getItem("yuzu-theme"); } catch (e) {}
+  var theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = theme;
+})();
+</script>
+</head>
+<body>
+<a class="skip-link" href="#yuzu-main">本文へ移動</a>
+<header class="site-header">
+<div class="header-left">
+
+<button id="nav-toggle" type="button" aria-label="ナビゲーションを開閉"
+        aria-controls="site-sidebar" aria-expanded="false" hidden>☰</button>
+<a class="site-title" href="/docs/">Fixture Docs</a>
+</div>
+<div class="header-tools">
+<div class="search" id="yuzu-search">
+<input type="search" id="yuzu-search-input" placeholder="検索 ( / )" autocomplete="off"
+       role="combobox" aria-expanded="false" aria-controls="yuzu-search-results">
+<div class="search-results" id="yuzu-search-results" role="listbox" hidden></div>
+</div>
+<button id="theme-toggle" type="button" aria-label="ダークモード切替" title="ダークモード切替">◐</button>
+</div>
+</header>
+<div class="layout">
+
+
+<aside class="sidebar" id="site-sidebar">
+<nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
+
+<ul>
+
+<li>
+<a href="/docs/">ホーム</a>
+
+</li>
+
+<li>
+<span class="nav-label">guide</span>
+
+<ul>
+
+<li>
+<a href="/docs/guide/getting-started/">はじめに</a>
+
+</li>
+
+</ul>
+
+</li>
+
+</ul>
+
+</nav>
+</aside>
+<main class="content" id="yuzu-main">
+
+
+
+<article class="markdown-body">
+<h1>ページが見つかりません</h1>
+<p>お探しのページは見つかりませんでした。URL が変わったか、ページが削除された可能性があります。</p>
+<ul>
+<li><a href="/docs/">トップページへ戻る</a></li>
+<li>ヘッダーの検索ボックス（<kbd>/</kbd> または <kbd>Cmd/Ctrl+K</kbd>）からページを探す</li>
+</ul>
+</article>
+
+</main>
+
+<aside class="toc" hidden aria-label="このページの目次">
+</aside>
+</div>
+<script src="/docs/_assets/js/theme.js"></script>
+<script src="/docs/_assets/js/nav.js"></script>
+<script src="/docs/_assets/js/scrollspy.js"></script>
+<script src="/docs/_assets/js/copy-button.js"></script>
+<script src="/docs/_assets/js/page-copy.js"></script>
+<script type="module" src="/docs/_assets/js/search-ui.js" data-search-base="/docs/_search/" data-base="/docs/"></script>
+</body>
+</html>

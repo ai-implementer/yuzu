@@ -100,6 +100,7 @@ fn 生成物一式が揃っている() {
     assert!(dist.join("__yuzu/build_id").is_file());
     assert!(dist.join("llms.txt").is_file());
     assert!(dist.join("llms-full.txt").is_file());
+    assert!(dist.join("404.html").is_file());
 
     // 通常ビルドにはオートリフレッシュを注入しない
     let index = fs::read_to_string(dist.join("index.html")).unwrap();
@@ -727,6 +728,32 @@ fn content_同伴の画像はコピーされ_src_が絶対_url_になる() {
     let html = fs::read_to_string(dist.join("guide/pics/index.html")).unwrap();
     assert!(html.contains(r#"src="/docs/guide/shot.png""#), "{html}");
     assert!(html.contains(r#"src="/docs/top.png""#));
+}
+
+#[test]
+fn 存在しないパス用の_404_ページが生成される() {
+    let dir = build_fixture(LiveReloadMode::None);
+    let html = fs::read_to_string(dir.path().join("dist/404.html")).unwrap();
+
+    assert!(html.contains("ページが見つかりません"), "{html}");
+    // 404 は任意のパスで表示されるため、リンク・アセットは base 付き絶対 URL
+    assert!(html.contains(r#"href="/docs/">トップページへ戻る"#));
+    assert!(html.contains(r#"href="/docs/_assets/css/theme.css""#));
+    // 検索ボックス付きヘッダーとサイドバー（ハイライトなし）で探し直せる
+    assert!(html.contains("yuzu-search-input"));
+    assert!(html.contains("sidebar-nav"));
+    assert!(!html.contains(r#"aria-current="page""#));
+
+    insta::assert_snapshot!("not_found_html", html);
+}
+
+#[test]
+fn public_の_404_html_はテーマ生成より優先される() {
+    let dir = build_fixture_with(|root| {
+        fs::write(root.join("public/404.html"), "<h1>独自の 404</h1>").unwrap();
+    });
+    let html = fs::read_to_string(dir.path().join("dist/404.html")).unwrap();
+    assert_eq!(html, "<h1>独自の 404</h1>");
 }
 
 #[test]

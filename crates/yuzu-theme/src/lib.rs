@@ -34,6 +34,7 @@ mod tests {
         for path in [
             "templates/base.jinja",
             "templates/page.jinja",
+            "templates/404.jinja",
             "templates/partials/sidebar.jinja",
             "templates/partials/toc.jinja",
             "templates/partials/toc-mobile.jinja",
