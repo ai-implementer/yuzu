@@ -210,6 +210,7 @@ v0.5（Phase 24〜29: tankan スタイル構文の全図種展開 / 検索コー
 | **32 ビルドのページ並列化（render）** | `render_site` のページループ（本文 HTML 生成〜テンプレート〜書き出し）を rayon で並列化。前提リファクタとしてハイライタのページ内状態をページローカルな `PageCodeRenderer` へ分離（`Cell` の `!Sync` が誤共有をコンパイル時に防ぐ）。集約（nav / llms / 404 / アセット）は直列のまま＝層構造不変。**決定性ゲート通過**: スレッド数 1/N・並列化前バイナリとの `diff -r` バイト同一。実測（release・--force）: render 支配のコーパス（201 ページ・ハイライト 1,200 ブロック＋mermaid SSR 200 図）で **2.07s → 0.69s（3.0 倍）**、テキスト主体 301 ページは 0.53s → 0.48s（トークナイズ支配 = Phase 33 の領分）。rayon は「凍結した設計判断」表へ追記 | ✅ |
 | **33 ビルドのページ並列化（index）＋実測** | 検索インデックスのページごとトークナイズ（compute_sections）を rayon 並列化。キャッシュ判定を先行パスに分け、miss があるときだけトークナイザを 1 回構築して `&Tokenizer` を共有（vaporetto Predictor は `Sync`＝コンパイルで確認）。集約（doc_id 採番・postings・fst）はページ順の直列のままで決定性維持（スレッド 1/N・改修前バイナリと `diff -r` バイト同一）。**実測（release・M 系 Mac）**: テキスト主体 301 ページのフル 0.54s→0.41s・1,001 ページのフル 1.6s→1.1s（1 スレッド比。無変更 0.33s・1 ページ編集 0.39s）。render 支配なら Phase 32 の 3.0 倍が効く。残る直列部はメタ抽出（comrak）・モデル展開・fst/書き出し | ✅ |
 | **34 dogfooding 改善** | 恒例のバッファ枠: **近接ブースト**（引用符なしの複数語クエリで、クエリ順に隣接出現するページを ×1.2/ペア のスコアで上位へ。フレーズ照合と同じ位置ロジックの soft 版で、ヒット集合は不変・タイポ/同義語展開語は対象外）・**フレーズ検索の発見性**（検索ドロップダウン末尾に `"..."` 構文のヒントを常時表示。引用符使用時は消える）・**ビルド時間の表示**（`build`/`dev` の完了ログに elapsed を追加。並列化の効果が見える）。OG メタ・favicon は今回も見送り | ✅ |
+| **35 検索スタックのライブラリ化＋OPFS キャッシュ** | 外部記事（DuckDB-Wasm/Lindera-Wasm/OPFS 構成のオフライン検索）を受けて調査した結果、トークナイザ差し替えは Phase 28 の却下理由（転送量 9〜35 倍）がそのまま当てはまるため**見送り、vaporetto＋自作 BM25 エンジンは維持**。代わりに (1) 集約ロジック（doc_id 採番・postings・fst・シャード分割・manifest 構築）を `yuzu-index`（yuzu-core 依存）から `yuzu-index-format::build`（yuzu-* 非依存）へ移設し、tankan と同水準の「分離可能な設計」を検索スタックにも適用、(2) `Manifest` に `contentHash`（terms.fst＋全シャード＋モデルバイトの sha256、`#[serde(default)]` で後方互換）を追加し、ブラウザ側 OPFS（Origin Private File System）キャッシュの版管理に使用。フェッチ・OPFS・wasm 起動のオーケストレーションは `crates/yuzu-search-wasm/js/search-client.js`＋汎用ブロブキャッシュ `opfs-cache.js`（新規、DOM 非依存）に切り出し、テーマの `search-ui.js` は DOM/UX 層に純化。OPFS は contentHash 不一致 or 非対応環境で即座にフェッチのみ経路へフォールバック（`yuzu search` ネイティブ CLI は無関係・無改修）。**サイズ実測ゲート**: scaffold 2 ページで `dist/_search` 合計が raw 922,722→931,133B（+0.91%）・gzip 626,774→630,538B（+0.60%）。新規 JS は語彙量に依存しない固定コスト（`search-client.js` 4.9KB＋`opfs-cache.js` 2.7KB）で、`search_bg.wasm` は 494KB のまま実質不変（Cargo 依存・エクスポート API を変えていないため）。決定性テスト（`content_hash` は同一入力で同一値・内容変更で別値）を追加 | ✅ |
 
 v0.7 以降の候補（このリリースではやらない）: ドキュメントバージョニング（要否含め保留中）・tantivy バックエンド（静的ホスティング方針と要調整）・i18n・VS Code 拡張（wasm プレビュー）・crates.io 公開とバイナリ配布・tankan の分離公開・yuzu 自身のドキュメントサイト公開・引用符なしクエリへの近接ブースト（フレーズ検索の発展形。Phase 34 の実運用結果で判断）。
 
@@ -288,9 +289,12 @@ Web 調査込みで確定済み。差し替えないこと。
 
 ```
 yuzu-cli → {yuzu-server, yuzu-render, yuzu-index, yuzu-core, yuzu-config}
-yuzu-render → yuzu-core, tankan     yuzu-index → yuzu-core
-yuzu-search-wasm ↔ yuzu-index-format（native/wasm でトークナイザ共有）
-tankan は yuzu-* 非依存の汎用ライブラリ（将来 crates.io へ分離可能な設計を維持）
+yuzu-render → yuzu-core, tankan     yuzu-index → yuzu-core, yuzu-index-format
+yuzu-search-wasm ↔ yuzu-index-format（native/wasm でトークナイザ・フォーマット共有）
+tankan・yuzu-index-format・yuzu-search-wasm は yuzu-render/yuzu-theme/yuzu-core/
+yuzu-config 非依存の汎用ライブラリ（将来 crates.io/npm へ分離可能な設計を維持。
+検索スタックの書き側集約ロジックは yuzu-index-format::build に、読み側クエリエンジンは
+SearchEngine にあり、yuzu-index はページ抽出とファイル I/O だけを担う薄い呼び出し側）
 ```
 
 ## ワークスペース構成
@@ -353,7 +357,15 @@ cargo fmt --all
   初回ロードが manifest 1 fetch で済むメリットが勝つ（数千 doc で数十 KB 程度）
 - 設計ノートの「rkyv で直列化」は**不採用**: postings は元々 delta+varint の自前設計で
   rkyv の出番がなく、fragment は JS が直接読むため JSON が自然（wasm サイズ・依存とも有利）
-- 検索 UI の確認は `yuzu preview` / `yuzu dev` 経由で行う（`file://` では fetch が動かない）
+- 検索 UI の確認は `yuzu preview` / `yuzu dev` 経由で行う（`file://` では fetch が動かない。
+  OPFS も同様にセキュアコンテキスト＝https か localhost が必要）
+- **OPFS によるブラウザ側キャッシュ**（Phase 35）: `manifest.json` は毎回ネットワークから
+  取得し、`contentHash`（terms.fst ＋ 全シャード ＋ モデルバイトの sha256）が OPFS 保存済みの
+  前回 manifest と一致すれば `terms.fst`/`model.zst`/シャードは OPFS から読み、再訪問時の
+  再フェッチを省略する。不一致・OPFS 非対応・非セキュアコンテキストでは既存のフェッチのみ
+  経路へ自然にフォールバックする（`crates/yuzu-search-wasm/js/search-client.js` /
+  `opfs-cache.js`）。DuckDB-Wasm・Lindera-Wasm への置き換えは**行っていない**
+  （Phase 28 の却下理由がそのまま当てはまるため。既存の vaporetto＋自作 BM25 エンジンを維持）
 
 ### llms.txt まわりの実装メモ
 

@@ -23,6 +23,12 @@ pub struct Manifest {
     /// v0.3 以前の manifest には無いフィールドなので default で互換を保つ
     #[serde(default)]
     pub synonyms: Vec<Vec<String>>,
+    /// このインデックス一式（terms.fst ＋ 全シャード ＋ モデルバイト）の内容ハッシュ
+    /// （sha256 hex）。ブラウザ側の OPFS キャッシュの版管理に使う。
+    /// [`crate::build`] は空文字で返し、実際の計算は呼び出し側（yuzu-index）が行う
+    /// （このクレートに sha2 依存を持ち込まないため）。無いと空文字扱い
+    #[serde(default)]
+    pub content_hash: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,6 +1,6 @@
-// yuzu の検索 UI（Pagefind 型の 2 段フェッチ）。
-// wasm（純計算）は _search/search.js 経由で遅延ロードし、
-// manifest / terms.fst / model.zst → 必要シャード → 上位ヒットの fragment の順に fetch する。
+// yuzu の検索 UI（DOM・キーボード操作・IME・aria 同期のみを担当）。
+// フェッチ・OPFS キャッシュ・wasm 起動は _search/search-client.js（SEARCH_BASE 配下に
+// 同梱される、検索エンジンと対になる手書きのクライアント）に委譲する。
 // 検索エンジン・トークナイザはネイティブの `yuzu search` と同一コード。
 
 const script = document.currentScript || document.querySelector("script[data-search-base]");
@@ -15,14 +15,20 @@ const resultsBox = document.getElementById("yuzu-search-results");
 if (input && resultsBox) setup();
 
 function setup() {
-  let engine = null;
-  let enginePromise = null;
-  const shardCache = new Set();
-  const fragmentCache = new Map();
+  // SEARCH_BASE は baseUrl 設定でページごとに変わるビルド時テンプレート値なので、
+  // 静的 import ではなく動的 import で解決する（wasm グルーの読み込みと同じ理由）
+  let clientPromise = null;
   let timer = null;
   let selected = -1;
   let composing = false; // IME 変換中フラグ
   let compositionEndedAt = -1; // 直前の compositionend の時刻（確定 Enter の除外用）
+
+  function ensureClient() {
+    clientPromise ??= import(SEARCH_BASE + "search-client.js").then(({ createSearchClient }) =>
+      createSearchClient({ searchBase: SEARCH_BASE }),
+    );
+    return clientPromise;
+  }
 
   // "/" or Cmd/Ctrl+K でフォーカス
   document.addEventListener("keydown", (ev) => {
@@ -35,9 +41,10 @@ function setup() {
 
   // 初回フォーカスでエンジンを遅延初期化（読み込み中の表示付き）
   input.addEventListener("focus", () => {
-    if (!engine && !enginePromise) {
+    if (!clientPromise) {
       showMessage("検索インデックスを読み込み中…");
-      ensureEngine()
+      ensureClient()
+        .then((client) => client.ensureEngine())
         .then(() => {
           // 読み込み中メッセージだけが出ている状態なら閉じる
           if (resultsBox.querySelector(".search-loading")) close();
@@ -106,53 +113,18 @@ function setup() {
     }
   }
 
-  async function ensureEngine() {
-    if (engine) return engine;
-    enginePromise ??= (async () => {
-      const [mod, manifest, terms, model] = await Promise.all([
-        import(SEARCH_BASE + "search.js"),
-        fetchBytes("manifest.json"),
-        fetchBytes("terms.fst"),
-        fetchBytes("model.zst"),
-      ]);
-      await mod.default({ module_or_path: SEARCH_BASE + "search_bg.wasm" });
-      engine = { mod, instance: new mod.YuzuSearch(manifest, terms, model) };
-      return engine;
-    })();
-    return enginePromise;
-  }
-
   async function runSearch(query) {
     if (!query) {
       close();
       return;
     }
-    const { instance } = await ensureEngine();
-
-    // 未取得シャードだけ fetch して登録
-    const needed = Array.from(instance.neededShards(query)).filter((id) => !shardCache.has(id));
-    await Promise.all(
-      needed.map(async (id) => {
-        const bytes = await fetchBytes(`index/${String(id).padStart(4, "0")}.bin`);
-        instance.loadShard(id, bytes);
-        shardCache.add(id);
-      }),
-    );
-
-    const { total, hits } = JSON.parse(instance.search(query, LIMIT));
-    const fragments = await Promise.all(hits.map((h) => fetchFragment(h.docId)));
-    render(query, instance, fragments, total);
+    const client = await ensureClient();
+    const { total, hits } = await client.search(query, LIMIT);
+    const fragments = await Promise.all(hits.map((h) => client.fetchFragment(h.docId)));
+    render(client, query, fragments, total);
   }
 
-  async function fetchFragment(docId) {
-    if (!fragmentCache.has(docId)) {
-      const res = await fetch(SEARCH_BASE + `fragment/${docId}.json`);
-      fragmentCache.set(docId, await res.json());
-    }
-    return fragmentCache.get(docId);
-  }
-
-  function render(query, instance, fragments, total) {
+  function render(client, query, fragments, total) {
     selected = -1;
     input.removeAttribute("aria-activedescendant");
     resultsBox.innerHTML = "";
@@ -181,16 +153,16 @@ function setup() {
       a.href = BASE + fragment.url + (fragment.anchor ? "#" + fragment.anchor : "");
       const title = document.createElement("div");
       title.className = "search-hit-title";
-      title.append(...markSegments(instance, fragment.title, query));
+      title.append(...markSegments(client, fragment.title, query));
       if (fragment.heading) {
         const crumb = document.createElement("span");
         crumb.className = "search-hit-crumb";
-        crumb.append(" › ", ...markSegments(instance, fragment.heading, query));
+        crumb.append(" › ", ...markSegments(client, fragment.heading, query));
         title.append(crumb);
       }
       const excerpt = document.createElement("div");
       excerpt.className = "search-hit-excerpt";
-      excerpt.append(...markSegments(instance, fragment.text, query, EXCERPT_CHARS));
+      excerpt.append(...markSegments(client, fragment.text, query, EXCERPT_CHARS));
       a.append(title, excerpt);
       resultsBox.append(a);
     }
@@ -210,8 +182,8 @@ function setup() {
   // wasm の excerpt（エンジンと同一の分かち書き・正規化）で <mark> 断片列を作る。
   // XSS 安全: 文字列は必ず createTextNode / textContent 経由で DOM 化する。
   // maxChars 既定 10000 = タイトル用の実質切り詰めなし（一致がなければ原文のまま）
-  function markSegments(instance, text, query, maxChars = 10000) {
-    const segments = JSON.parse(instance.excerpt(text, query, maxChars));
+  function markSegments(client, text, query, maxChars = 10000) {
+    const segments = client.excerpt(text, query, maxChars);
     return segments.map((seg) => {
       if (!seg.mark) return document.createTextNode(seg.text);
       const mark = document.createElement("mark");
@@ -246,11 +218,5 @@ function setup() {
     console.error("[yuzu-search]", err);
     resultsBox.innerHTML = `<div class="search-empty">検索を初期化できませんでした（コンソール参照）</div>`;
     open();
-  }
-
-  async function fetchBytes(rel) {
-    const res = await fetch(SEARCH_BASE + rel);
-    if (!res.ok) throw new Error(`fetch ${rel}: ${res.status}`);
-    return new Uint8Array(await res.arrayBuffer());
   }
 }

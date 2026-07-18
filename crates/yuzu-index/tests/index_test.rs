@@ -65,6 +65,65 @@ fn 生成物一式が_search_に揃う() {
         manifest["tokenizer"]["modelSha256"].as_str().unwrap().len(),
         64
     );
+    // content_hash（OPFS キャッシュの版管理用）は sha256 hex（64桁）
+    assert_eq!(manifest["contentHash"].as_str().unwrap().len(), 64);
+}
+
+/// dist/_search/manifest.json から contentHash を読む
+fn content_hash_of(dist: &Path) -> String {
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dist.join("_search/manifest.json")).unwrap())
+            .unwrap();
+    manifest["contentHash"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn content_hash_は同一入力なら決定的() {
+    let (_content1, dist1) = build_fixture();
+    let (_content2, dist2) = build_fixture();
+    assert_eq!(
+        content_hash_of(dist1.path()),
+        content_hash_of(dist2.path()),
+        "同一フィクスチャの2回ビルドは同じ content_hash になる"
+    );
+}
+
+#[test]
+fn content_hash_は内容が変わると変化する() {
+    let (_content, dist_before) = build_fixture();
+
+    let content = tempfile::tempdir().unwrap();
+    write(
+        content.path(),
+        "index.md",
+        "---\ntitle: ホーム\norder: 1\n---\n# ようこそ\n\nyuzu は Markdown から静的サイトを生成するツールです。\n",
+    );
+    write(
+        content.path(),
+        "guide/getting-started.md",
+        "---\ntitle: はじめに\n---\n# はじめに\n\nビルドは yuzu build を実行します。全文検索はブラウザで動きます。\n\n## 検索の使い方\n\n検索ボックスに日本語を入力します。検索は誤字にも寛容です。\n",
+    );
+    write(
+        content.path(),
+        "guide/theme.md",
+        "---\ntitle: テーマ\n---\n# テーマ\n\nテーマは theme ディレクトリで上書きできます。\n",
+    );
+    // 追加ページ 1 つぶん語彙が変わる
+    write(
+        content.path(),
+        "guide/extra.md",
+        "---\ntitle: 追加\n---\n# 追加\n\n新しいページを1つ追加しました。\n",
+    );
+    let md_opts = MarkdownOptions::default();
+    let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+    let dist_after = tempfile::tempdir().unwrap();
+    build_search_index(&site, &md_opts, &IndexParams::default(), dist_after.path()).unwrap();
+
+    assert_ne!(
+        content_hash_of(dist_before.path()),
+        content_hash_of(dist_after.path()),
+        "内容が変わると content_hash も変わる"
+    );
 }
 
 #[test]

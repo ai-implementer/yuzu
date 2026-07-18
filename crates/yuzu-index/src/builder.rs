@@ -1,6 +1,6 @@
 //! インデックス構築: サイトモデル → `dist/_search/` 一式
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -11,8 +11,7 @@ use sha2::{Digest, Sha256};
 
 use yuzu_core::{BuildCache, CachedSection, MarkdownOptions, OutputTracker, Page, SiteModel};
 use yuzu_index_format::{
-    Bm25Params, FORMAT_VERSION, Fragment, Manifest, Posting, ShardMeta, Tokenizer, TokenizerMeta,
-    TypoParams, encode_shard,
+    Bm25Params, DocumentInput, SectionInput, Tokenizer, TokenizerMeta, TypoParams, build,
 };
 
 use crate::SEARCH_DIR_NAME;
@@ -104,25 +103,6 @@ impl IndexSession {
     }
 }
 
-/// 同義語グループを正規化する（決定的な manifest のため）:
-/// グループ内の重複・空文字列を除去してソートし、1 語以下のグループを捨て、
-/// グループ列自体もソートする
-fn normalized_synonyms(groups: &[Vec<String>]) -> Vec<Vec<String>> {
-    let mut out: Vec<Vec<String>> = groups
-        .iter()
-        .map(|group| {
-            let mut g: Vec<String> = group.iter().filter(|m| !m.is_empty()).cloned().collect();
-            g.sort();
-            g.dedup();
-            g
-        })
-        .filter(|g| g.len() >= 2)
-        .collect();
-    out.sort();
-    out.dedup();
-    out
-}
-
 /// envKey 用: 辞書（または同梱モデル）バイトの sha256
 pub fn model_fingerprint(dictionary: Option<&Path>) -> Result<String, IndexError> {
     let bytes: Vec<u8> = match dictionary {
@@ -193,47 +173,44 @@ pub fn build_search_index_with(
         })
         .collect::<Result<_, IndexError>>()?;
 
-    // セクション（h2/h3 境界）ごとの tf 集計（重み付き）。1 doc = 1 セクション。
-    // 集約（doc_id 採番・postings・fst）は決定性のためページ順の直列に保つ
-    let mut doc_lens: Vec<u32> = Vec::new();
-    let mut terms: BTreeMap<String, Vec<Posting>> = BTreeMap::new();
-    let mut fragments: Vec<Fragment> = Vec::new();
-    let mut doc_id: u32 = 0;
+    // ページ → ドキュメント入力への薄いマッピング。doc_id 採番・postings 集約・
+    // fst/シャード構築・manifest 生成は yuzu-index-format::build（yuzu 非依存の
+    // 汎用ロジック）に委譲する
+    let docs: Vec<DocumentInput> = site
+        .pages
+        .iter()
+        .zip(&sections_per_page)
+        .map(|(page, sections)| DocumentInput {
+            title: page.title.clone(),
+            url: page.route.clone(),
+            sections: sections
+                .iter()
+                .map(|s| SectionInput {
+                    anchor: s.anchor.clone(),
+                    heading: s.heading.clone(),
+                    text: s.text.clone(),
+                    doc_len: s.doc_len,
+                    tf: s.tf.clone(),
+                })
+                .collect(),
+        })
+        .collect();
 
-    for (page, sections) in site.pages.iter().zip(sections_per_page) {
-        for section in sections {
-            doc_lens.push(section.doc_len);
-            // doc_id 昇順で処理しているので postings は自然に昇順になる
-            for (term, count, positions) in section.tf {
-                terms.entry(term).or_default().push(Posting {
-                    doc_id,
-                    tf: count,
-                    positions,
-                });
-            }
-            fragments.push(Fragment {
-                title: page.title.clone(),
-                heading: section.heading,
-                url: page.route.clone(),
-                anchor: section.anchor,
-                text: section.text,
-            });
-            doc_id += 1;
-        }
-    }
-
-    // term 辞書（fst は辞書順挿入が必須。BTreeMap の走査順で満たす）
-    let mut fst_builder = fst::MapBuilder::memory();
-    for (term_id, term) in terms.keys().enumerate() {
-        fst_builder.insert(term, term_id as u64)?;
-    }
-    let terms_fst = fst_builder.into_inner()?;
-
-    // postings の doc_id 昇順を保証（HashMap 経由でも上の理由で保たれるが、明示的に）
-    let mut postings: Vec<Vec<Posting>> = terms.into_values().collect();
-    for p in &mut postings {
-        p.sort_unstable_by_key(|posting| posting.doc_id);
-    }
+    let build_opts = yuzu_index_format::BuildOptions {
+        tokenizer: TokenizerMeta {
+            kind: "vaporetto".to_string(),
+            model_file: "model.zst".to_string(),
+            model_sha256: hex(&Sha256::digest(&model_bytes)),
+        },
+        bm25: Bm25Params::default(),
+        typo: TypoParams {
+            enabled: params.typo_enabled,
+            max_edits: params.max_edits.min(1),
+        },
+        max_terms_per_shard: params.max_terms_per_shard,
+        synonyms: params.synonyms.clone(),
+    };
+    let built = build(&docs, &build_opts)?;
 
     // 書き出し。インクリメンタル時（outputs あり）は全削除をやめ、
     // compare-write ＋孤児掃除マニフェスト（cli 側）で差分管理する
@@ -260,58 +237,37 @@ pub fn build_search_index_with(
         Ok(())
     };
 
-    // シャード分割（term_id の連続範囲）と書き出し
-    let chunk = params.max_terms_per_shard.max(1) as usize;
-    let mut shards_meta: Vec<ShardMeta> = Vec::new();
-    for (i, chunk_postings) in postings.chunks(chunk).enumerate() {
-        let file = format!("index/{i:04}.bin");
-        write(&file, &encode_shard(chunk_postings))?;
-        let start = (i * chunk) as u32;
-        shards_meta.push(ShardMeta {
-            file,
-            term_start: start,
-            term_end: start + chunk_postings.len() as u32,
-        });
+    // シャード書き出し
+    for (file, bytes) in &built.shards {
+        write(file, bytes)?;
     }
 
     // fragment（JS が直接読むので 1 doc = 1 JSON）
-    for (doc_id, fragment) in fragments.iter().enumerate() {
+    for (doc_id, fragment) in built.fragments.iter().enumerate() {
         write(
             &format!("fragment/{doc_id}.json"),
             &serde_json::to_vec(fragment)?,
         )?;
     }
 
-    // モデルと manifest
+    // モデル
     write("model.zst", &model_bytes)?;
 
-    let avg_doc_len = if doc_lens.is_empty() {
-        0.0
-    } else {
-        doc_lens.iter().map(|&l| l as f64).sum::<f64>() as f32 / doc_lens.len() as f32
-    };
-    let manifest = Manifest {
-        version: FORMAT_VERSION,
-        tokenizer: TokenizerMeta {
-            kind: "vaporetto".to_string(),
-            model_file: "model.zst".to_string(),
-            model_sha256: hex(&Sha256::digest(&model_bytes)),
-        },
-        bm25: Bm25Params::default(),
-        typo: TypoParams {
-            enabled: params.typo_enabled,
-            max_edits: params.max_edits.min(1),
-        },
-        doc_count: fragments.len() as u32,
-        avg_doc_len,
-        doc_lens,
-        term_count: postings.len() as u32,
-        terms_file: "terms.fst".to_string(),
-        shards: shards_meta,
-        synonyms: normalized_synonyms(&params.synonyms),
-    };
+    // content_hash: ブラウザ側 OPFS キャッシュの版管理に使う識別子。
+    // terms.fst ＋ 全シャード（連番順）＋ モデルバイトを連結してハッシュする
+    // （manifest.json 以外の OPFS キャッシュ対象バイナリすべてを網羅するのが要点）。
+    // yuzu-index-format::build はこのフィールドを空文字で返すので、ここで計算して埋める
+    let mut hasher = Sha256::new();
+    hasher.update(&built.terms_fst);
+    for (_, bytes) in &built.shards {
+        hasher.update(bytes);
+    }
+    hasher.update(&model_bytes);
+    let mut manifest = built.manifest;
+    manifest.content_hash = hex(&hasher.finalize());
+
     write("manifest.json", &serde_json::to_vec_pretty(&manifest)?)?;
-    write("terms.fst", &terms_fst)?;
+    write("terms.fst", &built.terms_fst)?;
 
     copy_wasm_assets(&search_dir, &write)?;
 
@@ -331,10 +287,15 @@ pub fn build_search_index_with(
     Ok(stats)
 }
 
-/// vendor 済み wasm 成果物を dist へコピーする。
+/// vendor 済み wasm 成果物（＋対になる手書き JS クライアント）を dist へコピーする。
 /// 未 vendor（プレースホルダのみ）の場合は警告してスキップ（ビルドは失敗させない）
 fn copy_wasm_assets(_search_dir: &Path, write: &WriteFn<'_>) -> Result<(), IndexError> {
-    let required = ["search.js", "search_bg.wasm"];
+    let required = [
+        "search.js",
+        "search_bg.wasm",
+        "search-client.js",
+        "opfs-cache.js",
+    ];
     let missing: Vec<&str> = required
         .iter()
         .filter(|name| SearchAssets::get(name).is_none())

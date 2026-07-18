@@ -32,5 +32,10 @@ wasm-bindgen --target web --no-typescript --out-name search --out-dir "$DEST" \
 
 wasm-opt -Oz --strip-debug -o "$DEST/search_bg.wasm" "$DEST/search_bg.wasm"
 
+# 手書きの JS クライアント（フェッチ ＋ OPFS キャッシュ ＋ wasm 起動）は
+# crates/yuzu-search-wasm/js/ に同居しており、生成物と同じ vendor 先へコピーする
+cp "$ROOT/crates/yuzu-search-wasm/js/"*.js "$DEST/"
+
 echo "vendored:"
-ls -lh "$DEST"/search.js "$DEST"/search_bg.wasm | awk '{print "  " $9 ": " $5}'
+ls -lh "$DEST"/search.js "$DEST"/search_bg.wasm "$DEST"/search-client.js "$DEST"/opfs-cache.js \
+  | awk '{print "  " $9 ": " $5}'

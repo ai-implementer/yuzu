@@ -4,13 +4,16 @@
 //! フォーマットはすべて `yuzu-index-format` にあり、ネイティブの `yuzu search` と
 //! 同一コードを共有する（トークナイザ整合の保証）。
 //!
-//! fetch は JS 側（テーマの search-ui.js）の責務（Pagefind 方式）:
-//! 1. manifest.json / terms.fst / model.zst を fetch して [`YuzuSearch`] を構築
+//! fetch は JS 側（同梱の `js/search-client.js`。テーマの search-ui.js から
+//! 利用される）の責務（Pagefind 方式）:
+//! 1. manifest.json / terms.fst / model.zst を fetch（OPFS キャッシュ経由）して
+//!    [`YuzuSearch`] を構築
 //! 2. `needed_shards(query)` → 未取得シャードを fetch → `load_shard`
 //! 3. `search(query, limit)` → 上位ヒットの fragment/<docId>.json を fetch して描画
 //!
-//! ビルドは `scripts/build-search-wasm.sh`（wasm-bindgen-cli + wasm-opt を直接叩く。
-//! rustwasm org サンセットのため wasm-pack には寄せない）。
+//! ビルドは `scripts/build-search-wasm.sh`（wasm-bindgen-cli + wasm-opt を直接叩き、
+//! `js/` の手書き JS も同じ vendor 先へコピーする。rustwasm org サンセットのため
+//! wasm-pack には寄せない）。
 
 use wasm_bindgen::prelude::*;
 

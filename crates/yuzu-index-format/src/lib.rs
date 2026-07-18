@@ -18,6 +18,7 @@
 //!
 //! wasm バイナリを軽く保つため、この crate は依存を必要最小限に保つこと。
 
+mod builder;
 mod engine;
 mod error;
 mod excerpt;
@@ -26,6 +27,7 @@ mod shard;
 mod tokenizer;
 pub mod varint;
 
+pub use builder::{BuildOptions, BuiltIndex, DocumentInput, SectionInput, build};
 pub use engine::{Hit, SearchEngine};
 pub use error::FormatError;
 pub use excerpt::{ExcerptSegment, make_excerpt};

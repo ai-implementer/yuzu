@@ -577,6 +577,7 @@ mod tests {
             terms_file: "terms.fst".into(),
             shards: shards_meta,
             synonyms,
+            content_hash: String::new(),
         };
 
         let mut engine =
