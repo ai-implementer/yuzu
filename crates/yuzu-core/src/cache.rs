@@ -33,7 +33,8 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v5: state / ER / class 図のスタイル構文 SSR（従来フォールバックが SSR 成功へ）
 /// - v6: OpenAPI の schemas 一覧＋Swagger 2.0 対応（components を持つ既存ページの
 ///   本文 HTML も変わる）
-pub const CACHE_FORMAT_VERSION: u32 = 6;
+/// - v7: mindmap / timeline の SSR 追加（従来フォールバックが SSR 成功へ）
+pub const CACHE_FORMAT_VERSION: u32 = 7;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

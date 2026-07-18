@@ -32,6 +32,8 @@ impl DiagramKind {
                 | Self::Er
                 | Self::Gantt
                 | Self::Pie
+                | Self::Mindmap
+                | Self::Timeline
         )
     }
 }
@@ -163,6 +165,8 @@ mod tests {
         assert!(DiagramKind::Er.is_supported());
         assert!(DiagramKind::Gantt.is_supported());
         assert!(DiagramKind::Pie.is_supported());
+        assert!(DiagramKind::Mindmap.is_supported());
+        assert!(DiagramKind::Timeline.is_supported());
         assert!(!DiagramKind::Journey.is_supported());
         assert!(!DiagramKind::Unknown.is_supported());
     }

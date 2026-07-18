@@ -255,7 +255,7 @@ fn mermaid_ssr_はページ単位で_mermaid_js_の要否が決まる() {
         .unwrap();
         fs::write(
             root.join("content/fallback.md"),
-            "---\ntitle: マインドマップ\n---\n# 図\n\n```mermaid\nmindmap\n  root((中心))\n```\n",
+            "---\ntitle: ジャーニー\n---\n# 図\n\n```mermaid\njourney\n    title 一日\n    section 朝\n      起床: 5: 私\n```\n",
         )
         .unwrap();
     });
@@ -269,8 +269,8 @@ fn mermaid_ssr_はページ単位で_mermaid_js_の要否が決まる() {
     assert!(!seq.contains("pre class=\"mermaid\""), "フォールバックなし");
     assert!(!seq.contains("mermaid.min.js"), "mermaid.js 不要");
 
-    // 未対応図種（mindmap）のページ: フォールバックして mermaid.js を読み込む
-    // （classDiagram / pie は Phase 16 で SSR 対応済みのため例に使えない）
+    // 未対応図種（journey）のページ: フォールバックして mermaid.js を読み込む
+    // （mindmap / timeline は Phase 27 で SSR 対応済みのため例に使えない）
     let fallback = fs::read_to_string(dist.join("fallback/index.html")).unwrap();
     assert!(fallback.contains("pre class=\"mermaid\""), "フォールバック");
     assert!(fallback.contains("mermaid.min.js"), "mermaid.js 必要");

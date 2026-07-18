@@ -69,6 +69,17 @@ impl SvgBuilder {
         );
     }
 
+    pub fn ellipse(&mut self, class: &str, cx: f32, cy: f32, rx: f32, ry: f32, extra: &str) {
+        let _ = writeln!(
+            self.out,
+            r#"<ellipse class="{class}" cx="{}" cy="{}" rx="{}" ry="{}"{extra}/>"#,
+            fmt_num(cx),
+            fmt_num(cy),
+            fmt_num(rx),
+            fmt_num(ry),
+        );
+    }
+
     pub fn path(&mut self, class: &str, d: &str, extra: &str) {
         let _ = writeln!(self.out, r#"<path class="{class}" d="{d}"{extra}/>"#);
     }

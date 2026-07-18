@@ -1,0 +1,52 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-timeline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 783 205.5" width="783" height="205.5" role="img" aria-label="Timeline of Industrial Revolution" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-title { font-weight: bold; }
+.tankan .tk-tl-band { fill-opacity: 0.3; }
+.tankan .tk-tl-period { fill-opacity: 0.55; stroke: #d1d9e0; }
+.tankan .tk-tl-event { fill-opacity: 0.18; stroke: #d1d9e0; }
+.tankan .tk-tl-line { stroke: #d1d9e0; }
+.tankan .tk-tl-c0 { fill: var(--tankan-timeline-1, #5778a4); }
+.tankan .tk-tl-c1 { fill: var(--tankan-timeline-2, #e49444); }
+.tankan .tk-tl-c2 { fill: var(--tankan-timeline-3, #d1615d); }
+.tankan .tk-tl-c3 { fill: var(--tankan-timeline-4, #85b6b2); }
+.tankan .tk-tl-c4 { fill: var(--tankan-timeline-5, #6a9f58); }
+.tankan .tk-tl-c5 { fill: var(--tankan-timeline-6, #e7ca60); }
+.tankan .tk-tl-c6 { fill: var(--tankan-timeline-7, #a87c9f); }
+.tankan .tk-tl-c7 { fill: var(--tankan-timeline-8, #967662); }
+</style>
+<text class="tk-title" x="391.5" y="28" text-anchor="middle">Timeline of Industrial Revolution</text>
+<rect class="tk-tl-band tk-tl-c0" x="16" y="43.5" width="560" height="27.5" rx="4"/>
+<text class="tk-tl-section" x="296" y="62.5" text-anchor="middle">17th-20th century</text>
+<rect class="tk-tl-band tk-tl-c1" x="588" y="43.5" width="178.5" height="27.5" rx="4"/>
+<text class="tk-tl-section" x="677.5" y="62.5" text-anchor="middle">21st century</text>
+<line class="tk-tl-line" x1="105.5" y1="111" x2="105.5" y2="119"/>
+<line class="tk-tl-line" x1="296" y1="111" x2="296" y2="119"/>
+<line class="tk-tl-line" x1="487" y1="111" x2="487" y2="119"/>
+<line class="tk-tl-line" x1="677.5" y1="111" x2="677.5" y2="119"/>
+<rect class="tk-tl-period tk-tl-c0" x="16" y="79" width="178.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="105.5" y="100" text-anchor="middle">Industry 1.0</text>
+<rect class="tk-tl-period tk-tl-c0" x="206.5" y="79" width="178.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="296" y="100" text-anchor="middle">Industry 2.0</text>
+<rect class="tk-tl-period tk-tl-c0" x="397.5" y="79" width="178.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="487" y="100" text-anchor="middle">Industry 3.0</text>
+<rect class="tk-tl-period tk-tl-c1" x="588" y="79" width="178.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="677.5" y="100" text-anchor="middle">Industry 4.0</text>
+<rect class="tk-tl-event tk-tl-c0" x="16" y="119" width="178.5" height="71" rx="4"/>
+<text class="tk-tl-text" x="105.5" y="139.5" text-anchor="middle">Machinery, Water power,</text>
+<text class="tk-tl-text" x="105.5" y="159" text-anchor="middle">Steam</text>
+<text class="tk-tl-text" x="105.5" y="178.5" text-anchor="middle">power</text>
+<rect class="tk-tl-event tk-tl-c0" x="206.5" y="119" width="178.5" height="71" rx="4"/>
+<text class="tk-tl-text" x="296" y="139.5" text-anchor="middle">Electricity, Internal</text>
+<text class="tk-tl-text" x="296" y="159" text-anchor="middle">combustion engine, Mass</text>
+<text class="tk-tl-text" x="296" y="178.5" text-anchor="middle">production</text>
+<rect class="tk-tl-event tk-tl-c0" x="397.5" y="119" width="178.5" height="51" rx="4"/>
+<text class="tk-tl-text" x="487" y="139.5" text-anchor="middle">Electronics, Computers,</text>
+<text class="tk-tl-text" x="487" y="159" text-anchor="middle">Automation</text>
+<rect class="tk-tl-event tk-tl-c1" x="588" y="119" width="178.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="677.5" y="139.5" text-anchor="middle">AI, Big data, IoT</text>
+</svg>

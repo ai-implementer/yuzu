@@ -1,0 +1,39 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-mindmap" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 590.5 109" width="590.5" height="109" role="img" aria-label="柚子の構想" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-mm-root { fill: #f6f8fa; stroke: #d1d9e0; stroke-width: 1.5; }
+.tankan .tk-mm-root-label { font-weight: bold; }
+.tankan .tk-mm-node { fill-opacity: 0.15; }
+.tankan .tk-mm-b0 { fill: var(--tankan-mindmap-1, #5778a4); stroke: var(--tankan-mindmap-1, #5778a4); }
+.tankan .tk-mm-b1 { fill: var(--tankan-mindmap-2, #e49444); stroke: var(--tankan-mindmap-2, #e49444); }
+.tankan .tk-mm-b2 { fill: var(--tankan-mindmap-3, #d1615d); stroke: var(--tankan-mindmap-3, #d1615d); }
+.tankan .tk-mm-b3 { fill: var(--tankan-mindmap-4, #85b6b2); stroke: var(--tankan-mindmap-4, #85b6b2); }
+.tankan .tk-mm-b4 { fill: var(--tankan-mindmap-5, #6a9f58); stroke: var(--tankan-mindmap-5, #6a9f58); }
+.tankan .tk-mm-b5 { fill: var(--tankan-mindmap-6, #e7ca60); stroke: var(--tankan-mindmap-6, #e7ca60); }
+.tankan .tk-mm-b6 { fill: var(--tankan-mindmap-7, #a87c9f); stroke: var(--tankan-mindmap-7, #a87c9f); }
+.tankan .tk-mm-b7 { fill: var(--tankan-mindmap-8, #967662); stroke: var(--tankan-mindmap-8, #967662); }
+.tankan .tk-mm-edge { fill: none; stroke-width: 2; stroke-opacity: 0.7; }
+</style>
+<path class="tk-mm-edge tk-mm-b0" d="M 258.5 54.5 C 276.5 54.5 276.5 54.5 294.5 54.5"/>
+<path class="tk-mm-edge tk-mm-b1" d="M 206 54.5 C 188 54.5 188 54.5 170 54.5"/>
+<path class="tk-mm-edge tk-mm-b0" d="M 416.5 54.5 C 434.5 54.5 434.5 33 452.5 33"/>
+<path class="tk-mm-edge tk-mm-b0" d="M 416.5 54.5 C 434.5 54.5 434.5 76.5 452.5 76.5"/>
+<path class="tk-mm-edge tk-mm-b1" d="M 118 54.5 C 100 54.5 100 54.5 82 54.5"/>
+<circle class="tk-mm-root" cx="232" cy="54.5" r="26"/>
+<text class="tk-mm-root-label" x="232" y="59.5" text-anchor="middle">柚子</text>
+<rect class="tk-mm-node tk-mm-b0" x="294.5" y="28" width="122" height="53" rx="26.5"/>
+<text class="tk-mm-label" x="355.5" y="49.5" text-anchor="middle">特徴</text>
+<text class="tk-mm-label" x="355.5" y="69.5" text-anchor="middle">（日本語対応）</text>
+<rect class="tk-mm-node tk-mm-b0" x="452.5" y="16" width="122" height="33.5" rx="17"/>
+<text class="tk-mm-label" x="513.5" y="37.5" text-anchor="middle">静的サイト生成</text>
+<rect class="tk-mm-node tk-mm-b0" x="452.5" y="59.5" width="80" height="33.5" rx="17"/>
+<text class="tk-mm-label" x="492.5" y="81.5" text-anchor="middle">全文検索</text>
+<rect class="tk-mm-node tk-mm-b1" x="118" y="38" width="52" height="33.5" rx="17"/>
+<text class="tk-mm-label" x="144" y="59.5" text-anchor="middle">用途</text>
+<rect class="tk-mm-node tk-mm-b1" x="16" y="38" width="66" height="33.5" rx="17"/>
+<text class="tk-mm-label" x="49" y="59.5" text-anchor="middle">設計書</text>
+</svg>

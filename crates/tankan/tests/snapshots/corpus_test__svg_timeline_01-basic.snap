@@ -1,0 +1,46 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-timeline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 394 170.5" width="394" height="170.5" role="img" aria-label="History of Social Media Platform" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-title { font-weight: bold; }
+.tankan .tk-tl-band { fill-opacity: 0.3; }
+.tankan .tk-tl-period { fill-opacity: 0.55; stroke: #d1d9e0; }
+.tankan .tk-tl-event { fill-opacity: 0.18; stroke: #d1d9e0; }
+.tankan .tk-tl-line { stroke: #d1d9e0; }
+.tankan .tk-tl-c0 { fill: var(--tankan-timeline-1, #5778a4); }
+.tankan .tk-tl-c1 { fill: var(--tankan-timeline-2, #e49444); }
+.tankan .tk-tl-c2 { fill: var(--tankan-timeline-3, #d1615d); }
+.tankan .tk-tl-c3 { fill: var(--tankan-timeline-4, #85b6b2); }
+.tankan .tk-tl-c4 { fill: var(--tankan-timeline-5, #6a9f58); }
+.tankan .tk-tl-c5 { fill: var(--tankan-timeline-6, #e7ca60); }
+.tankan .tk-tl-c6 { fill: var(--tankan-timeline-7, #a87c9f); }
+.tankan .tk-tl-c7 { fill: var(--tankan-timeline-8, #967662); }
+</style>
+<text class="tk-title" x="197" y="28" text-anchor="middle">History of Social Media Platform</text>
+<line class="tk-tl-line" x1="56.5" y1="75" x2="56.5" y2="83"/>
+<line class="tk-tl-line" x1="150" y1="75" x2="150" y2="83"/>
+<line class="tk-tl-line" x1="150" y1="115" x2="150" y2="123"/>
+<line class="tk-tl-line" x1="243.5" y1="75" x2="243.5" y2="83"/>
+<line class="tk-tl-line" x1="337" y1="75" x2="337" y2="83"/>
+<rect class="tk-tl-period tk-tl-c0" x="16" y="43.5" width="81.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="56.5" y="64.5" text-anchor="middle">2002</text>
+<rect class="tk-tl-period tk-tl-c1" x="109.5" y="43.5" width="81.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="150" y="64.5" text-anchor="middle">2004</text>
+<rect class="tk-tl-period tk-tl-c2" x="203" y="43.5" width="81.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="243.5" y="64.5" text-anchor="middle">2005</text>
+<rect class="tk-tl-period tk-tl-c3" x="296.5" y="43.5" width="81.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="337" y="64.5" text-anchor="middle">2006</text>
+<rect class="tk-tl-event tk-tl-c0" x="16" y="83" width="81.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="56.5" y="104" text-anchor="middle">LinkedIn</text>
+<rect class="tk-tl-event tk-tl-c1" x="109.5" y="83" width="81.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="150" y="104" text-anchor="middle">Facebook</text>
+<rect class="tk-tl-event tk-tl-c1" x="109.5" y="123" width="81.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="150" y="143.5" text-anchor="middle">Google</text>
+<rect class="tk-tl-event tk-tl-c2" x="203" y="83" width="81.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="243.5" y="104" text-anchor="middle">YouTube</text>
+<rect class="tk-tl-event tk-tl-c3" x="296.5" y="83" width="81.5" height="31.5" rx="4"/>
+<text class="tk-tl-text" x="337" y="104" text-anchor="middle">Twitter</text>
+</svg>

@@ -1,0 +1,44 @@
+---
+source: crates/tankan/tests/corpus_test.rs
+expression: svg
+---
+<svg class="tankan tankan-mindmap" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 462 258" width="462" height="258" role="img" aria-label="中心テーマ" font-family="sans-serif" font-size="14">
+<style>
+.tankan text { fill: #1f2328; }
+.tankan .tk-mm-root { fill: #f6f8fa; stroke: #d1d9e0; stroke-width: 1.5; }
+.tankan .tk-mm-root-label { font-weight: bold; }
+.tankan .tk-mm-node { fill-opacity: 0.15; }
+.tankan .tk-mm-b0 { fill: var(--tankan-mindmap-1, #5778a4); stroke: var(--tankan-mindmap-1, #5778a4); }
+.tankan .tk-mm-b1 { fill: var(--tankan-mindmap-2, #e49444); stroke: var(--tankan-mindmap-2, #e49444); }
+.tankan .tk-mm-b2 { fill: var(--tankan-mindmap-3, #d1615d); stroke: var(--tankan-mindmap-3, #d1615d); }
+.tankan .tk-mm-b3 { fill: var(--tankan-mindmap-4, #85b6b2); stroke: var(--tankan-mindmap-4, #85b6b2); }
+.tankan .tk-mm-b4 { fill: var(--tankan-mindmap-5, #6a9f58); stroke: var(--tankan-mindmap-5, #6a9f58); }
+.tankan .tk-mm-b5 { fill: var(--tankan-mindmap-6, #e7ca60); stroke: var(--tankan-mindmap-6, #e7ca60); }
+.tankan .tk-mm-b6 { fill: var(--tankan-mindmap-7, #a87c9f); stroke: var(--tankan-mindmap-7, #a87c9f); }
+.tankan .tk-mm-b7 { fill: var(--tankan-mindmap-8, #967662); stroke: var(--tankan-mindmap-8, #967662); }
+.tankan .tk-mm-edge { fill: none; stroke-width: 2; stroke-opacity: 0.7; }
+</style>
+<path class="tk-mm-edge tk-mm-b0" d="M 274 129 C 292 129 292 33 310 33"/>
+<path class="tk-mm-edge tk-mm-b1" d="M 180 129 C 162 129 162 55 144 55"/>
+<path class="tk-mm-edge tk-mm-b2" d="M 274 129 C 292 129 292 99.5 310 99.5"/>
+<path class="tk-mm-edge tk-mm-b3" d="M 180 129 C 162 129 162 129 144 129"/>
+<path class="tk-mm-edge tk-mm-b4" d="M 274 129 C 292 129 292 174 310 174"/>
+<path class="tk-mm-edge tk-mm-b5" d="M 180 129 C 162 129 162 203 144 203"/>
+<path class="tk-mm-edge tk-mm-b6" d="M 274 129 C 292 129 292 225 310 225"/>
+<circle class="tk-mm-root" cx="227" cy="129" r="47"/>
+<text class="tk-mm-root-label" x="227" y="134" text-anchor="middle">中心テーマ</text>
+<rect class="tk-mm-node tk-mm-b0" x="310" y="16" width="94" height="33.5" rx="3"/>
+<text class="tk-mm-label" x="357" y="37.5" text-anchor="middle">四角ノード</text>
+<rect class="tk-mm-node tk-mm-b1" x="50" y="38.5" width="94" height="33.5" rx="8"/>
+<text class="tk-mm-label" x="97" y="60" text-anchor="middle">角丸ノード</text>
+<circle class="tk-mm-node tk-mm-b2" cx="350" cy="99.5" r="40"/>
+<text class="tk-mm-label" x="350" y="104.5" text-anchor="middle">円ノード</text>
+<circle class="tk-mm-node tk-mm-b3" cx="97" cy="129" r="47" stroke-dasharray="6 3"/>
+<text class="tk-mm-label" x="97" y="134" text-anchor="middle">バンノード</text>
+<ellipse class="tk-mm-node tk-mm-b4" cx="360" cy="174" rx="50" ry="24.5"/>
+<text class="tk-mm-label" x="360" y="179" text-anchor="middle">雲ノード</text>
+<polygon class="tk-mm-node tk-mm-b5" points="16,203 26,186 134,186 144,203 134,219.5 26,219.5"/>
+<text class="tk-mm-label" x="80" y="207.5" text-anchor="middle">六角形ノード</text>
+<rect class="tk-mm-node tk-mm-b6" x="310" y="208.5" width="136" height="33.5" rx="17"/>
+<text class="tk-mm-label" x="378" y="230" text-anchor="middle">プレーンテキスト</text>
+</svg>

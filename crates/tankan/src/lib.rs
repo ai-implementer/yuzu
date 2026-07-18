@@ -19,10 +19,12 @@ mod error;
 mod flowchart;
 mod gantt;
 mod kind;
+mod mindmap;
 mod options;
 mod pie;
 mod sequence;
 mod state;
+mod timeline;
 
 pub use error::Error;
 pub use kind::DiagramKind;
@@ -46,6 +48,8 @@ pub fn render_svg(source: &str, options: &Options) -> Result<String, Error> {
         DiagramKind::Er => er::render(source, options),
         DiagramKind::Gantt => gantt::render(source, options),
         DiagramKind::Pie => pie::render(source, options),
+        DiagramKind::Mindmap => mindmap::render(source, options),
+        DiagramKind::Timeline => timeline::render(source, options),
         kind => Err(Error::UnsupportedDiagram { kind }),
     }
 }
