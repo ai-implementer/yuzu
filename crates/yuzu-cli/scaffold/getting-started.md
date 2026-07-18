@@ -123,8 +123,8 @@ a^2 + b^2 = c^2
 ` ```mermaid ` ブロックで図が描けます。既定は同梱 mermaid.js によるクライアント描画です。
 
 `yuzu.jsonc` で `"backend": "ssr"` にすると、**sequence・flowchart・class・
-state・ER・gantt・pie の 7 図種はビルド時に SVG 化**されます（JS 不要・
-ダークモードに即追従）。未対応の図種は自動でクライアント描画にフォールバックし、
+state・ER・gantt・pie・mindmap・timeline の 9 図種はビルド時に SVG 化**されます
+（JS 不要・ダークモードに即追従）。未対応の図種は自動でクライアント描画にフォールバックし、
 フォールバックが発生したページだけ mermaid.js が読み込まれます
 （クライアント描画もダークモード切替に追従して再描画されます）。
 
@@ -135,7 +135,7 @@ flowchart・state・ER・class 図は `classDef` / `:::` / `style` などの
 ```mermaid
 flowchart TD
     A[Markdown を書く] --> B{図の種類は?}
-    B -->|対応 7 図種| C[tankan がビルド時に SVG 化]:::ssr
+    B -->|対応 9 図種| C[tankan がビルド時に SVG 化]:::ssr
     B -->|それ以外| D[mermaid.js でクライアント描画]
     classDef ssr fill:#d5e7fe,stroke:#014ba5
 ```
@@ -204,6 +204,31 @@ pie showData title コンテンツの内訳（例）
     "ガイド" : 12
     "リファレンス" : 8
     "リリースノート" : 5
+```
+
+マインドマップ（mindmap）— インデント階層で書き、中央ルートから左右へ展開:
+
+```mermaid
+mindmap
+  root((ドキュメント計画))
+    構成
+      ガイド
+      リファレンス
+    運用
+      レビュー
+      更新サイクル
+```
+
+タイムライン（timeline）— ロードマップや沿革に:
+
+```mermaid
+timeline
+    title リリースのあゆみ（例）
+    section 立ち上げ
+        4月 : 企画 : 要件整理
+        5月 : プロトタイプ
+    section 公開
+        6月 : v1.0 リリース
 ```
 
 ## API 仕様（OpenAPI / JSON Schema）

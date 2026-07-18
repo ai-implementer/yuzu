@@ -25,7 +25,7 @@
     "highlight": { "enabled": true },
     "mermaid": {
       "enabled": true
-      // "backend": "ssr" // 対応図種（sequence/flowchart/class/state/er/gantt/pie）をビルド時に SVG 化（tankan）。既定は "client"
+      // "backend": "ssr" // 対応図種（sequence/flowchart/class/state/er/gantt/pie/mindmap/timeline）をビルド時に SVG 化（tankan）。既定は "client"
     },
     "math": {
       "enabled": true // $...$ / $$...$$ / ```math を同梱 KaTeX で描画（数式のあるページだけ読み込む）
