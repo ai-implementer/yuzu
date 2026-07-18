@@ -13,9 +13,9 @@
 ## 現在の成果物
 
 - 生成日: 2026-07-18（wasm-bindgen 0.2.126 / binaryen version_130 / wasm-opt -Oz。
-  インデックスフォーマット v3 = postings の出現位置対応）
-- `search_bg.wasm`: 481KB（vaporetto + fst + BM25 エンジン + 動的抜粋 +
-  同義語クエリ拡張 + 文字単位 Levenshtein DFA（levenshtein_automata）込み。
+  インデックスフォーマット v3 = postings の出現位置＋`"..."` フレーズ照合対応）
+- `search_bg.wasm`: 492KB（vaporetto + fst + BM25 エンジン + フレーズ隣接照合 +
+  動的抜粋 + 同義語クエリ拡張 + 文字単位 Levenshtein DFA（levenshtein_automata）込み。
   gzip 転送で概ね半分以下）
 - `search.js`: 12KB（wasm-bindgen --target web の ES module グルー。
   tokenize / excerpt API 追加）
