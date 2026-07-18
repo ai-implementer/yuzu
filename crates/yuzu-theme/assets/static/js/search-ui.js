@@ -162,6 +162,7 @@ function setup() {
       empty.className = "search-empty";
       empty.textContent = `「${query}」に一致するページはありません`;
       resultsBox.append(empty);
+      appendHint(query);
       open();
       return;
     }
@@ -193,7 +194,17 @@ function setup() {
       a.append(title, excerpt);
       resultsBox.append(a);
     }
+    appendHint(query);
     open();
+  }
+
+  // フレーズ検索の発見用ヒント（引用符を既に使っているクエリでは出さない）
+  function appendHint(query) {
+    if (/["＂“”]/.test(query)) return;
+    const hint = document.createElement("div");
+    hint.className = "search-hint";
+    hint.textContent = '"..." で囲むと完全一致（フレーズ）検索';
+    resultsBox.append(hint);
   }
 
   // wasm の excerpt（エンジンと同一の分かち書き・正規化）で <mark> 断片列を作る。

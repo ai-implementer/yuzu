@@ -306,6 +306,14 @@ body {
   text-align: center;
 }
 
+/* フレーズ検索の発見用ヒント（ドロップダウン末尾） */
+.search-hint {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.72rem;
+  color: var(--fg-muted);
+  border-top: 1px solid var(--border);
+}
+
 #theme-toggle {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

@@ -123,6 +123,7 @@ pub(crate) fn build_once(
     session: &mut BuildSession,
     include_drafts: bool,
 ) -> anyhow::Result<()> {
+    let started = std::time::Instant::now();
     session.cache.begin_build();
     // watch 中のテーマ編集を拾うため、theme/ があれば毎回 Env だけ再構築する
     //（テンプレート解析は軽い。重い syntect 側はセッション共有のまま）
@@ -242,6 +243,7 @@ pub(crate) fn build_once(
         body_hits = stats.body_hits,
         body_misses = stats.body_misses,
         orphans_removed = removed,
+        elapsed = %format!("{:.2}s", started.elapsed().as_secs_f64()),
         "インクリメンタルビルド"
     );
     Ok(())

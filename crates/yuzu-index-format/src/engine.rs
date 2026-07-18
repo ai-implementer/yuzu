@@ -31,6 +31,10 @@ const LEV_WEIGHT: f32 = 0.5;
 const LEV_MIN_CHARS: usize = 2;
 /// 同義語展開で生成するクエリ変形の上限（元クエリ含む。暴走ガード）
 const SYN_EXPANSION_LIMIT: usize = 8;
+/// 近接ブーストの倍率（クエリ順に隣接して出現するペア 1 つにつき掛ける）。
+/// 引用符なしの複数語クエリで「連続して出てくるページ」を上位に寄せる
+/// フレーズ検索の soft 版（Phase 34）。ヒット集合は変えずスコアだけ動かす
+const PROXIMITY_BOOST: f32 = 1.2;
 
 /// 検索ヒット（doc_id は SiteModel.pages の並び順の添字）
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -80,6 +84,9 @@ struct ResolvedQuery {
     phrases: Vec<Vec<u32>>,
     /// 語彙に無い token を含むフレーズがあった（= どの doc にも一致し得ない）
     has_unresolvable_phrase: bool,
+    /// 近接ブースト用: 通常部（引用符外）の token 列で連続して並び、
+    /// どちらも語彙に完全一致するペア（タイポ・同義語展開は対象外）
+    proximity_pairs: Vec<Vec<u32>>,
 }
 
 pub struct SearchEngine {
@@ -225,6 +232,17 @@ impl SearchEngine {
         // フレーズ filter: 引用部を含まない doc を落とす
         if let Some(allowed) = &allowed {
             scores.retain(|doc_id, _| allowed.contains(doc_id));
+        }
+
+        // 近接ブースト: クエリ順に隣接して出現する doc のスコアを持ち上げる
+        // （隣接判定はフレーズ照合と同じ位置ロジックの 2 語版。
+        //   シャード未ロード等で位置が引けないペアは静かにスキップされる）
+        for pair in &resolved.proximity_pairs {
+            for doc_id in self.phrase_docs(pair) {
+                if let Some(score) = scores.get_mut(&doc_id) {
+                    *score *= PROXIMITY_BOOST;
+                }
+            }
         }
 
         let mut hits: Vec<Hit> = scores
@@ -378,10 +396,27 @@ impl SearchEngine {
                 None => has_unresolvable_phrase = true,
             }
         }
+        // 近接ブースト用の隣接ペア（元クエリの token 順・完全一致のみ）。
+        // ペアの term は上の resolve_terms が完全一致で解決済みなので、
+        // needed_shards のロード対象にも自動で含まれる
+        let plain_tokens = self.tokenizer.tokenize(&plain);
+        let plain_ids: Vec<Option<u32>> = plain_tokens
+            .iter()
+            .map(|t| self.terms.get(t).map(|id| id as u32))
+            .collect();
+        let proximity_pairs: Vec<Vec<u32>> = plain_ids
+            .windows(2)
+            .filter_map(|w| match (w[0], w[1]) {
+                (Some(a), Some(b)) => Some(vec![a, b]),
+                _ => None,
+            })
+            .collect();
+
         ResolvedQuery {
             terms,
             phrases: phrase_ids,
             has_unresolvable_phrase,
+            proximity_pairs,
         }
     }
 
@@ -872,6 +907,33 @@ mod tests {
         let (hits, total) = engine.search_with_total("\"検索\"", 10);
         assert_eq!(total, 1);
         assert_eq!(hits[0].doc_id, 0);
+    }
+
+    #[test]
+    fn 近接ブーストで隣接出現の_doc_が上位に来る() {
+        // 両 doc とも live / reload を 1 回ずつ含む（BM25 はほぼ同点）が、
+        // 隣接して出現する doc 0 がブーストで上位になる
+        let docs = ["live reload の説明", "live の話。次に reload の話"];
+        let engine = build_index(&docs, 10_000);
+        let (hits, total) = engine.search_with_total("live reload", 10);
+        assert_eq!(
+            total, 2,
+            "ヒット集合は変えない（filter ではない）: {hits:?}"
+        );
+        assert_eq!(hits[0].doc_id, 0, "隣接出現が上位: {hits:?}");
+        assert!(hits[0].score > hits[1].score);
+    }
+
+    #[test]
+    fn 近接ブーストは語彙に無い語や_1_語クエリでは働かない() {
+        let docs = ["live reload の説明", "live の話。次に reload の話"];
+        let engine = build_index(&docs, 10_000);
+        // 1 語クエリ: ブースト対象のペアが無い（従来の BM25 のみ）
+        let (hits, _) = engine.search_with_total("live", 10);
+        assert_eq!(hits.len(), 2);
+        // 2 語目が語彙に無い: ペア不成立でもエラーにならず通常検索になる
+        let (hits, _) = engine.search_with_total("live zzzqqq", 10);
+        assert_eq!(hits.len(), 2, "{hits:?}");
     }
 
     #[test]
