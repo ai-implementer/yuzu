@@ -34,7 +34,8 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v6: OpenAPI の schemas 一覧＋Swagger 2.0 対応（components を持つ既存ページの
 ///   本文 HTML も変わる）
 /// - v7: mindmap / timeline の SSR 追加（従来フォールバックが SSR 成功へ）
-pub const CACHE_FORMAT_VERSION: u32 = 7;
+/// - v8: 検索 tf に出現位置を追加（インデックスフォーマット v3・フレーズ検索の土台）
+pub const CACHE_FORMAT_VERSION: u32 = 8;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,8 +68,10 @@ pub struct CachedSection {
     pub text: String,
     /// 重み付き文書長
     pub doc_len: u32,
-    /// token → 重み付き出現数
-    pub tf: Vec<(String, u32)>,
+    /// token → (重み付き出現数, 出現位置列)。位置はフィールド連結ストリーム
+    /// （body → heading → title、境界にギャップ）上のトークン添字・昇順・絶対値
+    /// （delta 化はシャードエンコード時に行う）
+    pub tf: Vec<(String, u32, Vec<u32>)>,
 }
 
 /// 1 ページぶんのキャッシュエントリ（`pages/<sha256(rel)>.json`）

@@ -13,8 +13,8 @@ mod error;
 mod query;
 
 pub use builder::{
-    IndexCtx, IndexParams, IndexSession, IndexStats, build_search_index, build_search_index_with,
-    model_fingerprint,
+    FIELD_POS_GAP, IndexCtx, IndexParams, IndexSession, IndexStats, build_search_index,
+    build_search_index_with, model_fingerprint,
 };
 pub use error::IndexError;
 pub use query::{SearchResult, search_dist, search_dist_with_total};

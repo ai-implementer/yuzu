@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use yuzu_core::{BuildCache, CachedSection, MarkdownOptions, OutputTracker, Page, SiteModel};
 use yuzu_index_format::{
-    Bm25Params, FORMAT_VERSION, Fragment, Manifest, ShardMeta, Tokenizer, TokenizerMeta,
+    Bm25Params, FORMAT_VERSION, Fragment, Manifest, Posting, ShardMeta, Tokenizer, TokenizerMeta,
     TypoParams, encode_shard,
 };
 
@@ -28,6 +28,11 @@ const TITLE_WEIGHT: u32 = 2;
 /// 自セクション見出し token の重み。v1 は「本文に含まれる分＋TOC 加算」で実質 2 だった。
 /// v2 では見出しを body から外した分ここで 2 にして同等を保つ
 const HEADING_WEIGHT: u32 = 2;
+/// フィールド境界（body → heading → title）に挟む出現位置のギャップ。
+/// フレーズ照合（隣接 = 位置差 1）がフィールドをまたいで偽ヒットするのを防ぐ。
+/// 隣接判定だけなら 2 で足りるが、将来の近接スコアリング（within-k）の余地として
+/// Lucene の positionIncrementGap の慣行に合わせて大きめに取る
+pub const FIELD_POS_GAP: u32 = 100;
 
 /// インデックス生成の入力（cli が設定から写す。yuzu-config には依存しない）
 #[derive(Debug, Clone)]
@@ -159,7 +164,7 @@ pub fn build_search_index_with(
 
     // セクション（h2/h3 境界）ごとの tf 集計（重み付き）。1 doc = 1 セクション
     let mut doc_lens: Vec<u32> = Vec::new();
-    let mut terms: BTreeMap<String, Vec<(u32, u32)>> = BTreeMap::new();
+    let mut terms: BTreeMap<String, Vec<Posting>> = BTreeMap::new();
     let mut fragments: Vec<Fragment> = Vec::new();
     let mut doc_id: u32 = 0;
 
@@ -182,8 +187,12 @@ pub fn build_search_index_with(
         for section in sections {
             doc_lens.push(section.doc_len);
             // doc_id 昇順で処理しているので postings は自然に昇順になる
-            for (term, count) in section.tf {
-                terms.entry(term).or_default().push((doc_id, count));
+            for (term, count, positions) in section.tf {
+                terms.entry(term).or_default().push(Posting {
+                    doc_id,
+                    tf: count,
+                    positions,
+                });
             }
             fragments.push(Fragment {
                 title: page.title.clone(),
@@ -204,9 +213,9 @@ pub fn build_search_index_with(
     let terms_fst = fst_builder.into_inner()?;
 
     // postings の doc_id 昇順を保証（HashMap 経由でも上の理由で保たれるが、明示的に）
-    let mut postings: Vec<Vec<(u32, u32)>> = terms.into_values().collect();
+    let mut postings: Vec<Vec<Posting>> = terms.into_values().collect();
     for p in &mut postings {
-        p.sort_unstable_by_key(|&(doc, _)| doc);
+        p.sort_unstable_by_key(|posting| posting.doc_id);
     }
 
     // 書き出し。インクリメンタル時（outputs あり）は全削除をやめ、
@@ -339,14 +348,23 @@ fn compute_sections(
     let sections = yuzu_core::extract_plain_sections(page, md_opts, index_code)?;
     let mut out = Vec::with_capacity(sections.len());
     for (sec_idx, section) in sections.iter().enumerate() {
-        let mut tf: HashMap<String, u32> = HashMap::new();
+        // token → (重み付き tf, 出現位置列)。位置はフィールド連結ストリーム上の
+        // トークン添字で、重みは位置に影響しない（見出し語は tf +2 だが位置は 1 個）
+        let mut tf: HashMap<String, (u32, Vec<u32>)> = HashMap::new();
         let mut doc_len = 0u32;
-        let mut add = |tokens: Vec<String>, weight: u32, tf: &mut HashMap<String, u32>| {
-            for token in tokens {
-                *tf.entry(token).or_insert(0) += weight;
-                doc_len += weight;
-            }
-        };
+        let mut next_pos = 0u32;
+        let mut add =
+            |tokens: Vec<String>, weight: u32, tf: &mut HashMap<String, (u32, Vec<u32>)>| {
+                for token in tokens {
+                    let entry = tf.entry(token).or_insert((0, Vec::new()));
+                    entry.0 += weight;
+                    entry.1.push(next_pos);
+                    doc_len += weight;
+                    next_pos += 1;
+                }
+                // フィールド境界のギャップ（フレーズ照合の偽隣接防止）
+                next_pos += FIELD_POS_GAP;
+            };
         add(tokenizer.tokenize(&section.body), 1, &mut tf);
         if let Some(heading) = &section.heading {
             add(tokenizer.tokenize(heading), HEADING_WEIGHT, &mut tf);
@@ -359,7 +377,10 @@ fn compute_sections(
             add(tokenizer.tokenize(&page.title), TITLE_WEIGHT, &mut tf);
         }
         // postings の決定性（バイト同一の出力）のため tf はソートして保存する
-        let mut tf: Vec<(String, u32)> = tf.into_iter().collect();
+        let mut tf: Vec<(String, u32, Vec<u32>)> = tf
+            .into_iter()
+            .map(|(token, (count, positions))| (token, count, positions))
+            .collect();
         tf.sort_unstable();
         out.push(CachedSection {
             anchor: section.anchor.clone(),

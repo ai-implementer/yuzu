@@ -57,7 +57,7 @@ fn 生成物一式が_search_に揃う() {
 
     let manifest: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(search.join("manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["version"], 2);
+    assert_eq!(manifest["version"], 3);
     assert_eq!(manifest["docCount"], 4);
     assert_eq!(manifest["tokenizer"]["kind"], "vaporetto");
     // モデルは同梱モデルと同一バイト（sha256 が入っている）
@@ -228,4 +228,92 @@ fn index_code_でコード内の関数名がヒットし抜粋に出る() {
         "抜粋にコード行が出る: {}",
         results[0].excerpt
     );
+}
+
+/// dist/_search から token の位置込み postings を引く（terms.fst → 該当シャード解決）
+fn postings_of(dist: &Path, token: &str) -> Vec<yuzu_index_format::Posting> {
+    let search = dist.join("_search");
+    let map = fst::Map::new(fs::read(search.join("terms.fst")).unwrap()).unwrap();
+    let term_id = map
+        .get(token)
+        .unwrap_or_else(|| panic!("{token} が terms.fst にない")) as u32;
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(search.join("manifest.json")).unwrap()).unwrap();
+    let shard_meta = manifest["shards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| {
+            s["termStart"].as_u64().unwrap() as u32 <= term_id
+                && term_id < s["termEnd"].as_u64().unwrap() as u32
+        })
+        .expect("term_id を含むシャードがある");
+    let bytes = fs::read(search.join(shard_meta["file"].as_str().unwrap())).unwrap();
+    let shard = yuzu_index_format::Shard::parse(&bytes).unwrap();
+    shard
+        .postings_with_positions(term_id - shard_meta["termStart"].as_u64().unwrap() as u32)
+        .unwrap()
+}
+
+/// 位置検証用の 1 ページ fixture（body/heading/title の各フィールドを持つ）。
+/// ASCII 語はトークナイザで 1 語のまま小文字化されるので位置が予測できる
+fn build_position_fixture() -> (tempfile::TempDir, tempfile::TempDir) {
+    let content = tempfile::tempdir().unwrap();
+    write(
+        content.path(),
+        "index.md",
+        "---\ntitle: fruit\n---\n# fruit\n\nalpha beta gamma\n\n## delta\n\napple banana apple\n",
+    );
+    let md_opts = MarkdownOptions::default();
+    let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    build_search_index(&site, &md_opts, &IndexParams::default(), dist.path()).unwrap();
+    (content, dist)
+}
+
+#[test]
+fn postings_に出現位置が昇順で入る() {
+    let (_content, dist) = build_position_fixture();
+    // h2 セクション doc（doc_id 1）の body: "apple banana apple"
+    let postings = postings_of(dist.path(), "apple");
+    assert_eq!(postings.len(), 1, "{postings:?}");
+    assert_eq!(postings[0].doc_id, 1);
+    assert_eq!(postings[0].tf, 2, "本文は重み 1 × 2 回");
+    assert_eq!(
+        postings[0].positions,
+        vec![0, 2],
+        "body 先頭からのトークン添字"
+    );
+}
+
+#[test]
+fn 見出し語は_tf_と_pos_count_がずれる() {
+    let (_content, dist) = build_position_fixture();
+    let postings = postings_of(dist.path(), "delta");
+    assert_eq!(postings.len(), 1, "{postings:?}");
+    assert_eq!(postings[0].tf, 2, "見出しは重み 2 × 1 回");
+    assert_eq!(postings[0].positions.len(), 1, "位置は実出現の 1 個だけ");
+}
+
+#[test]
+fn フィールド境界に位置ギャップが入る() {
+    let (_content, dist) = build_position_fixture();
+    // h2 doc の body は 3 トークン（apple banana apple）→ 見出しフィールドは
+    // body 末尾 + ギャップから始まる
+    let postings = postings_of(dist.path(), "delta");
+    assert_eq!(
+        postings[0].positions,
+        vec![3 + yuzu_index::FIELD_POS_GAP],
+        "heading 先頭語の位置 = body トークン数 + FIELD_POS_GAP"
+    );
+}
+
+#[test]
+fn タイトル語の位置はリード_doc_だけに付く() {
+    let (_content, dist) = build_position_fixture();
+    // title "fruit" はリード doc（doc_id 0）にだけ加算される（h1 は body に出ない）
+    let postings = postings_of(dist.path(), "fruit");
+    assert_eq!(postings.len(), 1, "{postings:?}");
+    assert_eq!(postings[0].doc_id, 0);
+    assert!(!postings[0].positions.is_empty());
 }

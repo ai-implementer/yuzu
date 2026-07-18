@@ -274,7 +274,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use crate::manifest::{Bm25Params, Manifest, ShardMeta, TokenizerMeta, TypoParams};
-    use crate::shard::encode_shard;
+    use crate::shard::{Posting, encode_shard};
     use crate::{FORMAT_VERSION, SearchEngine, Tokenizer};
 
     const MODEL: &[u8] = include_bytes!("../assets/model/bccwj-suw_c1.0.model.zst");
@@ -291,17 +291,24 @@ mod tests {
     ) -> SearchEngine {
         let tokenizer = Tokenizer::from_zstd_model_bytes(MODEL).unwrap();
 
-        let mut terms: BTreeMap<String, Vec<(u32, u32)>> = BTreeMap::new();
+        let mut terms: BTreeMap<String, Vec<Posting>> = BTreeMap::new();
         let mut doc_lens = Vec::new();
         for (doc_id, text) in docs.iter().enumerate() {
             let tokens = tokenizer.tokenize(text);
             doc_lens.push(tokens.len() as u32);
-            let mut tf: BTreeMap<String, u32> = BTreeMap::new();
-            for t in tokens {
-                *tf.entry(t).or_insert(0) += 1;
+            // v3: トークン添字を出現位置として持つ（tf と位置を同時集計）
+            let mut tf: BTreeMap<String, (u32, Vec<u32>)> = BTreeMap::new();
+            for (pos, t) in tokens.into_iter().enumerate() {
+                let entry = tf.entry(t).or_insert((0, Vec::new()));
+                entry.0 += 1;
+                entry.1.push(pos as u32);
             }
-            for (term, count) in tf {
-                terms.entry(term).or_default().push((doc_id as u32, count));
+            for (term, (count, positions)) in tf {
+                terms.entry(term).or_default().push(Posting {
+                    doc_id: doc_id as u32,
+                    tf: count,
+                    positions,
+                });
             }
         }
 
@@ -311,7 +318,7 @@ mod tests {
         }
         let terms_fst = fst_builder.into_inner().unwrap();
 
-        let postings: Vec<Vec<(u32, u32)>> = terms.values().cloned().collect();
+        let postings: Vec<Vec<Posting>> = terms.values().cloned().collect();
         let mut shards_meta = Vec::new();
         let mut shard_bytes = Vec::new();
         let mut start = 0u32;

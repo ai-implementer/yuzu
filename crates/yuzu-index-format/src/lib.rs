@@ -30,12 +30,13 @@ pub use engine::{Hit, SearchEngine};
 pub use error::FormatError;
 pub use excerpt::{ExcerptSegment, make_excerpt};
 pub use manifest::{Bm25Params, Fragment, Manifest, ShardMeta, TokenizerMeta, TypoParams};
-pub use shard::{Shard, encode_shard};
+pub use shard::{Posting, Shard, encode_shard};
 pub use tokenizer::Tokenizer;
 
 /// インデックスフォーマットのバージョン。互換性を壊す変更で上げる。
 /// v2: doc をページ単位 → セクション（h2/h3）単位に変更。Fragment v2（heading/anchor/text）
-pub const FORMAT_VERSION: u16 = 2;
+/// v3: postings に出現位置（pos_count 明示＋delta varint 列）を追加（フレーズ検索の土台）
+pub const FORMAT_VERSION: u16 = 3;
 
 /// 同梱モデル（`yuzu-index` が有効化する）
 #[cfg(feature = "builtin-model")]
