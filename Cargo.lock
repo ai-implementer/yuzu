@@ -2207,6 +2207,7 @@ name = "yuzu-index"
 version = "0.5.0"
 dependencies = [
  "fst",
+ "rayon",
  "rust-embed",
  "serde",
  "serde_json",

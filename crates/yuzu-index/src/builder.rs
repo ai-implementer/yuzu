@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use rayon::prelude::*;
 use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
 
@@ -162,28 +163,44 @@ pub fn build_search_index_with(
     let local_session = IndexSession::default();
     let session = ctx.session.unwrap_or(&local_session);
 
-    // セクション（h2/h3 境界）ごとの tf 集計（重み付き）。1 doc = 1 セクション
+    // ページごとのセクション計算。tokenize がフルビルドの支配的コストなので
+    // rayon で並列化する（Phase 33）。キャッシュ判定を先行パスで済ませ、
+    // miss があるときだけトークナイザを構築する（全ヒットなら zstd 展開ごと
+    // スキップ = 従来どおり。並列ループ前に 1 回だけ作り &Tokenizer を共有）
+    let cached: Vec<Option<Vec<CachedSection>>> = site
+        .pages
+        .iter()
+        .map(|page| ctx.cache.and_then(|c| c.search(&page.rel, &page.source)))
+        .collect();
+    let tokenizer = match cached.iter().any(Option::is_none) {
+        true => Some(session.tokenizer(&model_bytes)?),
+        false => None,
+    };
+    let sections_per_page: Vec<Vec<CachedSection>> = site
+        .pages
+        .par_iter()
+        .zip(cached)
+        .map(|(page, hit)| match hit {
+            Some(sections) => Ok(sections),
+            None => {
+                let tokenizer = tokenizer.expect("miss があればトークナイザ構築済み");
+                let computed = compute_sections(page, md_opts, tokenizer, params.index_code)?;
+                if let Some(cache) = ctx.cache {
+                    cache.store_search(&page.rel, &page.source, computed.clone());
+                }
+                Ok(computed)
+            }
+        })
+        .collect::<Result<_, IndexError>>()?;
+
+    // セクション（h2/h3 境界）ごとの tf 集計（重み付き）。1 doc = 1 セクション。
+    // 集約（doc_id 採番・postings・fst）は決定性のためページ順の直列に保つ
     let mut doc_lens: Vec<u32> = Vec::new();
     let mut terms: BTreeMap<String, Vec<Posting>> = BTreeMap::new();
     let mut fragments: Vec<Fragment> = Vec::new();
     let mut doc_id: u32 = 0;
 
-    for page in &site.pages {
-        let sections = match ctx.cache.and_then(|c| c.search(&page.rel, &page.source)) {
-            Some(cached) => cached,
-            None => {
-                let computed = compute_sections(
-                    page,
-                    md_opts,
-                    session.tokenizer(&model_bytes)?,
-                    params.index_code,
-                )?;
-                if let Some(cache) = ctx.cache {
-                    cache.store_search(&page.rel, &page.source, computed.clone());
-                }
-                computed
-            }
-        };
+    for (page, sections) in site.pages.iter().zip(sections_per_page) {
         for section in sections {
             doc_lens.push(section.doc_len);
             // doc_id 昇順で処理しているので postings は自然に昇順になる
