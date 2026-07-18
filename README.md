@@ -198,10 +198,13 @@ v0.1（Phase 1〜6: build / dev サーバ / 日本語検索 / llms.txt / tankan 
 v0.2（Phase 7〜12: 執筆表現 / 数式 / ページナビ / 検索セクション単位化 / デプロイ雛形 / インクリメンタルビルド）、
 v0.3（Phase 13〜18: 執筆の即効改善 / ページ Markdown 配信とコピー / 用語統一 lint / tankan class・pie / git 連携メタ / dogfooding 改善）、
 v0.4（Phase 19〜23: 表記ゆれ組み込み lint / 検索の同義語・タイポ改善 / OpenAPI・JSON Schema SSR / flowchart スタイル構文。v0.4.1 で content 同伴アセットの自動コピーを追加）、
-v0.5（Phase 24〜29: tankan スタイル構文の全図種展開 / 検索コードブロックの opt-in インデックス / OpenAPI Swagger 2.0・スキーマ一覧 / tankan mindmap・timeline / 形態素トークナイザ PoC は実測見送り / dogfooding 改善＝404 ページと lint --fix）は完了・リリース済み。
+v0.5（Phase 24〜29: tankan スタイル構文の全図種展開 / 検索コードブロックの opt-in インデックス / OpenAPI Swagger 2.0・スキーマ一覧 / tankan mindmap・timeline / 形態素トークナイザ PoC は実測見送り / dogfooding 改善＝404 ページと lint --fix）、
+v0.6（Phase 30〜35: 検索インデックスの位置情報化（フォーマット v3） / フレーズ検索 / ビルドのページ並列化（render・index） / dogfooding 改善＝近接ブースト・フレーズヒント・ビルド時間表示 / 検索スタックのライブラリ化と OPFS キャッシュ）は完了・リリース済み。
 
-以下の Phase 30〜34 がすべて完了した時点で **v0.6** としてリリースする。  
-実際の設計書運用（dogfooding）と並行して進め、Phase は価値と実装コスト・依存関係の順に並べている（着手時に個別に設計する）。
+v0.7 以降の候補（このリリースではやらない）: ドキュメントバージョニング（要否含め保留中）・tantivy バックエンド（静的ホスティング方針と要調整）・i18n・VS Code 拡張（wasm プレビュー）・crates.io 公開とバイナリ配布・tankan の分離公開・yuzu 自身のドキュメントサイト公開・引用符なしクエリへの近接ブースト（フレーズ検索の発展形。Phase 34 の実運用結果で判断）。次期ロードマップは未策定（着手時に個別に設計する）。
+
+<details>
+<summary>完了済み: v0.6（Phase 30〜35）の内訳</summary>
 
 | Phase | 内容 | 状態 |
 |---|---|---|
@@ -212,7 +215,7 @@ v0.5（Phase 24〜29: tankan スタイル構文の全図種展開 / 検索コー
 | **34 dogfooding 改善** | 恒例のバッファ枠: **近接ブースト**（引用符なしの複数語クエリで、クエリ順に隣接出現するページを ×1.2/ペア のスコアで上位へ。フレーズ照合と同じ位置ロジックの soft 版で、ヒット集合は不変・タイポ/同義語展開語は対象外）・**フレーズ検索の発見性**（検索ドロップダウン末尾に `"..."` 構文のヒントを常時表示。引用符使用時は消える）・**ビルド時間の表示**（`build`/`dev` の完了ログに elapsed を追加。並列化の効果が見える）。OG メタ・favicon は今回も見送り | ✅ |
 | **35 検索スタックのライブラリ化＋OPFS キャッシュ** | 外部記事（DuckDB-Wasm/Lindera-Wasm/OPFS 構成のオフライン検索）を受けて調査した結果、トークナイザ差し替えは Phase 28 の却下理由（転送量 9〜35 倍）がそのまま当てはまるため**見送り、vaporetto＋自作 BM25 エンジンは維持**。代わりに (1) 集約ロジック（doc_id 採番・postings・fst・シャード分割・manifest 構築）を `yuzu-index`（yuzu-core 依存）から `yuzu-index-format::build`（yuzu-* 非依存）へ移設し、tankan と同水準の「分離可能な設計」を検索スタックにも適用、(2) `Manifest` に `contentHash`（terms.fst＋全シャード＋モデルバイトの sha256、`#[serde(default)]` で後方互換）を追加し、ブラウザ側 OPFS（Origin Private File System）キャッシュの版管理に使用。フェッチ・OPFS・wasm 起動のオーケストレーションは `crates/yuzu-search-wasm/js/search-client.js`＋汎用ブロブキャッシュ `opfs-cache.js`（新規、DOM 非依存）に切り出し、テーマの `search-ui.js` は DOM/UX 層に純化。OPFS は contentHash 不一致 or 非対応環境で即座にフェッチのみ経路へフォールバック（`yuzu search` ネイティブ CLI は無関係・無改修）。**サイズ実測ゲート**: scaffold 2 ページで `dist/_search` 合計が raw 922,722→931,133B（+0.91%）・gzip 626,774→630,538B（+0.60%）。新規 JS は語彙量に依存しない固定コスト（`search-client.js` 4.9KB＋`opfs-cache.js` 2.7KB）で、`search_bg.wasm` は 494KB のまま実質不変（Cargo 依存・エクスポート API を変えていないため）。決定性テスト（`content_hash` は同一入力で同一値・内容変更で別値）を追加 | ✅ |
 
-v0.7 以降の候補（このリリースではやらない）: ドキュメントバージョニング（要否含め保留中）・tantivy バックエンド（静的ホスティング方針と要調整）・i18n・VS Code 拡張（wasm プレビュー）・crates.io 公開とバイナリ配布・tankan の分離公開・yuzu 自身のドキュメントサイト公開・引用符なしクエリへの近接ブースト（フレーズ検索の発展形。Phase 34 の実運用結果で判断）。
+</details>
 
 <details>
 <summary>完了済み: v0.5（Phase 24〜29）の内訳</summary>
