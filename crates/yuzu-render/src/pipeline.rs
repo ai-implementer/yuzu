@@ -1,9 +1,14 @@
-//! ビルドパイプライン: clean → ページ HTML → テーマアセット → syntect CSS →
-//! public パススルー → build_id
+//! ビルドパイプライン: clean → ページ HTML（rayon 並列） → テーマアセット →
+//! syntect CSS → public パススルー → build_id
+//!
+//! ページ生成はページ間に依存が無いため並列化している（Phase 32）。
+//! 集約出力（nav は各ページに埋まるが構築は事前・llms / 404 / アセット）は
+//! 直列のまま = インクリメンタルビルドの層構造は不変
 
 use std::fs;
 
 use minijinja::context;
+use rayon::prelude::*;
 
 use yuzu_config::ResolvedConfig;
 use yuzu_core::{BuildCache, CachedBody, MarkdownOptions, OutputTracker, SiteModel};
@@ -91,88 +96,98 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let theme_css_vars =
         crate::css::generate_theme_var_overrides(&cfg.theme.css_vars, &cfg.theme.css_vars_dark);
 
-    for page in &params.site.pages {
-        // 本文 HTML はキャッシュヒットなら comrak パースごとスキップする
-        let (body, mermaid_fallback) = match ctx.cache.and_then(|c| c.body(&page.rel, &page.source))
-        {
-            Some(cached) => (cached.html, cached.mermaid_fallback),
-            None => {
-                shared.highlighter.begin_page();
-                let body =
-                    yuzu_core::render_body_html(page, &md_opts, &shared.highlighter, &resolver)?;
-                let fallback = shared.highlighter.mermaid_fallback_occurred();
-                // 外部ファイル参照（openapi/jsonschema の file:）を使ったページは
-                // キャッシュしない: ページ source が変わらなくても仕様ファイルの
-                // 変更を次ビルドで反映するため、毎回レンダリングする
-                let cacheable = !shared.highlighter.external_deps_used();
-                if let (Some(cache), true) = (ctx.cache, cacheable) {
-                    cache.store_body(
-                        &page.rel,
-                        &page.source,
-                        CachedBody {
-                            html: body.clone(),
-                            mermaid_fallback: fallback,
-                        },
-                    );
-                }
-                (body, fallback)
-            }
-        };
-        // 「このページで mermaid.js を読み込むか」。client は従来どおり常に読み、
-        // ssr はフォールバック（未対応図種等）が発生したページだけ読む
-        let mermaid_js_needed = cfg.markdown.mermaid.enabled
-            && match cfg.markdown.mermaid.backend {
-                yuzu_config::MermaidBackend::Client => true,
-                yuzu_config::MermaidBackend::Ssr => mermaid_fallback,
-            };
-        // 「このページで KaTeX を読み込むか」。comrak の数式出力は必ず
-        // data-math-style="…" 属性を持つ。本文テキスト中の同じ文字列は comrak が
-        // `"` を &quot; にエスケープするため、引用符込みのこの判定は誤検出しない
-        let math_needed = cfg.markdown.math.enabled && body.contains("data-math-style=\"");
-        // git 連携メタ（rel を / 区切りへ正規化してキーにする）
-        let rel_key = page
-            .rel
-            .iter()
-            .map(|c| c.to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/");
-        let last_updated = params
-            .git_dates
-            .and_then(|dates| dates.get(&rel_key))
-            .cloned();
-        let edit_url = cfg
-            .git
-            .edit_url
-            .as_ref()
-            .map(|tpl| tpl.replace("{path}", &rel_key));
-        let html = template.render(context! {
-            site => site_ctx,
-            page => PageCtx::new(page, &body, &resolver, last_updated, edit_url),
-            nav => NavCtx::build(&params.site.nav, &page.route, &resolver),
-            pager => nav_order.pager(&page.route, &resolver),
-            breadcrumbs => build_breadcrumbs(&params.site.nav, &page.route, &resolver),
-            base_url => resolver.base(),
-            asset_url => resolver.asset_url(),
-            live_reload_poll => params.live_reload == LiveReloadMode::Poll,
-            live_reload_ws => params.live_reload == LiveReloadMode::Ws,
-            mermaid_enabled => mermaid_js_needed,
-            math_enabled => math_needed,
-            dark_enabled => cfg.theme.dark,
-            search_enabled => cfg.search.enabled,
-            theme_css_vars => theme_css_vars,
+    // ページ生成の並列ループ。共有物は読み取り専用（Env / syntect / resolver /
+    // nav / 日付マップ）か内部 Mutex の `&self` API（BuildCache / OutputTracker）。
+    // ページ内状態は PageCodeRenderer がページローカルに持つ（`Cell` が `!Sync`
+    // なので誤って共有するとコンパイルエラーになる）。出力はページごとに別
+    // ファイルで、マニフェスト記録は BTreeSet のため書き込み順に依らず決定的
+    params
+        .site
+        .pages
+        .par_iter()
+        .try_for_each(|page| -> Result<(), RenderError> {
+            // 本文 HTML はキャッシュヒットなら comrak パースごとスキップする
+            let (body, mermaid_fallback) =
+                match ctx.cache.and_then(|c| c.body(&page.rel, &page.source)) {
+                    Some(cached) => (cached.html, cached.mermaid_fallback),
+                    None => {
+                        let renderer = shared.highlighter.page_renderer();
+                        let body =
+                            yuzu_core::render_body_html(page, &md_opts, &renderer, &resolver)?;
+                        let fallback = renderer.mermaid_fallback_occurred();
+                        // 外部ファイル参照（openapi/jsonschema の file:）を使ったページは
+                        // キャッシュしない: ページ source が変わらなくても仕様ファイルの
+                        // 変更を次ビルドで反映するため、毎回レンダリングする
+                        let cacheable = !renderer.external_deps_used();
+                        if let (Some(cache), true) = (ctx.cache, cacheable) {
+                            cache.store_body(
+                                &page.rel,
+                                &page.source,
+                                CachedBody {
+                                    html: body.clone(),
+                                    mermaid_fallback: fallback,
+                                },
+                            );
+                        }
+                        (body, fallback)
+                    }
+                };
+            // 「このページで mermaid.js を読み込むか」。client は従来どおり常に読み、
+            // ssr はフォールバック（未対応図種等）が発生したページだけ読む
+            let mermaid_js_needed = cfg.markdown.mermaid.enabled
+                && match cfg.markdown.mermaid.backend {
+                    yuzu_config::MermaidBackend::Client => true,
+                    yuzu_config::MermaidBackend::Ssr => mermaid_fallback,
+                };
+            // 「このページで KaTeX を読み込むか」。comrak の数式出力は必ず
+            // data-math-style="…" 属性を持つ。本文テキスト中の同じ文字列は comrak が
+            // `"` を &quot; にエスケープするため、引用符込みのこの判定は誤検出しない
+            let math_needed = cfg.markdown.math.enabled && body.contains("data-math-style=\"");
+            // git 連携メタ（rel を / 区切りへ正規化してキーにする）
+            let rel_key = page
+                .rel
+                .iter()
+                .map(|c| c.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            let last_updated = params
+                .git_dates
+                .and_then(|dates| dates.get(&rel_key))
+                .cloned();
+            let edit_url = cfg
+                .git
+                .edit_url
+                .as_ref()
+                .map(|tpl| tpl.replace("{path}", &rel_key));
+            let html = template.render(context! {
+                site => site_ctx,
+                page => PageCtx::new(page, &body, &resolver, last_updated, edit_url),
+                nav => NavCtx::build(&params.site.nav, &page.route, &resolver),
+                pager => nav_order.pager(&page.route, &resolver),
+                breadcrumbs => build_breadcrumbs(&params.site.nav, &page.route, &resolver),
+                base_url => resolver.base(),
+                asset_url => resolver.asset_url(),
+                live_reload_poll => params.live_reload == LiveReloadMode::Poll,
+                live_reload_ws => params.live_reload == LiveReloadMode::Ws,
+                mermaid_enabled => mermaid_js_needed,
+                math_enabled => math_needed,
+                dark_enabled => cfg.theme.dark,
+                search_enabled => cfg.search.enabled,
+                theme_css_vars => theme_css_vars,
+            })?;
+            let out_rel = page.output_rel_path(); // route + "index.html"（/ 区切り）
+            assets::write_output(ctx.outputs, output_dir, &out_rel, html.as_bytes())?;
+            // ページ単位 Markdown（原文バイトそのまま）。コピーボタンと llms.txt の
+            // .md リンクの実体。`yuzu fmt` 運用なら正規形と一致する
+            assets::write_output(
+                ctx.outputs,
+                output_dir,
+                &page.md_rel_path(),
+                page.source.as_bytes(),
+            )?;
+            tracing::debug!(page = %page.rel.display(), out = %out_rel, "ページ出力");
+            Ok(())
         })?;
-        let out_rel = page.output_rel_path(); // route + "index.html"（/ 区切り）
-        assets::write_output(ctx.outputs, output_dir, &out_rel, html.as_bytes())?;
-        // ページ単位 Markdown（原文バイトそのまま）。コピーボタンと llms.txt の
-        // .md リンクの実体。`yuzu fmt` 運用なら正規形と一致する
-        assets::write_output(
-            ctx.outputs,
-            output_dir,
-            &page.md_rel_path(),
-            page.source.as_bytes(),
-        )?;
-        tracing::debug!(page = %page.rel.display(), out = %out_rel, "ページ出力");
-    }
 
     // 404 ページ（GitHub Pages 等の静的ホスティングは 404.html を自動で使う）。
     // copy_public より前に書く = public/404.html を置いたプロジェクトは

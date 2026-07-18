@@ -25,26 +25,35 @@ use crate::apispec::{self, SpecFiles, SpecKind};
 /// `css.rs` の CSS 生成と必ず同じ値を使うこと
 pub(crate) const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: "yz-" };
 
-/// [`CodeBlockRenderer`] の実装。
+/// 共有側（ページ横断で不変）のハイライタ。
 /// - `lang == "mermaid"` → SSR（tankan）またはクライアント描画へ
 /// - 既知の言語 → syntect ハイライト（CSS クラス）
 /// - 言語なし・未知の言語 → `None`（パーサ既定のエスケープ済み `<pre><code>`）
+///
+/// ページ内状態（SVG 連番・フォールバック・外部依存）は持たない。
+/// 実際のレンダリングは [`SyntectCodeRenderer::page_renderer`] で作る
+/// ページローカルな [`PageCodeRenderer`] が行う
 pub struct SyntectCodeRenderer {
     syntax_set: SyntaxSet,
     highlight_enabled: bool,
     mermaid_enabled: bool,
-    /// backend == Ssr のときだけ Some
-    mermaid_ssr: Option<MermaidSsr>,
-    /// OpenAPI / JSON Schema ブロックのページ単位状態
-    apispec: ApiSpecState,
-}
-
-/// ` ```openapi ` / ` ```jsonschema ` のページ単位状態（Cell パターンは MermaidSsr と同じ）
-#[derive(Default)]
-struct ApiSpecState {
+    /// backend == Ssr のときだけ Some（tankan オプションの雛形）
+    mermaid_ssr_options: Option<tankan::Options>,
     /// `file:` 参照の基準ディレクトリ（プロジェクトルート）。
     /// 未設定（単体テスト等）ではファイル参照をエラーボックスにする
-    root: Option<PathBuf>,
+    apispec_root: Option<PathBuf>,
+}
+
+/// ページ単位の [`CodeBlockRenderer`]。共有の [`SyntectCodeRenderer`] を参照しつつ、
+/// ページ内状態（SVG 連番・フォールバック・外部依存フラグ）を自分で持つ。
+/// `Cell` は `!Sync` なので、ページ並列化でこの状態をスレッド間共有してしまう
+/// 事故は型で防がれる（各ページが自分の PageCodeRenderer を作って使う）
+pub struct PageCodeRenderer<'a> {
+    shared: &'a SyntectCodeRenderer,
+    /// このページでクライアント描画へのフォールバックが発生したか
+    mermaid_fallback: Cell<bool>,
+    /// ページ内の SVG 連番（`<marker>` id の一意化用）
+    mermaid_counter: Cell<usize>,
     /// このページで外部ファイル参照を使ったか（= 本文キャッシュ不可の印）
     external_deps: Cell<bool>,
 }
@@ -83,41 +92,25 @@ impl apispec::SpecFiles for ProjectSpecFiles<'_> {
     }
 }
 
-/// SSR のページ単位状態。
-/// `render_site` はページを直列に処理し `CodeBlockRenderer` は同一スレッドの
-/// `&self` 呼び出しのみなので、interior mutability は `Cell` で足りる
-///（将来ページ並列化する場合はページごとに状態を分離する設計変更が必要）
-struct MermaidSsr {
-    options_base: tankan::Options,
-    /// このページでクライアント描画へのフォールバックが発生したか
-    fallback: Cell<bool>,
-    /// ページ内の SVG 連番（`<marker>` id の一意化用）
-    counter: Cell<usize>,
-}
-
 impl SyntectCodeRenderer {
     pub fn new(highlight_enabled: bool, mermaid: &MermaidConfig) -> Self {
-        let mermaid_ssr =
-            (mermaid.enabled && mermaid.backend == MermaidBackend::Ssr).then(|| MermaidSsr {
-                options_base: tankan::Options {
-                    // テーマ CSS の変数に追従させる（インライン SVG 前提。
-                    // ダーク切替 = html[data-theme] の変数上書きに再描画なしで追従）
-                    theme: tankan::Theme {
-                        foreground: "var(--fg, #1f2328)".to_string(),
-                        muted: "var(--fg-muted, #59636e)".to_string(),
-                        background: "var(--bg, #ffffff)".to_string(),
-                        surface: "var(--bg-subtle, #f6f8fa)".to_string(),
-                        border: "var(--border, #d1d9e0)".to_string(),
-                        accent: "var(--accent-fg, #9a6700)".to_string(),
-                    },
-                    // theme.css の body と同じフォントスタック
-                    font_family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', \
-                                  'Hiragino Sans', 'Noto Sans JP', Meiryo, sans-serif"
-                        .to_string(),
-                    ..tankan::Options::default()
+        let mermaid_ssr_options =
+            (mermaid.enabled && mermaid.backend == MermaidBackend::Ssr).then(|| tankan::Options {
+                // テーマ CSS の変数に追従させる（インライン SVG 前提。
+                // ダーク切替 = html[data-theme] の変数上書きに再描画なしで追従）
+                theme: tankan::Theme {
+                    foreground: "var(--fg, #1f2328)".to_string(),
+                    muted: "var(--fg-muted, #59636e)".to_string(),
+                    background: "var(--bg, #ffffff)".to_string(),
+                    surface: "var(--bg-subtle, #f6f8fa)".to_string(),
+                    border: "var(--border, #d1d9e0)".to_string(),
+                    accent: "var(--accent-fg, #9a6700)".to_string(),
                 },
-                fallback: Cell::new(false),
-                counter: Cell::new(0),
+                // theme.css の body と同じフォントスタック
+                font_family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', \
+                              'Hiragino Sans', 'Noto Sans JP', Meiryo, sans-serif"
+                    .to_string(),
+                ..tankan::Options::default()
             });
         Self {
             // ClassedHTMLGenerator の行単位 API は newlines 版とセットで使う。
@@ -126,90 +119,24 @@ impl SyntectCodeRenderer {
             syntax_set: two_face::syntax::extra_newlines(),
             highlight_enabled,
             mermaid_enabled: mermaid.enabled,
-            mermaid_ssr,
-            apispec: ApiSpecState::default(),
+            mermaid_ssr_options,
+            apispec_root: None,
         }
     }
 
     /// `file:` 参照の基準ディレクトリ（プロジェクトルート）を設定する
     pub fn set_project_root(&mut self, root: PathBuf) {
-        self.apispec.root = Some(root);
+        self.apispec_root = Some(root);
     }
 
-    /// ページ処理の直前に呼ぶ（SSR のページ単位状態をリセット）
-    pub fn begin_page(&self) {
-        if let Some(ssr) = &self.mermaid_ssr {
-            ssr.fallback.set(false);
-            ssr.counter.set(0);
+    /// ページ 1 枚ぶんのレンダラを作る（ページ内状態は初期値で始まる）
+    pub fn page_renderer(&self) -> PageCodeRenderer<'_> {
+        PageCodeRenderer {
+            shared: self,
+            mermaid_fallback: Cell::new(false),
+            mermaid_counter: Cell::new(0),
+            external_deps: Cell::new(false),
         }
-        self.apispec.external_deps.set(false);
-    }
-
-    /// 直前ページでクライアント描画へのフォールバックが発生したか
-    /// （= このページに mermaid.js が必要か）
-    pub fn mermaid_fallback_occurred(&self) -> bool {
-        self.mermaid_ssr
-            .as_ref()
-            .is_some_and(|ssr| ssr.fallback.get())
-    }
-
-    /// 直前ページで外部ファイル参照（`file:`）を使ったか。
-    /// 使ったページは本文キャッシュに保存しない（仕様ファイルの変更を即反映するため）
-    pub fn external_deps_used(&self) -> bool {
-        self.apispec.external_deps.get()
-    }
-
-    /// ` ```openapi ` / ` ```jsonschema ` の変換。
-    /// 中身が `file: <パス>` の 1 行なら外部ファイル（プロジェクトルート相対）を読む。
-    /// 文書内のファイル $ref も同じ読み込み口（[`ProjectSpecFiles`]）を通る
-    fn render_apispec(&self, kind: SpecKind, code: &str) -> Option<String> {
-        let files = ProjectSpecFiles {
-            root: self.apispec.root.as_deref(),
-            external_deps: &self.apispec.external_deps,
-        };
-        let trimmed = code.trim();
-        match parse_file_ref(trimmed) {
-            Some(rel) => match files.read(rel) {
-                Ok(text) => Some(apispec::render_spec(kind, &text, Some(rel), &files)),
-                Err(message) => {
-                    tracing::warn!(file = rel, "{message}");
-                    Some(apispec::error_box(&message, code))
-                }
-            },
-            None => Some(apispec::render_spec(kind, code, None, &files)),
-        }
-    }
-
-    fn render_mermaid(&self, code: &str) -> Option<String> {
-        if !self.mermaid_enabled {
-            return None;
-        }
-        if let Some(ssr) = &self.mermaid_ssr {
-            let mut options = ssr.options_base.clone();
-            options.id_prefix = format!("tk{}", ssr.counter.get());
-            ssr.counter.set(ssr.counter.get() + 1);
-            match tankan::render_svg(code, &options) {
-                Ok(svg) => {
-                    return Some(format!(
-                        "<figure class=\"mermaid-ssr\">\n{svg}\n</figure>\n"
-                    ));
-                }
-                Err(e) if e.is_unsupported() => {
-                    // 想定内（未対応図種）: 静かにクライアント描画へ
-                    tracing::debug!("mermaid SSR 未対応のためクライアント描画へ: {e}");
-                    ssr.fallback.set(true);
-                }
-                Err(e) => {
-                    // 構文エラー: 書き間違いの可能性が高いので可視化する
-                    tracing::warn!("mermaid の構文エラー（クライアント描画へフォールバック): {e}");
-                    ssr.fallback.set(true);
-                }
-            }
-        }
-        Some(format!(
-            "<pre class=\"mermaid\">{}</pre>\n",
-            escape_html(code)
-        ))
     }
 
     fn highlight(&self, lang: &str, code: &str) -> Option<String> {
@@ -239,7 +166,74 @@ fn parse_file_ref(trimmed: &str) -> Option<&str> {
     (!rel.is_empty()).then_some(rel)
 }
 
-impl CodeBlockRenderer for SyntectCodeRenderer {
+impl PageCodeRenderer<'_> {
+    /// このページでクライアント描画へのフォールバックが発生したか
+    /// （= このページに mermaid.js が必要か）
+    pub fn mermaid_fallback_occurred(&self) -> bool {
+        self.mermaid_fallback.get()
+    }
+
+    /// このページで外部ファイル参照（`file:`）を使ったか。
+    /// 使ったページは本文キャッシュに保存しない（仕様ファイルの変更を即反映するため）
+    pub fn external_deps_used(&self) -> bool {
+        self.external_deps.get()
+    }
+
+    /// ` ```openapi ` / ` ```jsonschema ` の変換。
+    /// 中身が `file: <パス>` の 1 行なら外部ファイル（プロジェクトルート相対）を読む。
+    /// 文書内のファイル $ref も同じ読み込み口（[`ProjectSpecFiles`]）を通る
+    fn render_apispec(&self, kind: SpecKind, code: &str) -> Option<String> {
+        let files = ProjectSpecFiles {
+            root: self.shared.apispec_root.as_deref(),
+            external_deps: &self.external_deps,
+        };
+        let trimmed = code.trim();
+        match parse_file_ref(trimmed) {
+            Some(rel) => match files.read(rel) {
+                Ok(text) => Some(apispec::render_spec(kind, &text, Some(rel), &files)),
+                Err(message) => {
+                    tracing::warn!(file = rel, "{message}");
+                    Some(apispec::error_box(&message, code))
+                }
+            },
+            None => Some(apispec::render_spec(kind, code, None, &files)),
+        }
+    }
+
+    fn render_mermaid(&self, code: &str) -> Option<String> {
+        if !self.shared.mermaid_enabled {
+            return None;
+        }
+        if let Some(options_base) = &self.shared.mermaid_ssr_options {
+            let mut options = options_base.clone();
+            options.id_prefix = format!("tk{}", self.mermaid_counter.get());
+            self.mermaid_counter.set(self.mermaid_counter.get() + 1);
+            match tankan::render_svg(code, &options) {
+                Ok(svg) => {
+                    return Some(format!(
+                        "<figure class=\"mermaid-ssr\">\n{svg}\n</figure>\n"
+                    ));
+                }
+                Err(e) if e.is_unsupported() => {
+                    // 想定内（未対応図種）: 静かにクライアント描画へ
+                    tracing::debug!("mermaid SSR 未対応のためクライアント描画へ: {e}");
+                    self.mermaid_fallback.set(true);
+                }
+                Err(e) => {
+                    // 構文エラー: 書き間違いの可能性が高いので可視化する
+                    tracing::warn!("mermaid の構文エラー（クライアント描画へフォールバック): {e}");
+                    self.mermaid_fallback.set(true);
+                }
+            }
+        }
+        Some(format!(
+            "<pre class=\"mermaid\">{}</pre>\n",
+            escape_html(code)
+        ))
+    }
+}
+
+impl CodeBlockRenderer for PageCodeRenderer<'_> {
     // ⚠️ このディスパッチの特別レンダリング言語集合（mermaid / openapi /
     // jsonschema / math）は yuzu_core::is_special_render_lang（検索インデックスの
     // コード除外判定）と同期させること。言語を追加・削除したら両方を更新する
@@ -260,7 +254,7 @@ impl CodeBlockRenderer for SyntectCodeRenderer {
         if lang == "math" {
             return None;
         }
-        let inner = self.highlight(lang, code)?;
+        let inner = self.shared.highlight(lang, code)?;
         // data-lang はテーマ CSS が言語ラベル表示（::before）に使う
         Some(format!(
             "<pre class=\"highlight\" data-lang=\"{lang}\"><code class=\"language-{lang}\">{}</code></pre>\n",
@@ -303,12 +297,13 @@ mod tests {
     #[test]
     fn client_では_mermaid_はエスケープ済み_pre_になる() {
         let r = SyntectCodeRenderer::new(true, &client_config());
-        let html = r.render(Some("mermaid"), "A->>B: <hello>\n").unwrap();
+        let p = r.page_renderer();
+        let html = p.render(Some("mermaid"), "A->>B: <hello>\n").unwrap();
         assert_eq!(
             html,
             "<pre class=\"mermaid\">A-&gt;&gt;B: &lt;hello&gt;\n</pre>\n"
         );
-        assert!(!r.mermaid_fallback_occurred(), "client では常に false");
+        assert!(!p.mermaid_fallback_occurred(), "client では常に false");
     }
 
     #[test]
@@ -320,27 +315,31 @@ mod tests {
                 backend: MermaidBackend::Ssr,
             },
         );
-        assert!(r.render(Some("mermaid"), "graph TD;").is_none());
+        assert!(
+            r.page_renderer()
+                .render(Some("mermaid"), "graph TD;")
+                .is_none()
+        );
     }
 
     #[test]
     fn ssr_では_sequence_が_svg_になる() {
         let r = SyntectCodeRenderer::new(true, &ssr_config());
-        r.begin_page();
-        let html = r
+        let p = r.page_renderer();
+        let html = p
             .render(Some("mermaid"), "sequenceDiagram\n    A->>B: こんにちは\n")
             .unwrap();
         assert!(html.starts_with("<figure class=\"mermaid-ssr\">"));
         assert!(html.contains("<svg class=\"tankan"));
         assert!(html.contains("var(--fg, #1f2328)"), "テーマ変数の注入");
-        assert!(!r.mermaid_fallback_occurred());
+        assert!(!p.mermaid_fallback_occurred());
     }
 
     #[test]
     fn ssr_で_classdef_付き_flowchart_はフォールバックせず色が埋まる() {
         let r = SyntectCodeRenderer::new(true, &ssr_config());
-        r.begin_page();
-        let html = r
+        let p = r.page_renderer();
+        let html = p
             .render(
                 Some("mermaid"),
                 "flowchart TD\n    A[開始]:::hot --> B[終了]\n    classDef hot fill:#f96\n",
@@ -351,58 +350,58 @@ mod tests {
             "スタイル構文でも SSR される:\n{html}"
         );
         assert!(html.contains("fill:#f96"), "ユーザ指定色が埋まる");
-        assert!(!r.mermaid_fallback_occurred());
+        assert!(!p.mermaid_fallback_occurred());
     }
 
     #[test]
     fn ssr_で未対応図種はフォールバックして記録される() {
         let r = SyntectCodeRenderer::new(true, &ssr_config());
-        r.begin_page();
+        let p = r.page_renderer();
         // journey は未対応図種（mindmap / timeline は Phase 27 で対応済み）
-        let html = r
+        let html = p
             .render(
                 Some("mermaid"),
                 "journey\n    title 一日\n    section 朝\n      起床: 5: 私\n",
             )
             .unwrap();
         assert!(html.starts_with("<pre class=\"mermaid\">"));
-        assert!(r.mermaid_fallback_occurred());
+        assert!(p.mermaid_fallback_occurred());
 
-        // begin_page でリセットされる
-        r.begin_page();
-        assert!(!r.mermaid_fallback_occurred());
+        // 新しいページレンダラは初期状態から始まる
+        let p = r.page_renderer();
+        assert!(!p.mermaid_fallback_occurred());
     }
 
     #[test]
     fn ssr_では_flowchart_も_svg_になる() {
         let r = SyntectCodeRenderer::new(true, &ssr_config());
-        r.begin_page();
-        let html = r
+        let p = r.page_renderer();
+        let html = p
             .render(Some("mermaid"), "flowchart TD\n    A-->B\n")
             .unwrap();
         assert!(html.contains("tankan-flowchart"), "{html}");
-        assert!(!r.mermaid_fallback_occurred());
+        assert!(!p.mermaid_fallback_occurred());
     }
 
     #[test]
     fn ssr_で構文エラーもフォールバックする() {
         let r = SyntectCodeRenderer::new(true, &ssr_config());
-        r.begin_page();
-        let html = r
+        let p = r.page_renderer();
+        let html = p
             .render(Some("mermaid"), "sequenceDiagram\n    矢印のない行\n")
             .unwrap();
         assert!(html.starts_with("<pre class=\"mermaid\">"));
-        assert!(r.mermaid_fallback_occurred());
+        assert!(p.mermaid_fallback_occurred());
     }
 
     #[test]
     fn ssr_の_svg_はページ内で_id_が一意になる() {
         let r = SyntectCodeRenderer::new(true, &ssr_config());
-        r.begin_page();
-        let a = r
+        let p = r.page_renderer();
+        let a = p
             .render(Some("mermaid"), "sequenceDiagram\nA->>B: x\n")
             .unwrap();
-        let b = r
+        let b = p
             .render(Some("mermaid"), "sequenceDiagram\nC->>D: y\n")
             .unwrap();
         assert!(a.contains(r#"id="tk0-head""#));
@@ -412,7 +411,8 @@ mod tests {
     #[test]
     fn rust_はハイライトされ_css_クラスが付く() {
         let r = SyntectCodeRenderer::new(true, &client_config());
-        let html = r.render(Some("rust"), "fn main() {}\n").unwrap();
+        let p = r.page_renderer();
+        let html = p.render(Some("rust"), "fn main() {}\n").unwrap();
         assert!(html.starts_with("<pre class=\"highlight\" data-lang=\"rust\">"));
         assert!(
             html.contains("class=\"yz-"),
@@ -424,20 +424,25 @@ mod tests {
     #[test]
     fn 未知の言語と言語なしは_none() {
         let r = SyntectCodeRenderer::new(true, &client_config());
-        assert!(r.render(Some("unknown-lang-xyz"), "x").is_none());
-        assert!(r.render(None, "x").is_none());
+        let p = r.page_renderer();
+        assert!(p.render(Some("unknown-lang-xyz"), "x").is_none());
+        assert!(p.render(None, "x").is_none());
     }
 
     #[test]
     fn math_はハイライトせず_comrak_の特殊化に任せる() {
         let r = SyntectCodeRenderer::new(true, &client_config());
-        assert!(r.render(Some("math"), "x^2").is_none());
+        assert!(r.page_renderer().render(Some("math"), "x^2").is_none());
     }
 
     #[test]
     fn ハイライト無効なら_none() {
         let r = SyntectCodeRenderer::new(false, &client_config());
-        assert!(r.render(Some("rust"), "fn main() {}").is_none());
+        assert!(
+            r.page_renderer()
+                .render(Some("rust"), "fn main() {}")
+                .is_none()
+        );
     }
 
     #[test]
@@ -448,19 +453,19 @@ mod tests {
 
         let mut r = SyntectCodeRenderer::new(true, &client_config());
         r.set_project_root(dir.path().to_path_buf());
-        r.begin_page();
-        assert!(!r.external_deps_used());
+        let p = r.page_renderer();
+        assert!(!p.external_deps_used());
 
-        let html = r
+        let html = p
             .render(Some("jsonschema"), "file: specs/api.yaml\n")
             .unwrap();
-        assert!(r.external_deps_used(), "file: 参照で外部依存が立つ");
+        assert!(p.external_deps_used(), "file: 参照で外部依存が立つ");
         // スタブ実装でも「レンダラを通った」ことは HTML の存在で確認できる
         assert!(!html.is_empty());
 
-        // begin_page でリセットされる
-        r.begin_page();
-        assert!(!r.external_deps_used());
+        // 新しいページレンダラは初期状態から始まる
+        let p = r.page_renderer();
+        assert!(!p.external_deps_used());
     }
 
     #[test]
@@ -468,25 +473,25 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut r = SyntectCodeRenderer::new(true, &client_config());
         r.set_project_root(dir.path().to_path_buf());
-        r.begin_page();
+        let p = r.page_renderer();
 
         // ルート外（.. 逸脱）
-        let html = r
+        let html = p
             .render(Some("openapi"), "file: ../outside.yaml\n")
             .unwrap();
         assert!(html.contains("markdown-alert-caution"), "{html}");
 
         // 不在ファイル
-        let html = r.render(Some("openapi"), "file: missing.yaml\n").unwrap();
+        let html = p.render(Some("openapi"), "file: missing.yaml\n").unwrap();
         assert!(html.contains("markdown-alert-caution"), "{html}");
     }
 
     #[test]
     fn インラインの_openapi_は外部依存を立てない() {
         let r = SyntectCodeRenderer::new(true, &client_config());
-        r.begin_page();
-        let _ = r.render(Some("openapi"), "openapi: 3.0.3\n").unwrap();
-        assert!(!r.external_deps_used(), "インラインはキャッシュ可能");
+        let p = r.page_renderer();
+        let _ = p.render(Some("openapi"), "openapi: 3.0.3\n").unwrap();
+        assert!(!p.external_deps_used(), "インラインはキャッシュ可能");
     }
 
     #[test]
@@ -514,7 +519,7 @@ mod tests {
 
         let mut r = SyntectCodeRenderer::new(true, &client_config());
         r.set_project_root(dir.path().to_path_buf());
-        r.begin_page();
+        let p = r.page_renderer();
 
         let src = concat!(
             "openapi: 3.0.3\n",
@@ -524,9 +529,9 @@ mod tests {
             "              schema:\n",
             "                $ref: \"specs/common.yaml#/components/schemas/User\"\n",
         );
-        let html = r.render(Some("openapi"), src).unwrap();
+        let html = p.render(Some("openapi"), src).unwrap();
         assert!(
-            r.external_deps_used(),
+            p.external_deps_used(),
             "文書内のファイル $ref でもキャッシュ非対象の印が立つ"
         );
         assert!(html.contains("<code>id</code>"), "{html}");
