@@ -22,6 +22,16 @@ pub struct ExcerptSegment {
     pub mark: bool,
 }
 
+/// 影文字列と同じ正規化（char ごとに NFKC → lowercase）。
+/// フレーズをまるごと 1 needle として渡すときに使う
+/// （token は Tokenizer 側で正規化済みなので不要）
+pub(crate) fn normalize_for_match(s: &str) -> String {
+    s.chars()
+        .flat_map(|c| c.nfkc())
+        .flat_map(|n| n.to_lowercase())
+        .collect()
+}
+
 /// text から tokens の一致箇所周辺 `max_chars` 文字（char 単位）の抜粋を作る。
 /// 一致が無ければ先頭 `max_chars` ＋（切れたら）`…` の非 mark 1 断片を返す
 pub fn make_excerpt(text: &str, tokens: &[String], max_chars: usize) -> Vec<ExcerptSegment> {

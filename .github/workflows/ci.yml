@@ -63,6 +63,9 @@ jobs:
           # タイポトレランスの実ヒット確認（Phase 21: 出力の有無だけでは日本語 typo の
           # 不具合を見逃した反省から、ヒット内容まで検証する）
           "$GITHUB_WORKSPACE/target/debug/yuzu" search "ダーくモード" | grep -q "ダークモード"
+          # フレーズ検索（Phase 31）: 隣接一致でヒットし、逆順は 0 件
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search '"ライブリロード"' | grep -q "ライブリロード"
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search '"リロードライブ"' | grep -q "一致するページはありませんでした"
           # Phase 6: fmt/lint/check（正常系 = 0、違反注入で = 1 の終了コード契約）
           "$GITHUB_WORKSPACE/target/debug/yuzu" fmt --check
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint

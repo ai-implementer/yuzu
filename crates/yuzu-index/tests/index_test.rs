@@ -317,3 +317,38 @@ fn タイトル語の位置はリード_doc_だけに付く() {
     assert_eq!(postings[0].doc_id, 0);
     assert!(!postings[0].positions.is_empty());
 }
+
+#[test]
+fn フレーズ検索はフィールド境界をまたいで偽ヒットしない() {
+    let content = tempfile::tempdir().unwrap();
+    // 正例: 本文中に「ライブリロード」が連続で出る
+    write(
+        content.path(),
+        "hit.md",
+        "---\ntitle: 正例\n---\n# 正例\n\nライブリロードで自動更新される。\n",
+    );
+    // 偽例: セクション本文の末尾が「ライブ」・自セクション見出しの先頭が「リロード」。
+    // 位置ストリームは body → heading の順なので、ギャップが無ければ隣接になってしまう
+    write(
+        content.path(),
+        "boundary.md",
+        "---\ntitle: 境界\n---\n# 境界\n\nリード文。\n\n## リロードの手順\n\n説明の最後がライブ\n",
+    );
+    let md_opts = MarkdownOptions::default();
+    let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    build_search_index(&site, &md_opts, &IndexParams::default(), dist.path()).unwrap();
+
+    let results = search_dist(dist.path(), "\"ライブリロード\"", 10).unwrap();
+    assert_eq!(results.len(), 1, "{results:?}");
+    assert_eq!(results[0].url, "hit/");
+    assert!(
+        results[0].excerpt.contains("ライブリロード"),
+        "抜粋にフレーズが出る: {}",
+        results[0].excerpt
+    );
+
+    // 引用符なしなら両ページとも（token 単位で）ヒットする
+    let results = search_dist(dist.path(), "ライブリロード", 10).unwrap();
+    assert_eq!(results.len(), 2, "{results:?}");
+}

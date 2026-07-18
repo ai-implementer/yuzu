@@ -6,8 +6,13 @@
 //!
 //! 流れ: クエリを tokenize → fst 完全一致（未ヒット token のみ編集距離 1 で展開・
 //! ペナルティ付き）→ 必要シャードの postings をデコード → BM25 で加算スコアリング。
+//!
+//! フレーズ検索（v3）: クエリの `"..."` 引用部は完全一致のみで解決し
+//! （タイポ・同義語展開なし）、postings の出現位置の隣接（+1）で照合して
+//! **ヒットを絞り込む**（filter。スコアへの加点は構成 term の BM25 が担う）。
+//! 引用符なしクエリの挙動は従来と不変。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use fst::{IntoStreamer, Map, Streamer};
 use levenshtein_automata::LevenshteinAutomatonBuilder;
@@ -32,6 +37,49 @@ const SYN_EXPANSION_LIMIT: usize = 8;
 pub struct Hit {
     pub doc_id: u32,
     pub score: f32,
+}
+
+/// クエリを引用フレーズと通常部に分ける。引用符は `"` `＂` `“` `”`
+/// （開き・閉じは区別しない）。閉じ忘れは末尾までを引用部として扱う。
+/// 引用符を含まないクエリは `(そのまま, 空)` になる = 既定挙動は不変
+fn parse_query(query: &str) -> (String, Vec<String>) {
+    let mut plain = String::new();
+    let mut phrases = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = false;
+    for c in query.chars() {
+        if matches!(c, '"' | '＂' | '“' | '”') {
+            if in_quote {
+                let phrase = current.trim();
+                if !phrase.is_empty() {
+                    phrases.push(phrase.to_string());
+                }
+                current.clear();
+            }
+            in_quote = !in_quote;
+        } else if in_quote {
+            current.push(c);
+        } else {
+            plain.push(c);
+        }
+    }
+    if in_quote {
+        let phrase = current.trim();
+        if !phrase.is_empty() {
+            phrases.push(phrase.to_string());
+        }
+    }
+    (plain, phrases)
+}
+
+/// クエリ解決の結果（通常語＋フレーズ）
+struct ResolvedQuery {
+    /// term_id → スコア重み（通常語のタイポ・同義語込み。フレーズ構成 term は 1.0）
+    terms: HashMap<u32, f32>,
+    /// tokenize 済みフレーズごとの term_id 列（全 token が語彙にある場合のみ）
+    phrases: Vec<Vec<u32>>,
+    /// 語彙に無い token を含むフレーズがあった（= どの doc にも一致し得ない）
+    has_unresolvable_phrase: bool,
 }
 
 pub struct SearchEngine {
@@ -75,10 +123,15 @@ impl SearchEngine {
     }
 
     /// クエリに必要で**まだロードされていない**シャード id 列（昇順・重複なし）。
-    /// 呼び出し側はこれを fetch/read して [`Self::load_shard`] に渡す
+    /// 呼び出し側はこれを fetch/read して [`Self::load_shard`] に渡す。
+    /// フレーズの構成 term のシャードも含む
     pub fn needed_shards(&self, query: &str) -> Vec<u32> {
-        let mut ids: Vec<u32> = self
-            .resolve_terms(query)
+        let resolved = self.resolve_query(query);
+        if resolved.has_unresolvable_phrase {
+            return Vec::new(); // 検索結果が空で確定するのでロード不要
+        }
+        let mut ids: Vec<u32> = resolved
+            .terms
             .keys()
             .filter_map(|&term_id| self.shard_for_term(term_id))
             .filter(|id| !self.shards.contains_key(id))
@@ -117,13 +170,30 @@ impl SearchEngine {
 
     /// [`Self::search`] に加えて、truncate 前の総ヒット数を返す（件数表示用）
     pub fn search_with_total(&self, query: &str, limit: usize) -> (Vec<Hit>, usize) {
-        let resolved = self.resolve_terms(query);
+        let resolved = self.resolve_query(query);
+        if resolved.has_unresolvable_phrase {
+            return (Vec::new(), 0); // 語彙に無いフレーズ = 完全一致がどこにも無い
+        }
+        // フレーズの隣接照合でヒット許可 doc 集合を作る（フレーズなしなら制限なし）
+        let mut allowed: Option<HashSet<u32>> = None;
+        for ids in &resolved.phrases {
+            let docs = self.phrase_docs(ids);
+            let next = match allowed {
+                None => docs,
+                Some(prev) => prev.intersection(&docs).copied().collect(),
+            };
+            if next.is_empty() {
+                return (Vec::new(), 0);
+            }
+            allowed = Some(next);
+        }
+
         let doc_count = self.manifest.doc_count as f32;
         let avg_len = self.manifest.avg_doc_len.max(1.0);
         let (k1, b) = (self.manifest.bm25.k1, self.manifest.bm25.b);
 
         let mut scores: HashMap<u32, f32> = HashMap::new();
-        for (&term_id, &weight) in &resolved {
+        for (&term_id, &weight) in &resolved.terms {
             let Some(shard_id) = self.shard_for_term(term_id) else {
                 continue;
             };
@@ -152,6 +222,11 @@ impl SearchEngine {
             }
         }
 
+        // フレーズ filter: 引用部を含まない doc を落とす
+        if let Some(allowed) = &allowed {
+            scores.retain(|doc_id, _| allowed.contains(doc_id));
+        }
+
         let mut hits: Vec<Hit> = scores
             .into_iter()
             .map(|(doc_id, score)| Hit { doc_id, score })
@@ -174,14 +249,28 @@ impl SearchEngine {
 
     /// fragment.text からクエリ一致箇所周辺の抜粋を作る（native / wasm 共通の入口）。
     /// 同義語展開後の全変形のトークンを渡すため、ゆれ表記で検索しても
-    /// 本文側の正表記がハイライトされる
+    /// 本文側の正表記がハイライトされる。
+    /// `"..."` 引用部はフレーズ全体を 1 needle として先頭に渡す
+    /// （隣接一致はマージされるため本文どおりの表記なら 1 つの mark になる）
     pub fn excerpt(&self, text: &str, query: &str, max_chars: usize) -> Vec<crate::ExcerptSegment> {
+        let (plain, phrases) = parse_query(query);
         let mut tokens: Vec<String> = Vec::new();
-        for variant in self.expand_queries(query) {
+        let push = |t: String, tokens: &mut Vec<String>| {
+            if !t.is_empty() && !tokens.contains(&t) {
+                tokens.push(t);
+            }
+        };
+        for phrase in &phrases {
+            // フレーズまるごと（影文字列と同じ正規化。空白込みで一致する）と、
+            // 構成 token（表記が改行等でずれた場合のフォールバック）の両方
+            push(crate::excerpt::normalize_for_match(phrase), &mut tokens);
+            for token in self.tokenizer.tokenize(phrase) {
+                push(token, &mut tokens);
+            }
+        }
+        for variant in self.expand_queries(&plain) {
             for token in self.tokenizer.tokenize(&variant) {
-                if !tokens.contains(&token) {
-                    tokens.push(token);
-                }
+                push(token, &mut tokens);
             }
         }
         crate::excerpt::make_excerpt(text, &tokens, max_chars)
@@ -259,6 +348,103 @@ impl SearchEngine {
             }
         }
         resolved
+    }
+
+    /// クエリ全体（通常部＋引用フレーズ）を解決する。
+    /// 通常部は従来どおり（タイポ・同義語込み）、フレーズは完全一致のみで
+    /// 構成 term を weight 1.0 でスコア対象に加える
+    fn resolve_query(&self, query: &str) -> ResolvedQuery {
+        let (plain, phrases) = parse_query(query);
+        let mut terms = self.resolve_terms(&plain);
+        let mut phrase_ids: Vec<Vec<u32>> = Vec::new();
+        let mut has_unresolvable_phrase = false;
+        for phrase in &phrases {
+            let tokens = self.tokenizer.tokenize(phrase);
+            if tokens.is_empty() {
+                continue; // 記号のみ等、token にならない引用部は無視
+            }
+            let ids: Option<Vec<u32>> = tokens
+                .iter()
+                .map(|t| self.terms.get(t).map(|id| id as u32))
+                .collect();
+            match ids {
+                Some(ids) => {
+                    for &id in &ids {
+                        let entry = terms.entry(id).or_insert(0.0);
+                        *entry = entry.max(1.0);
+                    }
+                    phrase_ids.push(ids);
+                }
+                None => has_unresolvable_phrase = true,
+            }
+        }
+        ResolvedQuery {
+            terms,
+            phrases: phrase_ids,
+            has_unresolvable_phrase,
+        }
+    }
+
+    /// フレーズ（term_id 列）を位置の隣接（+1）で照合し、含む doc 集合を返す。
+    /// シャード未ロード等で位置が引けない場合は空集合
+    /// （= フレーズ検索は「確認できたものだけヒット」の完全一致セマンティクス）
+    fn phrase_docs(&self, ids: &[u32]) -> HashSet<u32> {
+        let Some(first) = ids.first() else {
+            return HashSet::new();
+        };
+        // doc → 「フレーズ末尾 token の出現位置」列。term を 1 つ進めるたびに
+        // +1 隣接で絞り込む（1 token フレーズは含有チェックに縮退）
+        let Some(mut current) = self.positions_of(*first) else {
+            return HashSet::new();
+        };
+        for &id in &ids[1..] {
+            let Some(next) = self.positions_of(id) else {
+                return HashSet::new();
+            };
+            let mut narrowed: HashMap<u32, Vec<u32>> = HashMap::new();
+            for (doc, prev_positions) in current {
+                let Some(next_positions) = next.get(&doc) else {
+                    continue;
+                };
+                // 両者とも昇順 → two-pointer で prev+1 == next を拾う
+                let mut matched = Vec::new();
+                let (mut i, mut j) = (0, 0);
+                while i < prev_positions.len() && j < next_positions.len() {
+                    let want = prev_positions[i] + 1;
+                    match next_positions[j].cmp(&want) {
+                        std::cmp::Ordering::Less => j += 1,
+                        std::cmp::Ordering::Equal => {
+                            matched.push(next_positions[j]);
+                            i += 1;
+                            j += 1;
+                        }
+                        std::cmp::Ordering::Greater => i += 1,
+                    }
+                }
+                if !matched.is_empty() {
+                    narrowed.insert(doc, matched);
+                }
+            }
+            if narrowed.is_empty() {
+                return HashSet::new();
+            }
+            current = narrowed;
+        }
+        current.into_keys().collect()
+    }
+
+    /// term の doc → 出現位置列（ロード済みシャードから）。未ロードなら None
+    fn positions_of(&self, term_id: u32) -> Option<HashMap<u32, Vec<u32>>> {
+        let shard_id = self.shard_for_term(term_id)?;
+        let shard = self.shards.get(&shard_id)?;
+        let local = term_id - self.manifest.shards[shard_id as usize].term_start;
+        let postings = shard.postings_with_positions(local).ok()?;
+        Some(
+            postings
+                .into_iter()
+                .map(|p| (p.doc_id, p.positions))
+                .collect(),
+        )
     }
 
     /// term_id → シャード id（manifest.shards は term_start 昇順・連続範囲）
@@ -575,5 +761,138 @@ mod tests {
         let (hits, total) = engine.search_with_total("検索", 2);
         assert_eq!(hits.len(), 2, "limit で切り詰め");
         assert_eq!(total, 3, "総ヒット数は切り詰め前");
+    }
+
+    #[test]
+    fn parse_query_は引用部と通常部を分ける() {
+        let (plain, phrases) = super::parse_query("検索 \"ライブリロード\" 設定");
+        assert_eq!(plain, "検索  設定");
+        assert_eq!(phrases, ["ライブリロード"]);
+
+        // 全角・カーリー引用符も受理
+        let (_, phrases) = super::parse_query("＂全角＂ と “カーリー” と ”逆順“");
+        assert_eq!(phrases, ["全角", "カーリー", "逆順"]);
+
+        // 閉じ忘れは末尾まで・空の引用部は無視
+        let (plain, phrases) = super::parse_query("\"\" 前置き \"閉じ忘れ");
+        assert_eq!(plain, " 前置き ");
+        assert_eq!(phrases, ["閉じ忘れ"]);
+
+        // 引用符なしはそのまま（既定挙動不変の根拠）
+        let (plain, phrases) = super::parse_query("ふつうの クエリ");
+        assert_eq!(plain, "ふつうの クエリ");
+        assert!(phrases.is_empty());
+    }
+
+    #[test]
+    fn フレーズ検索は隣接出現の_doc_だけにヒットする() {
+        // 両 doc とも live / reload の 2 token を含むが、隣接するのは doc 0 だけ
+        let docs = ["live reload updates the page", "live stream then reload it"];
+        let engine = build_index(&docs, 10_000);
+
+        let (hits, total) = engine.search_with_total("\"live reload\"", 10);
+        assert_eq!(total, 1, "{hits:?}");
+        assert_eq!(hits[0].doc_id, 0);
+
+        // 引用符なしは従来どおり両方ヒット（既定挙動不変）
+        let (_, total) = engine.search_with_total("live reload", 10);
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn 日本語フレーズも隣接照合できる() {
+        // 「ライブリロード」は ライブ / リロード に分割される（Phase 28 実測）
+        let docs = [
+            "ライブリロードで自動更新される",
+            "ライブ配信のあとにリロードする",
+        ];
+        let engine = build_index(&docs, 10_000);
+
+        let (hits, total) = engine.search_with_total("\"ライブリロード\"", 10);
+        assert_eq!(total, 1, "{hits:?}");
+        assert_eq!(hits[0].doc_id, 0);
+    }
+
+    #[test]
+    fn フレーズはタイポ展開しない() {
+        let docs = ["markdown の説明"];
+        let engine = build_index(&docs, 10_000);
+
+        // 引用符なし: 1 置換の誤字でもヒット（従来のタイポトレランス）
+        assert!(!engine.search("markdowm", 10).is_empty());
+        // 引用フレーズ: 完全一致のみ（語彙に無い token を含むため 0 件）
+        let (hits, total) = engine.search_with_total("\"markdowm\"", 10);
+        assert!(hits.is_empty());
+        assert_eq!(total, 0);
+    }
+
+    #[test]
+    fn フレーズは同義語展開しない() {
+        let docs = ["ブラウザで検索する話"];
+        let engine = build_index_with_synonyms(
+            &docs,
+            10_000,
+            vec![vec!["ブラウザ".to_string(), "閲覧ソフト".to_string()]],
+        );
+
+        // 引用符なし: 同義語でヒット
+        assert!(!engine.search("閲覧ソフト", 10).is_empty());
+        // 引用フレーズ: 完全一致のみ（本文に「閲覧ソフト」は無い）
+        assert!(engine.search("\"閲覧ソフト\"", 10).is_empty());
+    }
+
+    #[test]
+    fn 語彙に無いフレーズは他の語が一致しても_0_件() {
+        let docs = ["検索の説明"];
+        let engine = build_index(&docs, 10_000);
+        let (hits, total) = engine.search_with_total("検索 \"zzzqqq\"", 10);
+        assert!(hits.is_empty(), "{hits:?}");
+        assert_eq!(total, 0);
+    }
+
+    #[test]
+    fn フレーズと通常語の混在はフレーズで絞って通常語で加点する() {
+        let docs = [
+            "live reload と検索の説明",
+            "live reload だけの説明",
+            "検索だけの説明",
+        ];
+        let engine = build_index(&docs, 10_000);
+        let (hits, total) = engine.search_with_total("\"live reload\" 検索", 10);
+        // フレーズを含まない doc 2 は除外。検索を含む doc 0 が上位
+        assert_eq!(total, 2, "{hits:?}");
+        assert_eq!(hits[0].doc_id, 0);
+        assert!(hits.iter().all(|h| h.doc_id != 2));
+    }
+
+    #[test]
+    fn 引用符_1_トークンは完全一致の含有フィルタに縮退する() {
+        let docs = ["検索の説明", "無関係の話"];
+        let engine = build_index(&docs, 10_000);
+        let (hits, total) = engine.search_with_total("\"検索\"", 10);
+        assert_eq!(total, 1);
+        assert_eq!(hits[0].doc_id, 0);
+    }
+
+    #[test]
+    fn 抜粋はフレーズ全体を_1_まとまりでマークする() {
+        let docs = ["ライブリロードで自動更新される"];
+        let engine = build_index(&docs, 10_000);
+        let segments = engine.excerpt("ライブリロードで自動更新される", "\"ライブリロード\"", 160);
+        let marks: Vec<&str> = segments
+            .iter()
+            .filter(|s| s.mark)
+            .map(|s| s.text.as_str())
+            .collect();
+        assert_eq!(marks, ["ライブリロード"], "分割 token ではなく 1 まとまり");
+
+        // ASCII の空白入りフレーズも本文どおりの表記で 1 まとまり
+        let segments = engine.excerpt("run yuzu build now", "\"Yuzu Build\"", 160);
+        let marks: Vec<&str> = segments
+            .iter()
+            .filter(|s| s.mark)
+            .map(|s| s.text.as_str())
+            .collect();
+        assert_eq!(marks, ["yuzu build"], "大文字ゆれも影文字列の正規化で吸収");
     }
 }
