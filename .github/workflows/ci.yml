@@ -45,6 +45,24 @@ jobs:
           cargo check -p yuzu-search-wasm --target wasm32-unknown-unknown
           cargo check -p tankan --target wasm32-unknown-unknown
 
+      # docs/: yuzu 自身のドキュメントサイト（Phase 36）を PR でも検証する。
+      # デプロイは docs.yml（main push）だが、壊れた原稿・SSR フォールバックの
+      # 混入はマージ前にここで検出する
+      - name: docs site (yuzu check && yuzu build)
+        run: |
+          cd docs
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          test -f dist/index.html
+          test -f dist/_search/manifest.json
+          # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
+          # script タグ）が出たら tankan の回帰として失敗させる
+          # （本文中の文字列と区別するため src 属性の形で照合する）
+          if grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html"; then
+            echo "docs で SSR フォールバックが発生している（上記ページ）" >&2
+            exit 1
+          fi
+
       # e2e: サンプルプロジェクト生成 → ビルド → ネイティブ検索（誤字クエリ込み）
       - name: e2e (yuzu new && yuzu build && yuzu search)
         run: |

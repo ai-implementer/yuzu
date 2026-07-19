@@ -1,0 +1,77 @@
+# yuzu 自身のドキュメントサイト（docs/）を GitHub Pages へ公開する（Phase 36）。
+# yuzu new が同梱する scaffold の deploy.yml とは別物で、リポジトリ内の
+# 最新の yuzu をビルドして使う（dogfooding）。
+# 事前準備: リポジトリの Settings > Pages > Source を「GitHub Actions」にする。
+# actions はフルコミット SHA でピン留めする（タグの書き換えによる改ざんを防ぐ）。
+# 更新時は SHA とコメントのバージョンを揃えること
+name: docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # git.lastUpdated がページごとの最終コミット日を拾うため全履歴を取得する
+          # （浅いクローンだと全ページが直近コミットの日付になる）
+          fetch-depth: 0
+      # SHA ピンでは ref 名からツールチェインを推定できないため toolchain の明示が必須
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: yuzu をビルド（このリポジトリの最新版）
+        # release ビルド必須: debug はテーマをファイルシステムから読むため、
+        # 埋め込みアセットの検証を兼ねて常に埋め込み経路で配信物を作る
+        run: cargo build --release -p yuzu-cli
+
+      - name: 品質ゲート（lint ＋ リンク切れ ＋ fmt 差分）
+        working-directory: docs
+        run: |
+          "$GITHUB_WORKSPACE/target/release/yuzu" check
+
+      - name: Pages の設定を取得
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: ビルド
+        # base_url はフル URL（https://<owner>.github.io/<repo>）。
+        # フル URL を渡すと llms.txt のリンクが絶対 URL になる
+        working-directory: docs
+        run: |
+          "$GITHUB_WORKSPACE/target/release/yuzu" build --base-url "${{ steps.pages.outputs.base_url }}/"
+          # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
+          # script タグ）が 1 ページでも出たら tankan の回帰として失敗させる
+          # （本文中の文字列と区別するため src 属性の形で照合する）
+          if grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html"; then
+            echo "SSR フォールバックが発生している（上記ページ）" >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/dist
+
+      - id: deploy
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

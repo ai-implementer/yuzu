@@ -1,0 +1,42 @@
+{
+  // yuzu 自身のドキュメントサイト。
+  // このリポジトリの yuzu でビルドし、GitHub Pages へ公開する
+  // （.github/workflows/docs.yml。baseUrl は CI が --base-url で注入する）。
+  "site": {
+    "title": "yuzu",
+    "description": "Markdown の設計書を静的 HTML ドキュメントサイトへ変換する Rust 製ツール",
+    "lang": "ja",
+    "logo": "/images/yuzu-logo.svg"
+  },
+  "input": { "dir": "content" },
+  "output": { "dir": "dist", "clean": true },
+  "theme": { "name": "default", "dark": true },
+  "nav": { "auto": true },
+  "markdown": {
+    "gfm": true,
+    "highlight": { "enabled": true },
+    // tankan による SSR（対応 9 図種をビルド時に SVG 化）を実運用で使う
+    "mermaid": { "enabled": true, "backend": "ssr" },
+    "math": { "enabled": true }
+  },
+  "lint": {
+    // content 直下のセクション 1 階層まで（ガイド/リファレンス/開発）
+    "maxDirectoryDepth": 1,
+    // このリポジトリの表記規約: 長音符なしに統一（CLAUDE.md と同じ）
+    "terms": { "サーバ": ["サーバー"], "ユーザ": ["ユーザー"] }
+  },
+  "search": {
+    // 設定キー・コマンド名で検索できるように、コードブロックも索引する
+    "indexCode": true,
+    // 同義語グループ（lint.terms と合成してクエリ拡張に使われる）
+    "synonyms": [
+      ["図", "ダイアグラム"],
+      ["設定", "コンフィグ"]
+    ]
+  },
+  "git": {
+    "lastUpdated": true,
+    "editUrl": "https://github.com/ai-implementer/yuzu/edit/main/docs/content/{path}"
+  },
+  "dev": { "port": 5173 }
+}

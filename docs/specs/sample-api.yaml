@@ -1,0 +1,77 @@
+# guide/api-spec.md の「file: 参照」デモで使うサンプル仕様。
+# このファイルを編集すると、次の yuzu build で参照ページに必ず反映される
+# （file: 参照ページはキャッシュ対象外）。
+openapi: 3.0.3
+info:
+  title: ドキュメント API（サンプル）
+  version: 1.0.0
+  description: |
+    `file: specs/sample-api.yaml` で参照している、プロジェクトルート相対の仕様ファイルです。
+paths:
+  /pages:
+    get:
+      summary: ページ一覧を取得
+      parameters:
+        - name: section
+          in: query
+          description: セクション（guide / reference / development）で絞り込む
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Page"
+  /pages/{route}:
+    get:
+      summary: ページを 1 件取得
+      parameters:
+        - name: route
+          in: path
+          required: true
+          description: ページのルート（例 `guide/search`）
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        "404":
+          description: ページが存在しない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+components:
+  schemas:
+    Page:
+      type: object
+      required: [route, title]
+      properties:
+        route:
+          type: string
+          description: サイト内のルート
+        title:
+          type: string
+          description: frontmatter の title
+        order:
+          type: integer
+          description: ナビの並び順
+        draft:
+          type: boolean
+          description: 下書きフラグ
+    ApiError:
+      description: エラー応答（どの操作からも参照されないスキーマも末尾の一覧に載ります）
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
