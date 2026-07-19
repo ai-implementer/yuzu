@@ -18,7 +18,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
-CI（.github/workflows/ci.yml）は上記に加えて wasm32 チェックと e2e を実行する:
+CI（.github/workflows/ci.yml）は上記に加えて wasm32 チェック・e2e・docs サイト検証
+（docs/ での check・build・SSR フォールバック検出）を実行する:
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -41,9 +42,12 @@ yuzu build && yuzu check && yuzu search "はじめに"
 
 ```
 yuzu-cli → {yuzu-server, yuzu-render, yuzu-index, yuzu-core, yuzu-config}
-yuzu-render → yuzu-core, tankan     yuzu-index → yuzu-core
-yuzu-search-wasm ↔ yuzu-index-format（native/wasm でトークナイザ共有）
-tankan は yuzu-* 非依存の汎用ライブラリ（将来 crates.io へ分離可能な設計を維持）
+yuzu-render → yuzu-core, tankan     yuzu-index → yuzu-core, yuzu-index-format
+yuzu-search-wasm ↔ yuzu-index-format（native/wasm でトークナイザ・フォーマット共有）
+tankan・yuzu-index-format・yuzu-search-wasm は他の yuzu crate 非依存の汎用ライブラリ
+（将来 crates.io/npm へ分離可能な設計を維持。検索スタックの書き側集約は
+yuzu-index-format::build、読み側クエリエンジンは SearchEngine にあり、
+yuzu-index はページ抽出とファイル I/O だけの薄い呼び出し側）
 ```
 
 - **yuzu-core**: comrak パース → Document/サイトモデル（nav・TOC・slug・sourcepos・lint・リンク検査）。パーサは内部に隠蔽し、公開 API は comrak 非依存
