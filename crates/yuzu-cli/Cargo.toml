@@ -1,12 +1,14 @@
 [package]
 name = "yuzu-cli"
-description = "yuzu の CLI（new / build / preview ＋ 後続フェーズのスタブ）"
+description = "yuzu の CLI（bin: yuzu。new / build / dev / preview / search / llms / fmt / lint / check）"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+# crates.io へは公開しない（配布は GitHub Release のバイナリ + cargo install --git。README ロードマップ参照）
+publish = false
 
 [[bin]]
 name = "yuzu"

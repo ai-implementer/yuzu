@@ -7,6 +7,8 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+# crates.io へは公開しない（配布は GitHub Release のバイナリ + cargo install --git。README ロードマップ参照）
+publish = false
 
 [dependencies]
 axum = { workspace = true }

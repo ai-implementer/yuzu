@@ -8,7 +8,12 @@ description: yuzu のインストールとクイックスタート
 
 ## インストール
 
-Rust ツールチェイン（1.85 以降）があれば、リポジトリから直接インストールできます:
+[GitHub Releases](https://github.com/ai-implementer/yuzu/releases/latest) から
+お使いのプラットフォームのバイナリ（macOS arm64 / x64・Linux x64・Windows x64）を
+ダウンロードして展開し、`yuzu` を PATH の通った場所へ置きます。
+各リリースには検証用の `SHA256SUMS` も添付されています。
+
+Rust ツールチェイン（1.85 以降）があれば、ソースからもインストールできます:
 
 ```bash
 cargo install --git https://github.com/ai-implementer/yuzu yuzu-cli

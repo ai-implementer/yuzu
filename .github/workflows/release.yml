@@ -1,0 +1,166 @@
+# yuzu-cli のリリースバイナリをビルドし GitHub Release へ添付する（Phase 37）。
+# v* タグ push で 4 プラットフォームをビルドし、draft Release に集約 →
+# SHA256SUMS 添付後に公開する。テストは回さない（main の CI を信頼し、
+# 代わりに「タグが main に含まれる」「タグとバージョンの一致」「--version smoke」で担保）。
+# 部分失敗は Actions の「Re-run failed jobs」だけで復旧できる（--clobber で上書き・
+# 公開まで draft のため外部には見えない）。
+# actions はフルコミット SHA でピン留めする（タグの書き換えによる改ざんを防ぐ）。
+# 更新時は SHA とコメントのバージョンを揃えること
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  # ビルド matrix の検証用（Release は作らず build〜smoke〜アーカイブまで）
+  workflow_dispatch:
+
+permissions:
+  contents: write # gh release create/upload/edit に必要
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # タグの正当性を検証し draft Release を用意する（存在チェック付き = 再実行安全）
+  create-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # 全ブランチ・全履歴（main 包含の検証と直前タグの取得に必要）
+          fetch-depth: 0
+      - name: タグ整合の検証
+        run: |
+          VERSION="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "タグ $GITHUB_REF_NAME と workspace バージョン $VERSION が不一致（バンプコミット忘れ）" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "タグが main に含まれていない（CI を通っていないコミット）" >&2
+            exit 1
+          fi
+      - name: draft Release を作成（既存なら何もしない）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME は作成済み（再実行）"
+            exit 0
+          fi
+          PREV="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          {
+            echo "## インストール"
+            echo ""
+            echo "Assets からお使いのプラットフォームのアーカイブをダウンロードして展開し、"
+            echo "\`yuzu\` を PATH の通った場所へ置いてください。"
+            echo "検証は \`sha256sum -c SHA256SUMS\`（macOS は \`shasum -a 256 -c SHA256SUMS\`）。"
+            echo ""
+            echo "Rust 1.85 以降ならソースからもインストールできます:"
+            echo ""
+            echo '```bash'
+            echo "cargo install --git https://github.com/$GITHUB_REPOSITORY --tag $GITHUB_REF_NAME yuzu-cli"
+            echo '```'
+            if [ -n "$PREV" ]; then
+              echo ""
+              echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$PREV...$GITHUB_REF_NAME"
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
+            --title "yuzu $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+
+  build:
+    needs: create-release
+    # workflow_dispatch では create-release が skip されるため、その場合もビルドは通す
+    if: ${{ !cancelled() && (needs.create-release.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    strategy:
+      # 1 プラットフォームの失敗で他を巻き添えにしない（失敗した job だけ再実行できる）
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            # arm64 runner からのクロスコンパイル（依存は純 Rust のみ = onig 排除済みで安全。
+            # smoke は Rosetta 2 で実行される）
+            runner: macos-15
+          - target: x86_64-unknown-linux-gnu
+            # glibc 2.35 基準。新しい runner でビルドするほど古い distro で動かなくなる。
+            # さらに互換性を広げるなら musl 静的リンク化が将来の改善候補
+            runner: ubuntu-22.04
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        # Windows でも同一スクリプトを使う（Git Bash）
+        shell: bash
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # SHA ピンでは ref 名からツールチェインを推定できないため toolchain の明示が必須
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: ${{ matrix.target }}
+
+      - name: build
+        # release ビルド必須（debug はテーマを rust-embed で埋め込まずファイルシステムから読む）
+        run: cargo build --release --locked -p yuzu-cli --target ${{ matrix.target }}
+
+      - name: smoke（バイナリのバージョンが Cargo.toml と一致すること）
+        run: |
+          VERSION="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          BIN="target/${{ matrix.target }}/release/yuzu"
+          case "${{ matrix.target }}" in *windows*) BIN="$BIN.exe" ;; esac
+          test "$("$BIN" --version)" = "yuzu $VERSION"
+
+      - name: アーカイブ作成
+        id: archive
+        run: |
+          VERSION="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          NAME="yuzu-v$VERSION-${{ matrix.target }}"
+          mkdir stage
+          cp README.md LICENSE-MIT LICENSE-APACHE stage/
+          case "${{ matrix.target }}" in
+            *windows*)
+              cp "target/${{ matrix.target }}/release/yuzu.exe" stage/
+              (cd stage && 7z a "../$NAME.zip" .)
+              echo "asset=$NAME.zip" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              cp "target/${{ matrix.target }}/release/yuzu" stage/
+              tar -czf "$NAME.tar.gz" -C stage .
+              echo "asset=$NAME.tar.gz" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Release へ添付
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "${{ steps.archive.outputs.asset }}" --clobber
+
+  # 全アセットが出揃ってから SHA256SUMS を添付し、draft を公開する
+  publish-release:
+    needs: [create-release, build]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: SHA256SUMS を生成して公開
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir "$RUNNER_TEMP/assets"
+          cd "$RUNNER_TEMP/assets"
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern 'yuzu-*'
+          sha256sum yuzu-* > SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" SHA256SUMS --clobber
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false

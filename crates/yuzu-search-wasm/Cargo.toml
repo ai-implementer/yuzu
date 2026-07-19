@@ -7,6 +7,8 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+# crates.io へは公開しない（成果物の wasm は scripts/build-search-wasm.sh で vendor する）
+publish = false
 
 [lib]
 # rlib を併記しないと cargo test/clippy --workspace がリンクできない

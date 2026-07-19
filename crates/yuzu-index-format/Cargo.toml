@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+# crates.io へは現方針では公開しない。将来検索スタックを切り離して単独公開する時に
+# この行を外す（README ロードマップ参照）
+publish = false
 
 [dependencies]
 fst = { workspace = true }
