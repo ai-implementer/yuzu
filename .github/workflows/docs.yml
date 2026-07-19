@@ -56,11 +56,13 @@ jobs:
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: ビルド
-        # base_url はフル URL（https://<owner>.github.io/<repo>）。
-        # フル URL を渡すと llms.txt のリンクが絶対 URL になる
+        # フル URL を渡すと llms.txt のリンクが絶対 URL になる。
+        # configure-pages の base_url 出力は「Enforce HTTPS」が無効だと
+        # http:// を返すため使わず、スキームを https に固定して
+        # host + base_path から組み立てる
         working-directory: docs
         run: |
-          "$GITHUB_WORKSPACE/target/release/yuzu" build --base-url "${{ steps.pages.outputs.base_url }}/"
+          "$GITHUB_WORKSPACE/target/release/yuzu" build --base-url "https://${{ steps.pages.outputs.host }}${{ steps.pages.outputs.base_path }}/"
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が 1 ページでも出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
