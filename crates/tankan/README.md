@@ -4,10 +4,16 @@ Mermaid 互換のダイアグラムテキストを **SVG** に変換する純 Ru
 名前は柑橘のタンカン（桶柑）から。
 
 - **純 Rust・I/O なし・時刻/乱数非依存** — `wasm32-unknown-unknown` でもそのまま動く
-- **特定ツール非依存の汎用設計**（yuzu ワークスペースに同居しているが `yuzu-*` に依存しない。
-  必要になれば別リポジトリ / crates.io へ分離できる形を保つ）
+- **特定ツール非依存の汎用設計**（開発は [yuzu](https://github.com/ai-implementer/yuzu)
+  monorepo で行っているが `yuzu-*` に依存しない独立ライブラリ）
 - **フォールバック前提**: 未対応の図種・構文は `Error` で明示し、呼び出し側が
   mermaid.js クライアント描画等へ落とせる（全図種対応を待たずに実戦投入できる）
+
+## インストール
+
+```bash
+cargo add tankan
+```
 
 ## 互換性の定義
 
@@ -20,13 +26,15 @@ Mermaid 互換のダイアグラムテキストを **SVG** に変換する純 Ru
 
 | 図種 | 状態 |
 |---|---|
-| sequenceDiagram | ✅ M1（participant/actor・矢印 10 種・activation・Note・loop/alt/opt/par/critical/break/rect・autonumber・box・title） |
-| flowchart / graph | ✅ M2（ノード形状 15 種・エッジ全種（実線/点線/太線/不可視・長さ・端点・ラベル 2 形）・チェーン/`&`・TB/BT/LR/RL・subgraph（ネスト・内部 direction）・ノードのスタイル（`style`/`classDef`（`default` 含む）/`class`/`:::`。fill/stroke/stroke-width/stroke-dasharray/color をインライン適用）。linkStyle/click と `@{}` 新記法はフォールバック） |
-| stateDiagram / stateDiagram-v2 | ✅ M3（`[*]`・ラベル付き遷移・`state "説明" as s`・composite（ネスト）・direction・`<<choice/fork/join>>`・note・concurrency `--`。レイアウトは flowchart エンジンを共用。classDef 等はフォールバック） |
-| erDiagram | ✅ M4（全基数×識別/非識別・属性ブロック（PK/FK/UK・引用符コメント）・エイリアス `E[表示名]`・引用符名・単独エンティティ宣言・direction は受理して無視。style/classDef/`:::` はフォールバック） |
-| classDiagram / classDiagram-v2 | ✅ v0.3（クラス定義（波括弧ブロック・`X : member`）・可視性 `+ - # ~`・末尾 `* $`・関係 8 種（継承/コンポジション/集約/関連/リンク/依存/実現/点線）・ラベル・多重度・ジェネリクス `~T~`→`<T>`・`<<interface>>` 等アノテーション。note/click/namespace/`:::` 等はフォールバック） |
-| pie | ✅ v0.3（`showData`・`title`（ヘッダ/単独行/frontmatter）・扇形＋凡例。塗りは CSS 変数 `--tankan-pie-1`〜`8` で上書き可） |
-| gantt | ✅ M4（`dateFormat YYYY-MM-DD`・section・done/active/crit/milestone・after 依存・開始省略・excludes（weekends/曜日/日付 = 働き日消化＋網掛け）・weekend・axisFormat・tickInterval。時分単位・until 等はフォールバック。**today 線は描かない**＝時刻非依存。`todayMarker off` のみ受理） |
+| sequenceDiagram | ✅（participant/actor・矢印 10 種・activation・Note・loop/alt/opt/par/critical/break/rect・autonumber・box・title） |
+| flowchart / graph | ✅（ノード形状 15 種・エッジ全種（実線/点線/太線/不可視・長さ・端点・ラベル 2 形）・チェーン/`&`・TB/BT/LR/RL・subgraph（ネスト・内部 direction）・ノードのスタイル（`style`/`classDef`（`default` 含む）/`class`/`:::`。fill/stroke/stroke-width/stroke-dasharray/color をインライン適用）。linkStyle/click と `@{}` 新記法はフォールバック） |
+| stateDiagram / stateDiagram-v2 | ✅（`[*]`・ラベル付き遷移・`state "説明" as s`・composite（ネスト）・direction・`<<choice/fork/join>>`・note・concurrency `--`・状態ボックスのスタイル（`classDef`（`default` 含む）/`class` 文/`:::`/`style`）。レイアウトは flowchart エンジンを共用） |
+| erDiagram | ✅（全基数×識別/非識別・属性ブロック（PK/FK/UK・引用符コメント）・エイリアス `E[表示名]`・引用符名・単独エンティティ宣言・エンティティのスタイル（`classDef`（`default` 含む）/`class` 文/`:::`/`style`）・direction は受理して無視） |
+| classDiagram / classDiagram-v2 | ✅（クラス定義（波括弧ブロック・`X : member`）・可視性 `+ - # ~`・末尾 `* $`・関係 8 種（継承/コンポジション/集約/関連/リンク/依存/実現/点線）・ラベル・多重度・ジェネリクス `~T~`→`<T>`・`<<interface>>` 等アノテーション・クラスボックスのスタイル（`classDef`（`default` 含む）/`cssClass` 文/`:::`/`style`。宣言の `class` と衝突しないよう一括適用は `cssClass`）。note/click/namespace はフォールバック） |
+| pie | ✅（`showData`・`title`（ヘッダ/単独行/frontmatter）・扇形＋凡例。塗りは CSS 変数 `--tankan-pie-1`〜`8` で上書き可） |
+| gantt | ✅（`dateFormat YYYY-MM-DD`・section・done/active/crit/milestone・after 依存・開始省略・excludes（weekends/曜日/日付 = 働き日消化＋網掛け）・weekend・axisFormat・tickInterval。時分単位・until 等はフォールバック。**today 線は描かない**＝時刻非依存。`todayMarker off` のみ受理） |
+| mindmap | ✅（インデント階層・中央ルートから左右へ振り分ける tidy tree・ノード形状 7 種（四角/角丸/円/バン/雲/六角形/既定）・ブランチごとのパレット色・幅ベースの自動折返し。`:::class` / `::icon` 行は受理） |
+| timeline | ✅（`title`・section 帯・時期ごとのイベント縦積み（`: 継続行` の複数イベント可）・等間隔カラム・自動折返し） |
 | その他 | フォールバック |
 
 レイアウトは自作の **Sugiyama 法サブセット**（閉路除去 → longest-path 層割当 →
@@ -54,3 +62,7 @@ match tankan::render_svg(source, &options) {
 ブラウザなしで文字幅を測るため、ASCII はメトリクステーブル、非 ASCII は
 East Asian Width（全角 = 1em）による近似を使う。閲覧側はシステムフォントで
 描画されるため厳密一致は原理的に不可能で、余白側に倒した安全な近似としている。
+
+## ライセンス
+
+MIT または Apache-2.0 のデュアルライセンス。

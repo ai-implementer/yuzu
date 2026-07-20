@@ -46,10 +46,12 @@ flowchart TD
 ```
 
 色を付けた **tankan・yuzu-index-format・yuzu-search-wasm** は yuzu の他の
-crate に依存しない汎用ライブラリです（将来 crates.io / npm へ分離可能な
-設計を維持。検索スタックの書き側集約は `yuzu-index-format::build`、
-読み側クエリエンジンは `SearchEngine` にあり、yuzu-index はページ抽出と
-ファイル I/O だけを担う薄い呼び出し側です）。
+crate に依存しない汎用ライブラリです。tankan は
+[crates.io で公開](https://crates.io/crates/tankan)しており（開発はこの
+monorepo で一体のまま）、検索スタックも同じく分離可能な設計を維持しています
+（書き側集約は `yuzu-index-format::build`、読み側クエリエンジンは
+`SearchEngine` にあり、yuzu-index はページ抽出とファイル I/O だけを担う
+薄い呼び出し側です）。
 
 ## 凍結した設計判断
 

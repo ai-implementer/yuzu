@@ -1,17 +1,19 @@
 [package]
 name = "tankan"
-# 汎用ライブラリ（特定ツール非依存）。将来 crates.io へ分離する際は
-# repository を専用リポジトリに差し替える
-description = "Mermaid 互換のダイアグラムテキストを SVG に変換する純 Rust ライブラリ（I/O なし・wasm 対応）"
-version.workspace = true
+# 汎用ライブラリ（特定ツール非依存）。monorepo のまま crates.io へ公開している
+# （開発はこのワークスペースで一体。repository は monorepo を指す）。
+# バージョンは workspace と独立で、tankan の変更時にだけ上げて publish する
+# （手順は CLAUDE.md「リリース手順」参照）
+description = "Mermaid-compatible diagram text to SVG renderer in pure Rust (no I/O, wasm-ready)"
+version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-# crates.io へは現方針では公開しない。将来この crate を切り離して単独公開する時に
-# この行を外す（README ロードマップ参照）
-publish = false
+readme = "README.md"
+keywords = ["mermaid", "diagram", "svg", "flowchart", "sequence-diagram"]
+categories = ["visualization", "rendering", "parser-implementations"]
 
 [dependencies]
 thiserror = { workspace = true }
