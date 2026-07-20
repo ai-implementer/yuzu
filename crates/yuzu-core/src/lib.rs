@@ -11,6 +11,7 @@
 //! 2. [`render_body_html`] — 本文の HTML 化（コードブロック差し替え・
 //!    リンク書き換えのフックを通す）
 
+mod aliases;
 pub mod cache;
 mod diagnostics;
 mod error;
@@ -28,6 +29,7 @@ pub mod urlpath;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub use aliases::{alias_routes, validate_aliases};
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{Diagnostic, Severity};
 pub use error::CoreError;

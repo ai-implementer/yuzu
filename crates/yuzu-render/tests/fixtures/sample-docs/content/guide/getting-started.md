@@ -1,6 +1,7 @@
 ---
 title: はじめに
 order: 1
+aliases: ["guide/first-steps/"]
 ---
 
 # はじめに

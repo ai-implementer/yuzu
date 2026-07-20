@@ -181,6 +181,48 @@ fn ページ削除で孤児の出力が掃除される() {
 }
 
 #[test]
+fn エイリアス削除で旧リダイレクトが孤児掃除される() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_project(dir.path());
+    let cache_dir = dir.path().join(".yuzu/cache");
+    let manifest = cache_dir.join("output-manifest.json");
+
+    // エイリアス付きでビルド → リダイレクトが出る
+    write(
+        dir.path(),
+        "content/guide/a.md",
+        "---\ntitle: ページA\naliases: [\"guide/old-a/\"]\n---\n# A\n\nAの本文。\n",
+    );
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (written1, _) = build_incremental(dir.path(), &cache);
+    output::save_manifest(&manifest, &written1).unwrap();
+    let redirect = dir.path().join("dist/guide/old-a/index.html");
+    assert!(redirect.exists());
+    assert!(
+        fs::read_to_string(&redirect)
+            .unwrap()
+            .contains("url=/docs/guide/a/"),
+        "リダイレクト先は baseUrl 付きの正 URL"
+    );
+
+    // エイリアスを外して再ビルド → 旧リダイレクトは孤児として消える
+    write(
+        dir.path(),
+        "content/guide/a.md",
+        "---\ntitle: ページA\n---\n# A\n\nAの本文。\n",
+    );
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (written2, _) = build_incremental(dir.path(), &cache);
+    let previous = output::load_manifest(&manifest).unwrap();
+    let removed = output::remove_orphans(&dir.path().join("dist"), &previous, &written2).unwrap();
+    output::save_manifest(&manifest, &written2).unwrap();
+
+    assert_eq!(removed, 1, "リダイレクト index.html だけが孤児になる");
+    assert!(!dir.path().join("dist/guide/old-a").exists());
+    assert!(dir.path().join("dist/guide/a/index.html").exists());
+}
+
+#[test]
 fn env_key_が変わると全ページ再計算になる() {
     let dir = tempfile::tempdir().unwrap();
     setup_project(dir.path());

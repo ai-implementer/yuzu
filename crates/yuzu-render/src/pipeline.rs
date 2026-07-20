@@ -61,6 +61,17 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let output_dir = &rc.output_dir;
     let ctx = &params.ctx;
 
+    // エイリアス（frontmatter aliases）の検証。衝突・不正があると実ページや
+    // 他のリダイレクトを上書きしてしまうため、書き出す前にビルドごと中断する
+    // （check はより詳しい診断を出す。ここはレンダラ自身の防御）
+    let alias_diags = yuzu_core::validate_aliases(&params.site.pages);
+    if let Some(first) = alias_diags.first() {
+        return Err(RenderError::InvalidAliases {
+            count: alias_diags.len(),
+            first: format!("{}: {}", first.rel.display(), first.message),
+        });
+    }
+
     // インクリメンタル時（outputs あり）は dist を残し、孤児掃除は cli 側が行う
     if cfg.output.clean && ctx.outputs.is_none() && output_dir.exists() {
         fs::remove_dir_all(output_dir).map_err(RenderError::io(output_dir))?;
@@ -188,6 +199,27 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             tracing::debug!(page = %page.rel.display(), out = %out_rel, "ページ出力");
             Ok(())
         })?;
+
+    // エイリアス（frontmatter aliases）→ 旧 URL へのリダイレクト HTML（直列部）。
+    // 出力はマニフェストに記録されるため、エイリアス削除時は孤児掃除で自動的に消える。
+    // 衝突は冒頭の validate_aliases で除外済み = ここで実ページを上書きすることはない
+    let redirect_template = shared.env.get_template("redirect.jinja")?;
+    for page in &params.site.pages {
+        for alias_route in yuzu_core::alias_routes(page) {
+            let html = redirect_template.render(context! {
+                site => site_ctx,
+                target_url => resolver.page_url(&page.route),
+                target_title => page.title,
+            })?;
+            assets::write_output(
+                ctx.outputs,
+                output_dir,
+                &format!("{alias_route}index.html"),
+                html.as_bytes(),
+            )?;
+            tracing::debug!(page = %page.rel.display(), alias = %alias_route, "リダイレクト出力");
+        }
+    }
 
     // 404 ページ（GitHub Pages 等の静的ホスティングは 404.html を自動で使う）。
     // copy_public より前に書く = public/404.html を置いたプロジェクトは

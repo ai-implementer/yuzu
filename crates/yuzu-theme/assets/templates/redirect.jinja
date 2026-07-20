@@ -1,0 +1,18 @@
+<!doctype html>
+{#- frontmatter aliases（旧 URL）に生成するリダイレクトページ。
+    テーマに依存しない自己完結の最小 HTML（meta refresh + canonical + JS）。
+    検索エンジンには noindex + canonical で正 URL だけを伝える -#}
+<html lang="{{ site.lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="0; url={{ target_url | safe }}">
+<link rel="canonical" href="{{ target_url | safe }}">
+<meta name="robots" content="noindex">
+<title>{{ target_title }} | {{ site.title }}</title>
+<script>location.replace("{{ target_url | safe }}");</script>
+</head>
+<body>
+<p>このページは移動しました: <a href="{{ target_url | safe }}">{{ target_title }}</a></p>
+</body>
+</html>

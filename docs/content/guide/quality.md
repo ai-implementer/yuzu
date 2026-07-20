@@ -2,6 +2,7 @@
 title: 品質チェック
 order: 7
 description: yuzu fmt / lint / check で文書の品質を CI で保つ
+aliases: ["guide/lint/"]
 ---
 
 # 品質チェック

@@ -4,7 +4,8 @@ use crate::model::Frontmatter;
 
 /// [`Frontmatter`] が受理するトップレベルキー（lint の未知キー検出用）。
 /// フィールドを増やすときはここにも足す（乖離は下のテストで検知する）
-pub(crate) const KNOWN_KEYS: &[&str] = &["title", "order", "draft", "description", "llms"];
+pub(crate) const KNOWN_KEYS: &[&str] =
+    &["title", "order", "draft", "description", "llms", "aliases"];
 
 /// comrak の front matter extension が切り出した生テキスト
 /// （`---` 区切り行を含む）から YAML 部分を取り出してパースする

@@ -60,6 +60,8 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" build
           test -f dist/index.html
           test -f dist/_search/manifest.json
+          # エイリアス（guide/quality の旧 URL）にリダイレクト HTML が生成される
+          grep -q 'http-equiv="refresh"' dist/guide/lint/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）

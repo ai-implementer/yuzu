@@ -108,6 +108,65 @@ fn 生成物一式が揃っている() {
 }
 
 #[test]
+fn エイリアスはリダイレクト_html_になり_base_url_に追随する() {
+    let dir = build_fixture(LiveReloadMode::None);
+    let redirect =
+        fs::read_to_string(dir.path().join("dist/guide/first-steps/index.html")).unwrap();
+    assert!(
+        redirect.contains(r#"content="0; url=/docs/guide/getting-started/""#),
+        "meta refresh（baseUrl 付き）: {redirect}"
+    );
+    assert!(redirect.contains(r#"rel="canonical" href="/docs/guide/getting-started/""#));
+    assert!(redirect.contains(r#"name="robots" content="noindex""#));
+    assert!(redirect.contains(r#"location.replace("/docs/guide/getting-started/")"#));
+    assert!(
+        redirect.contains("はじめに"),
+        "リンクテキストは移動先タイトル"
+    );
+}
+
+#[test]
+fn エイリアス衝突はビルドを中断する() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    // 自ページの route と衝突するエイリアスへ書き換える
+    let page = dir.path().join("content/guide/getting-started.md");
+    let source = fs::read_to_string(&page).unwrap();
+    fs::write(
+        &page,
+        source.replace("guide/first-steps/", "guide/getting-started/"),
+    )
+    .unwrap();
+
+    let rc = yuzu_config::load(dir.path()).unwrap();
+    let site = yuzu_core::build_site_model(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &MarkdownOptions::default(),
+    )
+    .unwrap();
+    let err = render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
+    })
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("aliases"),
+        "エイリアス起因のエラー: {err}"
+    );
+    assert!(
+        !dir.path()
+            .join("dist/guide/getting-started/index.html")
+            .exists(),
+        "書き出し前に中断される"
+    );
+}
+
+#[test]
 fn poll_モードはオートリフレッシュが注入される() {
     let dir = build_fixture(LiveReloadMode::Poll);
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();

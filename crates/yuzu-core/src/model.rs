@@ -19,6 +19,10 @@ pub struct Frontmatter {
     pub description: Option<String>,
     /// false なら llms.txt / llms-full.txt に収録しない
     pub llms: bool,
+    /// このページへリダイレクトする旧 URL（route 形式。例 `guide/old-name/`。
+    /// 先頭 `/`・末尾スラッシュ省略は正規化で吸収）。ビルド時に各エイリアスへ
+    /// リダイレクト HTML を生成する。実ページや他エイリアスとの衝突はエラー
+    pub aliases: Vec<String>,
 }
 
 // llms の既定を true にするため derive ではなく手書き
@@ -31,6 +35,7 @@ impl Default for Frontmatter {
             draft: false,
             description: None,
             llms: true,
+            aliases: Vec::new(),
         }
     }
 }

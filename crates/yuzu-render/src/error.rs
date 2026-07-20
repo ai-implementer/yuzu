@@ -23,6 +23,11 @@ pub enum RenderError {
 
     #[error("シンタックスハイライトの CSS 生成に失敗しました: {0}")]
     HighlightCss(#[from] syntect::Error),
+
+    #[error(
+        "frontmatter の aliases に問題が {count} 件あります（`yuzu check` で一覧できます）。最初の 1 件: {first}"
+    )]
+    InvalidAliases { count: usize, first: String },
 }
 
 impl RenderError {
