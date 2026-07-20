@@ -71,14 +71,15 @@ tokio-tungstenite = "0.29"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 # 内部 crate（依存方向の凍結: cli → {server, render, index, core, config} /
-# render, index → core / search-wasm → index-format）
+# render, index → core / 検索スタック: mikan-wasm → mikan・yuzu-index → mikan）
 yuzu-core = { path = "crates/yuzu-core" }
 yuzu-render = { path = "crates/yuzu-render" }
 yuzu-config = { path = "crates/yuzu-config" }
 yuzu-theme = { path = "crates/yuzu-theme" }
 yuzu-server = { path = "crates/yuzu-server" }
 yuzu-index = { path = "crates/yuzu-index" }
-yuzu-index-format = { path = "crates/yuzu-index-format" }
+# 検索エンジン本体（yuzu-* 非依存の汎用ライブラリ。crates.io で公開）
+mikan = { path = "crates/mikan" }
 # Mermaid 互換描画（yuzu 非依存の汎用ライブラリ。依存方向は yuzu-render → tankan のみ）
 tankan = { path = "crates/tankan" }
 

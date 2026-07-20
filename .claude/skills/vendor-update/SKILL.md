@@ -19,7 +19,7 @@ scripts/build-search-wasm.sh
   cargo install wasm-bindgen-cli --version <同一バージョン>
   ```
   を併せて実行し、Cargo.toml の `=` ピンとスクリプトの整合を保つ。
-- 更新後の検証: `yuzu build` → `yuzu search <クエリ>`。ネイティブと wasm は `yuzu-index-format` の**同一トークナイザコード＋同一モデルバイト**を使う制約があり、`yuzu search` はブラウザと同じエンジンを通るので整合検証になる。
+- 更新後の検証: `yuzu build` → `yuzu search <クエリ>`。ネイティブと wasm は `mikan` の**同一トークナイザコード＋同一モデルバイト**を使う制約があり、`yuzu search` はブラウザと同じエンジンを通るので整合検証になる。
 
 ## 2. mermaid.min.js（crates/yuzu-theme/assets/static/vendor/）
 
@@ -41,7 +41,7 @@ scripts/vendor-katex.sh
 - 更新後は `run` スキルで数式ページ（scaffold の getting-started「記法サンプル > 数式」）のライト/ダーク描画と、fonts が 404 なく取得されることを確認。
 - 未取得でもビルド・テストは通り、数式は原文（TeX ソース）表示になるだけ。
 
-## 4. vaporetto モデル（crates/yuzu-index-format/assets/model/）
+## 4. vaporetto モデル（crates/mikan/assets/model/）
 
 ```bash
 scripts/vendor-vaporetto-model.sh

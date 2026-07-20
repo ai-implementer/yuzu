@@ -1,18 +1,27 @@
-# yuzu-index-format
+# mikan 🍊
 
 Pagefind 型（ビルド時にインデックスを静的ファイルへ焼き込み、ブラウザは 2 段フェッチで
-検索する方式）の自前インデックスフォーマットと、その読み書きロジック。
-`yuzu-index`（ネイティブのインデクサ・`yuzu search`）と `yuzu-search-wasm`（ブラウザの
-クエリエンジン）が、この crate の**同一コード**を共有する。
+検索する方式）の日本語全文検索インデックスフォーマットと、その読み書きロジック
+（BM25 クエリエンジン）。名前は柑橘のミカン（蜜柑）から。
 
-- **`yuzu-render` / `yuzu-theme` / `yuzu-core` / `yuzu-config` に依存しない**
-  （tankan と同じく、yuzu ワークスペースに同居しているが `yuzu-*` の上位層には
-  依存しない設計。将来 crates.io へ分離可能な形を保つ）
+ネイティブのインデクサ（`yuzu search`）とブラウザのクエリエンジン（wasm）が、この
+crate の**同一コード**を共有する。開発は [yuzu](https://github.com/ai-implementer/yuzu)
+monorepo で行っているが、mikan 自体は `yuzu-*` に依存しない独立ライブラリ。
+
+## インストール
+
+```bash
+cargo add mikan
+```
+
+## 特徴
+
+- **`yuzu-*` の上位層（テンプレート・設定・サイトモデル）に依存しない**独立ライブラリ
 - ただし **フォーマット非依存ではない**: このクレートは自前のワイヤフォーマット
   （`manifest.json` / `terms.fst` / `index/NNNN.bin` シャード / `fragment/*.json`）の
   読み書き実装であり、Pagefind の JS クライアントが Pagefind 独自フォーマットに
-  結合しているのと同型の設計。主張しているのは「yuzu の上位層（テンプレート・
-  設定・サイトモデル）への非依存」であって「フォーマットへの非依存」ではない
+  結合しているのと同型の設計。主張しているのは「アプリの上位層への非依存」であって
+  「フォーマットへの非依存」ではない
 - I/O なし（fetch・ファイル読み書きは呼び出し側の責務）。wasm バイナリを軽く保つため
   依存を必要最小限に保つ（`fst` / `levenshtein_automata` / `ruzstd` / `serde(_json)` /
   `thiserror` / `unicode-normalization` / `vaporetto(_rules)` のみ）
@@ -31,7 +40,7 @@ Markdown からのセクション抽出（tf・出現位置の計算）は呼び
 バイト列までを構築する（I/O なし。書き出しは呼び出し側の責務）:
 
 ```rust
-use yuzu_index_format::{Bm25Params, BuildOptions, DocumentInput, SectionInput, TokenizerMeta, TypoParams, build};
+use mikan::{Bm25Params, BuildOptions, DocumentInput, SectionInput, TokenizerMeta, TypoParams, build};
 
 let docs = vec![DocumentInput {
     title: "ホーム".to_string(),
@@ -68,7 +77,7 @@ let built = build(&docs, &opts)?;
 ## 使い方（読み側: クエリエンジン）
 
 ```rust
-use yuzu_index_format::SearchEngine;
+use mikan::SearchEngine;
 
 let mut engine = SearchEngine::new(&manifest_json, terms_fst, &model_zst)?;
 for shard_id in engine.needed_shards("検索") {
@@ -77,7 +86,10 @@ for shard_id in engine.needed_shards("検索") {
 let hits = engine.search("検索", 10); // Vec<Hit>（doc_id と BM25 スコア）
 ```
 
-`yuzu-search-wasm`（wasm-bindgen ラッパ）が同梱する `js/` 以下の手書き JS クライアント
-（`search-client.js` / `opfs-cache.js`）は、この読み側 API をフェッチ・OPFS キャッシュ・
-wasm 起動込みでブラウザから呼び出すための対になる実装（`crates/yuzu-search-wasm/README.md`
-参照）。
+ブラウザから使う場合の wasm-bindgen ラッパと、フェッチ・OPFS キャッシュ・wasm 起動を
+まとめた手書き JS クライアント（`search-client.js` / `opfs-cache.js`）は、yuzu の
+`mikan-wasm` crate（`crates/mikan-wasm/`）にある。
+
+## ライセンス
+
+MIT または Apache-2.0 のデュアルライセンス。

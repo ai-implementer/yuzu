@@ -2,7 +2,7 @@
 //!
 //! サイトモデルから `dist/_search/` 一式（manifest / terms.fst / シャード /
 //! fragment / モデル / wasm 成果物）を生成する。
-//! クエリエンジンとフォーマットは `yuzu-index-format` にあり、
+//! クエリエンジンとフォーマットは `mikan` にあり、
 //! ブラウザ（wasm）とネイティブ（[`search_dist`]）で同一コードを共有する。
 //!
 //! この crate は設定（yuzu-config）に依存しない。cli が設定を [`IndexParams`] に

@@ -27,7 +27,7 @@ cargo test -p yuzu-server   # ← サンドボックス外で実行する
 ## 3. wasm32 チェック
 
 ```bash
-cargo check -p yuzu-search-wasm --target wasm32-unknown-unknown
+cargo check -p mikan-wasm --target wasm32-unknown-unknown
 cargo check -p tankan --target wasm32-unknown-unknown
 ```
 

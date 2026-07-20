@@ -14,7 +14,7 @@ pub enum IndexError {
     Core(#[from] yuzu_core::CoreError),
 
     #[error(transparent)]
-    Format(#[from] yuzu_index_format::FormatError),
+    Format(#[from] mikan::FormatError),
 
     #[error("term 辞書（fst）の構築に失敗しました: {0}")]
     Fst(#[from] fst::Error),

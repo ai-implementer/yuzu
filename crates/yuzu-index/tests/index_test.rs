@@ -290,7 +290,7 @@ fn index_code_でコード内の関数名がヒットし抜粋に出る() {
 }
 
 /// dist/_search から token の位置込み postings を引く（terms.fst → 該当シャード解決）
-fn postings_of(dist: &Path, token: &str) -> Vec<yuzu_index_format::Posting> {
+fn postings_of(dist: &Path, token: &str) -> Vec<mikan::Posting> {
     let search = dist.join("_search");
     let map = fst::Map::new(fs::read(search.join("terms.fst")).unwrap()).unwrap();
     let term_id = map
@@ -308,7 +308,7 @@ fn postings_of(dist: &Path, token: &str) -> Vec<yuzu_index_format::Posting> {
         })
         .expect("term_id を含むシャードがある");
     let bytes = fs::read(search.join(shard_meta["file"].as_str().unwrap())).unwrap();
-    let shard = yuzu_index_format::Shard::parse(&bytes).unwrap();
+    let shard = mikan::Shard::parse(&bytes).unwrap();
     shard
         .postings_with_positions(term_id - shard_meta["termStart"].as_u64().unwrap() as u32)
         .unwrap()

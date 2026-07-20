@@ -52,7 +52,7 @@ docker 時代の named volume・イメージは引き継がれない（初回ビ
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace          # yuzu-server の serve テストも通る（TCP 制約なし）
-cargo check -p yuzu-search-wasm --target wasm32-unknown-unknown
+cargo check -p mikan-wasm --target wasm32-unknown-unknown
 cargo check -p tankan --target wasm32-unknown-unknown
 
 # CLI 実機（注意: target/ ではなく $CARGO_TARGET_DIR 配下に出る）

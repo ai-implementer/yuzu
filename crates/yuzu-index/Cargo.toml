@@ -12,7 +12,7 @@ publish = false
 
 [dependencies]
 yuzu-core = { workspace = true }
-yuzu-index-format = { workspace = true, features = ["builtin-model"] }
+mikan = { workspace = true, features = ["builtin-model"] }
 fst = { workspace = true }
 rayon = { workspace = true }
 rust-embed = { workspace = true }

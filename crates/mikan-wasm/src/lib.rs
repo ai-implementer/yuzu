@@ -1,7 +1,7 @@
 //! yuzu のクライアント検索（wasm32-unknown-unknown）。
 //!
 //! **ロジックは持たない**薄い wasm-bindgen ラッパ。エンジン本体・トークナイザ・
-//! フォーマットはすべて `yuzu-index-format` にあり、ネイティブの `yuzu search` と
+//! フォーマットはすべて `mikan` にあり、ネイティブの `yuzu search` と
 //! 同一コードを共有する（トークナイザ整合の保証）。
 //!
 //! fetch は JS 側（同梱の `js/search-client.js`。テーマの search-ui.js から
@@ -17,7 +17,7 @@
 
 use wasm_bindgen::prelude::*;
 
-use yuzu_index_format::SearchEngine;
+use mikan::SearchEngine;
 
 #[wasm_bindgen]
 pub struct YuzuSearch {

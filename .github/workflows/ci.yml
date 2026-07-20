@@ -36,18 +36,18 @@ jobs:
       - name: build
         run: cargo build --workspace
 
-      # crates.io 公開対象（tankan）のパッケージ検証。メタデータ・同梱内容の
+      # crates.io 公開対象（tankan・mikan）のパッケージ検証。メタデータ・同梱内容の
       # 回帰を PR で検出する。実公開は手動 cargo publish（CLAUDE.md「リリース手順」）
-      - name: package (tankan)
-        run: cargo package --locked -p tankan
+      - name: package (tankan, mikan)
+        run: cargo package --locked -p tankan -p mikan
 
       # wasm32 でのコンパイル可能性を確認する
-      # - yuzu-search-wasm: 成果物は scripts/build-search-wasm.sh で vendor 済み
+      # - mikan-wasm: 成果物は scripts/build-search-wasm.sh で vendor 済み
       # - tankan: wasm ターゲットの担保（M5。I/O・時刻・乱数非依存を維持する）
       - name: wasm check
         run: |
           rustup target add wasm32-unknown-unknown
-          cargo check -p yuzu-search-wasm --target wasm32-unknown-unknown
+          cargo check -p mikan-wasm --target wasm32-unknown-unknown
           cargo check -p tankan --target wasm32-unknown-unknown
 
       # docs/: yuzu 自身のドキュメントサイト（Phase 36）を PR でも検証する。

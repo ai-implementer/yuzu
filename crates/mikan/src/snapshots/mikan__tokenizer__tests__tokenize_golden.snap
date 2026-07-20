@@ -1,5 +1,5 @@
 ---
-source: crates/yuzu-index-format/src/tokenizer.rs
+source: crates/mikan/src/tokenizer.rs
 expression: "t.tokenize(\"Markdownで書いた設計書を静的HTMLサイトに変換する\")"
 ---
 [

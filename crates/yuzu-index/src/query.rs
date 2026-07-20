@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::Path;
 
-use yuzu_index_format::{Fragment, Manifest, SearchEngine};
+use mikan::{Fragment, Manifest, SearchEngine};
 
 use crate::SEARCH_DIR_NAME;
 use crate::error::IndexError;

@@ -1,13 +1,13 @@
 [package]
-name = "yuzu-search-wasm"
-description = "yuzu のクライアント検索クエリエンジン（wasm-bindgen ラッパ）"
+name = "mikan-wasm"
+description = "mikan（検索エンジン）の wasm-bindgen ラッパ。ブラウザのクエリエンジン"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-# crates.io へは公開しない（成果物の wasm は scripts/build-search-wasm.sh で vendor する）
+# crates.io へは公開しない（wasm 成果物を作るビルド用 crate。scripts/build-search-wasm.sh で vendor する）
 publish = false
 
 [lib]
@@ -16,7 +16,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # builtin-model は有効化しない（モデルはブラウザが fetch する。wasm を肥大させない）
-yuzu-index-format = { workspace = true }
+mikan = { workspace = true }
 # tokenize/excerpt の返却 JSON 用（token は任意文字列なのでエスケープ必須）
 serde_json = { workspace = true }
 wasm-bindgen = { workspace = true }

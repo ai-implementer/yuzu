@@ -12,16 +12,16 @@ crate を分けています。
 ## ワークスペース構成
 
     crates/
-    ├─ tankan             # Mermaid 互換描画（テキスト → SVG。yuzu 非依存の汎用ライブラリ）
-    ├─ yuzu-core          # comrak パース → Document/サイトモデル（nav・TOC・slug・sourcepos）
-    ├─ yuzu-render        # サイトモデル → HTML（minijinja・syntect・mermaid 変換・base path 解決）
-    ├─ yuzu-config        # yuzu.jsonc（JSONC）の探索・スキーマ・解決
-    ├─ yuzu-theme         # デフォルトテーマ（rust-embed: テンプレ + CSS + JS + mermaid.js）
-    ├─ yuzu-cli           # CLI（bin: yuzu）
-    ├─ yuzu-server        # preview/watch 用最小静的サーバ + notify 監視
-    ├─ yuzu-index         # 検索インデクサ（ページ抽出・ファイル I/O・wasm 成果物の同梱）
-    ├─ yuzu-index-format  # 索引フォーマットと検索エンジン（native/wasm で 1 実装共有）
-    └─ yuzu-search-wasm   # クライアント検索クエリエンジン（cdylib）
+    ├─ tankan       # Mermaid 互換描画（テキスト → SVG。yuzu 非依存・crates.io 公開）
+    ├─ yuzu-core    # comrak パース → Document/サイトモデル（nav・TOC・slug・sourcepos）
+    ├─ yuzu-render  # サイトモデル → HTML（minijinja・syntect・mermaid 変換・base path 解決）
+    ├─ yuzu-config  # yuzu.jsonc（JSONC）の探索・スキーマ・解決
+    ├─ yuzu-theme   # デフォルトテーマ（rust-embed: テンプレ + CSS + JS + mermaid.js）
+    ├─ yuzu-cli     # CLI（bin: yuzu）
+    ├─ yuzu-server  # preview/watch 用最小静的サーバ + notify 監視
+    ├─ yuzu-index   # 検索インデクサ（ページ抽出・ファイル I/O・wasm 成果物の同梱）
+    ├─ mikan        # 索引フォーマットと検索エンジン（native/wasm で 1 実装共有・crates.io 公開）
+    └─ mikan-wasm   # クライアント検索クエリエンジン（cdylib。wasm 成果物のビルド用）
 
 ## 依存方向（凍結）
 
@@ -39,17 +39,16 @@ flowchart TD
     REN --> THEME[yuzu-theme]
     REN --> TAN[tankan]
     IDX --> CORE
-    IDX --> FMT[yuzu-index-format]
-    WASM[yuzu-search-wasm] --> FMT
+    IDX --> FMT[mikan]
+    WASM[mikan-wasm] --> FMT
     classDef generic fill:#fff3d6,stroke:#8a6d1a
     class TAN,FMT,WASM generic
 ```
 
-色を付けた **tankan・yuzu-index-format・yuzu-search-wasm** は yuzu の他の
-crate に依存しない汎用ライブラリです。tankan は
-[crates.io で公開](https://crates.io/crates/tankan)しており（開発はこの
-monorepo で一体のまま）、検索スタックも同じく分離可能な設計を維持しています
-（書き側集約は `yuzu-index-format::build`、読み側クエリエンジンは
+色を付けた **tankan・mikan・mikan-wasm** は yuzu の他の
+crate に依存しない汎用ライブラリです。tankan（Mermaid SSR）と mikan（検索エンジン。
+旧 yuzu-index-format）は [crates.io で公開](https://crates.io/crates/mikan)しており
+（開発はこの monorepo で一体のまま）、書き側集約は `mikan::build`、読み側クエリエンジンは
 `SearchEngine` にあり、yuzu-index はページ抽出とファイル I/O だけを担う
 薄い呼び出し側です）。
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# yuzu-search-wasm をビルドして yuzu-index の assets へ vendor する。
+# mikan-wasm をビルドして yuzu-index の assets へ vendor する。
 #
 # 前提:
 #   rustup target add wasm32-unknown-unknown
-#   cargo install wasm-bindgen-cli --version <crates/yuzu-search-wasm の wasm-bindgen と同一>
+#   cargo install wasm-bindgen-cli --version <crates/mikan-wasm の wasm-bindgen と同一>
 #   binaryen（wasm-opt）が PATH にあること（例: brew install binaryen）
 #
 # 実行後、crates/yuzu-index/assets/search/README.md にサイズを記録すること。
@@ -25,16 +25,16 @@ if ! wasm-bindgen --version | grep -q "$WB_VERSION"; then
   exit 1
 fi
 
-cargo build -p yuzu-search-wasm --profile wasm-release --target wasm32-unknown-unknown
+cargo build -p mikan-wasm --profile wasm-release --target wasm32-unknown-unknown
 
 wasm-bindgen --target web --no-typescript --out-name search --out-dir "$DEST" \
-  "$ROOT/target/wasm32-unknown-unknown/wasm-release/yuzu_search_wasm.wasm"
+  "$ROOT/target/wasm32-unknown-unknown/wasm-release/mikan_wasm.wasm"
 
 wasm-opt -Oz --strip-debug -o "$DEST/search_bg.wasm" "$DEST/search_bg.wasm"
 
 # 手書きの JS クライアント（フェッチ ＋ OPFS キャッシュ ＋ wasm 起動）は
-# crates/yuzu-search-wasm/js/ に同居しており、生成物と同じ vendor 先へコピーする
-cp "$ROOT/crates/yuzu-search-wasm/js/"*.js "$DEST/"
+# crates/mikan-wasm/js/ に同居しており、生成物と同じ vendor 先へコピーする
+cp "$ROOT/crates/mikan-wasm/js/"*.js "$DEST/"
 
 echo "vendored:"
 ls -lh "$DEST"/search.js "$DEST"/search_bg.wasm "$DEST"/search-client.js "$DEST"/opfs-cache.js \

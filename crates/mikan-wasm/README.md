@@ -1,9 +1,12 @@
-# yuzu-search-wasm
+# mikan-wasm
 
 yuzu のクライアント検索クエリエンジン（`wasm32-unknown-unknown` の wasm-bindgen ラッパ）。
 **ロジックは持たない**薄い層で、エンジン本体・トークナイザ・フォーマットはすべて
-[`yuzu-index-format`](../yuzu-index-format) にあり、ネイティブの `yuzu search` と
+[`mikan`](../mikan) にあり、ネイティブの `yuzu search` と
 同一コードを共有する（トークナイザ整合の保証。README「検索まわりの実装メモ」参照）。
+
+crates.io には公開しない（`cargo add` する Rust ライブラリではなく、wasm 成果物を
+作るビルド用 crate。公開しているエンジン本体は [`mikan`](../mikan)）。
 
 ## `js/`: 同梱の JS クライアント
 

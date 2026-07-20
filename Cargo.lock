@@ -931,6 +931,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38d1115007560874e373613744c6fba374c17688327a71c1476d1a5954cc857b"
 
 [[package]]
+name = "mikan"
+version = "0.1.0"
+dependencies = [
+ "fst",
+ "insta",
+ "levenshtein_automata",
+ "ruzstd",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "unicode-normalization",
+ "vaporetto",
+ "vaporetto_rules",
+]
+
+[[package]]
+name = "mikan-wasm"
+version = "0.7.0"
+dependencies = [
+ "mikan",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2207,6 +2232,7 @@ name = "yuzu-index"
 version = "0.7.0"
 dependencies = [
  "fst",
+ "mikan",
  "rayon",
  "rust-embed",
  "serde",
@@ -2216,23 +2242,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "yuzu-core",
- "yuzu-index-format",
-]
-
-[[package]]
-name = "yuzu-index-format"
-version = "0.7.0"
-dependencies = [
- "fst",
- "insta",
- "levenshtein_automata",
- "ruzstd",
- "serde",
- "serde_json",
- "thiserror",
- "unicode-normalization",
- "vaporetto",
- "vaporetto_rules",
 ]
 
 [[package]]
@@ -2255,15 +2264,6 @@ dependencies = [
  "yuzu-config",
  "yuzu-core",
  "yuzu-theme",
-]
-
-[[package]]
-name = "yuzu-search-wasm"
-version = "0.7.0"
-dependencies = [
- "serde_json",
- "wasm-bindgen",
- "yuzu-index-format",
 ]
 
 [[package]]

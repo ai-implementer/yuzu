@@ -1,15 +1,19 @@
 [package]
-name = "yuzu-index-format"
-description = "yuzu の検索インデックスフォーマットとクエリエンジン（yuzu-index と yuzu-search-wasm が共有）"
-version.workspace = true
+name = "mikan"
+# 検索インデックスフォーマット＋BM25 クエリエンジン。yuzu-* の上位層に依存しない
+# 汎用ライブラリで、monorepo のまま crates.io へ単独公開している（開発は yuzu
+# ワークスペースで一体・repository は monorepo を指す）。バージョンは workspace と
+# 独立で、変更時にだけ上げて publish する（手順は CLAUDE.md「リリース手順」参照）
+description = "Japanese full-text search index format and BM25 query engine, shared by a native indexer and a wasm client (static files, no I/O)"
+version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-# crates.io へは現方針では公開しない。将来検索スタックを切り離して単独公開する時に
-# この行を外す（README ロードマップ参照）
-publish = false
+readme = "README.md"
+keywords = ["search", "japanese", "bm25", "full-text-search", "tokenizer"]
+categories = ["text-processing", "database-implementations", "wasm"]
 
 [dependencies]
 fst = { workspace = true }

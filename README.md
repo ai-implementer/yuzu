@@ -211,7 +211,7 @@ v0.5（Phase 24〜29: tankan スタイル構文の全図種展開 / 検索コー
 v0.6（Phase 30〜35: 検索インデックスの位置情報化（フォーマット v3） / フレーズ検索 / ビルドのページ並列化（render・index） / dogfooding 改善＝近接ブースト・フレーズヒント・ビルド時間表示 / 検索スタックのライブラリ化と OPFS キャッシュ）、
 v0.7（Phase 36〜38: 公開・配布の整備＝yuzu 自身の[ドキュメントサイト](https://ai-implementer.github.io/yuzu/)を GitHub Pages へ公開（dogfooding の総仕上げ） / tag push でバイナリ 4 プラットフォームを GitHub Release へ配布する release.yml / [tankan の crates.io 単独公開](https://crates.io/crates/tankan)（workspace と独立のバージョン 0.1.0）。名前 `yuzu`・`yuzu-core` の取得済み判明により yuzu 本体の crates.io 公開は将来構想へ再定義）は完了・リリース済み。
 
-v0.8 以降の候補: ドキュメントバージョニング（要否含め保留中）・i18n（テーマ UI 文字列の多言語化。`site.lang` は既にあるが検索 UI・404 ページ等のテーマ文言は日本語ハードコード）・VS Code 拡張（wasm プレビュー）・crates.io 公開の続き（tankan は v0.7 で公開済み。残りは検索スタック（yuzu-index-format）→ yuzu 本体の順。名前 `yuzu`・`yuzu-core` は別プロジェクトに取得済みのため、本体は内部 crate の単一パッケージ化と名称の検討が必要。Phase 37 の決定事項）。次期ロードマップは未策定（着手時に個別に設計する）。
+v0.8 以降の候補: ドキュメントバージョニング（要否含め保留中）・i18n（テーマ UI 文字列の多言語化。`site.lang` は既にあるが検索 UI・404 ページ等のテーマ文言は日本語ハードコード）・VS Code 拡張（wasm プレビュー）・crates.io 公開の続き（汎用ライブラリ層は tankan・mikan〔検索エンジン。旧 yuzu-index-format〕まで公開済み。残るは yuzu 本体だが、名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため、本体を単一パッケージ化するか名称を再検討する必要がある。Phase 37 の決定事項）。次期ロードマップは未策定（着手時に個別に設計する）。
 
 <details>
 <summary>完了済み: v0.7（Phase 36〜38）の内訳</summary>
@@ -313,13 +313,17 @@ Web 調査込みで確定済み。差し替えないこと。
 
 ```
 yuzu-cli → {yuzu-server, yuzu-render, yuzu-index, yuzu-core, yuzu-config}
-yuzu-render → yuzu-core, tankan     yuzu-index → yuzu-core, yuzu-index-format
-yuzu-search-wasm ↔ yuzu-index-format（native/wasm でトークナイザ・フォーマット共有）
-tankan・yuzu-index-format・yuzu-search-wasm は yuzu-render/yuzu-theme/yuzu-core/
-yuzu-config 非依存の汎用ライブラリ（将来 crates.io/npm へ分離可能な設計を維持。
-検索スタックの書き側集約ロジックは yuzu-index-format::build に、読み側クエリエンジンは
+yuzu-render → yuzu-core, tankan     yuzu-index → yuzu-core, mikan
+mikan-wasm ↔ mikan（native/wasm でトークナイザ・フォーマット共有）
+tankan・mikan・mikan-wasm は yuzu-render/yuzu-theme/yuzu-core/
+yuzu-config 非依存の汎用ライブラリ（tankan・mikan は crates.io で公開。
+検索スタックの書き側集約ロジックは mikan::build に、読み側クエリエンジンは
 SearchEngine にあり、yuzu-index はページ抽出とファイル I/O だけを担う薄い呼び出し側）
 ```
+
+検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ
+**mikan-wasm**（旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して
+改名し、mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
 
 ## ワークスペース構成
 
@@ -333,8 +337,8 @@ crates/
 ├─ yuzu-cli           # CLI（bin: yuzu）
 ├─ yuzu-server        # preview/watch 用最小静的サーバ + notify 監視
 ├─ yuzu-index         # 検索インデクサ（BM25 転置・シャーディング・wasm 成果物の同梱）
-├─ yuzu-index-format  # 索引フォーマット共有型（native/wasm でトークナイザを共有）
-└─ yuzu-search-wasm   # クライアント検索クエリエンジン（cdylib）
+├─ mikan              # 索引フォーマット＋検索エンジン（native/wasm 共有。yuzu 非依存・crates.io で公開）
+└─ mikan-wasm         # クライアント検索クエリエンジン（cdylib。wasm 成果物のビルド用）
 ```
 
 ## 開発
@@ -365,16 +369,16 @@ cargo fmt --all
 ### 検索まわりの実装メモ
 
 - **トークナイザ整合が最重要制約**: index 時（ネイティブ）と query 時（wasm）で
-  同一コード（`yuzu-index-format`）＋同一モデルバイト（`dist/_search/model.zst`）を使う。
+  同一コード（`mikan`）＋同一モデルバイト（`dist/_search/model.zst`）を使う。
   `yuzu search` はブラウザと同じエンジンを通るので整合の検証にも使える
 - **vaporetto モデル**（`bccwj-suw_c1.0`、圧縮 372KB、**MIT OR Apache-2.0**）は
-  `crates/yuzu-index-format/assets/model/` に vendor（`scripts/vendor-vaporetto-model.sh` で更新）。
+  `crates/mikan/assets/model/` に vendor（`scripts/vendor-vaporetto-model.sh` で更新）。
   ブラウザは初回検索時にモデルを遅延ダウンロードする
 - **wasm 成果物**（467KB）は `crates/yuzu-index/assets/search/` に vendor
   （`scripts/build-search-wasm.sh` で更新。要 wasm32 target ＋ wasm-bindgen-cli ＋ binaryen。
   CLI は crate の `wasm-bindgen = "=x.y.z"` と完全同一バージョンにすること）
 - **doc = セクション（h2/h3 境界）**: fragment v2 は `{ title, heading, url, anchor, text }`。
-  `text` はセクション全文で、抜粋はクエリ時に `yuzu-index-format::make_excerpt`
+  `text` はセクション全文で、抜粋はクエリ時に `mikan::make_excerpt`
   （native / wasm の 1 実装共有）で一致箇所周辺を動的生成する。ページタイトルの重みは
   リード doc（アンカーなし）だけに載せ、タイトル検索の重複ヒットを防ぐ
 - manifest の `docLens` 直置きは維持: doc 数はセクション数に増えるが 1 doc 数バイトで、
@@ -387,7 +391,7 @@ cargo fmt --all
   取得し、`contentHash`（terms.fst ＋ 全シャード ＋ モデルバイトの sha256）が OPFS 保存済みの
   前回 manifest と一致すれば `terms.fst`/`model.zst`/シャードは OPFS から読み、再訪問時の
   再フェッチを省略する。不一致・OPFS 非対応・非セキュアコンテキストでは既存のフェッチのみ
-  経路へ自然にフォールバックする（`crates/yuzu-search-wasm/js/search-client.js` /
+  経路へ自然にフォールバックする（`crates/mikan-wasm/js/search-client.js` /
   `opfs-cache.js`）。DuckDB-Wasm・Lindera-Wasm への置き換えは**行っていない**
   （Phase 28 の却下理由がそのまま当てはまるため。既存の vaporetto＋自作 BM25 エンジンを維持）
 

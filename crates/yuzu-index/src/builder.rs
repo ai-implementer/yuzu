@@ -9,10 +9,8 @@ use rayon::prelude::*;
 use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
 
+use mikan::{Bm25Params, DocumentInput, SectionInput, Tokenizer, TokenizerMeta, TypoParams, build};
 use yuzu_core::{BuildCache, CachedSection, MarkdownOptions, OutputTracker, Page, SiteModel};
-use yuzu_index_format::{
-    Bm25Params, DocumentInput, SectionInput, Tokenizer, TokenizerMeta, TypoParams, build,
-};
 
 use crate::SEARCH_DIR_NAME;
 use crate::error::IndexError;
@@ -107,7 +105,7 @@ impl IndexSession {
 pub fn model_fingerprint(dictionary: Option<&Path>) -> Result<String, IndexError> {
     let bytes: Vec<u8> = match dictionary {
         Some(path) => fs::read(path).map_err(IndexError::io(path))?,
-        None => yuzu_index_format::builtin_model_zst().to_vec(),
+        None => mikan::builtin_model_zst().to_vec(),
     };
     Ok(hex(&Sha256::digest(&bytes)))
 }
@@ -136,7 +134,7 @@ pub fn build_search_index_with(
     // ネイティブ / wasm の両側で同一バイトを使う＝トークナイザ整合の保証）
     let model_bytes: Vec<u8> = match &params.dictionary {
         Some(path) => fs::read(path).map_err(IndexError::io(path))?,
-        None => yuzu_index_format::builtin_model_zst().to_vec(),
+        None => mikan::builtin_model_zst().to_vec(),
     };
     // Tokenizer はキャッシュ miss が出たときだけ遅延構築する（zstd 展開が重い）。
     // セッション（watch/dev）があればそちらに保持して再利用する
@@ -174,7 +172,7 @@ pub fn build_search_index_with(
         .collect::<Result<_, IndexError>>()?;
 
     // ページ → ドキュメント入力への薄いマッピング。doc_id 採番・postings 集約・
-    // fst/シャード構築・manifest 生成は yuzu-index-format::build（yuzu 非依存の
+    // fst/シャード構築・manifest 生成は mikan::build（yuzu 非依存の
     // 汎用ロジック）に委譲する
     let docs: Vec<DocumentInput> = site
         .pages
@@ -196,7 +194,7 @@ pub fn build_search_index_with(
         })
         .collect();
 
-    let build_opts = yuzu_index_format::BuildOptions {
+    let build_opts = mikan::BuildOptions {
         tokenizer: TokenizerMeta {
             kind: "vaporetto".to_string(),
             model_file: "model.zst".to_string(),
@@ -256,7 +254,7 @@ pub fn build_search_index_with(
     // content_hash: ブラウザ側 OPFS キャッシュの版管理に使う識別子。
     // terms.fst ＋ 全シャード（連番順）＋ モデルバイトを連結してハッシュする
     // （manifest.json 以外の OPFS キャッシュ対象バイナリすべてを網羅するのが要点）。
-    // yuzu-index-format::build はこのフィールドを空文字で返すので、ここで計算して埋める
+    // mikan::build はこのフィールドを空文字で返すので、ここで計算して埋める
     let mut hasher = Sha256::new();
     hasher.update(&built.terms_fst);
     for (_, bytes) in &built.shards {

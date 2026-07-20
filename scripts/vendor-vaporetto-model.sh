@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # vaporetto の学習済みモデル（辞書なし SUW、MIT OR Apache-2.0）を
-# yuzu-index-format の assets へ取得する。
+# mikan の assets へ取得する。
 # 更新するときは MODEL/VERSION を変えて実行し、
-# crates/yuzu-index-format/assets/model/README.md の記録も更新すること。
+# crates/mikan/assets/model/README.md の記録も更新すること。
 set -euo pipefail
 
 VERSION="${VAPORETTO_MODELS_VERSION:-v0.5.0}"
 MODEL="${VAPORETTO_MODEL:-bccwj-suw_c1.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST_DIR="$ROOT/crates/yuzu-index-format/assets/model"
+DEST_DIR="$ROOT/crates/mikan/assets/model"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
