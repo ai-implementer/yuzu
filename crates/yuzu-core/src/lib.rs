@@ -31,6 +31,7 @@ use std::path::{Path, PathBuf};
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{Diagnostic, Severity};
 pub use error::CoreError;
+pub use markdown::fence::CodeBlockMeta;
 pub use model::{Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry};
 pub use output::{OutputTracker, WriteOutcome};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};

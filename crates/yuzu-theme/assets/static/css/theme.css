@@ -13,6 +13,7 @@
   --bg-subtle: #f5f8ff;
   --bg-hover: #e9f1fe;
   --bg-code: #ecf1f8;
+  --code-hl-bg: #dbe9fb; /* コードの行ハイライト（--bg-code より一段強い面） */
   --fg: #222222;
   --fg-muted: #6a6a6a; /* --bg-hover 上でも AA（4.76）を満たす値 */
   --border: #e3e3e3;
@@ -54,6 +55,7 @@ html[data-theme="dark"] {
   --bg-subtle: #142740;
   --bg-hover: #1c3452;
   --bg-code: #0a1726;
+  --code-hl-bg: #16304e; /* コードの行ハイライト（--bg-code より一段明るい面） */
   --fg: #dce7f5;
   --fg-muted: #93a9c9;
   --border: #2b4467;
@@ -904,6 +906,59 @@ body {
 /* syntect ハイライト済みブロック（配色は syntect.css 側） */
 .markdown-body pre.highlight code {
   background: none;
+}
+
+/* ---- コードブロックの表示メタ（行 span / 行ハイライト / 行番号 / title） ---- */
+
+/* 各行は自己完結の span（改行は span 内の末尾）。block 化により
+   行ハイライトの背景が行全体へ伸び、コピー（code.textContent）は改行を保つ */
+.markdown-body pre.highlight .line {
+  display: block;
+}
+
+/* 行ハイライト（```rust {2,4-6}）。pre の左右 padding まで塗り広げる */
+.markdown-body pre.highlight .line.hl {
+  background: var(--code-hl-bg);
+  margin: 0 -1rem; /* pre の padding: 1rem と対で更新すること */
+  padding: 0 1rem;
+}
+
+/* 行番号（```rust showLineNumbers / markdown.highlight.lineNumbers）。
+   CSS カウンタの ::before なので選択・コピーには混入しない */
+.markdown-body pre.line-numbers code {
+  counter-reset: line;
+}
+
+.markdown-body pre.line-numbers .line::before {
+  counter-increment: line;
+  content: counter(line);
+  display: inline-block;
+  width: 2em;
+  margin-right: 1em;
+  text-align: right;
+  color: var(--fg-muted);
+}
+
+/* title="..." のキャプション（ファイル名タブ風のヘッダ） */
+.markdown-body figure.code-block {
+  margin: 1rem 0;
+}
+
+.markdown-body figure.code-block figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 0.4rem 1rem;
+}
+
+.markdown-body figure.code-block pre {
+  margin: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }
 
 /* 言語ラベル（右上）。通常フロー配置のため横スクロール時は流れる（許容） */

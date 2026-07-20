@@ -27,6 +27,15 @@ fn main() {
 }
 ```
 
+言語に続けて `title="..."`（キャプション）・`{2}`（行ハイライト）・
+`showLineNumbers`（行番号）も書けます:
+
+```rust title="src/main.rs" {2} showLineNumbers
+fn main() {
+    println!("こんにちは、yuzu!");
+}
+```
+
 ## 図（Mermaid）
 
 ```mermaid

@@ -22,6 +22,8 @@
   "nav": { "auto": true },
   "markdown": {
     "gfm": true,
+    // "lineNumbers": true でコードブロックの行番号をサイト既定 on にできる
+    // （ブロック単位の showLineNumbers / noLineNumbers が優先）
     "highlight": { "enabled": true },
     "mermaid": {
       "enabled": true

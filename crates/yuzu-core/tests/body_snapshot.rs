@@ -3,14 +3,15 @@
 use std::fs;
 
 use yuzu_core::{
-    CodeBlockRenderer, MarkdownOptions, NoopUrlRewriter, build_site_model, render_body_html,
+    CodeBlockMeta, CodeBlockRenderer, MarkdownOptions, NoopUrlRewriter, build_site_model,
+    render_body_html,
 };
 
 /// mermaid だけ差し替えるテスト用レンダラ（render 側の実装の最小模倣）
 struct MermaidOnlyRenderer;
 
 impl CodeBlockRenderer for MermaidOnlyRenderer {
-    fn render(&self, lang: Option<&str>, code: &str) -> Option<String> {
+    fn render(&self, lang: Option<&str>, _meta: &CodeBlockMeta, code: &str) -> Option<String> {
         if lang == Some("mermaid") {
             Some(format!(
                 "<pre class=\"mermaid\">{}</pre>\n",

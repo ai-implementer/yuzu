@@ -8,6 +8,8 @@
 //! `Anchorizer` で ID を採番する。TOC 側も**全見出しを文書順で**採番することで
 //! 重複サフィックス（`-1` 等）を一致させている。片方だけ見出しを飛ばすとずれる。
 
+pub(crate) mod fence;
+
 use std::path::Path;
 
 use comrak::nodes::{AstNode, NodeHtmlBlock, NodeValue};
@@ -16,6 +18,7 @@ use comrak::{Anchorizer, Arena, Options, format_commonmark, format_html, parse_d
 use crate::MarkdownOptions;
 use crate::error::CoreError;
 use crate::frontmatter::parse_frontmatter;
+use crate::markdown::fence::parse_fence_info;
 use crate::model::{Frontmatter, Page, PlainSection, SourceSpan, TocEntry};
 use crate::traits::{CodeBlockRenderer, UrlRewriter};
 
@@ -132,7 +135,8 @@ pub(crate) fn render_body_html(
         let replacement = {
             let data = node.data.borrow();
             if let NodeValue::CodeBlock(cb) = &data.value {
-                code.render(fence_lang(&cb.info), &cb.literal)
+                let (lang, meta) = parse_fence_info(&cb.info);
+                code.render(lang, &meta, &cb.literal)
             } else {
                 None
             }
@@ -294,12 +298,6 @@ pub(crate) fn format_document(source: &str, opts: &MarkdownOptions) -> Result<St
     })
 }
 
-/// フェンス info 文字列の先頭トークン（lang）。`split_whitespace` は非空トークンしか
-/// 返さないので、`None` = 言語指定なし。HTML 化と検索抽出で解釈を揃える単一実装
-fn fence_lang(info: &str) -> Option<&str> {
-    info.split_whitespace().next()
-}
-
 /// 本文を h2/h3 見出し境界で分割したプレーンテキストセクションを返す（検索インデックス用）。
 ///
 /// - 先頭は常にリード文セクション（anchor/heading = None。本文が無くても返す）
@@ -354,7 +352,7 @@ fn collect_sections<'a>(
                 // 本文を含める（インデントコードは公開ドキュメントの「フェンス」に合わせ除外）。
                 // 特別レンダリングされる言語（図・仕様・数式ソース）は検索ノイズなので除外
                 // — ただし機能が無効でプレーンコード表示になる場合は見えるまま索引する
-                let lang = fence_lang(&cb.info).unwrap_or("");
+                let lang = parse_fence_info(&cb.info).0.unwrap_or("");
                 if !index_code || !cb.fenced || crate::is_special_render_lang(lang, opts) {
                     return;
                 }
@@ -459,5 +457,20 @@ mod tests {
 
         assert_eq!(refs[2].url, "other.md#frag");
         assert_eq!(refs[2].span.start_line, 5);
+    }
+
+    /// フェンス情報文字列の表示メタ（title / 行ハイライト / 行番号）は
+    /// fmt の正規化で逐語温存され、冪等であること（Phase 39 の不変条件）
+    #[test]
+    fn fmt_はフェンスの表示メタを温存し冪等() {
+        let source = "# 見出し\n\n```rust title=\"src/main.rs\" {2,4-6} showLineNumbers\nfn main() {}\n```\n";
+        let opts = MarkdownOptions::default();
+        let once = format_document(source, &opts).unwrap();
+        assert!(
+            once.contains("```rust title=\"src/main.rs\" {2,4-6} showLineNumbers\n"),
+            "情報文字列が逐語温存される:\n{once}"
+        );
+        let twice = format_document(&once, &opts).unwrap();
+        assert_eq!(once, twice, "冪等");
     }
 }

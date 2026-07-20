@@ -35,7 +35,8 @@ use crate::model::{Frontmatter, TocEntry};
 ///   本文 HTML も変わる）
 /// - v7: mindmap / timeline の SSR 追加（従来フォールバックが SSR 成功へ）
 /// - v8: 検索 tf に出現位置を追加（インデックスフォーマット v3・フレーズ検索の土台）
-pub const CACHE_FORMAT_VERSION: u32 = 8;
+/// - v9: コードブロックの行 span 化＋表示メタ（title / 行ハイライト / 行番号）
+pub const CACHE_FORMAT_VERSION: u32 = 9;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -30,7 +30,7 @@ description: yuzu.jsonc の全設定キー・型・既定値
   "nav": { "auto": true },
   "markdown": {
     "gfm": true,
-    "highlight": { "enabled": true, "themeLight": "InspiredGitHub", "themeDark": "base16-ocean.dark" },
+    "highlight": { "enabled": true, "themeLight": "InspiredGitHub", "themeDark": "base16-ocean.dark", "lineNumbers": false },
     "mermaid": { "enabled": true, "backend": "client" },
     "math": { "enabled": true }
   },
@@ -96,6 +96,7 @@ description: yuzu.jsonc の全設定キー・型・既定値
 | `highlight.enabled` | bool / `true` | ビルド時シンタックスハイライト |
 | `highlight.themeLight` | string / `"InspiredGitHub"` | ライトモードの配色 |
 | `highlight.themeDark` | string / `"base16-ocean.dark"` | ダークモードの配色 |
+| `highlight.lineNumbers` | bool / `false` | コードブロックの行番号表示のサイト既定（ブロック単位の `showLineNumbers` / `noLineNumbers` が優先。[詳細](../guide/code-and-math.md)） |
 | `mermaid.enabled` | bool / `true` | ` ```mermaid ` ブロックの描画 |
 | `mermaid.backend` | `"client"` \| `"ssr"` / `"client"` | [SSR にすると 9 図種をビルド時 SVG 化](../guide/diagrams.md) |
 | `math.enabled` | bool / `true` | 数式（同梱 KaTeX でクライアント描画） |

@@ -35,11 +35,46 @@ type Page = { route: string; title: string; order?: number };
 const byOrder = (a: Page, b: Page) => (a.order ?? Infinity) - (b.order ?? Infinity);
 ```
 
+## タイトル・行ハイライト・行番号
+
+フェンスの情報文字列に言語へ続けてメタを書くと、キャプションと行の強調が
+使えます（すべてビルド時に HTML 化。クライアント JS はゼロのままです）:
+
+````markdown
+```rust title="src/hello.rs" {2,4-6} showLineNumbers
+````
+
+- `title="..."` — ファイル名などのキャプションをブロック上部に表示します
+- `{2,4-6}` — 指定した行を強調します（1 始まり。番号とレンジのカンマ区切り）
+- `showLineNumbers` / `noLineNumbers` — 行番号表示をブロック単位で切り替えます
+  （サイト既定は設定の `markdown.highlight.lineNumbers`。既定 false）
+
+下は 3 つすべてを使った実例です:
+
+```rust title="src/hello.rs" {2,4-6} showLineNumbers
+fn main() {
+    let name = "yuzu";
+    let mut lines = Vec::new();
+    for i in 1..=3 {
+        lines.push(format!("{i}: こんにちは {name}"));
+    }
+    println!("{}", lines.join("\n"));
+}
+```
+
+行番号は CSS カウンタによる表示なので、コピーボタンや範囲選択のコピーには
+混入しません。メタは検索インデックスにも入りません（コード本文だけが索引
+対象）。`yuzu fmt` は情報文字列を逐語で温存します。
+
+なお mermaid / openapi / jsonschema / math のような特別レンダリングされる
+ブロックでは、これらのメタは無視されます。
+
 ## コピーボタン
 
 コードブロックの右上から、中身をワンクリックでコピーできます
 （Clipboard API のプログレッシブエンハンスメント。JS 無効・非 https の
-環境ではボタン自体が現れません）。
+環境ではボタン自体が現れません）。行番号・キャプションはコピーに含まれず、
+コードだけがコピーされます。
 
 ## 数式（KaTeX）
 

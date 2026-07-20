@@ -1,6 +1,7 @@
 //! render 側が実装して差し込むフック trait。
 //! core はこの trait 経由でのみ外部と連携し、パーサ実装を漏らさない
 
+use crate::markdown::fence::CodeBlockMeta;
 use crate::model::Page;
 
 /// コードブロックの HTML 化フック。
@@ -8,8 +9,9 @@ use crate::model::Page;
 /// （syntect ハイライトや `<pre class="mermaid">` 化）。
 /// `None` なら Markdown パーサの既定出力（エスケープ済み `<pre><code>`）になる
 pub trait CodeBlockRenderer {
-    /// `lang` はフェンス情報文字列の先頭トークン（```rust → `Some("rust")`）
-    fn render(&self, lang: Option<&str>, code: &str) -> Option<String>;
+    /// `lang` はフェンス情報文字列の先頭トークン（```rust → `Some("rust")`）、
+    /// `meta` は言語の後ろの表示メタ（[`CodeBlockMeta`]。title / 行ハイライト / 行番号）
+    fn render(&self, lang: Option<&str>, meta: &CodeBlockMeta, code: &str) -> Option<String>;
 }
 
 /// 本文中のリンク・画像 URL の書き換えフック。
@@ -22,7 +24,7 @@ pub trait UrlRewriter {
 pub struct NoopCodeBlockRenderer;
 
 impl CodeBlockRenderer for NoopCodeBlockRenderer {
-    fn render(&self, _lang: Option<&str>, _code: &str) -> Option<String> {
+    fn render(&self, _lang: Option<&str>, _meta: &CodeBlockMeta, _code: &str) -> Option<String> {
         None
     }
 }

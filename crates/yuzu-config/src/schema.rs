@@ -162,6 +162,9 @@ pub struct HighlightConfig {
     pub theme_light: String,
     /// syntect のダーク側テーマ名
     pub theme_dark: String,
+    /// コードブロックに行番号を表示するか（サイト既定。ブロック単位の
+    /// `showLineNumbers` / `noLineNumbers` が優先される）
+    pub line_numbers: bool,
 }
 
 impl Default for HighlightConfig {
@@ -170,6 +173,7 @@ impl Default for HighlightConfig {
             enabled: true,
             theme_light: "InspiredGitHub".to_string(),
             theme_dark: "base16-ocean.dark".to_string(),
+            line_numbers: false,
         }
     }
 }

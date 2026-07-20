@@ -29,7 +29,7 @@ impl RenderShared {
     pub fn new(rc: &ResolvedConfig) -> Result<Self, RenderError> {
         let cfg = &rc.config;
         let mut highlighter =
-            SyntectCodeRenderer::new(cfg.markdown.highlight.enabled, &cfg.markdown.mermaid);
+            SyntectCodeRenderer::new(&cfg.markdown.highlight, &cfg.markdown.mermaid);
         // openapi/jsonschema の `file:` 参照はプロジェクトルート相対
         highlighter.set_project_root(rc.root.clone());
         Ok(Self {
