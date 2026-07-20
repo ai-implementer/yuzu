@@ -211,7 +211,16 @@ v0.5（Phase 24〜29: tankan スタイル構文の全図種展開 / 検索コー
 v0.6（Phase 30〜35: 検索インデックスの位置情報化（フォーマット v3） / フレーズ検索 / ビルドのページ並列化（render・index） / dogfooding 改善＝近接ブースト・フレーズヒント・ビルド時間表示 / 検索スタックのライブラリ化と OPFS キャッシュ）、
 v0.7（Phase 36〜38: 公開・配布の整備＝yuzu 自身の[ドキュメントサイト](https://ai-implementer.github.io/yuzu/)を GitHub Pages へ公開（dogfooding の総仕上げ） / tag push でバイナリ 4 プラットフォームを GitHub Release へ配布する release.yml / [tankan の crates.io 単独公開](https://crates.io/crates/tankan)（workspace と独立のバージョン 0.1.0）。名前 `yuzu`・`yuzu-core` の取得済み判明により yuzu 本体の crates.io 公開は将来構想へ再定義）は完了・リリース済み。
 
-v0.8 以降の候補: ドキュメントバージョニング（要否含め保留中）・i18n（テーマ UI 文字列の多言語化。`site.lang` は既にあるが検索 UI・404 ページ等のテーマ文言は日本語ハードコード）・VS Code 拡張（wasm プレビュー）・crates.io 公開の続き（汎用ライブラリ層は tankan・mikan〔検索エンジン。旧 yuzu-index-format〕まで公開済み。残るは yuzu 本体だが、名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため、本体を単一パッケージ化するか名称を再検討する必要がある。Phase 37 の決定事項）。次期ロードマップは未策定（着手時に個別に設計する）。
+以下の Phase 39〜41 がすべて完了した時点で **v0.8** としてリリースする。軸は「執筆機能の拡充」。  
+実際の設計書運用（dogfooding）と並行して進め、Phase は価値と実装コスト・依存関係の順に並べている（着手時に個別に設計する）。
+
+| Phase | 内容 | 状態 |
+|---|---|---|
+| **39 コードブロックの拡充** | フェンスコードブロックの情報文字列を拡張し、`title="src/main.rs"`（ファイル名/タイトルのキャプション）・`{2,4-6}`（行ハイライト範囲）・行番号表示に対応する。情報文字列パースは `yuzu-core`（`markdown/mod.rs`）、描画は `yuzu-render`（`highlight.rs`）で、syntect のビルド時 CSS クラス出力に乗せて行を要素で包む（キャプションは `<figcaption>`・行番号は CSS カウンタ・ハイライトは行クラス＋テーマ CSS。**クライアント JS ゼロを維持**）。既存のコピーボタンは行番号を含めずコードだけをコピー。情報文字列のメタは検索インデックス（`indexCode`）・ページ `.md`・llms.txt に混入させない（コード本文だけを索引）。`yuzu fmt` はメタを温存（冪等・ラウンドトリップ）。本文 HTML 生成ロジックの変更に伴い `CACHE_FORMAT_VERSION` を上げる | ⬜ |
+| **40 リダイレクト / エイリアス** | frontmatter に `aliases`（旧 URL の配列）を追加し、ページ移動時に旧パスへリダイレクト HTML（`<meta http-equiv=refresh>`＋canonical＋JS フォールバック）をビルド時に生成する（静的ホスティングにはサーバリダイレクトが無いための定石）。リダイレクト先 URL は baseUrl 解決に追随。出力マニフェストにエイリアス出力を記録し、エイリアス削除時は孤児掃除で旧リダイレクトも消す。エイリアスが実ページ route や他エイリアスと衝突したら `yuzu check`（またはビルド）でエラー。draft ページのエイリアスは通常ビルドから除外。lint の frontmatter 未知キー検査（`frontmatter.rs` の `KNOWN_KEYS`）に `aliases` を追加。エイリアスは llms.txt・検索インデックスの対象外（コンテンツではないため） | ⬜ |
+| **41 dogfooding 改善** | 恒例のバッファ枠: 実運用で踏んだ執筆まわりの不満を一括解消（着手時に個別選定）。OG メタ・favicon は方針どおり対象外 | ⬜ |
+
+v0.9 以降の候補: i18n（テーマ UI 文字列の多言語化。`site.lang` は既にあるが検索 UI・404 ページ等のテーマ文言は日本語ハードコード）・ドキュメントバージョニング（要否含め保留中）・VS Code 拡張（wasm プレビュー）・yuzu 本体の crates.io 公開（汎用ライブラリ層は tankan・mikan まで公開済み。残るは yuzu 本体だが、名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため、本体を単一パッケージ化するか名称を再検討する必要がある。Phase 37 の決定事項）。
 
 <details>
 <summary>完了済み: v0.7（Phase 36〜38）の内訳</summary>
