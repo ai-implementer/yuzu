@@ -7,8 +7,10 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::MarkdownOptions;
 use crate::diagnostics::{Diagnostic, Severity};
-use crate::model::Page;
+use crate::markdown;
+use crate::model::{Page, SourceSpan};
 
 /// エイリアス文字列を route 形式（`old/path/`。ルートは `""`）へ正規化する。
 /// 先頭 `/` と末尾スラッシュの省略は吸収し、サイト外・不正なパスは Err で返す
@@ -62,19 +64,24 @@ pub fn alias_routes(page: &Page) -> Vec<String> {
 ///   および他エイリアスとの重複（ページ内・ページ間）
 ///
 /// いずれも Severity::Error（ビルドすると実ページ・他リダイレクトを
-/// 上書きしてしまうため、check では失敗・build では中断にする）
-pub fn validate_aliases(pages: &[Page]) -> Vec<Diagnostic> {
+/// 上書きしてしまうため、check では失敗・build では中断にする）。
+/// 診断には frontmatter の該当行の span を付ける（`opts` はそのパース用）
+pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let routes: HashMap<&str, &Page> = pages.iter().map(|p| (p.route.as_str(), p)).collect();
     // 正規化済みエイリアス → 最初に宣言したページ（ページ間重複の検出用）
     let mut claimed: HashMap<String, &Page> = HashMap::new();
 
     for page in pages {
+        let fm = markdown::frontmatter_raw(&page.source, opts);
         for raw in &page.frontmatter.aliases {
+            let span = fm
+                .as_ref()
+                .map(|(text, fm_span)| alias_span(text, fm_span, raw));
             let route = match normalize_alias(raw) {
                 Ok(route) => route,
                 Err(message) => {
-                    diags.push(diag(page, "alias-invalid", message));
+                    diags.push(diag(page, span, "alias-invalid", message));
                     continue;
                 }
             };
@@ -86,6 +93,7 @@ pub fn validate_aliases(pages: &[Page]) -> Vec<Diagnostic> {
                 };
                 diags.push(diag(
                     page,
+                    span,
                     "alias-conflict",
                     format!("エイリアス /{route} は{target}の URL と衝突しています"),
                 ));
@@ -95,6 +103,7 @@ pub fn validate_aliases(pages: &[Page]) -> Vec<Diagnostic> {
                 Some(first) if first.rel == page.rel => {
                     diags.push(diag(
                         page,
+                        span,
                         "alias-conflict",
                         format!("エイリアス /{route} が重複しています"),
                     ));
@@ -102,6 +111,7 @@ pub fn validate_aliases(pages: &[Page]) -> Vec<Diagnostic> {
                 Some(first) => {
                     diags.push(diag(
                         page,
+                        span,
                         "alias-conflict",
                         format!(
                             "エイリアス /{route} はページ {} のエイリアスと重複しています",
@@ -118,12 +128,43 @@ pub fn validate_aliases(pages: &[Page]) -> Vec<Diagnostic> {
     diags
 }
 
-fn diag(page: &Page, rule: &'static str, message: String) -> Diagnostic {
+/// エイリアスの生文字列が書かれた frontmatter 行の span を探す。
+/// 値の行 → `aliases:` キー行 → frontmatter 全体、の順でフォールバック
+fn alias_span(raw_fm: &str, fm_span: &SourceSpan, alias_raw: &str) -> SourceSpan {
+    let needle = alias_raw.trim();
+    if !needle.is_empty() {
+        for (idx, line) in raw_fm.lines().enumerate() {
+            if line.contains(needle) {
+                return line_span(fm_span, idx, line);
+            }
+        }
+    }
+    for (idx, line) in raw_fm.lines().enumerate() {
+        if line.trim_start().starts_with("aliases:") {
+            return line_span(fm_span, idx, line);
+        }
+    }
+    *fm_span
+}
+
+/// frontmatter 内の行インデックスを文書全体の 1 行 span へ変換する
+/// （raw は `---` 区切り行込みなので、行オフセットは fm_span.start_line 起点）
+fn line_span(fm_span: &SourceSpan, idx: usize, line: &str) -> SourceSpan {
+    let line_no = fm_span.start_line + idx;
+    SourceSpan {
+        start_line: line_no,
+        start_col: 1,
+        end_line: line_no,
+        end_col: line.chars().count().max(1),
+    }
+}
+
+fn diag(page: &Page, span: Option<SourceSpan>, rule: &'static str, message: String) -> Diagnostic {
     Diagnostic {
         rule,
         severity: Severity::Error,
         rel: page.rel.clone(),
-        span: None,
+        span,
         message,
         fix: None,
     }
@@ -136,6 +177,18 @@ mod tests {
     use std::path::PathBuf;
 
     fn page(rel: &str, route: &str, aliases: &[&str]) -> Page {
+        // 実 frontmatter 込みの source を持たせる（span 特定の検証用。
+        // aliases 行は必ず 3 行目になる）
+        let source = if aliases.is_empty() {
+            "---\ntitle: t\n---\n\n# t\n".to_string()
+        } else {
+            let list = aliases
+                .iter()
+                .map(|a| format!("\"{a}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("---\ntitle: t\naliases: [{list}]\n---\n\n# t\n")
+        };
         Page {
             src: PathBuf::from(format!("/content/{rel}")),
             rel: PathBuf::from(rel),
@@ -146,8 +199,12 @@ mod tests {
             },
             title: "t".to_string(),
             toc: Vec::new(),
-            source: String::new(),
+            source,
         }
+    }
+
+    fn validate(pages: &[Page]) -> Vec<Diagnostic> {
+        validate_aliases(pages, &MarkdownOptions::default())
     }
 
     #[test]
@@ -190,14 +247,14 @@ mod tests {
             page("a.md", "a/", &["old-a/"]),
             page("b.md", "b/", &["old-b/"]),
         ];
-        assert!(validate_aliases(&pages).is_empty());
+        assert!(validate(&pages).is_empty());
     }
 
     #[test]
     fn 実ページ_route_との衝突を検出する() {
         // 他ページと自ページの両方
         let pages = vec![page("a.md", "a/", &["b/", "a/"]), page("b.md", "b/", &[])];
-        let diags = validate_aliases(&pages);
+        let diags = validate(&pages);
         assert_eq!(diags.len(), 2);
         assert!(diags.iter().all(|d| d.rule == "alias-conflict"));
         assert!(diags[0].message.contains("b.md"), "{}", diags[0].message);
@@ -206,6 +263,9 @@ mod tests {
             "{}",
             diags[1].message
         );
+        // frontmatter の aliases 行（3 行目）を指す
+        assert_eq!(diags[0].span.unwrap().start_line, 3);
+        assert_eq!(diags[1].span.unwrap().start_line, 3);
     }
 
     #[test]
@@ -215,7 +275,7 @@ mod tests {
             page("a.md", "a/", &["old/", "/old"]),
             page("b.md", "b/", &["old"]),
         ];
-        let diags = validate_aliases(&pages);
+        let diags = validate(&pages);
         assert_eq!(diags.len(), 2);
         assert!(diags[0].message.contains("重複"), "{}", diags[0].message);
         assert!(diags[1].message.contains("a.md"), "{}", diags[1].message);
@@ -224,7 +284,7 @@ mod tests {
     #[test]
     fn 不正な形式は_alias_invalid() {
         let pages = vec![page("a.md", "a/", &["https://example.com/"])];
-        let diags = validate_aliases(&pages);
+        let diags = validate(&pages);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "alias-invalid");
         assert_eq!(diags[0].severity, Severity::Error);

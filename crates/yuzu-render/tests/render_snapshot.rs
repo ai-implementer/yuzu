@@ -167,6 +167,39 @@ fn エイリアス衝突はビルドを中断する() {
 }
 
 #[test]
+fn base_url_がフル_url_なら_sitemap_xml_を生成する() {
+    let dir = build_fixture_with(|root| {
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace("\"/docs/\"", "\"https://example.com/docs/\""),
+        )
+        .unwrap();
+    });
+    let sitemap = fs::read_to_string(dir.path().join("dist/sitemap.xml")).unwrap();
+    assert!(sitemap.starts_with("<?xml version=\"1.0\""), "{sitemap}");
+    assert!(sitemap.contains("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">"));
+    assert!(sitemap.contains("<loc>https://example.com/docs/</loc>"));
+    assert!(sitemap.contains("<loc>https://example.com/docs/guide/getting-started/</loc>"));
+    assert!(
+        !sitemap.contains("first-steps"),
+        "エイリアスは載らない: {sitemap}"
+    );
+    assert_eq!(
+        sitemap.matches("<url>").count(),
+        2,
+        "実ページの数だけ: {sitemap}"
+    );
+}
+
+#[test]
+fn base_url_がパスだけなら_sitemap_は生成しない() {
+    let dir = build_fixture(LiveReloadMode::None);
+    assert!(!dir.path().join("dist/sitemap.xml").exists());
+}
+
+#[test]
 fn poll_モードはオートリフレッシュが注入される() {
     let dir = build_fixture(LiveReloadMode::Poll);
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();

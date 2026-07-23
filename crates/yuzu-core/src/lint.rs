@@ -4,6 +4,8 @@
 //! - `duplicate-h1` — 本文 h1 が 2 個以上（テーマはページタイトルを h1 相当で表示する）
 //! - `heading-level-skip` — 隣接見出し間でレベルが 2 以上深くなる（markdownlint MD001 相当）
 //! - `frontmatter-unknown-key` — 既知キー以外のトップレベルキー（typo 検出）
+//! - `code-block-meta` — フェンス情報文字列の表示メタの typo・範囲外の行ハイライト
+//!   （描画は寛容に無視するため、気づける場所は lint だけ）
 //! - `directory-too-deep` — content 配下のディレクトリ階層が深すぎる
 //!   （`lint.maxDirectoryDepth` 設定時のみ）
 //! - `term-variant` — 用語ゆれ（`lint.terms` の辞書設定時のみ。正表記への統一を促す）
@@ -26,6 +28,7 @@ pub(crate) fn lint_page(
     let mut out = Vec::new();
     check_headings(&page.toc, page, &mut out);
     check_frontmatter_keys(page, opts, &mut out);
+    check_code_meta(page, opts, &mut out);
     if let Some(max_depth) = lint.max_directory_depth {
         check_directory_depth(page, max_depth, &mut out);
     }
@@ -363,6 +366,77 @@ fn check_directory_depth(page: &Page, max_depth: u32, out: &mut Vec<Diagnostic>)
     }
 }
 
+/// フェンス情報文字列の表示メタ検査（`code-block-meta`）。
+/// 描画（Phase 39）はタイポ・不正値を寛容に無視する設計のため、
+/// 気づける場所として lint が警告する。ビルドの挙動は変えない
+fn check_code_meta(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic>) {
+    use crate::markdown::fence::{FenceMetaIssue, parse_fence_info_detailed};
+
+    let mut push = |span: SourceSpan, message: String| {
+        out.push(Diagnostic {
+            rule: "code-block-meta",
+            severity: Severity::Warning,
+            rel: page.rel.clone(),
+            span: Some(span),
+            message,
+            fix: None,
+        });
+    };
+
+    for fence in markdown::extract_fence_meta(&page.source, opts) {
+        let (lang, meta, issues) = parse_fence_info_detailed(&fence.info);
+
+        // 特別レンダリング言語（mermaid / openapi / jsonschema / math）は
+        // 表示メタ自体が無視されるので、個別の指摘ではなくその事実だけ伝える
+        if let Some(lang) = lang {
+            if crate::is_special_render_lang(lang, opts) {
+                if !meta.is_empty() || !issues.is_empty() {
+                    push(
+                        fence.span,
+                        format!(
+                            "{lang} ブロックでは表示メタ（title / 行ハイライト / 行番号）は無視されます"
+                        ),
+                    );
+                }
+                continue;
+            }
+        }
+
+        for issue in issues {
+            match issue {
+                FenceMetaIssue::UnknownToken(token) => push(
+                    fence.span,
+                    format!(
+                        "コードブロックの `{token}` は認識されない指定です（対応: `title=\"...\"` / `{{行}}` / `showLineNumbers` / `noLineNumbers`）"
+                    ),
+                ),
+                FenceMetaIssue::InvalidRangePart(part) => push(
+                    fence.span,
+                    format!(
+                        "行ハイライトの `{part}` は行番号として解釈できません（例: `{{2,4-6}}`）"
+                    ),
+                ),
+            }
+        }
+        for &(start, end) in &meta.highlight_lines {
+            if end > fence.code_lines {
+                let range = if start == end {
+                    format!("{start}")
+                } else {
+                    format!("{start}-{end}")
+                };
+                push(
+                    fence.span,
+                    format!(
+                        "行ハイライト {{{range}}} はコードの行数（{} 行）を超えています",
+                        fence.code_lines
+                    ),
+                );
+            }
+        }
+    }
+}
+
 /// frontmatter の未知キー検出。
 /// パースは build 時に済んでいる（不正 YAML はここへ来る前に CoreError）ため、
 /// ここでの再パース失敗は黙って無視する
@@ -586,6 +660,59 @@ mod tests {
     fn 制限_1_で_1_階層のディレクトリは許容() {
         assert!(lint_depth("index.md", Some(1)).is_empty(), "content 直下");
         assert!(lint_depth("guide/x.md", Some(1)).is_empty(), "1 階層");
+    }
+
+    fn code_meta_diags(source: &str) -> Vec<crate::Diagnostic> {
+        lint(source)
+            .into_iter()
+            .filter(|d| d.rule == "code-block-meta")
+            .collect()
+    }
+
+    #[test]
+    fn コードメタのタイポと不正範囲を行番号付きで警告する() {
+        let src = "# t\n\n```rust showLineNumber\nfn main() {}\n```\n\n```rust {2,x}\na\nb\n```\n";
+        let diags = code_meta_diags(src);
+        assert_eq!(diags.len(), 2, "{diags:?}");
+        assert!(diags[0].message.contains("`showLineNumber`"));
+        assert_eq!(diags[0].span.unwrap().start_line, 3, "フェンス開始行");
+        assert_eq!(diags[0].severity, crate::Severity::Warning);
+        assert!(diags[1].message.contains("`x`"));
+        assert_eq!(diags[1].span.unwrap().start_line, 7);
+    }
+
+    #[test]
+    fn 範囲外の行ハイライトを警告する() {
+        let src = "# t\n\n```rust {2,9-10}\na\nb\nc\n```\n";
+        let diags = code_meta_diags(src);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert!(diags[0].message.contains("{9-10}"), "{}", diags[0].message);
+        assert!(diags[0].message.contains("3 行"));
+    }
+
+    #[test]
+    fn 特別レンダリング言語のメタは無視される旨を警告する() {
+        let src = "# t\n\n```mermaid {2}\ngraph TD;\nA-->B\n```\n";
+        let diags = code_meta_diags(src);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert!(diags[0].message.contains("mermaid"), "{}", diags[0].message);
+        assert!(diags[0].message.contains("無視"), "{}", diags[0].message);
+    }
+
+    #[test]
+    fn 正しいメタとメタなしとインデントコードは警告なし() {
+        let src = concat!(
+            "# t\n\n",
+            "```rust title=\"src/main.rs\" {1,2-3} showLineNumbers\na\nb\nc\n```\n\n",
+            "```bash\nls\n```\n\n",
+            "```mermaid\ngraph TD;\n```\n\n",
+            "    インデントコード showLineNumber\n"
+        );
+        assert!(
+            code_meta_diags(src).is_empty(),
+            "{:?}",
+            code_meta_diags(src)
+        );
     }
 
     fn lint_terms(source: &str, terms: &[(&str, &[&str])]) -> Vec<crate::Diagnostic> {

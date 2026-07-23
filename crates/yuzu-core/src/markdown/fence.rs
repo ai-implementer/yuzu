@@ -33,22 +33,41 @@ impl CodeBlockMeta {
     }
 }
 
+/// 情報文字列の解釈で無視された指定（lint の `code-block-meta` 警告用）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FenceMetaIssue {
+    /// 認識されないトークン（`showLineNumbers` のタイポ等）
+    UnknownToken(String),
+    /// `{…}` 内の解釈できない要素（数値でない・逆順レンジ・0）
+    InvalidRangePart(String),
+}
+
 /// 情報文字列を（言語, メタ）へ解釈する。
 ///
 /// 先頭トークンは言語。ただし先頭からメタ形（`=` を含む・`{` 始まり・行番号キーワード）
 /// なら言語なしとしてメタ解釈する。トークン分割は二重引用符の中の空白を保持する
-/// （`title="a b"` が 1 トークン）。
+/// （`title="a b"` が 1 トークン）。描画経路は寛容（無視された指定は捨てる）で、
+/// タイポの検出は lint が [`parse_fence_info_detailed`] で行う
 pub(crate) fn parse_fence_info(info: &str) -> (Option<&str>, CodeBlockMeta) {
+    let (lang, meta, _) = parse_fence_info_detailed(info);
+    (lang, meta)
+}
+
+/// [`parse_fence_info`] の詳細版: 無視された指定も返す（lint 用）
+pub(crate) fn parse_fence_info_detailed(
+    info: &str,
+) -> (Option<&str>, CodeBlockMeta, Vec<FenceMetaIssue>) {
     let mut meta = CodeBlockMeta::default();
+    let mut issues = Vec::new();
     let mut lang: Option<&str> = None;
     for (i, token) in tokenize(info).enumerate() {
         if i == 0 && !is_meta_token(token) {
             lang = Some(token);
             continue;
         }
-        apply_token(token, &mut meta);
+        apply_token(token, &mut meta, &mut issues);
     }
-    (lang, meta)
+    (lang, meta, issues)
 }
 
 /// 空白区切り・二重引用符内の空白は保持するトークナイザ
@@ -83,7 +102,7 @@ fn is_meta_token(token: &str) -> bool {
         || token == "noLineNumbers"
 }
 
-fn apply_token(token: &str, meta: &mut CodeBlockMeta) {
+fn apply_token(token: &str, meta: &mut CodeBlockMeta, issues: &mut Vec<FenceMetaIssue>) {
     if token == "showLineNumbers" {
         meta.line_numbers = Some(true);
     } else if token == "noLineNumbers" {
@@ -97,13 +116,16 @@ fn apply_token(token: &str, meta: &mut CodeBlockMeta) {
             meta.title = Some(value.to_string());
         }
     } else if let Some(body) = token.strip_prefix('{').and_then(|t| t.strip_suffix('}')) {
-        parse_line_ranges(body, &mut meta.highlight_lines);
+        parse_line_ranges(body, &mut meta.highlight_lines, issues);
+    } else {
+        // 未知トークン: 描画では無視するが lint が警告できるよう記録する
+        issues.push(FenceMetaIssue::UnknownToken(token.to_string()));
     }
-    // それ以外の未知トークンは無視
 }
 
-/// `2,4-6` 形式の行範囲リスト。不正な要素（数値でない・逆順レンジ・0）は個別に無視
-fn parse_line_ranges(body: &str, out: &mut Vec<(usize, usize)>) {
+/// `2,4-6` 形式の行範囲リスト。不正な要素（数値でない・逆順レンジ・0）は
+/// 個別に無視し、無視した事実を issues に記録する
+fn parse_line_ranges(body: &str, out: &mut Vec<(usize, usize)>, issues: &mut Vec<FenceMetaIssue>) {
     for part in body.split(',') {
         let part = part.trim();
         let range = match part.split_once('-') {
@@ -114,10 +136,9 @@ fn parse_line_ranges(body: &str, out: &mut Vec<(usize, usize)>) {
                 .zip(end.trim().parse::<usize>().ok()),
             None => part.parse::<usize>().ok().map(|n| (n, n)),
         };
-        if let Some((start, end)) = range {
-            if start >= 1 && start <= end {
-                out.push((start, end));
-            }
+        match range {
+            Some((start, end)) if start >= 1 && start <= end => out.push((start, end)),
+            _ => issues.push(FenceMetaIssue::InvalidRangePart(part.to_string())),
         }
     }
 }
@@ -198,6 +219,28 @@ mod tests {
         assert_eq!(meta.highlight_lines, vec![(2, 2)]);
         assert_eq!(meta.line_numbers, Some(true));
         assert_eq!(meta.title, None);
+    }
+
+    #[test]
+    fn 詳細版は無視した指定を順に返す() {
+        let (lang, meta, issues) =
+            parse_fence_info_detailed("rust foo=bar {2,x,0,6-4} showLineNumber");
+        assert_eq!(lang, Some("rust"));
+        assert_eq!(meta.highlight_lines, vec![(2, 2)], "有効な範囲だけ採用");
+        assert_eq!(
+            issues,
+            vec![
+                FenceMetaIssue::UnknownToken("foo=bar".to_string()),
+                FenceMetaIssue::InvalidRangePart("x".to_string()),
+                FenceMetaIssue::InvalidRangePart("0".to_string()),
+                FenceMetaIssue::InvalidRangePart("6-4".to_string()),
+                FenceMetaIssue::UnknownToken("showLineNumber".to_string()),
+            ]
+        );
+        // 正しい指定なら issues なし
+        let (_, _, issues) =
+            parse_fence_info_detailed(r#"rust title="src/main.rs" {2,4-6} showLineNumbers"#);
+        assert!(issues.is_empty());
     }
 
     #[test]

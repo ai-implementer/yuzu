@@ -61,10 +61,16 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let output_dir = &rc.output_dir;
     let ctx = &params.ctx;
 
+    let md_opts = MarkdownOptions {
+        gfm: cfg.markdown.gfm,
+        math: cfg.markdown.math.enabled,
+        mermaid: cfg.markdown.mermaid.enabled,
+    };
+
     // エイリアス（frontmatter aliases）の検証。衝突・不正があると実ページや
     // 他のリダイレクトを上書きしてしまうため、書き出す前にビルドごと中断する
     // （check はより詳しい診断を出す。ここはレンダラ自身の防御）
-    let alias_diags = yuzu_core::validate_aliases(&params.site.pages);
+    let alias_diags = yuzu_core::validate_aliases(&params.site.pages, &md_opts);
     if let Some(first) = alias_diags.first() {
         return Err(RenderError::InvalidAliases {
             count: alias_diags.len(),
@@ -92,11 +98,6 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let resolver = UrlResolver::new(&rc.base_url, params.site);
     // 前/次リンクの導出元（サイドバー表示順のフラット列）。全ページで共通
     let nav_order = NavOrder::new(&params.site.nav);
-    let md_opts = MarkdownOptions {
-        gfm: cfg.markdown.gfm,
-        math: cfg.markdown.math.enabled,
-        mermaid: cfg.markdown.mermaid.enabled,
-    };
     let site_ctx = SiteCtx {
         title: &cfg.site.title,
         description: cfg.site.description.as_deref(),
@@ -258,6 +259,40 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     // 置いた場合はそちらが上書きして優先される。テーマ上書きと同じ思想）
     if cfg.llms.enabled {
         crate::llms::write_llms_files(rc, params.site, output_dir, ctx)?;
+    }
+
+    // sitemap.xml（copy_public より前 = `public/sitemap.xml` を置けばそちらが優先）。
+    // `<loc>` は絶対 URL が仕様のため、baseUrl がフル URL のときだけ生成する。
+    // 対象は非 draft の実ページのみ（エイリアス・404・ページ単位 .md は載せない）
+    if resolver.base().contains("://") {
+        let mut xml = String::from(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+             <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
+        );
+        for page in &params.site.pages {
+            let rel_key = page
+                .rel
+                .iter()
+                .map(|c| c.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            xml.push_str("  <url><loc>");
+            xml.push_str(&crate::highlight::escape_html(
+                &resolver.page_url(&page.route),
+            ));
+            xml.push_str("</loc>");
+            // 最終コミット日があるページだけ lastmod を付ける（git 連携メタと同じ供給源）
+            if let Some(date) = params.git_dates.and_then(|dates| dates.get(&rel_key)) {
+                xml.push_str("<lastmod>");
+                xml.push_str(&crate::highlight::escape_html(date));
+                xml.push_str("</lastmod>");
+            }
+            xml.push_str("</url>\n");
+        }
+        xml.push_str("</urlset>\n");
+        assets::write_output(ctx.outputs, output_dir, "sitemap.xml", xml.as_bytes())?;
+    } else {
+        tracing::debug!("baseUrl がフル URL ではないため sitemap.xml は生成しない");
     }
 
     // content の同伴アセット（ページ横の画像等）。copy_public より前 = 同じパスに

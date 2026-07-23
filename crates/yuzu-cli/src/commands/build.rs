@@ -252,7 +252,11 @@ pub(crate) fn build_once(
 /// content 配下ファイルの最終コミット日（YYYY-MM-DD）を 1 回の `git log` で収集する。
 /// キーは content 相対の `/` 区切りパス。git 不在・リポジトリ外・失敗時は None（表示なしに縮退）
 fn collect_git_dates(rc: &ResolvedConfig) -> Option<std::collections::HashMap<String, String>> {
-    // core.quotepath=false: 日本語ファイル名がオクタルエスケープされるのを防ぐ
+    // core.quotepath=false: 日本語ファイル名がオクタルエスケープされるのを防ぐ。
+    // --relative: --name-only のパスを rc.root 相対にする。これが無いと
+    // パスは git リポジトリルート相対になり、yuzu プロジェクトがリポジトリの
+    // サブディレクトリにある場合（例: monorepo 内の docs/）に
+    // content_prefix の除去が全ファイルで失敗して日付が空になる
     let output = std::process::Command::new("git")
         .arg("-C")
         .arg(&rc.root)
@@ -260,6 +264,7 @@ fn collect_git_dates(rc: &ResolvedConfig) -> Option<std::collections::HashMap<St
             "-c",
             "core.quotepath=false",
             "log",
+            "--relative",
             "--format=\u{1}%cs",
             "--name-only",
             "--",

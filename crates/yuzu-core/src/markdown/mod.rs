@@ -424,6 +424,37 @@ fn collect_text_into<'a>(node: &'a AstNode<'a>, out: &mut String) {
     }
 }
 
+/// lint（`code-block-meta`）用: fenced コードブロックの情報文字列と位置・コード行数
+pub(crate) struct FenceMeta {
+    pub info: String,
+    /// ブロック全体の位置（診断表示には開始行を使う）
+    pub span: SourceSpan,
+    /// コード本文の行数（行ハイライトの範囲外検査用）
+    pub code_lines: usize,
+}
+
+/// fenced コードブロックだけを列挙する（インデントコードは対象外）
+pub(crate) fn extract_fence_meta(source: &str, opts: &MarkdownOptions) -> Vec<FenceMeta> {
+    let arena = Arena::new();
+    let options = comrak_options(opts);
+    let root = parse_document(&arena, source, &options);
+    let mut out = Vec::new();
+    for node in root.descendants() {
+        let data = node.data.borrow();
+        if let NodeValue::CodeBlock(cb) = &data.value {
+            if !cb.fenced {
+                continue;
+            }
+            out.push(FenceMeta {
+                info: cb.info.clone(),
+                span: span_of(&data.sourcepos),
+                code_lines: cb.literal.lines().count(),
+            });
+        }
+    }
+    out
+}
+
 fn span_of(sourcepos: &comrak::nodes::Sourcepos) -> SourceSpan {
     SourceSpan {
         start_line: sourcepos.start.line,

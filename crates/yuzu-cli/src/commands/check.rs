@@ -49,7 +49,7 @@ pub fn run() -> anyhow::Result<ExitCode> {
     diags.extend(yuzu_core::lint_project(&pages, &opts, &lint_opts)?);
     // エイリアス（frontmatter aliases）の形式・衝突。
     // draft 込みの全ソースで検証する（公開前に矛盾を検出する）
-    diags.extend(yuzu_core::validate_aliases(&pages));
+    diags.extend(yuzu_core::validate_aliases(&pages, &opts));
     // 内部リンク・アンカー
     diags.extend(yuzu_core::check_links(
         &pages,
