@@ -16,6 +16,7 @@ pub mod cache;
 mod diagnostics;
 mod error;
 mod frontmatter;
+mod include;
 mod linkcheck;
 mod lint;
 mod markdown;
@@ -33,7 +34,8 @@ pub use aliases::{alias_routes, validate_aliases};
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{Diagnostic, Severity};
 pub use error::CoreError;
-pub use markdown::fence::CodeBlockMeta;
+pub use include::{resolve_include, validate_includes};
+pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
 pub use model::{Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry};
 pub use output::{OutputTracker, WriteOutcome};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
@@ -264,12 +266,15 @@ pub fn render_body_html(
 /// `index_code = true`（`search.indexCode`）でフェンスコードブロックの本文も含める
 /// （インデントコードブロックと、特別レンダリングされる言語
 /// [`is_special_render_lang`] は除く）
+/// `root` を渡すと `file=` のコンテンツインクルードを展開して索引する
+/// （`None` なら展開しない = ライブラリ単体テスト・従来動作）
 pub fn extract_plain_sections(
     page: &Page,
     opts: &MarkdownOptions,
     index_code: bool,
+    root: Option<&Path>,
 ) -> Result<Vec<PlainSection>, CoreError> {
-    markdown::extract_plain_sections(&page.source, opts, index_code)
+    markdown::extract_plain_sections(&page.source, opts, index_code, root)
 }
 
 /// ページ本文を正規化 Markdown として出力する（frontmatter は含めない）。

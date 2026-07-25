@@ -416,9 +416,26 @@ fn check_code_meta(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic
                         "行ハイライトの `{part}` は行番号として解釈できません（例: `{{2,4-6}}`）"
                     ),
                 ),
+                FenceMetaIssue::InvalidLines(value) => push(
+                    fence.span,
+                    format!(
+                        "`lines={value}` は行範囲として解釈できません（例: `lines=10-25` / `lines=7`）"
+                    ),
+                ),
+                FenceMetaIssue::LinesWithoutFile => push(
+                    fence.span,
+                    "`lines=` は `file=` と一緒に指定してください（引用元が無いため無視されます）"
+                        .to_string(),
+                ),
             }
         }
-        for &(start, end) in &meta.highlight_lines {
+        // 行ハイライトの範囲外検査は、引用（include）では本文行数が
+        // ソース側にあるため描画時にしか分からない。ここでは素のブロックだけ見る
+        for &(start, end) in meta
+            .highlight_lines
+            .iter()
+            .filter(|_| meta.include.is_none())
+        {
             if end > fence.code_lines {
                 let range = if start == end {
                     format!("{start}")

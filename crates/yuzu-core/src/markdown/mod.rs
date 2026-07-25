@@ -316,6 +316,7 @@ pub(crate) fn extract_plain_sections(
     source: &str,
     opts: &MarkdownOptions,
     index_code: bool,
+    project_root: Option<&Path>,
 ) -> Result<Vec<PlainSection>, CoreError> {
     let arena = Arena::new();
     let options = comrak_options(opts);
@@ -327,7 +328,14 @@ pub(crate) fn extract_plain_sections(
         heading: None,
         body: String::new(),
     }];
-    collect_sections(root, &mut anchorizer, &mut sections, opts, index_code);
+    collect_sections(
+        root,
+        &mut anchorizer,
+        &mut sections,
+        opts,
+        index_code,
+        project_root,
+    );
     for section in &mut sections {
         section.body = section.body.trim().to_string();
     }
@@ -340,6 +348,7 @@ fn collect_sections<'a>(
     sections: &mut Vec<PlainSection>,
     opts: &MarkdownOptions,
     index_code: bool,
+    project_root: Option<&Path>,
 ) {
     {
         let data = node.data.borrow();
@@ -352,11 +361,22 @@ fn collect_sections<'a>(
                 // 本文を含める（インデントコードは公開ドキュメントの「フェンス」に合わせ除外）。
                 // 特別レンダリングされる言語（図・仕様・数式ソース）は検索ノイズなので除外
                 // — ただし機能が無効でプレーンコード表示になる場合は見えるまま索引する
-                let lang = parse_fence_info(&cb.info).0.unwrap_or("");
+                let (lang, meta) = parse_fence_info(&cb.info);
+                let lang = lang.unwrap_or("");
                 if !index_code || !cb.fenced || crate::is_special_render_lang(lang, opts) {
                     return;
                 }
-                sections.last_mut().unwrap().body.push_str(&cb.literal);
+                // コンテンツインクルードは literal が空なので、参照先を読んで索引する
+                // （表示されている内容を検索できる、を保つ。読めない場合は黙って諦め、
+                // エラーの可視化は描画のエラーボックスと `yuzu check` の責務）
+                match (&meta.include, project_root) {
+                    (Some(spec), Some(root)) => {
+                        if let Ok(text) = crate::include::resolve_include(root, spec) {
+                            sections.last_mut().unwrap().body.push_str(&text);
+                        }
+                    }
+                    _ => sections.last_mut().unwrap().body.push_str(&cb.literal),
+                }
                 // return せず末尾のブロック改行へ流し、トークンの文脈を切る
             }
             NodeValue::Heading(heading) => {
@@ -388,7 +408,7 @@ fn collect_sections<'a>(
     }
 
     for child in node.children() {
-        collect_sections(child, anchorizer, sections, opts, index_code);
+        collect_sections(child, anchorizer, sections, opts, index_code, project_root);
     }
 
     // 段落・リスト項目等の区切りで改行を入れる（トークナイズの文脈を切る）

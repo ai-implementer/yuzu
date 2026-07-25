@@ -220,7 +220,7 @@ fn extract_plain_sections_は_h2_h3_で分割しリード文を先頭に置く()
     let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
     let page = &site.pages[0];
     let sections =
-        yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), false).unwrap();
+        yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), false, None).unwrap();
 
     // リード文（h1 のテキストは本文として含む）
     assert_eq!(sections[0].anchor, None);
@@ -288,7 +288,8 @@ fn index_code_true_はフェンスコードを含めるが特別言語とイン�
     let page = &site.pages[0];
 
     // index_code=true（既定設定 = 全特別レンダリング有効）: フェンスの通常コードだけ含む
-    let on = yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), true).unwrap();
+    let on =
+        yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), true, None).unwrap();
     assert!(any_body_contains(&on, "connectTimeout"), "{on:?}");
     // 特別レンダリングされる 4 言語はすべて除外（除外集合の全数検証）
     assert!(!any_body_contains(&on, "flowchart"), "mermaid: {on:?}");
@@ -304,7 +305,7 @@ fn index_code_true_はフェンスコードを含めるが特別言語とイン�
         mermaid: false,
         ..MarkdownOptions::default()
     };
-    let visible = yuzu_core::extract_plain_sections(page, &plain_opts, true).unwrap();
+    let visible = yuzu_core::extract_plain_sections(page, &plain_opts, true, None).unwrap();
     assert!(
         any_body_contains(&visible, "flowchart"),
         "mermaid 無効なら見えるまま索引: {visible:?}"
@@ -317,7 +318,8 @@ fn index_code_true_はフェンスコードを含めるが特別言語とイン�
     assert!(!any_body_contains(&visible, "paths"), "{visible:?}");
 
     // index_code=false（既定）: コードは一切含まれない
-    let off = yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), false).unwrap();
+    let off =
+        yuzu_core::extract_plain_sections(page, &MarkdownOptions::default(), false, None).unwrap();
     assert!(!any_body_contains(&off, "connectTimeout"), "{off:?}");
     assert!(!any_body_contains(&off, "flowchart"), "{off:?}");
 }
@@ -333,7 +335,7 @@ fn extract_plain_sections_はコードブロックと_html_を除外する() {
 
     let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
     let sections =
-        yuzu_core::extract_plain_sections(&site.pages[0], &MarkdownOptions::default(), false)
+        yuzu_core::extract_plain_sections(&site.pages[0], &MarkdownOptions::default(), false, None)
             .unwrap();
     let lead = &sections[0].body;
 

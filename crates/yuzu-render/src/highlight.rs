@@ -44,7 +44,7 @@ pub struct SyntectCodeRenderer {
     mermaid_ssr_options: Option<tankan::Options>,
     /// `file:` 参照の基準ディレクトリ（プロジェクトルート）。
     /// 未設定（単体テスト等）ではファイル参照をエラーボックスにする
-    apispec_root: Option<PathBuf>,
+    project_root: Option<PathBuf>,
 }
 
 /// ページ単位の [`CodeBlockRenderer`]。共有の [`SyntectCodeRenderer`] を参照しつつ、
@@ -124,13 +124,13 @@ impl SyntectCodeRenderer {
             line_numbers_default: highlight.line_numbers,
             mermaid_enabled: mermaid.enabled,
             mermaid_ssr_options,
-            apispec_root: None,
+            project_root: None,
         }
     }
 
     /// `file:` 参照の基準ディレクトリ（プロジェクトルート）を設定する
     pub fn set_project_root(&mut self, root: PathBuf) {
-        self.apispec_root = Some(root);
+        self.project_root = Some(root);
     }
 
     /// ページ 1 枚ぶんのレンダラを作る（ページ内状態は初期値で始まる）
@@ -141,6 +141,17 @@ impl SyntectCodeRenderer {
             mermaid_counter: Cell::new(0),
             external_deps: Cell::new(false),
         }
+    }
+
+    /// syntect ハイライト。言語トークンが無い / 未知なら、引用元ファイルの
+    /// 拡張子で構文を引く（` ```file="src/api.rs" ` のような言語省略に対応）
+    fn highlight_for(&self, lang: Option<&str>, path: Option<&str>, code: &str) -> Option<String> {
+        let by_lang = lang.and_then(|l| self.highlight(l, code));
+        if by_lang.is_some() {
+            return by_lang;
+        }
+        let ext = path.and_then(|p| p.rsplit_once('.')).map(|(_, ext)| ext)?;
+        self.highlight(ext, code)
     }
 
     /// syntect ハイライト（CSS クラス出力の一括 HTML）。
@@ -256,7 +267,7 @@ impl PageCodeRenderer<'_> {
     /// 文書内のファイル $ref も同じ読み込み口（[`ProjectSpecFiles`]）を通る
     fn render_apispec(&self, kind: SpecKind, code: &str) -> Option<String> {
         let files = ProjectSpecFiles {
-            root: self.shared.apispec_root.as_deref(),
+            root: self.shared.project_root.as_deref(),
             external_deps: &self.external_deps,
         };
         let trimmed = code.trim();
@@ -331,10 +342,35 @@ impl CodeBlockRenderer for PageCodeRenderer<'_> {
         if !self.shared.highlight_enabled {
             return None;
         }
+        // コンテンツインクルード（file=）: 参照先を読んで本文に差し替える。
+        // 読み込みは仕様ファイル参照と同じ規律（ルート配下強制・外部依存の記録で
+        // 本文キャッシュ非対象 = 参照先の変更が次ビルドで必ず反映される）
+        let included = match &meta.include {
+            Some(spec) => {
+                self.external_deps.set(true);
+                let Some(root) = self.shared.project_root.as_deref() else {
+                    return Some(include_error_box(
+                        "このビルドではファイル参照が使えません（基準ディレクトリ未設定）",
+                        &spec.path,
+                    ));
+                };
+                match yuzu_core::resolve_include(root, spec) {
+                    Ok(text) => Some(text),
+                    Err(message) => {
+                        tracing::warn!(file = %spec.path, "{message}");
+                        return Some(include_error_box(&message, &spec.path));
+                    }
+                }
+            }
+            None => None,
+        };
+        let code = included.as_deref().unwrap_or(code);
+
         let line_numbers = meta
             .line_numbers
             .unwrap_or(self.shared.line_numbers_default);
-        let highlighted = lang.and_then(|l| self.shared.highlight(l, code));
+        let include_path = meta.include.as_ref().map(|s| s.path.as_str());
+        let highlighted = self.shared.highlight_for(lang, include_path, code);
         // ハイライトできない（言語なし・未知の言語）場合、メタも行番号も無ければ
         // 従来どおりパーサ既定の <pre><code> に任せる。指定があるときだけ
         // エスケープ済みプレーン本文を同じ構造で描画してメタを機能させる
@@ -373,14 +409,33 @@ impl CodeBlockRenderer for PageCodeRenderer<'_> {
             }
             None => format!("<pre class=\"{pre_classes}\"><code>{inner}</code></pre>\n"),
         };
-        Some(match &meta.title {
+        // キャプションは明示 title 優先。引用（file=）は省略時に
+        // 「パス:行範囲」を自動で出す（引用元が一目で分かるように）
+        let caption = meta
+            .title
+            .clone()
+            .or_else(|| meta.include.as_ref().map(|spec| spec.default_title()));
+        Some(match caption {
             Some(title) => format!(
                 "<figure class=\"code-block\">\n<figcaption>{}</figcaption>\n{pre}</figure>\n",
-                escape_html(title)
+                escape_html(&title)
             ),
             None => pre,
         })
     }
+}
+
+/// コンテンツインクルードの失敗表示（ビルドは止めず、原因をページ上に出す）
+fn include_error_box(message: &str, path: &str) -> String {
+    format!(
+        "<div class=\"markdown-alert markdown-alert-caution\">\n\
+         <p class=\"markdown-alert-title\">コードの読み込みに失敗しました</p>\n\
+         <p>{}</p>\n\
+         </div>\n\
+         <pre><code>file=\"{}\"</code></pre>\n",
+        escape_html(message),
+        escape_html(path),
+    )
 }
 
 /// HTML エスケープ（テキストノード・属性値用の最小集合）
@@ -882,6 +937,110 @@ mod tests {
             "{html}"
         );
         assert!(!html.contains("data-lang"));
+    }
+
+    // --- Phase 42: コンテンツインクルード（file=） ---
+
+    fn include_meta(path: &str, lines: Option<(usize, usize)>) -> CodeBlockMeta {
+        CodeBlockMeta {
+            include: Some(yuzu_core::IncludeSpec {
+                path: path.to_string(),
+                lines,
+            }),
+            ..CodeBlockMeta::default()
+        }
+    }
+
+    /// 引用元ファイルを 1 つ持つ一時プロジェクト
+    fn include_fixture() -> (tempfile::TempDir, SyntectCodeRenderer) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(
+            dir.path().join("src/api.rs"),
+            "fn one() {}\nfn two() {}\nfn three() {}\n",
+        )
+        .unwrap();
+        let mut r = SyntectCodeRenderer::new(&HighlightConfig::default(), &client_config());
+        r.set_project_root(dir.path().to_path_buf());
+        (dir, r)
+    }
+
+    #[test]
+    fn include_は参照先を読んで描画し外部依存を立てる() {
+        let (_dir, r) = include_fixture();
+        let p = r.page_renderer();
+        let html = p
+            .render(Some("rust"), &include_meta("src/api.rs", Some((2, 3))), "")
+            .unwrap();
+        assert!(html.contains("two"), "指定行が出る: {html}");
+        assert!(html.contains("three"));
+        assert!(!html.contains("one()"), "範囲外は出ない: {html}");
+        assert!(html.contains("class=\"yz-"), "syntect ハイライトが効く");
+        assert!(
+            p.external_deps_used(),
+            "参照ページは本文キャッシュ非対象になる"
+        );
+    }
+
+    #[test]
+    fn include_の既定キャプションはパスと行範囲() {
+        let (_dir, r) = include_fixture();
+        let html = r
+            .page_renderer()
+            .render(Some("rust"), &include_meta("src/api.rs", Some((2, 3))), "")
+            .unwrap();
+        assert!(
+            html.contains("<figcaption>src/api.rs:2-3</figcaption>"),
+            "{html}"
+        );
+
+        // 明示 title があればそちら優先
+        let mut meta = include_meta("src/api.rs", None);
+        meta.title = Some("API の入口".to_string());
+        let html = r.page_renderer().render(Some("rust"), &meta, "").unwrap();
+        assert!(
+            html.contains("<figcaption>API の入口</figcaption>"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn include_は言語省略時に拡張子で構文を引く() {
+        let (_dir, r) = include_fixture();
+        let html = r
+            .page_renderer()
+            .render(None, &include_meta("src/api.rs", None), "")
+            .unwrap();
+        assert!(html.contains("class=\"yz-"), "拡張子 rs で色が付く: {html}");
+    }
+
+    #[test]
+    fn include_の失敗はエラーボックスでビルドを続ける() {
+        let (_dir, r) = include_fixture();
+        // 不在ファイル
+        let html = r
+            .page_renderer()
+            .render(Some("rust"), &include_meta("src/missing.rs", None), "")
+            .unwrap();
+        assert!(html.contains("markdown-alert-caution"), "{html}");
+        assert!(html.contains("コードの読み込みに失敗しました"));
+        // 開始行が範囲外
+        let html = r
+            .page_renderer()
+            .render(Some("rust"), &include_meta("src/api.rs", Some((9, 10))), "")
+            .unwrap();
+        assert!(html.contains("範囲外"), "{html}");
+    }
+
+    #[test]
+    fn include_の行ハイライトは切り出し後の相対行を指す() {
+        let (_dir, r) = include_fixture();
+        let mut meta = include_meta("src/api.rs", Some((2, 3)));
+        meta.highlight_lines = vec![(1, 1)];
+        let html = r.page_renderer().render(Some("rust"), &meta, "").unwrap();
+        let first = html.split("<span class=\"line").nth(1).unwrap();
+        assert!(first.starts_with(" hl\">"), "引用 1 行目が hl: {html}");
+        assert!(first.contains("two"), "{html}");
     }
 
     #[test]

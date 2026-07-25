@@ -50,6 +50,8 @@ pub fn run() -> anyhow::Result<ExitCode> {
     // エイリアス（frontmatter aliases）の形式・衝突。
     // draft 込みの全ソースで検証する（公開前に矛盾を検出する）
     diags.extend(yuzu_core::validate_aliases(&pages, &opts));
+    // コンテンツインクルード（file=）の参照切れ・ルート外・行範囲外
+    diags.extend(yuzu_core::validate_includes(&pages, &root, &opts));
     // 内部リンク・アンカー
     diags.extend(yuzu_core::check_links(
         &pages,

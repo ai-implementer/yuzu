@@ -38,16 +38,16 @@ pub fn run(
 
     let notifier = rc.config.dev.live_reload.then(ReloadNotifier::new);
 
-    // 監視対象は content/ と theme/ のみ（dist/ を見ると無限ループ）。
+    // プロジェクトルート全体を監視する（コンテンツインクルード `file=` の
+    // 参照先は content/ の外にもあるため）。出力ディレクトリは必ず除外する
+    // = 除外しないと再ビルド → 変更検知 → 再ビルドの無限ループになる。
     // 設定は起動時のもので固定（yuzu.jsonc の変更は再起動で反映）
-    let mut paths = vec![rc.content_dir.clone()];
-    if let Some(theme_dir) = &rc.theme_dir {
-        paths.push(theme_dir.clone());
-    }
+    let paths = vec![rc.root.clone()];
+    let ignore = build::watch_ignore(&rc);
     let rc_for_watch = rc.clone();
     let notifier_for_watch = notifier.clone();
     // session はクロージャへ move してセッション全体で再利用する
-    let _watch_handle = yuzu_server::watch(&paths, build::DEBOUNCE, move || {
+    let _watch_handle = yuzu_server::watch(&paths, &ignore, build::DEBOUNCE, move || {
         tracing::info!("変更を検知 → 再ビルド");
         match build::build_once(&rc_for_watch, mode, &mut session, drafts) {
             // 通知は必ず再ビルド成功後（失敗時に通知すると壊れた dist を読ませる）

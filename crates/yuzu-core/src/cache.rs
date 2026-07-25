@@ -37,7 +37,8 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v8: 検索 tf に出現位置を追加（インデックスフォーマット v3・フレーズ検索の土台）
 /// - v9: コードブロックの行 span 化＋表示メタ（title / 行ハイライト / 行番号）
 /// - v10: frontmatter に aliases を追加（CachedMeta の Frontmatter に載る）
-pub const CACHE_FORMAT_VERSION: u32 = 10;
+/// - v11: コンテンツインクルード（`file=`）— 本文 HTML と検索 tf の両方が変わる
+pub const CACHE_FORMAT_VERSION: u32 = 11;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

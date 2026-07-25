@@ -62,6 +62,8 @@ jobs:
           test -f dist/_search/manifest.json
           # エイリアス（guide/quality の旧 URL）にリダイレクト HTML が生成される
           grep -q 'http-equiv="refresh"' dist/guide/lint/index.html
+          # コンテンツインクルード: yuzu.jsonc の引用が展開されている
+          grep -q '<figcaption>yuzu.jsonc:15-21</figcaption>' dist/guide/code-and-math/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）

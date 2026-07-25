@@ -4,11 +4,32 @@
 //! 検索抽出（`plain_sections`）で解釈を揃えるため、実装はここに 1 つだけ置く。
 //! 未知のトークンは黙って無視する（他ツール由来の情報文字列を壊さない）。
 
+/// 外部ソースファイルの引用指定（` ```rust file="src/api.rs" lines=10-25 `）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IncludeSpec {
+    /// プロジェクトルート相対のパス
+    pub path: String,
+    /// 引用する行範囲（1 始まり・両端含む）。`None` ならファイル全体
+    pub lines: Option<(usize, usize)>,
+}
+
+impl IncludeSpec {
+    /// `title` 省略時の既定キャプション（`src/api.rs:10-25`）
+    pub fn default_title(&self) -> String {
+        match self.lines {
+            Some((start, end)) if start == end => format!("{}:{start}", self.path),
+            Some((start, end)) => format!("{}:{start}-{end}", self.path),
+            None => self.path.clone(),
+        }
+    }
+}
+
 /// フェンス情報文字列から解釈した表示メタ（言語の後ろのトークン）。
 ///
 /// - `title="src/main.rs"` — キャプション（ファイル名など。無引用の `title=x` も可）
 /// - `{2,4-6}` — ハイライトする行（1 始まり・両端含む。数値とレンジのカンマ区切り）
 /// - `showLineNumbers` / `noLineNumbers` — 行番号表示のブロック単位上書き
+/// - `file="src/api.rs"` / `lines=10-25` — 外部ソースファイルの引用
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodeBlockMeta {
     /// キャプション（`<figcaption>` に出す。エスケープは描画側の責務）
@@ -17,12 +38,17 @@ pub struct CodeBlockMeta {
     pub highlight_lines: Vec<(usize, usize)>,
     /// 行番号表示の上書き。`None` = サイト設定（`markdown.highlight.lineNumbers`）に従う
     pub line_numbers: Option<bool>,
+    /// 外部ソースファイルの引用（`file=` 指定時のみ）
+    pub include: Option<IncludeSpec>,
 }
 
 impl CodeBlockMeta {
     /// メタ指定がひとつも無いか
     pub fn is_empty(&self) -> bool {
-        self.title.is_none() && self.highlight_lines.is_empty() && self.line_numbers.is_none()
+        self.title.is_none()
+            && self.highlight_lines.is_empty()
+            && self.line_numbers.is_none()
+            && self.include.is_none()
     }
 
     /// 1 始まりの行番号がハイライト対象か
@@ -40,6 +66,10 @@ pub(crate) enum FenceMetaIssue {
     UnknownToken(String),
     /// `{…}` 内の解釈できない要素（数値でない・逆順レンジ・0）
     InvalidRangePart(String),
+    /// `lines=` の解釈できない値（`10-25` / `10` 以外）
+    InvalidLines(String),
+    /// `file=` を伴わない `lines=`（引用元が無いので無視される）
+    LinesWithoutFile,
 }
 
 /// 情報文字列を（言語, メタ）へ解釈する。
@@ -60,14 +90,50 @@ pub(crate) fn parse_fence_info_detailed(
     let mut meta = CodeBlockMeta::default();
     let mut issues = Vec::new();
     let mut lang: Option<&str> = None;
+    // file= と lines= は順不同なので、走査後に組み立てる
+    let mut include_path: Option<String> = None;
+    let mut include_lines: Option<(usize, usize)> = None;
     for (i, token) in tokenize(info).enumerate() {
         if i == 0 && !is_meta_token(token) {
             lang = Some(token);
             continue;
         }
-        apply_token(token, &mut meta, &mut issues);
+        apply_token(
+            token,
+            &mut meta,
+            &mut issues,
+            &mut include_path,
+            &mut include_lines,
+        );
+    }
+    match include_path {
+        Some(path) => {
+            meta.include = Some(IncludeSpec {
+                path,
+                lines: include_lines,
+            });
+        }
+        // 引用元が無い lines= は効かないので lint が警告する
+        None if include_lines.is_some() => issues.push(FenceMetaIssue::LinesWithoutFile),
+        None => {}
     }
     (lang, meta, issues)
+}
+
+/// `10-25` / `10` 形式の行範囲。0・逆順・数値でない場合は None
+fn parse_lines_value(value: &str) -> Option<(usize, usize)> {
+    let value = value.trim().trim_matches('"');
+    let (start, end) = match value.split_once('-') {
+        Some((s, e)) => (
+            s.trim().parse::<usize>().ok()?,
+            e.trim().parse::<usize>().ok()?,
+        ),
+        None => {
+            let n = value.parse::<usize>().ok()?;
+            (n, n)
+        }
+    };
+    (start >= 1 && start <= end).then_some((start, end))
 }
 
 /// 空白区切り・二重引用符内の空白は保持するトークナイザ
@@ -102,7 +168,13 @@ fn is_meta_token(token: &str) -> bool {
         || token == "noLineNumbers"
 }
 
-fn apply_token(token: &str, meta: &mut CodeBlockMeta, issues: &mut Vec<FenceMetaIssue>) {
+fn apply_token(
+    token: &str,
+    meta: &mut CodeBlockMeta,
+    issues: &mut Vec<FenceMetaIssue>,
+    include_path: &mut Option<String>,
+    include_lines: &mut Option<(usize, usize)>,
+) {
     if token == "showLineNumbers" {
         meta.line_numbers = Some(true);
     } else if token == "noLineNumbers" {
@@ -114,6 +186,21 @@ fn apply_token(token: &str, meta: &mut CodeBlockMeta, issues: &mut Vec<FenceMeta
             .unwrap_or(value);
         if !value.is_empty() {
             meta.title = Some(value.to_string());
+        }
+    } else if let Some(value) = token.strip_prefix("file=") {
+        let value = value
+            .strip_prefix('"')
+            .and_then(|v| v.strip_suffix('"'))
+            .unwrap_or(value);
+        if value.is_empty() {
+            issues.push(FenceMetaIssue::UnknownToken(token.to_string()));
+        } else {
+            *include_path = Some(value.to_string());
+        }
+    } else if let Some(value) = token.strip_prefix("lines=") {
+        match parse_lines_value(value) {
+            Some(range) => *include_lines = Some(range),
+            None => issues.push(FenceMetaIssue::InvalidLines(value.to_string())),
         }
     } else if let Some(body) = token.strip_prefix('{').and_then(|t| t.strip_suffix('}')) {
         parse_line_ranges(body, &mut meta.highlight_lines, issues);
@@ -241,6 +328,53 @@ mod tests {
         let (_, _, issues) =
             parse_fence_info_detailed(r#"rust title="src/main.rs" {2,4-6} showLineNumbers"#);
         assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn file_と_lines_で_include_になる() {
+        let (lang, meta) = parse(r#"rust file="src/api.rs" lines=10-25"#);
+        assert_eq!(lang, Some("rust"));
+        let inc = meta.include.unwrap();
+        assert_eq!(inc.path, "src/api.rs");
+        assert_eq!(inc.lines, Some((10, 25)));
+        assert_eq!(inc.default_title(), "src/api.rs:10-25");
+
+        // 単一行・引用符なし・順不同
+        let (_, meta) = parse("rust lines=7 file=src/lib.rs");
+        let inc = meta.include.unwrap();
+        assert_eq!(inc.path, "src/lib.rs");
+        assert_eq!(inc.lines, Some((7, 7)));
+        assert_eq!(inc.default_title(), "src/lib.rs:7");
+
+        // lines なしはファイル全体
+        let (_, meta) = parse(r#"toml file="Cargo.toml""#);
+        let inc = meta.include.unwrap();
+        assert_eq!(inc.lines, None);
+        assert_eq!(inc.default_title(), "Cargo.toml");
+    }
+
+    #[test]
+    fn include_の不正指定は_issue_になる() {
+        // lines だけ（引用元なし）
+        let (_, meta, issues) = parse_fence_info_detailed("rust lines=1-3");
+        assert!(meta.include.is_none());
+        assert_eq!(issues, vec![FenceMetaIssue::LinesWithoutFile]);
+
+        // 解釈できない lines 値
+        let (_, _, issues) = parse_fence_info_detailed(r#"rust file="a.rs" lines=x"#);
+        assert_eq!(issues, vec![FenceMetaIssue::InvalidLines("x".to_string())]);
+        let (_, _, issues) = parse_fence_info_detailed(r#"rust file="a.rs" lines=5-2"#);
+        assert_eq!(
+            issues,
+            vec![FenceMetaIssue::InvalidLines("5-2".to_string())]
+        );
+        let (_, _, issues) = parse_fence_info_detailed(r#"rust file="a.rs" lines=0"#);
+        assert_eq!(issues, vec![FenceMetaIssue::InvalidLines("0".to_string())]);
+
+        // 空の file
+        let (_, meta, issues) = parse_fence_info_detailed(r#"rust file="""#);
+        assert!(meta.include.is_none());
+        assert_eq!(issues.len(), 1);
     }
 
     #[test]

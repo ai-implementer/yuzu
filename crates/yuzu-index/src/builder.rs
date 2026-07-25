@@ -46,6 +46,9 @@ pub struct IndexParams {
     pub synonyms: Vec<Vec<String>>,
     /// フェンスコードブロックの本文を検索対象に含めるか（`search.indexCode`）
     pub index_code: bool,
+    /// コンテンツインクルード（`file=`）解決の基準ディレクトリ（プロジェクトルート）。
+    /// None なら展開しない（引用ブロックは索引されない）
+    pub project_root: Option<PathBuf>,
 }
 
 impl Default for IndexParams {
@@ -57,6 +60,7 @@ impl Default for IndexParams {
             max_terms_per_shard: 16384,
             synonyms: Vec::new(),
             index_code: false,
+            project_root: None,
         }
     }
 }
@@ -162,7 +166,13 @@ pub fn build_search_index_with(
             Some(sections) => Ok(sections),
             None => {
                 let tokenizer = tokenizer.expect("miss があればトークナイザ構築済み");
-                let computed = compute_sections(page, md_opts, tokenizer, params.index_code)?;
+                let computed = compute_sections(
+                    page,
+                    md_opts,
+                    tokenizer,
+                    params.index_code,
+                    params.project_root.as_deref(),
+                )?;
                 if let Some(cache) = ctx.cache {
                     cache.store_search(&page.rel, &page.source, computed.clone());
                 }
@@ -320,8 +330,9 @@ fn compute_sections(
     md_opts: &MarkdownOptions,
     tokenizer: &Tokenizer,
     index_code: bool,
+    project_root: Option<&Path>,
 ) -> Result<Vec<CachedSection>, IndexError> {
-    let sections = yuzu_core::extract_plain_sections(page, md_opts, index_code)?;
+    let sections = yuzu_core::extract_plain_sections(page, md_opts, index_code, project_root)?;
     let mut out = Vec::with_capacity(sections.len());
     for (sec_idx, section) in sections.iter().enumerate() {
         // token → (重み付き tf, 出現位置列)。位置はフィールド連結ストリーム上の

@@ -19,6 +19,13 @@ use crate::commands::preview;
 /// エディタの連続保存をまとめる debounce 幅（build --watch / dev 共通）
 pub(crate) const DEBOUNCE: Duration = Duration::from_millis(300);
 
+/// 監視から除外するディレクトリ（build --watch / dev 共通）。
+/// **出力ディレクトリの除外は必須**（含めると再ビルド → 変更検知の無限ループ）。
+/// `.yuzu` / `.git` 等の隠しディレクトリは yuzu_server 側で常に無視される
+pub(crate) fn watch_ignore(rc: &ResolvedConfig) -> Vec<std::path::PathBuf> {
+    vec![rc.output_dir.clone(), rc.root.join(".yuzu")]
+}
+
 pub fn run(watch: bool, base_url: Option<String>, force: bool, drafts: bool) -> anyhow::Result<()> {
     let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
     let root = yuzu_config::find_project_root(&cwd)?;
@@ -43,16 +50,15 @@ pub fn run(watch: bool, base_url: Option<String>, force: bool, drafts: bool) -> 
         return Ok(());
     }
 
-    // 監視対象は content/ と theme/ のみ（dist/ を見ると無限ループ）。
+    // プロジェクトルート全体を監視する（コンテンツインクルード `file=` の
+    // 参照先は content/ の外にもあるため）。出力ディレクトリは必ず除外する。
     // 設定は起動時のもので固定（yuzu.jsonc の変更は再起動で反映）
-    let mut paths = vec![rc.content_dir.clone()];
-    if let Some(theme_dir) = &rc.theme_dir {
-        paths.push(theme_dir.clone());
-    }
+    let paths = vec![rc.root.clone()];
+    let ignore = watch_ignore(&rc);
     let rc_for_watch = rc.clone();
     // session はクロージャへ move してセッション全体で再利用する
     //（キャッシュ・テンプレート Env・ハイライタ・トークナイザ）
-    let _watch_handle = yuzu_server::watch(&paths, DEBOUNCE, move || {
+    let _watch_handle = yuzu_server::watch(&paths, &ignore, DEBOUNCE, move || {
         tracing::info!("変更を検知 → 再ビルド");
         if let Err(e) = build_once(&rc_for_watch, LiveReloadMode::Poll, &mut session, drafts) {
             // 執筆中の一時的な構文エラー等でプロセスは落とさない
@@ -214,6 +220,8 @@ pub(crate) fn build_once(
                 max_terms_per_shard: search.shard.max_terms_per_shard.max(1),
                 synonyms,
                 index_code: search.index_code,
+                // コンテンツインクルード（file=）を索引へ展開するための基準
+                project_root: Some(rc.root.clone()),
             },
             &rc.output_dir,
             &yuzu_index::IndexCtx {
