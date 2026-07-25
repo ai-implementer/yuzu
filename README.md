@@ -233,10 +233,13 @@ v0.4（Phase 19〜23: 表記ゆれ組み込み lint / 検索の同義語・タ�
 v0.5（Phase 24〜29: tankan スタイル構文の全図種展開 / 検索コードブロックの opt-in インデックス / OpenAPI Swagger 2.0・スキーマ一覧 / tankan mindmap・timeline / 形態素トークナイザ PoC は実測見送り / dogfooding 改善＝404 ページと lint --fix）、
 v0.6（Phase 30〜35: 検索インデックスの位置情報化（フォーマット v3） / フレーズ検索 / ビルドのページ並列化（render・index） / dogfooding 改善＝近接ブースト・フレーズヒント・ビルド時間表示 / 検索スタックのライブラリ化と OPFS キャッシュ）、
 v0.7（Phase 36〜38: 公開・配布の整備＝yuzu 自身の[ドキュメントサイト](https://ai-implementer.github.io/yuzu/)を GitHub Pages へ公開（dogfooding の総仕上げ） / tag push でバイナリ 4 プラットフォームを GitHub Release へ配布する release.yml / [tankan の crates.io 単独公開](https://crates.io/crates/tankan)（workspace と独立のバージョン 0.1.0）。名前 `yuzu`・`yuzu-core` の取得済み判明により yuzu 本体の crates.io 公開は将来構想へ再定義）、
-v0.8（Phase 39〜41: 執筆機能の拡充＝コードブロックの表示メタ（title / 行ハイライト / 行番号。JS ゼロ維持） / リダイレクト・エイリアス（frontmatter `aliases` から旧 URL のリダイレクト HTML を生成） / dogfooding 改善＝エイリアス診断の行番号・コードメタ lint・sitemap.xml・`git.lastUpdated` のサブディレクトリ運用バグ修正）は完了・リリース済み。
+v0.8（Phase 39〜41: 執筆機能の拡充＝コードブロックの表示メタ（title / 行ハイライト / 行番号。JS ゼロ維持） / リダイレクト・エイリアス（frontmatter `aliases` から旧 URL のリダイレクト HTML を生成） / dogfooding 改善＝エイリアス診断の行番号・コードメタ lint・sitemap.xml・`git.lastUpdated` のサブディレクトリ運用バグ修正）、
+v0.9（Phase 42〜45: 執筆機能の拡充 第 2 弾＝コンテンツインクルード（`file=` で実ソースの行範囲を埋め込み） / 図表番号と相互参照（キャプション行で自動採番・空リンクを「図 1」へ補完） / 折りたたみ（`> [!NOTE]-` で `<details>` 化） / dogfooding 改善＝折りたたみの自動展開・fmt の独自記法温存・図表番号のサイト全体通し番号）は完了・リリース済み。
 
-以下の Phase 42〜45 がすべて完了した時点で **v0.9** としてリリースする。軸は「執筆機能の拡充 第 2 弾」。  
-実際の設計書運用（dogfooding）と並行して進め、Phase は価値と実装コスト・依存関係の順に並べている（着手時に個別に設計する）。
+v0.10 以降の候補: タブ / コードグループ（言語別サンプル・OS 別手順の切替）・i18n（テーマ UI 文字列の多言語化。`site.lang` は既にあるが検索 UI・404 ページ等のテーマ文言は日本語ハードコード）・ドキュメントバージョニング（要否含め保留中）・VS Code 拡張（wasm プレビュー）・yuzu 本体の crates.io 公開（汎用ライブラリ層は tankan・mikan まで公開済み。残るは yuzu 本体だが、名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため、本体を単一パッケージ化するか名称を再検討する必要がある。Phase 37 の決定事項）。次期ロードマップは未策定（着手時に個別に設計する）。
+
+<details>
+<summary>完了済み: v0.9（Phase 42〜45）の内訳</summary>
 
 | Phase | 内容 | 状態 |
 |---|---|---|
@@ -245,7 +248,7 @@ v0.8（Phase 39〜41: 執筆機能の拡充＝コードブロックの表示メ�
 | **44 折りたたみ** | Admonition の種別直後に `-`（閉じた状態）/ `+`（開いた状態）を付けると `<details>` / `<details open>` で描画する（Obsidian callouts 互換。ネイティブ要素なのでクライアント JS 不要）。comrak は `[!NOTE]-` の `-` をタイトルの一部として渡してくるため、`yuzu-core::markdown::collapse` がマーカーを剥がして判定し、`<details>` 開始タグ + 中身 + 終了タグへ **AST 上で組み替える**（comrak に details 出力が無いため。Alert ノードの子を外へ移して自身は detach）。タイトル省略時は comrak と同じ既定ラベル（Note / Tip …）。テーマ CSS は既存の `.markdown-alert` 共通ルールがそのまま効くので summary のクリック領域だけ追加。折りたたみの中身は閉じていても HTML に含まれるため検索・llms.txt にそのまま収録される。`yuzu fmt` は `> [!NOTE] - タイトル` の形へ正規化するが解釈は不変・冪等（docs に注記） | ✅ |
 | **45 dogfooding 改善** | 恒例のバッファ枠（ユーザ選定の 3 点）: **①折りたたみの自動展開** — 検索結果・目次・図表参照から `<details>` の中へアンカーで飛んだとき祖先を開いて該当箇所を見せる（`details-target.js`。プログレッシブエンハンスメントで JS 無効でも中身は HTML にある。ページ内検索の自動展開はブラウザ側の対応に委ねる = 閉じた details の中身は details 自身が隠すため `hidden=until-found` は効かない）。**②fmt 正規化の見た目改善** — `format_commonmark` は `#` を無条件にエスケープし（`{#fig:x}` → `{\#fig:x}`）Admonition のタイトル前に空白を入れる（`[!NOTE]-` → `[!NOTE] -`）。どちらも comrak 側にオプションが無いため、**fmt 出力に対象を絞った復元処理**（行末ラベルと Admonition マーカーだけ）を入れて書いた形を保つようにした（通常の `#` エスケープは従来どおり）。**③図表番号のサイト全体通し番号** — `markdown.crossref.numbering: "site"`（既定 `"page"`）でサイドバー表示順の通し番号にする。オフセット割り当ては nav とラベルの両方を持つ `build_site_model` で行い、先行ページの図表増減が後続ページの番号を変えるため routesKey にラベル個数を含めて本文キャッシュを無効化する。OG メタ・favicon は方針どおり対象外 | ✅ |
 
-v0.10 以降の候補: タブ / コードグループ（言語別サンプル・OS 別手順の切替。今回は見送り）・i18n（テーマ UI 文字列の多言語化。`site.lang` は既にあるが検索 UI・404 ページ等のテーマ文言は日本語ハードコード）・ドキュメントバージョニング（要否含め保留中）・VS Code 拡張（wasm プレビュー）・yuzu 本体の crates.io 公開（汎用ライブラリ層は tankan・mikan まで公開済み。残るは yuzu 本体だが、名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため、本体を単一パッケージ化するか名称を再検討する必要がある。Phase 37 の決定事項）。次期ロードマップは未策定（着手時に個別に設計する）。
+</details>
 
 <details>
 <summary>完了済み: v0.8（Phase 39〜41）の内訳</summary>
