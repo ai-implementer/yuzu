@@ -91,9 +91,11 @@ pub(crate) fn parse_caption(text: &str) -> Option<Caption> {
     })
 }
 
-/// ページ内のキャプション採番機（種別ごとに独立したカウンタ）
-#[derive(Debug, Default)]
-pub(crate) struct Numbering {
+/// キャプションの採番機（種別ごとに独立したカウンタ）。
+/// サイト全体の通し番号（`markdown.crossref.numbering: "site"`）では、
+/// 先行ページまでの個数を初期値（オフセット）として渡す
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Numbering {
     figure: usize,
     table: usize,
     listing: usize,
@@ -109,6 +111,22 @@ impl Numbering {
         };
         *counter += 1;
         *counter
+    }
+
+    /// 種別ごとの採番済み個数を足し込む（サイト通し番号のオフセット計算用）
+    pub(crate) fn add(&mut self, other: &Numbering) {
+        self.figure += other.figure;
+        self.table += other.table;
+        self.listing += other.listing;
+    }
+
+    /// 種別の現在値（= 採番済み個数）
+    pub(crate) fn get(&self, kind: CaptionKind) -> usize {
+        match kind {
+            CaptionKind::Figure => self.figure,
+            CaptionKind::Table => self.table,
+            CaptionKind::Listing => self.listing,
+        }
     }
 }
 

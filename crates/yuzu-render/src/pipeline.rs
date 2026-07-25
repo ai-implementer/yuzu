@@ -65,6 +65,10 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         gfm: cfg.markdown.gfm,
         math: cfg.markdown.math.enabled,
         mermaid: cfg.markdown.mermaid.enabled,
+        crossref_site_numbering: matches!(
+            cfg.markdown.crossref.numbering,
+            yuzu_config::CrossrefNumbering::Site
+        ),
     };
 
     // エイリアス（frontmatter aliases）の検証。衝突・不正があると実ページや

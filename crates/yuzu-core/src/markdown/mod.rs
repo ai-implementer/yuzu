@@ -141,6 +141,58 @@ pub(crate) fn extract_meta(
     })
 }
 
+/// `format_commonmark` が正規化してしまう yuzu 独自記法を、書き手が書いた形へ戻す。
+///
+/// comrak は `#` を無条件にエスケープし（`{#fig:x}` → `{\#fig:x}`）、Admonition の
+/// タイトルは必ず 1 つ空白を空けて書く（`[!NOTE]-` → `[!NOTE] -`）。どちらも
+/// 解釈は変わらないが原稿の見た目が変わるため、**行末のラベルと Admonition の
+/// マーカーだけ**を対象に元の形へ復元する（他の `#` エスケープは触らない）。
+fn restore_yuzu_syntax(body: String) -> String {
+    if !body.contains("{\\#") && !body.contains("] -") && !body.contains("] +") {
+        return body;
+    }
+    let mut out = String::with_capacity(body.len());
+    for line in body.split_inclusive('\n') {
+        let (text, newline) = match line.strip_suffix('\n') {
+            Some(text) => (text, "\n"),
+            None => (line, ""),
+        };
+        let restored = restore_line(text);
+        out.push_str(&restored);
+        out.push_str(newline);
+    }
+    out
+}
+
+/// 1 行ぶんの復元（キャプション行のラベルと Admonition の折りたたみマーカー）
+fn restore_line(text: &str) -> String {
+    // キャプション行の末尾ラベル: `... {\#fig:x}` → `... {#fig:x}`
+    // （行末が `{\#…}` で、中身に空白を含まないものだけ）
+    if let Some(head) = text.strip_suffix('}') {
+        if let Some((before, label)) = head.rsplit_once("{\\#") {
+            if !label.is_empty()
+                && !label.contains(char::is_whitespace)
+                && crossref::parse_caption(before.trim_start_matches(['>', ' '])).is_some()
+            {
+                return format!("{before}{{#{label}}}");
+            }
+        }
+    }
+    // Admonition の折りたたみマーカー: `> [!NOTE] - 題` → `> [!NOTE]- 題`
+    if let Some(marker_at) = text.find("] ") {
+        let (head, rest) = text.split_at(marker_at);
+        if head.trim_start().starts_with("> [!") || head.trim_start().starts_with("[!") {
+            let after = &rest[2..];
+            if let Some(marker) = after.chars().next() {
+                if marker == '-' || marker == '+' {
+                    return format!("{head}]{after}");
+                }
+            }
+        }
+    }
+    text.to_string()
+}
+
 /// 本文を HTML 化する（コードブロック差し替え・URL 書き換えつき）
 pub(crate) fn render_body_html(
     page: &Page,
@@ -156,7 +208,8 @@ pub(crate) fn render_body_html(
     // 同じ規則で採番済みなので、ここでは引くだけ
     let labels: std::collections::HashMap<&str, &CrossrefLabel> =
         page.labels.iter().map(|l| (l.id.as_str(), l)).collect();
-    let mut numbering = crossref::Numbering::default();
+    // サイト通し番号では先行ページまでの個数から採番を続ける（page.crossref_offset）
+    let mut numbering = page.crossref_offset;
 
     // ⚠️ 木の構造を変える操作（子の切り離し・追加）は descendants() の
     // イテレート中に行うと comrak が "tree modified during iteration" で
@@ -391,6 +444,7 @@ pub(crate) fn format_document(source: &str, opts: &MarkdownOptions) -> Result<St
 
     let mut body = String::new();
     format_commonmark(root, &options, &mut body)?;
+    let body = restore_yuzu_syntax(body);
     let body = body.trim_end();
 
     Ok(match (fm_raw, body.is_empty()) {

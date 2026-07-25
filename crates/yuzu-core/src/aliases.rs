@@ -200,6 +200,7 @@ mod tests {
             title: "t".to_string(),
             toc: Vec::new(),
             labels: Vec::new(),
+            crossref_offset: Default::default(),
             source,
         }
     }

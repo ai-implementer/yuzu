@@ -31,6 +31,11 @@
     },
     "math": {
       "enabled": true // $...$ / $$...$$ / ```math を同梱 KaTeX で描画（数式のあるページだけ読み込む）
+    },
+    "crossref": {
+      // 図表番号（Figure: / Table: / Listing: のキャプション行）の採番単位。
+      // "page" = ページ内連番（既定）/ "site" = サイドバー表示順の通し番号
+      "numbering": "page"
     }
   },
   // "lint": {

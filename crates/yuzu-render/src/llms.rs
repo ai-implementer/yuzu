@@ -58,6 +58,10 @@ pub fn generate_llms_full_txt(
         gfm: rc.config.markdown.gfm,
         math: rc.config.markdown.math.enabled,
         mermaid: rc.config.markdown.mermaid.enabled,
+        crossref_site_numbering: matches!(
+            rc.config.markdown.crossref.numbering,
+            yuzu_config::CrossrefNumbering::Site
+        ),
     };
 
     let mut out = String::new();

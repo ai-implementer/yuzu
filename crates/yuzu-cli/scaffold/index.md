@@ -52,7 +52,7 @@ sequenceDiagram
     Y-->>B: 再ビルド → リロード
 ```
 
-Figure: ライブリロードの流れ {\#fig:reload}
+Figure: ライブリロードの流れ {#fig:reload}
 
 図・表・コードの前後に `Figure:` / `Table:` / `Listing:`（日本語の `図:` /
 `表:` / `リスト:` も可）で始まる行を書くと、ページ内で自動採番された

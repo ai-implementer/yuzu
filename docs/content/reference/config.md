@@ -32,7 +32,8 @@ description: yuzu.jsonc の全設定キー・型・既定値
     "gfm": true,
     "highlight": { "enabled": true, "themeLight": "InspiredGitHub", "themeDark": "base16-ocean.dark", "lineNumbers": false },
     "mermaid": { "enabled": true, "backend": "client" },
-    "math": { "enabled": true }
+    "math": { "enabled": true },
+    "crossref": { "numbering": "page" } // "site" でサイト全体の通し番号
   },
   "lint": {
     "maxDirectoryDepth": 1,
@@ -100,6 +101,7 @@ description: yuzu.jsonc の全設定キー・型・既定値
 | `mermaid.enabled` | bool / `true` | ` ```mermaid ` ブロックの描画 |
 | `mermaid.backend` | `"client"` \| `"ssr"` / `"client"` | [SSR にすると 9 図種をビルド時 SVG 化](../guide/diagrams.md) |
 | `math.enabled` | bool / `true` | 数式（同梱 KaTeX でクライアント描画） |
+| `crossref.numbering` | `"page"` \| `"site"` / `"page"` | [図表番号](../guide/writing.md#図表番号と相互参照)の採番単位（ページ内連番 / サイト全体の通し番号） |
 
 ## lint
 

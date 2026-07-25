@@ -50,6 +50,7 @@ fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
             gfm: rc.config.markdown.gfm,
             math: rc.config.markdown.math.enabled,
             mermaid: rc.config.markdown.mermaid.enabled,
+            ..MarkdownOptions::default()
         },
     )
     .unwrap();

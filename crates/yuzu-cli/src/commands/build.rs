@@ -141,6 +141,10 @@ pub(crate) fn build_once(
         gfm: rc.config.markdown.gfm,
         math: rc.config.markdown.math.enabled,
         mermaid: rc.config.markdown.mermaid.enabled,
+        crossref_site_numbering: matches!(
+            rc.config.markdown.crossref.numbering,
+            yuzu_config::CrossrefNumbering::Site
+        ),
     };
     let site = yuzu_core::build_site_model_cached(
         &rc.content_dir,
@@ -151,11 +155,19 @@ pub(crate) fn build_once(
     )?;
 
     // routesKey: 非 draft ページの rel→route 集合（`.md` リンク解決の入力）。
-    // 変化時はキャッシュ層が本文 HTML だけを安全側で全破棄する
+    // 変化時はキャッシュ層が本文 HTML だけを安全側で全破棄する。
+    // サイト通し番号（crossref）では**先行ページの図表個数**も本文 HTML に効くので、
+    // ラベル数もキーへ含める（あるページの図の増減で後続ページの番号がずれるため）
     let routes: Vec<String> = site
         .pages
         .iter()
-        .map(|p| format!("{}\t{}", p.rel.display(), p.route))
+        .map(|p| {
+            if md_opts.crossref_site_numbering {
+                format!("{}\t{}\t{}", p.rel.display(), p.route, p.labels.len())
+            } else {
+                format!("{}\t{}", p.rel.display(), p.route)
+            }
+        })
         .collect();
     session
         .cache

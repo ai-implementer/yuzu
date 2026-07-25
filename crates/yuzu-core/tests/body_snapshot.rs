@@ -308,3 +308,67 @@ fn 折りたたみ_admonition_は_details_になる() {
     assert_eq!(html.matches("<details").count(), 3, "{html}");
     assert_eq!(html.matches("</details>").count(), 3, "{html}");
 }
+
+/// 図表番号のサイト全体通し番号（Phase 45）: サイドバー表示順で連番になる
+#[test]
+fn サイト通し番号は表示順で連続する() {
+    let dir = tempfile::tempdir().unwrap();
+    // order で表示順を固定（index → a → b）
+    fs::write(
+        dir.path().join("index.md"),
+        "---\ntitle: ホーム\norder: 1\n---\n\n# ホーム\n\nFigure: 1 枚目 {#fig:a}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("second.md"),
+        "---\ntitle: 2 番目\norder: 2\n---\n\n# 2 番目\n\nFigure: 2 枚目 {#fig:b}\n\nTable: 表 {#tbl:b}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("third.md"),
+        "---\ntitle: 3 番目\norder: 3\n---\n\n# 3 番目\n\nFigure: 3 枚目 {#fig:c}\n\n参照: [](#fig:c)。\n",
+    )
+    .unwrap();
+
+    let site_opts = MarkdownOptions {
+        crossref_site_numbering: true,
+        ..MarkdownOptions::default()
+    };
+    let site = yuzu_core::build_site_model(dir.path(), &[], &site_opts).unwrap();
+    let number_of = |id: &str| {
+        site.pages
+            .iter()
+            .flat_map(|p| &p.labels)
+            .find(|l| l.id == id)
+            .unwrap()
+            .number
+    };
+    // 図は表示順に 1, 2, 3。表は別カウンタなので 1
+    assert_eq!(number_of("fig:a"), 1);
+    assert_eq!(number_of("fig:b"), 2);
+    assert_eq!(number_of("fig:c"), 3);
+    assert_eq!(number_of("tbl:b"), 1);
+
+    // 本文 HTML のキャプション・参照も同じ通し番号になる
+    let third = site.pages.iter().find(|p| p.route == "third/").unwrap();
+    let html = render_body_html(third, &site_opts, &MermaidOnlyRenderer, &NoopUrlRewriter).unwrap();
+    assert!(
+        html.contains(r#"<span class="caption-label">図 3</span>"#),
+        "{html}"
+    );
+    assert!(html.contains(r##"<a href="#fig:c">図 3</a>"##), "{html}");
+
+    // 既定（ページ内連番）では各ページ 1 から
+    let site = yuzu_core::build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let number_of = |id: &str| {
+        site.pages
+            .iter()
+            .flat_map(|p| &p.labels)
+            .find(|l| l.id == id)
+            .unwrap()
+            .number
+    };
+    assert_eq!(number_of("fig:a"), 1);
+    assert_eq!(number_of("fig:b"), 1);
+    assert_eq!(number_of("fig:c"), 1);
+}

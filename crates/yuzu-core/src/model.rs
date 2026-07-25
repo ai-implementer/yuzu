@@ -109,6 +109,9 @@ pub struct Page {
     pub toc: Vec<TocEntry>,
     /// 図表キャプションのラベル（相互参照のターゲット。文書順）
     pub labels: Vec<CrossrefLabel>,
+    /// 図表番号の開始オフセット（種別ごとの先行ページまでの個数）。
+    /// `markdown.crossref.numbering: "site"` のときだけ非ゼロになる
+    pub crossref_offset: crate::markdown::crossref::Numbering,
     /// Markdown 原文（本文 HTML 化・将来の `yuzu fmt` が再パースに使う）
     pub source: String,
 }

@@ -19,6 +19,10 @@ pub fn run(check: bool) -> anyhow::Result<ExitCode> {
         gfm: rc.config.markdown.gfm,
         math: rc.config.markdown.math.enabled,
         mermaid: rc.config.markdown.mermaid.enabled,
+        crossref_site_numbering: matches!(
+            rc.config.markdown.crossref.numbering,
+            yuzu_config::CrossrefNumbering::Site
+        ),
     };
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;

@@ -16,6 +16,10 @@ pub fn run() -> anyhow::Result<ExitCode> {
         gfm: rc.config.markdown.gfm,
         math: rc.config.markdown.math.enabled,
         mermaid: rc.config.markdown.mermaid.enabled,
+        crossref_site_numbering: matches!(
+            rc.config.markdown.crossref.numbering,
+            yuzu_config::CrossrefNumbering::Site
+        ),
     };
     let lint_opts = LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,

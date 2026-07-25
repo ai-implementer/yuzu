@@ -54,6 +54,9 @@ pub struct MarkdownOptions {
     /// パースには影響しないが、検索抽出の特別レンダリング判定
     /// （[`is_special_render_lang`]）が参照する
     pub mermaid: bool,
+    /// 図表番号をサイト全体の通し番号にするか（`markdown.crossref.numbering`）。
+    /// true なら [`build_site_model`] がサイドバー表示順でオフセットを割り当てる
+    pub crossref_site_numbering: bool,
 }
 
 impl Default for MarkdownOptions {
@@ -62,6 +65,7 @@ impl Default for MarkdownOptions {
             gfm: true,
             math: true,
             mermaid: true,
+            crossref_site_numbering: false,
         }
     }
 }
@@ -160,7 +164,58 @@ pub fn build_site_model_cached(
         });
     }
     let nav = nav::build_nav(&pages);
+    if opts.crossref_site_numbering {
+        assign_crossref_offsets(&mut pages, &nav);
+    }
     Ok(SiteModel { pages, nav })
+}
+
+/// サイト全体の通し番号（`markdown.crossref.numbering: "site"`）用に、
+/// 各ページの採番開始オフセットを**サイドバー表示順**で割り当てる。
+///
+/// ページ本文 HTML はキャッシュされるため、オフセットが変わると古い番号が
+/// 残る。cli は routesKey にラベル個数を含めて全 body を無効化すること
+fn assign_crossref_offsets(pages: &mut [Page], nav: &[NavNode]) {
+    // nav（表示順）のフラットな route 列 → ページの並び替え順を作る
+    let mut order: Vec<&str> = Vec::new();
+    fn walk<'a>(nodes: &'a [NavNode], out: &mut Vec<&'a str>) {
+        for node in nodes {
+            if let Some(route) = &node.route {
+                out.push(route);
+            }
+            walk(&node.children, out);
+        }
+    }
+    walk(nav, &mut order);
+
+    let rank: std::collections::HashMap<&str, usize> = order
+        .iter()
+        .enumerate()
+        .map(|(i, route)| (*route, i))
+        .collect();
+    // 表示順（nav に出ないページは末尾へ。パス順で安定させる）
+    let mut indices: Vec<usize> = (0..pages.len()).collect();
+    indices.sort_by_key(|&i| {
+        (
+            rank.get(pages[i].route.as_str())
+                .copied()
+                .unwrap_or(usize::MAX),
+            i,
+        )
+    });
+
+    let mut running = markdown::crossref::Numbering::default();
+    for i in indices {
+        pages[i].crossref_offset = running;
+        // ページ内番号（1 始まり）を通し番号へ読み替える。
+        // 本文 HTML 側も同じオフセットから採番するので両者は一致する
+        let mut counts = markdown::crossref::Numbering::default();
+        for label in &mut pages[i].labels {
+            counts.next(label.kind);
+            label.number += running.get(label.kind);
+        }
+        running.add(&counts);
+    }
 }
 
 /// `content_dir` 以下の全ページを列挙する（`yuzu fmt` / `lint` / `check` 用）。
@@ -246,6 +301,7 @@ fn load_pages_cached(
             title,
             toc,
             labels,
+            crossref_offset: Default::default(),
             source,
         });
     }

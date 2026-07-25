@@ -18,6 +18,10 @@ pub fn run(full: bool) -> anyhow::Result<()> {
             gfm: rc.config.markdown.gfm,
             math: rc.config.markdown.math.enabled,
             mermaid: rc.config.markdown.mermaid.enabled,
+            crossref_site_numbering: matches!(
+                rc.config.markdown.crossref.numbering,
+                yuzu_config::CrossrefNumbering::Site
+            ),
         },
     )?;
 

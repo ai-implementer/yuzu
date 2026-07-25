@@ -141,6 +141,34 @@ pub struct MarkdownConfig {
     pub highlight: HighlightConfig,
     pub mermaid: MermaidConfig,
     pub math: MathConfig,
+    pub crossref: CrossrefConfig,
+}
+
+/// 図表番号（`Figure:` / `Table:` / `Listing:` キャプション行）の採番設定
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CrossrefConfig {
+    /// 採番の単位。`"page"`（既定）はページごとに 1 から、
+    /// `"site"` はサイドバーの表示順でサイト全体を通し番号にする
+    pub numbering: CrossrefNumbering,
+}
+
+impl Default for CrossrefConfig {
+    fn default() -> Self {
+        Self {
+            numbering: CrossrefNumbering::Page,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CrossrefNumbering {
+    /// ページ内連番（既定）
+    #[default]
+    Page,
+    /// サイト全体の通し番号（サイドバー表示順）
+    Site,
 }
 
 impl Default for MarkdownConfig {
@@ -150,6 +178,7 @@ impl Default for MarkdownConfig {
             highlight: HighlightConfig::default(),
             mermaid: MermaidConfig::default(),
             math: MathConfig::default(),
+            crossref: CrossrefConfig::default(),
         }
     }
 }
