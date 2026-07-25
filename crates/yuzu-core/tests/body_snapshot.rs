@@ -246,3 +246,65 @@ fn 図表キャプションの採番と参照補完() {
     // 素の段落（キャプションでない）は普通の <p> のまま
     assert!(html.contains("<p>図をもう 1 つ。</p>"), "{html}");
 }
+
+/// 折りたたみ Admonition（Phase 44）: `-` / `+` マーカーで details 化
+#[test]
+fn 折りたたみ_admonition_は_details_になる() {
+    const SRC: &str = concat!(
+        "# 見出し\n\n",
+        "> [!NOTE]- 閉じた状態\n> 中身の段落。\n>\n> - リスト\n> - も入る\n\n",
+        "> [!TIP]+ 開いた状態\n> 最初から開いている。\n\n",
+        "> [!CAUTION]-\n> タイトル省略。\n\n",
+        "> [!WARNING] 通常のまま\n> 折りたたまない。\n",
+    );
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("index.md"), SRC).unwrap();
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+    )
+    .unwrap();
+
+    // `-` は閉じた details、`+` は open 付き
+    assert!(
+        html.contains(r#"<details class="markdown-alert markdown-alert-note">"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"<summary class="markdown-alert-title">閉じた状態</summary>"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"<details class="markdown-alert markdown-alert-tip" open>"#),
+        "{html}"
+    );
+    // タイトル省略時は comrak と同じ既定タイトル
+    assert!(
+        html.contains(r#"<summary class="markdown-alert-title">Caution</summary>"#),
+        "{html}"
+    );
+    // マーカーなしは従来どおり div のまま
+    assert!(
+        html.contains(r#"<div class="markdown-alert markdown-alert-warning">"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"<p class="markdown-alert-title">通常のまま</p>"#),
+        "{html}"
+    );
+
+    // 中身（段落・リスト）は details の内側に順序どおり入る
+    let note = html
+        .split(r#"<details class="markdown-alert markdown-alert-note">"#)
+        .nth(1)
+        .and_then(|s| s.split("</details>").next())
+        .unwrap();
+    assert!(note.contains("<p>中身の段落。</p>"), "{note}");
+    assert!(note.contains("<li>リスト</li>"), "{note}");
+    assert_eq!(html.matches("<details").count(), 3, "{html}");
+    assert_eq!(html.matches("</details>").count(), 3, "{html}");
+}

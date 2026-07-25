@@ -8,6 +8,7 @@
 //! `Anchorizer` で ID を採番する。TOC 側も**全見出しを文書順で**採番することで
 //! 重複サフィックス（`-1` 等）を一致させている。片方だけ見出しを飛ばすとずれる。
 
+pub(crate) mod collapse;
 pub(crate) mod crossref;
 pub(crate) mod fence;
 
@@ -162,8 +163,16 @@ pub(crate) fn render_body_html(
     // パニックする。走査では対象と置換内容を集めるだけにして、適用は後段で行う
     let mut block_replacements = Vec::new();
     let mut ref_fills = Vec::new();
+    let mut collapsibles = Vec::new();
 
     for node in root.descendants() {
+        // 折りたたみ Admonition（`> [!NOTE]- タイトル`）→ <details> へ組み替える
+        if let NodeValue::Alert(alert) = &node.data.borrow().value {
+            if let Some((collapse, title)) = collapse::parse_title(alert.title.as_deref()) {
+                collapsibles.push((node, collapse::open_tag(alert.alert_type, collapse, &title)));
+            }
+        }
+
         // コードブロック → フックが返した HTML（HtmlBlock）へ差し替え
         let replacement = {
             let data = node.data.borrow();
@@ -226,6 +235,30 @@ pub(crate) fn render_body_html(
             comrak::nodes::Ast::new(NodeValue::Text(text.into()), start),
         )));
         node.append(child);
+    }
+    // 折りたたみ: Alert ノードを「開始タグ HtmlBlock → 中身 → 終了タグ」へ
+    // 展開する（comrak は details 出力を持たないため AST 上で組み替える）
+    for (node, open_tag) in collapsibles {
+        let start = node.data.borrow().sourcepos.start;
+        let html_block = |literal: String| {
+            arena.alloc(AstNode::new(std::cell::RefCell::new(
+                comrak::nodes::Ast::new(
+                    NodeValue::HtmlBlock(NodeHtmlBlock {
+                        block_type: 6,
+                        literal,
+                    }),
+                    start,
+                ),
+            )))
+        };
+        node.insert_before(html_block(open_tag));
+        // 中身（ブロック群）を Alert の外へ順序どおり移す
+        while let Some(child) = node.first_child() {
+            child.detach();
+            node.insert_before(child);
+        }
+        node.insert_before(html_block(collapse::CLOSE_TAG.to_string()));
+        node.detach();
     }
 
     let mut out = String::new();

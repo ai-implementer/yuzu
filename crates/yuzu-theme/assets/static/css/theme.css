@@ -752,6 +752,23 @@ body {
   color: var(--alert-color, inherit);
 }
 
+/* 折りたたみ Admonition（`> [!NOTE]- タイトル` → details/summary）。
+   面・色・余白は上の .markdown-alert 共通ルールがそのまま効くので、
+   ここでは summary（クリック領域）まわりだけを足す */
+.markdown-body details.markdown-alert > summary {
+  cursor: pointer;
+  padding: 0.6rem 0;
+  user-select: none; /* 開閉クリックで本文が選択されるのを防ぐ */
+}
+
+.markdown-body details.markdown-alert[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body details.markdown-alert > summary::marker {
+  color: var(--alert-color, var(--fg-muted));
+}
+
 .markdown-body .markdown-alert-note {
   --alert-color: var(--alert-note);
 }
