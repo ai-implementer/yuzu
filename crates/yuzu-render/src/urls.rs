@@ -139,6 +139,7 @@ mod tests {
             frontmatter: Frontmatter::default(),
             title: rel.to_string(),
             toc: Vec::new(),
+            labels: Vec::new(),
             source: String::new(),
         }
     }

@@ -38,7 +38,8 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v9: コードブロックの行 span 化＋表示メタ（title / 行ハイライト / 行番号）
 /// - v10: frontmatter に aliases を追加（CachedMeta の Frontmatter に載る）
 /// - v11: コンテンツインクルード（`file=`）— 本文 HTML と検索 tf の両方が変わる
-pub const CACHE_FORMAT_VERSION: u32 = 11;
+/// - v12: 図表番号と相互参照（CachedMeta に labels 追加・キャプション行の HTML 化）
+pub const CACHE_FORMAT_VERSION: u32 = 12;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +49,8 @@ pub struct CachedMeta {
     /// frontmatter → h1 → ファイル名で解決済みのタイトル
     pub title: String,
     pub toc: Vec<TocEntry>,
+    /// 図表キャプションのラベル（相互参照のターゲット）
+    pub labels: Vec<crate::model::CrossrefLabel>,
 }
 
 /// パス2（render_body_html）の結果

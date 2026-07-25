@@ -49,6 +49,22 @@ pub struct SourceSpan {
     pub end_col: usize,
 }
 
+/// 図表キャプションのラベル（相互参照のターゲット）。
+/// `Figure: 説明 {#fig:deps}` から採番と id を確定して収集する
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrossrefLabel {
+    /// `{#fig:deps}` の中身（アンカー id と同じ値）
+    pub id: String,
+    /// 種別（図 / 表 / リスト）。参照テキストの自動補完に使う
+    pub kind: crate::markdown::crossref::CaptionKind,
+    /// ページ内の採番（種別ごとに 1 から）
+    pub number: usize,
+    /// キャプション本文
+    pub text: String,
+    /// ソース上の位置（重複ラベルの診断用）
+    pub span: SourceSpan,
+}
+
 /// ページ内 TOC の 1 エントリ（見出し）。
 /// ID は本文 HTML の見出しアンカーと一致することを保証する
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,6 +107,8 @@ pub struct Page {
     pub title: String,
     /// ページ内 TOC（h1〜h6 全見出し）
     pub toc: Vec<TocEntry>,
+    /// 図表キャプションのラベル（相互参照のターゲット。文書順）
+    pub labels: Vec<CrossrefLabel>,
     /// Markdown 原文（本文 HTML 化・将来の `yuzu fmt` が再パースに使う）
     pub source: String,
 }

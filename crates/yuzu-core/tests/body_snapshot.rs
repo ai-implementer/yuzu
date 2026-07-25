@@ -160,3 +160,89 @@ fn alerts_と脚注の_html_スナップショット() {
     assert_eq!(html.matches("<section class=\"footnotes\"").count(), 1);
     insta::assert_snapshot!("alerts_footnotes_html", html);
 }
+
+/// 図表番号と相互参照（Phase 43）: 採番・アンカー・空リンクの自動補完
+#[test]
+fn 図表キャプションの採番と参照補完() {
+    const SRC: &str = concat!(
+        "# 見出し\n\n",
+        "```mermaid\ngraph TD; A-->B\n```\n\n",
+        "Figure: 依存関係 {#fig:deps}\n\n",
+        "| a | b |\n| --- | --- |\n| 1 | 2 |\n\n",
+        "表: 対応表 {#tbl:matrix}\n\n",
+        "```rust\nfn main() {}\n```\n\n",
+        "リスト: サンプル {#lst:main}\n\n",
+        "図をもう 1 つ。\n\n",
+        "Figure: 2 枚目 {#fig:second}\n\n",
+        "参照: [](#fig:deps) / [](#tbl:matrix) / [](#lst:main) / [](#fig:second)。\n",
+        "テキスト付き: [この図](#fig:deps)。未定義: [](#fig:missing)。\n",
+    );
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("index.md"), SRC).unwrap();
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let page = &site.pages[0];
+
+    // メタ抽出でラベルが採番されている（種別ごとに独立・文書順）
+    let labels: Vec<(&str, usize)> = page
+        .labels
+        .iter()
+        .map(|l| (l.id.as_str(), l.number))
+        .collect();
+    assert_eq!(
+        labels,
+        vec![
+            ("fig:deps", 1),
+            ("tbl:matrix", 1),
+            ("lst:main", 1),
+            ("fig:second", 2)
+        ]
+    );
+
+    let html = render_body_html(
+        page,
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+    )
+    .unwrap();
+
+    // キャプションはアンカー付きで採番表示される
+    assert!(html.contains(r#"<p class="caption caption-fig" id="fig:deps"><span class="caption-label">図 1</span>: 依存関係</p>"#), "{html}");
+    assert!(
+        html.contains(r#"id="tbl:matrix"><span class="caption-label">表 1</span>"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"id="lst:main"><span class="caption-label">リスト 1</span>"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"id="fig:second"><span class="caption-label">図 2</span>"#),
+        "{html}"
+    );
+
+    // 空テキストのリンクは採番テキストで補完され、テキスト付きはそのまま
+    assert!(html.contains(r##"<a href="#fig:deps">図 1</a>"##), "{html}");
+    assert!(
+        html.contains(r##"<a href="#tbl:matrix">表 1</a>"##),
+        "{html}"
+    );
+    assert!(
+        html.contains(r##"<a href="#lst:main">リスト 1</a>"##),
+        "{html}"
+    );
+    assert!(
+        html.contains(r##"<a href="#fig:second">図 2</a>"##),
+        "{html}"
+    );
+    assert!(
+        html.contains(r##"<a href="#fig:deps">この図</a>"##),
+        "{html}"
+    );
+    // 未定義ラベルは補完しない（check が broken-anchor で報告する）
+    assert!(html.contains(r##"<a href="#fig:missing"></a>"##), "{html}");
+
+    // 素の段落（キャプションでない）は普通の <p> のまま
+    assert!(html.contains("<p>図をもう 1 つ。</p>"), "{html}");
+}

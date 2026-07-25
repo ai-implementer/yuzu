@@ -199,6 +199,7 @@ mod tests {
             },
             title: "t".to_string(),
             toc: Vec::new(),
+            labels: Vec::new(),
             source,
         }
     }

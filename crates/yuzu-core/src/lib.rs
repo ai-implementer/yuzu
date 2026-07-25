@@ -35,8 +35,11 @@ pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{Diagnostic, Severity};
 pub use error::CoreError;
 pub use include::{resolve_include, validate_includes};
+pub use markdown::crossref::CaptionKind;
 pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
-pub use model::{Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry};
+pub use model::{
+    CrossrefLabel, Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry,
+};
 pub use output::{OutputTracker, WriteOutcome};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
 
@@ -208,8 +211,8 @@ fn load_pages_cached(
         let cached = cache
             .zip(source_hash.as_deref())
             .and_then(|(c, h)| c.meta(&rel_key, h));
-        let (frontmatter, title, toc) = match cached {
-            Some(meta) => (meta.frontmatter, meta.title, meta.toc),
+        let (frontmatter, title, toc, labels) = match cached {
+            Some(meta) => (meta.frontmatter, meta.title, meta.toc, meta.labels),
             None => {
                 let meta = markdown::extract_meta(&source, opts, &file.abs)?;
                 let title = meta
@@ -226,10 +229,11 @@ fn load_pages_cached(
                             frontmatter: meta.frontmatter.clone(),
                             title: title.clone(),
                             toc: meta.toc.clone(),
+                            labels: meta.labels.clone(),
                         },
                     );
                 }
-                (meta.frontmatter, title, meta.toc)
+                (meta.frontmatter, title, meta.toc, meta.labels)
             }
         };
 
@@ -241,6 +245,7 @@ fn load_pages_cached(
             frontmatter,
             title,
             toc,
+            labels,
             source,
         });
     }

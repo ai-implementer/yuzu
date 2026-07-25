@@ -8,6 +8,7 @@
 //! `Anchorizer` で ID を採番する。TOC 側も**全見出しを文書順で**採番することで
 //! 重複サフィックス（`-1` 等）を一致させている。片方だけ見出しを飛ばすとずれる。
 
+pub(crate) mod crossref;
 pub(crate) mod fence;
 
 use std::path::Path;
@@ -19,7 +20,7 @@ use crate::MarkdownOptions;
 use crate::error::CoreError;
 use crate::frontmatter::parse_frontmatter;
 use crate::markdown::fence::parse_fence_info;
-use crate::model::{Frontmatter, Page, PlainSection, SourceSpan, TocEntry};
+use crate::model::{CrossrefLabel, Frontmatter, Page, PlainSection, SourceSpan, TocEntry};
 use crate::traits::{CodeBlockRenderer, UrlRewriter};
 
 /// comrak のオプションを組み立てる（凍結: GFM 拡張＋YAML frontmatter＋header_ids）。
@@ -68,6 +69,7 @@ pub(crate) struct ExtractedMeta {
     pub frontmatter: Frontmatter,
     pub first_h1: Option<String>,
     pub toc: Vec<TocEntry>,
+    pub labels: Vec<CrossrefLabel>,
 }
 
 /// frontmatter・先頭 h1・TOC（h1〜h6 全見出し＋アンカー ID）を抽出する
@@ -83,12 +85,30 @@ pub(crate) fn extract_meta(
     let mut frontmatter = Frontmatter::default();
     let mut first_h1 = None;
     let mut toc = Vec::new();
+    let mut labels = Vec::new();
     // HTML 化時の header_ids 拡張と同じ採番になるよう、全見出しを文書順で anchorize
     let mut anchorizer = Anchorizer::new();
+    // 図表キャプションの採番（render_body_html 側と同じ文書順・同じ規則で回す）
+    let mut numbering = crossref::Numbering::default();
 
     for node in root.descendants() {
         let data = node.data.borrow();
         match &data.value {
+            NodeValue::Paragraph => {
+                // キャプション行（`Figure: 説明 {#fig:label}`）。ラベルなしでも採番する
+                if let Some(caption) = crossref::parse_caption(&collect_text(node)) {
+                    let number = numbering.next(caption.kind);
+                    if let Some(id) = caption.label {
+                        labels.push(CrossrefLabel {
+                            id,
+                            kind: caption.kind,
+                            number,
+                            text: caption.text,
+                            span: span_of(&data.sourcepos),
+                        });
+                    }
+                }
+            }
             NodeValue::FrontMatter(raw) => {
                 frontmatter = parse_frontmatter(raw).map_err(|message| CoreError::Frontmatter {
                     path: src_path.to_path_buf(),
@@ -116,6 +136,7 @@ pub(crate) fn extract_meta(
         frontmatter,
         first_h1,
         toc,
+        labels,
     })
 }
 
@@ -130,32 +151,81 @@ pub(crate) fn render_body_html(
     let options = comrak_options(opts);
     let root = parse_document(&arena, &page.source, &options);
 
+    // 相互参照の解決表（`#fig:deps` → 「図 1」）。ラベルはメタ抽出時に
+    // 同じ規則で採番済みなので、ここでは引くだけ
+    let labels: std::collections::HashMap<&str, &CrossrefLabel> =
+        page.labels.iter().map(|l| (l.id.as_str(), l)).collect();
+    let mut numbering = crossref::Numbering::default();
+
+    // ⚠️ 木の構造を変える操作（子の切り離し・追加）は descendants() の
+    // イテレート中に行うと comrak が "tree modified during iteration" で
+    // パニックする。走査では対象と置換内容を集めるだけにして、適用は後段で行う
+    let mut block_replacements = Vec::new();
+    let mut ref_fills = Vec::new();
+
     for node in root.descendants() {
         // コードブロック → フックが返した HTML（HtmlBlock）へ差し替え
         let replacement = {
             let data = node.data.borrow();
-            if let NodeValue::CodeBlock(cb) = &data.value {
-                let (lang, meta) = parse_fence_info(&cb.info);
-                code.render(lang, &meta, &cb.literal)
-            } else {
-                None
+            match &data.value {
+                NodeValue::CodeBlock(cb) => {
+                    let (lang, meta) = parse_fence_info(&cb.info);
+                    code.render(lang, &meta, &cb.literal)
+                }
+                // キャプション行 → 採番済みキャプション（アンカー付き）へ
+                NodeValue::Paragraph => crossref::parse_caption(&collect_text(node))
+                    .map(|caption| crossref::render_caption(&caption, &mut numbering)),
+                _ => None,
             }
         };
         if let Some(html) = replacement {
-            node.data.borrow_mut().value = NodeValue::HtmlBlock(NodeHtmlBlock {
-                block_type: 6,
-                literal: html,
-            });
+            block_replacements.push((node, html));
             continue;
         }
 
-        // リンク・画像の URL 書き換え
+        // 空テキストのラベル参照リンク `[](#fig:deps)` → 「図 1」を補完する
+        // （テキストがある `[この図](#fig:deps)` はそのまま = 著者の指定を尊重）
+        let fill_text = {
+            let data = node.data.borrow();
+            match &data.value {
+                NodeValue::Link(link) if node.first_child().is_none() => link
+                    .url
+                    .strip_prefix('#')
+                    .and_then(|frag| labels.get(frag))
+                    .map(|label| format!("{} {}", label.kind.label(), label.number)),
+                _ => None,
+            }
+        };
+        if let Some(text) = fill_text {
+            ref_fills.push((node, text));
+        }
+
+        // リンク・画像の URL 書き換え（値の変更だけなので走査中で安全）
         let mut data = node.data.borrow_mut();
         if let NodeValue::Link(link) | NodeValue::Image(link) = &mut data.value {
             if let Some(rewritten) = urls.rewrite(page, &link.url) {
                 link.url = rewritten;
             }
         }
+    }
+
+    for (node, html) in block_replacements {
+        // 子（段落のインライン群）は HtmlBlock に持たせられないので切り離す
+        // （CodeBlock は元々子を持たない）
+        while let Some(child) = node.first_child() {
+            child.detach();
+        }
+        node.data.borrow_mut().value = NodeValue::HtmlBlock(NodeHtmlBlock {
+            block_type: 6,
+            literal: html,
+        });
+    }
+    for (node, text) in ref_fills {
+        let start = node.data.borrow().sourcepos.start;
+        let child = arena.alloc(AstNode::new(std::cell::RefCell::new(
+            comrak::nodes::Ast::new(NodeValue::Text(text.into()), start),
+        )));
+        node.append(child);
     }
 
     let mut out = String::new();

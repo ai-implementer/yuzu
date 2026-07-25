@@ -1006,6 +1006,27 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
   margin-right: 4.5rem;
 }
 
+/* ---- 図表キャプション（Figure: / Table: / Listing: 行の採番） ---- */
+
+.markdown-body .caption {
+  margin-top: -0.5rem; /* 直前の図・表に寄せる */
+  font-size: 0.875rem;
+  color: var(--fg-muted);
+  text-align: center;
+  /* 参照リンクで飛んだとき、キャプションだけでなく図も見えるようにする */
+  scroll-margin-top: 6rem;
+}
+
+.markdown-body .caption-label {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* 表のキャプションは表の前に書く慣行があるため、その場合は下寄せを打ち消す */
+.markdown-body .caption + table {
+  margin-top: 0.5rem;
+}
+
 /* ---- Mermaid ---- */
 
 .markdown-body pre.mermaid {

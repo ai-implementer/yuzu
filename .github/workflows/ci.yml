@@ -64,6 +64,9 @@ jobs:
           grep -q 'http-equiv="refresh"' dist/guide/lint/index.html
           # コンテンツインクルード: yuzu.jsonc の引用が展開されている
           grep -q '<figcaption>yuzu.jsonc:15-21</figcaption>' dist/guide/code-and-math/index.html
+          # 図表番号: キャプションの採番と参照リンクの自動補完
+          grep -q 'id="fig:deps"' dist/development/index.html
+          grep -q '<a href="#fig:deps">図 1</a>' dist/development/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）

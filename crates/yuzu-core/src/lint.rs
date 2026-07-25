@@ -4,6 +4,7 @@
 //! - `duplicate-h1` — 本文 h1 が 2 個以上（テーマはページタイトルを h1 相当で表示する）
 //! - `heading-level-skip` — 隣接見出し間でレベルが 2 以上深くなる（markdownlint MD001 相当）
 //! - `frontmatter-unknown-key` — 既知キー以外のトップレベルキー（typo 検出）
+//! - `duplicate-label` — 図表ラベル（`{#fig:x}`）の重複
 //! - `code-block-meta` — フェンス情報文字列の表示メタの typo・範囲外の行ハイライト
 //!   （描画は寛容に無視するため、気づける場所は lint だけ）
 //! - `directory-too-deep` — content 配下のディレクトリ階層が深すぎる
@@ -29,6 +30,7 @@ pub(crate) fn lint_page(
     check_headings(&page.toc, page, &mut out);
     check_frontmatter_keys(page, opts, &mut out);
     check_code_meta(page, opts, &mut out);
+    check_duplicate_labels(page, &mut out);
     if let Some(max_depth) = lint.max_directory_depth {
         check_directory_depth(page, max_depth, &mut out);
     }
@@ -450,6 +452,27 @@ fn check_code_meta(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic
                     ),
                 );
             }
+        }
+    }
+}
+
+/// 図表ラベル（`{#fig:deps}`）の重複検出。
+/// 重複すると参照が先勝ちで別の図を指してしまうため警告する
+fn check_duplicate_labels(page: &Page, out: &mut Vec<Diagnostic>) {
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for label in &page.labels {
+        if !seen.insert(label.id.as_str()) {
+            out.push(Diagnostic {
+                rule: "duplicate-label",
+                severity: Severity::Warning,
+                rel: page.rel.clone(),
+                span: Some(label.span),
+                message: format!(
+                    "図表ラベル `{{#{}}}` が重複しています（参照は最初の 1 つを指します）",
+                    label.id
+                ),
+                fix: None,
+            });
         }
     }
 }

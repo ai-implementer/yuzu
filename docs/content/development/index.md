@@ -25,8 +25,8 @@ crate を分けています。
 
 ## 依存方向（凍結）
 
-依存方向は凍結しており、逆方向の依存は作りません。図はこのサイトの
-ビルド時に tankan が SVG 化したものです:
+依存方向は凍結しており、逆方向の依存は作りません（[](#fig:deps)）。
+図はこのサイトのビルド時に tankan が SVG 化したものです:
 
 ```mermaid
 flowchart TD
@@ -44,6 +44,8 @@ flowchart TD
     classDef generic fill:#fff3d6,stroke:#8a6d1a
     class TAN,FMT,WASM generic
 ```
+
+Figure: crate 間の依存方向（色付きは yuzu 非依存の汎用ライブラリ） {\#fig:deps}
 
 色を付けた **tankan・mikan・mikan-wasm** は yuzu の他の
 crate に依存しない汎用ライブラリです。tankan（Mermaid SSR）と mikan（検索エンジン。

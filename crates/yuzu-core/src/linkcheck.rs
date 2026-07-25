@@ -203,11 +203,14 @@ fn check_absolute(
 /// アンカーを `Page.toc` の id（本文 HTML と同一採番）で照合する。
 /// percent エンコードされた日本語フラグメントはデコードしてから比較
 fn has_anchor(page: &Page, frag: &str) -> bool {
-    if page.toc.iter().any(|t| t.id == frag) {
+    // 見出しアンカーと図表ラベル（`{#fig:deps}`）の両方が有効ターゲット
+    let known =
+        |id: &str| page.toc.iter().any(|t| t.id == id) || page.labels.iter().any(|l| l.id == id);
+    if known(frag) {
         return true;
     }
     let decoded = percent_decode(frag);
-    decoded != frag && page.toc.iter().any(|t| t.id == decoded)
+    decoded != frag && known(&decoded)
 }
 
 /// `%XX` の最小限デコード（不正な並びはそのまま残す。新規依存を避ける）
