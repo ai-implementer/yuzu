@@ -50,7 +50,20 @@ scripts/vendor-vaporetto-model.sh
 - 現行: bccwj-suw_c1.0（圧縮 372KB、MIT OR Apache-2.0）。ライセンスが再配布可能なものだけを使う。
 - **モデルのバイト列が変わると索引（index 時）と検索（query 時）の整合が崩れる**。更新後は必ずサイトを再ビルドし、`yuzu search`（誤字クエリ込み）で確認する。ブラウザは初回検索時にモデルを遅延ダウンロードする設計。
 
+## いつ再 vendor するか
+
+- **`mikan` / `mikan-wasm` に手を入れたら検索 wasm を必ず再生成する**。索引側（ネイティブ）と
+  クエリ側（wasm）が同一コードであることが検索の最重要制約なので、片方だけ新しい状態を作らない。
+  実運用でも Phase 30 / 31 / 34 / 35 の 4 回とも、検索側の変更コミットの直後に
+  `vendor: 検索 wasm 成果物を再生成` の独立コミットが入っている
+- mermaid / KaTeX は上流のバージョン更新時のみ。tankan の SSR 対応が増えても mermaid は
+  未対応図種のフォールバック用に同梱を続ける
+
 ## 共通の注意
 
+- **vendor ディレクトリの README が provenance の一次情報**。スクリプトを流したら必ず更新する:
+  - `crates/yuzu-index/assets/search/README.md` — 成果物のサイズ（`build-search-wasm.sh` 自身が「実行後に記録すること」と要求している）
+  - `crates/mikan/assets/model/README.md` — 取得元 URL・ライセンス・取得日・**sha256**・圧縮サイズ
+  - `crates/yuzu-theme/assets/static/vendor/README.md` — mermaid / KaTeX の取得バージョンと日付
 - vendor 更新は生成物の差分が大きい。コミットは vendor 更新単独で分け、由来（スクリプト・バージョン）をコミットメッセージに書く。
 - 最後に `verify` スキルの一式（特に wasm check と e2e の検索）を通す。
