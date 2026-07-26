@@ -16,7 +16,7 @@ use super::diag;
 /// fix の適用が別のゆれを生む連鎖に備えた再 lint の上限（通常は 1 周で収束）
 const MAX_FIX_ROUNDS: usize = 10;
 
-pub fn run(fix: bool) -> anyhow::Result<ExitCode> {
+pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
     let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
     let root = yuzu_config::find_project_root(&cwd)?;
     let rc = yuzu_config::load(&root)?;
@@ -86,24 +86,36 @@ pub fn run(fix: bool) -> anyhow::Result<ExitCode> {
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
     let diags = collect(&pages)?;
 
-    let prefix = rc
-        .content_dir
-        .strip_prefix(&root)
-        .unwrap_or(&rc.content_dir);
+    // --fix の進捗は human 以外では stderr へ逃がす
+    // （json は JSON オブジェクト以外を標準出力へ書かない契約のため）
+    let progress_to_stdout = format == diag::Format::Human;
     for file in &fixed_files {
-        println!("修正: {}", file.display());
+        let line = format!("修正: {}", file.display());
+        if progress_to_stdout {
+            println!("{line}");
+        } else {
+            eprintln!("{line}");
+        }
     }
     if fixed_total > 0 {
-        println!(
+        let line = format!(
             "{fixed_total} 件を自動修正しました（{} ファイル）",
             fixed_files.len()
         );
+        if progress_to_stdout {
+            println!("{line}");
+        } else {
+            eprintln!("{line}");
+        }
     }
-    let (errors, warnings) = diag::print_diagnostics(&diags, prefix);
-    if diags.is_empty() {
-        println!("問題ありません（{} ページ）", pages.len());
-        return Ok(ExitCode::SUCCESS);
-    }
-    println!("エラー {errors} 件・警告 {warnings} 件");
-    Ok(ExitCode::from(1))
+
+    diag::report(
+        format,
+        diags,
+        &diag::Context {
+            root: &root,
+            content_dir: &rc.content_dir,
+            pages: pages.len(),
+        },
+    )
 }

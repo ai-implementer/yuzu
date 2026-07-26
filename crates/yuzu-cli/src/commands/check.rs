@@ -8,7 +8,7 @@ use yuzu_core::{Diagnostic, LintOptions, MarkdownOptions, Severity};
 
 use super::diag;
 
-pub fn run() -> anyhow::Result<ExitCode> {
+pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
     let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
     let root = yuzu_config::find_project_root(&cwd)?;
     let rc = yuzu_config::load(&root)?;
@@ -64,16 +64,13 @@ pub fn run() -> anyhow::Result<ExitCode> {
         &opts,
     )?);
 
-    diag::sort_diagnostics(&mut diags);
-    let prefix = rc
-        .content_dir
-        .strip_prefix(&root)
-        .unwrap_or(&rc.content_dir);
-    let (errors, warnings) = diag::print_diagnostics(&diags, prefix);
-    if diags.is_empty() {
-        println!("問題ありません（{} ページ）", pages.len());
-        return Ok(ExitCode::SUCCESS);
-    }
-    println!("エラー {errors} 件・警告 {warnings} 件");
-    Ok(ExitCode::from(1))
+    diag::report(
+        format,
+        diags,
+        &diag::Context {
+            root: &root,
+            content_dir: &rc.content_dir,
+            pages: pages.len(),
+        },
+    )
 }

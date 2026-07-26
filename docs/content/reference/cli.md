@@ -57,13 +57,76 @@ description: yuzu の全コマンド・主要フラグ・終了コード規約
 | `--limit <件数>` | 表示件数（既定 10） |
 | `--json` | JSON で出力 |
 
-### yuzu fmt / lint / llms
+### yuzu fmt / lint / check / llms
 
 | フラグ | 説明 |
 | --- | --- |
 | `fmt --check` | 書き換えず差分のあるファイルを列挙して終了コード 1（CI 用） |
 | `lint --fix` | 表記ゆれの変換候補をソースへ自動適用（修正できない違反は報告のまま残る） |
+| `lint --format <形式>` | 出力形式（`human` / `json` / `github`。既定 `human`） |
+| `check --format <形式>` | 同上 |
 | `llms --full` | llms-full.txt（全ページの正規化 Markdown 連結）を出力 |
+
+## 診断の出力形式
+
+`yuzu lint` と `yuzu check` は `--format` で出力形式を選べます。ルール ID の一覧は
+[診断ルール](rules.md)を参照してください。終了コードは形式によらず同じです。
+
+### human（既定）
+
+```text
+content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あります
+エラー 0 件・警告 1 件
+```
+
+ファイル単位の診断（`fmt` など）は `:行:列` が付きません。
+
+### json
+
+単一の JSON オブジェクトを標準出力へ出します。**標準出力には JSON 以外を出さない**ので、
+そのままパイプで機械処理できます（`lint --fix` の進捗は標準エラー出力へ回ります）。
+
+```json
+{
+  "diagnostics": [
+    {
+      "rule": "broken-link",
+      "severity": "error",
+      "path": "content/guide/x.md",
+      "line": 12,
+      "column": 1,
+      "message": "リンク先 `missing.md` が見つかりません",
+      "fixable": false
+    }
+  ],
+  "summary": { "errors": 1, "warnings": 0, "pages": 12 }
+}
+```
+
+- `path` はプロジェクトルート相対で、区切りは常に `/` です
+- `line` と `column` はファイル単位の診断では `null` になります（キー自体は必ずあります）
+- `fixable` は `yuzu lint --fix` で自動修正できるかを表します
+- キーは追加されることがありますが、削除・改名はしません
+
+### github
+
+GitHub Actions の注釈（ワークフローコマンド）を出します。プルリクエストの diff 行に
+直接コメントが付きます。
+
+```text
+::error file=docs/content/guide/x.md,line=12,col=1,title=yuzu[broken-link]::リンク先 `missing.md` が見つかりません
+```
+
+パスは `GITHUB_WORKSPACE` からの相対に自動で付け替わります。ワークフローが
+サブディレクトリへ移動してから実行しても（例: `cd docs`）、注釈がリポジトリの
+正しいファイルに紐づきます。
+
+> [!NOTE]
+> 注釈として画面に表示されるのは 1 ステップあたり 10 件までです（残りはログに出ます）。
+> 列は yuzu 内部の都合でバイト単位のため、日本語の行では GitHub の列表示と
+> ずれることがあります（行の紐づけは正確です）。
+
+`yuzu fmt --check` は診断ではなくファイル名を列挙するコマンドなので、`--format` の対象外です。
 
 > [!TIP]
 > キャッシュ起因の不具合を疑ったときは `--force` が最短です。

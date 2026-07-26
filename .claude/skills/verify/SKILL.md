@@ -89,6 +89,16 @@ test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_s
 # 異常系: 壊れリンクを注入して check が終了コード 1 を返すこと（CI と同じ）
 echo '[壊れリンク](missing.md)' >> content/index.md
 <repo>/target/debug/yuzu check && echo "NG: 検出漏れ" || echo "OK"
+
+# 機械可読出力（診断が出ている状態のまま検証する）
+# json は単一オブジェクトで、標準出力に他の行を混ぜない
+<repo>/target/debug/yuzu check --format json | head -1 | grep -q '^{$' && echo "OK json"
+# github は注釈行を出す。GITHUB_WORKSPACE を差し替えると相対パスが付け替わる
+# （CI が cd docs している状況の再現。これが崩れると PR に注釈が紐づかない）
+<repo>/target/debug/yuzu check --format github | grep '^::error file='
+GITHUB_WORKSPACE="$(dirname "$PWD")" <repo>/target/debug/yuzu check --format github | grep '^::error file='
+# lint --fix と併用しても標準出力は JSON のまま（進捗は stderr へ逃げる）
+<repo>/target/debug/yuzu lint --fix --format json 2>/dev/null | head -1 | grep -q '^{$' && echo "OK fix+json"
 ```
 
 終了コード規約: 0 = 成功 / 1 = 違反あり / 2 = 実行エラー。

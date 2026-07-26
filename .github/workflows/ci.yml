@@ -56,7 +56,10 @@ jobs:
       - name: docs site (yuzu check && yuzu build)
         run: |
           cd docs
-          "$GITHUB_WORKSPACE/target/debug/yuzu" check
+          # 診断は GitHub Actions の注釈で出す（Phase 46）。cd docs しているが、
+          # パスは GITHUB_WORKSPACE からの相対へ自動で付け替わるので PR の
+          # diff 行に紐づく。注釈の画面表示は 1 ステップ 10 件までで、残りはログに出る
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format github
           "$GITHUB_WORKSPACE/target/debug/yuzu" build
           test -f dist/index.html
           test -f dist/_search/manifest.json
@@ -73,6 +76,8 @@ jobs:
           grep -q 'js/details-target.js' dist/guide/writing/index.html
           # サイドバーのスクロール位置維持（base.jinja のインライン script）が配信されている
           grep -q 'yuzu-sidebar-scroll' dist/index.html
+          # 診断ルールのリファレンス（Phase 46）が配信されている
+          grep -q 'broken-anchor' dist/reference/rules/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
@@ -130,3 +135,18 @@ jobs:
             echo "check が壊れリンクを検出しなかった" >&2
             exit 1
           fi
+          # Phase 46: 機械可読出力（壊れリンクが残っている = 診断が出る状態で検証する）
+          # json は単一オブジェクトで、標準出力に他の行を一切混ぜない
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json > "$RUNNER_TEMP/diag.json" || true
+          head -1 "$RUNNER_TEMP/diag.json" | grep -q '^{$'
+          grep -q '"rule": "broken-link"' "$RUNNER_TEMP/diag.json"
+          grep -q '"summary"' "$RUNNER_TEMP/diag.json"
+          # github は注釈行を出す（GITHUB_WORKSPACE 外なのでプロジェクトルート相対）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format github \
+            | grep -q '^::error file=content/index.md,line='
+          # GITHUB_WORKSPACE 配下なら、その相対へ付け替わる（docs で cd している対策の本体）
+          GITHUB_WORKSPACE="$RUNNER_TEMP" "$GITHUB_WORKSPACE/target/debug/yuzu" check --format github \
+            | grep -q '^::error file=e2e-docs/content/index.md,'
+          # lint --fix と json を併用しても標準出力が JSON のまま（進捗は stderr へ）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" lint --fix --format json 2>/dev/null \
+            | head -1 | grep -q '^{$'

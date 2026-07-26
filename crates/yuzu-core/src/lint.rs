@@ -13,6 +13,11 @@
 //! - `fullwidth-alphanumeric` — 全角英数字（組み込み。既定有効）
 //! - `halfwidth-kana` — 半角カナ（組み込み。既定有効）
 //! - `katakana-choon` — 長音符ゆれの混在（組み込み・プロジェクト横断。既定有効）
+//!
+//! `yuzu check` はこれに加えて `alias-invalid` / `alias-conflict`（`aliases.rs`）・
+//! `include-error`（`include.rs`）・`broken-link` / `broken-anchor`（`linkcheck.rs`）・
+//! `fmt`（yuzu-cli の `commands/check.rs`）を報告する。
+//! 全ルールの一覧は `docs/content/reference/rules.md`
 
 use crate::diagnostics::{Diagnostic, Severity};
 use crate::error::CoreError;

@@ -102,8 +102,17 @@ pub enum Command {
         /// 変換候補をソースへ自動適用する（修正できない違反は残り、従来どおり報告）
         #[arg(long)]
         fix: bool,
+        /// 出力形式（human = 1 行テキスト / json = 単一 JSON オブジェクト /
+        /// github = GitHub Actions の注釈）
+        #[arg(long, value_enum, default_value_t = crate::commands::diag::Format::Human)]
+        format: crate::commands::diag::Format,
     },
 
     /// lint ＋ リンク切れ検査 ＋ fmt 差分検出の統合チェック（CI 用）
-    Check,
+    Check {
+        /// 出力形式（human = 1 行テキスト / json = 単一 JSON オブジェクト /
+        /// github = GitHub Actions の注釈）
+        #[arg(long, value_enum, default_value_t = crate::commands::diag::Format::Human)]
+        format: crate::commands::diag::Format,
+    },
 }
