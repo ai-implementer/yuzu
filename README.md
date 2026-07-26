@@ -127,7 +127,8 @@ yuzu check          # lint + リンク切れ + fmt 差分の統合チェック�
 
 ### 執筆ワークフロー
 
-- **`yuzu dev`**: notify で `content/`・`theme/` を監視 → 自動再ビルド →
+- **`yuzu dev`**: notify でプロジェクトルート全体を監視（インクルードの参照先が
+  `content/` の外にもあるため。出力ディレクトリと隠しディレクトリは除外）→ 自動再ビルド →
   **WebSocket ライブリロード**（`/__livereload`。md 編集から約 1 秒で自動更新、
   サーバ再起動後はブラウザが自動再接続してリロード）。`dev.open: true` で起動時にブラウザを開く
 - `yuzu build --watch`: 同じ監視ビルドを簡易オートリフレッシュ（build_id ポーリング）で。
@@ -361,8 +362,10 @@ Web 調査込みで確定済み。差し替えないこと。
 
 ```
 yuzu-cli → {yuzu-server, yuzu-render, yuzu-index, yuzu-core, yuzu-config}
-yuzu-render → yuzu-core, tankan     yuzu-index → yuzu-core, mikan
-mikan-wasm ↔ mikan（native/wasm でトークナイザ・フォーマット共有）
+yuzu-render → yuzu-core, yuzu-config, yuzu-theme, tankan
+yuzu-index → yuzu-core, mikan       mikan-wasm → mikan
+（mikan が native/wasm 共通の本体で、mikan-wasm はその wasm ラッパ。
+トークナイザ・フォーマット・抜粋生成を 1 実装で共有する）
 tankan・mikan・mikan-wasm は yuzu-render/yuzu-theme/yuzu-core/
 yuzu-config 非依存の汎用ライブラリ（tankan・mikan は crates.io で公開。
 検索スタックの書き側集約ロジックは mikan::build に、読み側クエリエンジンは
