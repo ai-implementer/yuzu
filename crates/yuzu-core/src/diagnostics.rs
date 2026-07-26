@@ -11,14 +11,29 @@ pub enum Severity {
     Warning,
 }
 
+/// [`Diagnostic::rel`] の基点。ほとんどの診断は content 配下のページを指すが、
+/// `yuzu.jsonc` のように content の外にあるファイルも報告できるようにする
+/// （`rel` に `../yuzu.jsonc` を入れると出力パスに `..` が混じり、
+/// GitHub の注釈がリポジトリのファイルへ紐づかなくなる）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DiagBase {
+    /// content ディレクトリ相対（既定）
+    #[default]
+    Content,
+    /// プロジェクトルート相対
+    ProjectRoot,
+}
+
 /// fmt / lint / check の 1 診断
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     /// ルール ID（ASCII。例: `broken-link` / `duplicate-h1`）
     pub rule: &'static str,
     pub severity: Severity,
-    /// content_dir からの相対パス
+    /// [`Diagnostic::base`] からの相対パス
     pub rel: PathBuf,
+    /// `rel` の基点
+    pub base: DiagBase,
     /// ソース上の位置。ファイル単位の診断（fmt 差分等）は None
     pub span: Option<SourceSpan>,
     /// 説明（日本語）

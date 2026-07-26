@@ -84,7 +84,8 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
 
     // 最終状態の報告（--fix 適用後に残った違反 = 機械修正できないもの）
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
-    let diags = collect(&pages)?;
+    let mut diags = collect(&pages)?;
+    diags.extend(diag::config_diagnostics(&rc));
 
     // --fix の進捗は human 以外では stderr へ逃がす
     // （json は JSON オブジェクト以外を標準出力へ書かない契約のため）

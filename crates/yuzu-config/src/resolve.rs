@@ -27,6 +27,9 @@ pub struct ResolvedConfig {
     /// `build.baseUrl` ?? `site.baseUrl` ?? "/" を正規化したもの。
     /// パス形は常に先頭・末尾スラッシュ付き（`/` または `/docs/`）
     pub base_url: String,
+    /// 設定ファイル自体の診断（重複キー・未知キー）。
+    /// `yuzu lint` / `check` が診断として報告し、他コマンドは load 時の警告で済ませる
+    pub diagnostics: Vec<ConfigDiagnostic>,
 }
 
 /// プロジェクトルートの `yuzu.jsonc` を読み込み、解決済み設定を返す
@@ -52,12 +55,12 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
         source,
     })?;
 
-    // JSONC の重複キーは後勝ちで黙って上書きされ「設定したのに効かない」事故に
-    // なりやすい（実運用で複数回発生）ため、検出して警告する
-    for dup in duplicate_key_paths(&text) {
-        tracing::warn!(
-            "yuzu.jsonc のキー `{dup}` が重複しています（JSONC は後勝ちのため、先に書いた方は無視されます）"
-        );
+    // 重複キーは後勝ちで黙って上書きされ、未知キー（タイポ）は無言で無視される。
+    // どちらも「設定したのに効かない」事故になりやすい（実運用で複数回発生）。
+    // `yuzu lint` / `check` は診断として報告し、それ以外のコマンドはここの警告で気づかせる
+    let diagnostics = config_diagnostics(&text);
+    for d in &diagnostics {
+        tracing::warn!("yuzu.jsonc:{}:{}: {}", d.line, d.col, d.message);
     }
 
     let base_url = normalize_base_url(
@@ -80,15 +83,57 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
         base_url,
         root: root.to_path_buf(),
         config,
+        diagnostics,
     })
 }
 
-/// JSONC テキスト中の重複キーを `site.title` 形式のパスで列挙する。
-/// 構文エラー時は空（本体パースが別途エラーを報告する）
-fn duplicate_key_paths(text: &str) -> Vec<String> {
-    use jsonc_parser::ast::Value;
+/// `yuzu.jsonc` に対する診断 1 件。
+///
+/// yuzu-config は yuzu-core に依存しない（凍結した依存グラフでは葉）ため、
+/// `yuzu_core::Diagnostic` ではなく中立な値型で返し、cli 側で変換する
+#[derive(Debug, Clone)]
+pub struct ConfigDiagnostic {
+    /// ルール ID（`config-unknown-key` / `config-duplicate-key`）
+    pub rule: &'static str,
+    /// キーのパス（`markdown.crossref.numbering` 形式）
+    pub key_path: String,
+    /// 1 始まりの行
+    pub line: usize,
+    /// 1 始まりの列（バイト基準。診断の列規約に合わせる）
+    pub col: usize,
+    pub message: String,
+}
 
-    fn walk(value: &Value, path: &str, dups: &mut Vec<String>) {
+/// 自由キーのマップ（配下はユーザ任意の名前なので未知キー検査をしない）
+const FREE_FORM_PATHS: &[&str] = &["theme.cssVars", "theme.cssVarsDark", "lint.terms"];
+
+/// バイトオフセットを 1 始まりの (行, 列) へ変換する
+fn line_col(text: &str, offset: usize) -> (usize, usize) {
+    let head = &text[..offset.min(text.len())];
+    let line = head.matches('\n').count() + 1;
+    let col = head.rsplit_once('\n').map_or(head.len(), |(_, l)| l.len()) + 1;
+    (line, col)
+}
+
+/// 既知キーの木。`Config::default()` を JSON 化して実行時に得るので、
+/// 手書きの定数と構造体がズレる事故が起きない（frontmatter の KNOWN_KEYS と違う点）
+fn known_key_tree() -> serde_json::Value {
+    serde_json::to_value(Config::default()).unwrap_or(serde_json::Value::Null)
+}
+
+/// `yuzu.jsonc` を走査して重複キー・未知キーを診断する。
+/// 構文エラー時は空（本体パースが別途エラーを報告する）
+pub(crate) fn config_diagnostics(text: &str) -> Vec<ConfigDiagnostic> {
+    use jsonc_parser::ast::Value;
+    use jsonc_parser::common::Ranged;
+
+    fn walk(
+        value: &Value,
+        path: &str,
+        known: Option<&serde_json::Value>,
+        text: &str,
+        out: &mut Vec<ConfigDiagnostic>,
+    ) {
         match value {
             Value::Object(obj) => {
                 let mut seen = std::collections::HashSet::new();
@@ -99,15 +144,47 @@ fn duplicate_key_paths(text: &str) -> Vec<String> {
                     } else {
                         format!("{path}.{name}")
                     };
+                    let (line, col) = line_col(text, prop.name.range().start);
                     if !seen.insert(name.to_string()) {
-                        dups.push(child.clone());
+                        out.push(ConfigDiagnostic {
+                            rule: "config-duplicate-key",
+                            key_path: child.clone(),
+                            line,
+                            col,
+                            message: format!(
+                                "キー `{child}` が重複しています（JSONC は後勝ちのため、先に書いた方は無視されます）"
+                            ),
+                        });
                     }
-                    walk(&prop.value, &child, dups);
+                    // 既知キーの木を同時に降下する。木が非オブジェクトになったら
+                    // そこから先は値なので検査しない（enum 値や配列の中身など）
+                    let child_known = known.and_then(|k| k.get(&*name));
+                    if known.is_some_and(serde_json::Value::is_object) && child_known.is_none() {
+                        let siblings = known
+                            .and_then(|k| k.as_object())
+                            .map(|m| m.keys().cloned().collect::<Vec<_>>().join("/"))
+                            .unwrap_or_default();
+                        out.push(ConfigDiagnostic {
+                            rule: "config-unknown-key",
+                            key_path: child.clone(),
+                            line,
+                            col,
+                            message: format!(
+                                "未知のキー `{child}` があります（この階層の対応キー: {siblings}）"
+                            ),
+                        });
+                        continue; // 未知キーの配下は検査しない（誤検知が連鎖する）
+                    }
+                    if FREE_FORM_PATHS.contains(&child.as_str()) {
+                        continue; // 配下はユーザ任意の名前
+                    }
+                    walk(&prop.value, &child, child_known, text, out);
                 }
             }
             Value::Array(arr) => {
                 for (i, v) in arr.elements.iter().enumerate() {
-                    walk(v, &format!("{path}[{i}]"), dups);
+                    // 配列要素は既知キーの木を持たない（中身は値）
+                    walk(v, &format!("{path}[{i}]"), None, text, out);
                 }
             }
             _ => {}
@@ -121,11 +198,13 @@ fn duplicate_key_paths(text: &str) -> Vec<String> {
     ) else {
         return Vec::new();
     };
-    let mut dups = Vec::new();
+    let known = known_key_tree();
+    let mut out = Vec::new();
     if let Some(root) = &result.value {
-        walk(root, "", &mut dups);
+        walk(root, "", Some(&known), text, &mut out);
     }
-    dups
+    out.sort_by_key(|d| (d.line, d.col));
+    out
 }
 
 /// 解決済み設定を `.yuzu/settings.json` に書き出す
@@ -190,7 +269,15 @@ pub fn normalize_base_url(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{duplicate_key_paths, normalize_base_url};
+    use super::{config_diagnostics, normalize_base_url};
+
+    /// (ルール, キーパス, 行) の並び
+    fn found(text: &str) -> Vec<(&'static str, String, usize)> {
+        config_diagnostics(text)
+            .into_iter()
+            .map(|d| (d.rule, d.key_path, d.line))
+            .collect()
+    }
 
     #[test]
     fn 重複キーをパス付きで検出する() {
@@ -200,17 +287,75 @@ mod tests {
           "site": { "title": "a", "title": "b" },
           "dev": { "host": "0.0.0.0" }
         }"#;
-        let dups = duplicate_key_paths(text);
+        let dups: Vec<_> = found(text)
+            .into_iter()
+            .filter(|(rule, ..)| *rule == "config-duplicate-key")
+            .map(|(_, path, _)| path)
+            .collect();
         assert_eq!(dups, ["site.title", "dev"]);
     }
 
     #[test]
-    fn 重複がなければ空() {
-        assert!(duplicate_key_paths(r#"{ "a": 1, "b": { "a": 2 } }"#).is_empty());
+    fn 重複キーには行と列が付く() {
+        let text = "{\n  \"site\": { \"title\": \"a\" },\n  \"site\": { \"title\": \"b\" }\n}";
+        let diags = config_diagnostics(text);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 3);
+        assert_eq!(diags[0].col, 3);
+    }
+
+    #[test]
+    fn 問題がなければ空() {
+        assert!(config_diagnostics(r#"{ "site": { "title": "a" } }"#).is_empty());
         assert!(
-            duplicate_key_paths("{ broken").is_empty(),
-            "構文エラーは対象外"
+            config_diagnostics("{ broken").is_empty(),
+            "構文エラーは対象外（本体パースが報告する）"
         );
+    }
+
+    #[test]
+    fn 未知のトップレベルキーを検出する() {
+        let diags = found(r#"{ "markdwon": { "gfm": true } }"#);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].0, "config-unknown-key");
+        assert_eq!(diags[0].1, "markdwon");
+    }
+
+    #[test]
+    fn 入れ子の未知キーも検出する() {
+        let diags = found(r#"{ "markdown": { "crossreff": { "numbering": "site" } } }"#);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].1, "markdown.crossreff");
+    }
+
+    #[test]
+    fn 未知キーの配下は検査しない() {
+        // 親が未知なら子も当然未知だが、報告は親の 1 件だけにする
+        let diags = found(r#"{ "typo": { "a": 1, "b": { "c": 2 } } }"#);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+    }
+
+    #[test]
+    fn 自由キーのマップは未知キー扱いしない() {
+        // cssVars / cssVarsDark / lint.terms はユーザ任意の名前
+        assert!(
+            config_diagnostics(r##"{ "theme": { "cssVars": { "--accent": "#0a6cff" } } }"##)
+                .is_empty()
+        );
+        assert!(
+            config_diagnostics(r#"{ "lint": { "terms": { "サーバ": ["サーバー"] } } }"#).is_empty()
+        );
+    }
+
+    #[test]
+    fn 既知キーは値の型によらず通る() {
+        // enum 値・配列・null の中身へは降りない
+        let text = r#"{
+          "markdown": { "mermaid": { "backend": "ssr" } },
+          "input": { "ignore": ["**/_drafts/**"] },
+          "site": { "description": null }
+        }"#;
+        assert!(config_diagnostics(text).is_empty(), "{:?}", found(text));
     }
 
     #[test]

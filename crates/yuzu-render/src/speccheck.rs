@@ -90,6 +90,7 @@ fn diag(
             Severity::Warning => "spec-warning",
         },
         severity,
+        base: yuzu_core::DiagBase::Content,
         rel: page.rel.clone(),
         span: Some(fence.span),
         message,

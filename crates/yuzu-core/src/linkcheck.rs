@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::MarkdownOptions;
-use crate::diagnostics::{Diagnostic, Severity};
+use crate::diagnostics::{DiagBase, Diagnostic, Severity};
 use crate::error::CoreError;
 use crate::markdown::{self, LinkRef};
 use crate::model::Page;
@@ -244,6 +244,7 @@ fn push(
     out.push(Diagnostic {
         rule,
         severity: Severity::Error,
+        base: DiagBase::Content,
         rel: page.rel.clone(),
         span: Some(link.span),
         message,

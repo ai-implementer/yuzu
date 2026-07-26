@@ -130,6 +130,28 @@ jobs:
           test -f dist/guide/pic.png
           grep -q 'src="/guide/pic.png"' dist/guide/getting-started/index.html
           "$GITHUB_WORKSPACE/target/debug/yuzu" check
+          # Phase 47: API 仕様の file: 参照を check が検証する（描画はエラーボックスで
+          # 継続するため、公開前に気づける場所はここだけ）
+          mv specs/api.yaml specs/api.yaml.bak
+          if "$GITHUB_WORKSPACE/target/debug/yuzu" check; then
+            echo "check が仕様ファイルの不在を検出しなかった" >&2
+            exit 1
+          fi
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
+            | grep -q '"rule": "spec-error"'
+          mv specs/api.yaml.bak specs/api.yaml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check
+          # Phase 47: yuzu.jsonc のキーのタイポを検出する（従来は無言で無視されていた）
+          cp yuzu.jsonc yuzu.jsonc.bak
+          printf '{\n  "markdwon": { "gfm": true }\n}\n' > yuzu.jsonc
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
+            | grep -q '"rule": "config-unknown-key"'
+          # 設定の診断はプロジェクトルート相対で出る（content 相対だと .. が混ざり、
+          # GitHub の注釈がリポジトリのファイルへ紐づかなくなる）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
+            | grep -q '"path": "yuzu.jsonc"'
+          mv yuzu.jsonc.bak yuzu.jsonc
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check
           echo '[壊れリンク](missing.md)' >> content/index.md
           if "$GITHUB_WORKSPACE/target/debug/yuzu" check; then
             echo "check が壊れリンクを検出しなかった" >&2

@@ -4,7 +4,7 @@
 use std::process::ExitCode;
 
 use anyhow::Context;
-use yuzu_core::{Diagnostic, LintOptions, MarkdownOptions, Severity};
+use yuzu_core::{DiagBase, Diagnostic, LintOptions, MarkdownOptions, Severity};
 
 use super::diag;
 
@@ -42,6 +42,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
             diags.push(Diagnostic {
                 rule: "fmt",
                 severity: Severity::Error,
+                base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: None,
                 message: "整形差分があります（`yuzu fmt` を実行してください）".to_string(),
@@ -55,6 +56,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
     // draft 込みの全ソースで検証する（公開前に矛盾を検出する）
     diags.extend(yuzu_core::validate_aliases(&pages, &opts));
     // コンテンツインクルード（file=）の参照切れ・ルート外・行範囲外
+    diags.extend(super::diag::config_diagnostics(&rc));
     diags.extend(yuzu_core::validate_includes(&pages, &root, &opts));
     // openapi / jsonschema の file: 参照とファイル間 $ref・仕様の妥当性。
     // 描画は失敗してもエラーボックスで継続するため、ここでしか気づけない

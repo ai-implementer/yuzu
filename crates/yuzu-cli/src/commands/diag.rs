@@ -9,7 +9,30 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use serde::Serialize;
-use yuzu_core::{Diagnostic, Severity};
+use yuzu_core::{DiagBase, Diagnostic, Severity};
+
+/// `yuzu.jsonc` の診断（重複キー・未知キー）を [`Diagnostic`] へ写す。
+/// yuzu-config は yuzu-core に依存しないため、変換はここで行う
+pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
+    rc.diagnostics
+        .iter()
+        .map(|d| Diagnostic {
+            rule: d.rule,
+            severity: Severity::Warning,
+            // yuzu.jsonc は content の外にあるのでプロジェクトルート基点
+            base: DiagBase::ProjectRoot,
+            rel: std::path::PathBuf::from("yuzu.jsonc"),
+            span: Some(yuzu_core::SourceSpan {
+                start_line: d.line,
+                start_col: d.col,
+                end_line: d.line,
+                end_col: d.col,
+            }),
+            message: d.message.clone(),
+            fix: None,
+        })
+        .collect()
+}
 
 /// 診断の出力形式（`--format`）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
@@ -50,7 +73,7 @@ pub fn report(
 
     match format {
         Format::Human => {
-            for line in human_lines(&diags, prefix) {
+            for line in human_lines(&diags, prefix, Path::new("")) {
                 println!("{line}");
             }
             print_summary(&diags, ctx.pages, errors, warnings);
@@ -59,7 +82,8 @@ pub fn report(
             // 環境変数を読むのはここだけ（パス解決関数は引数で受けてテスト可能にする）
             let workspace = std::env::var_os("GITHUB_WORKSPACE").map(PathBuf::from);
             let base = annotation_base(ctx.root, ctx.content_dir, workspace.as_deref());
-            for line in github_lines(&diags, &base) {
+            let root_base = annotation_root(ctx.root, workspace.as_deref());
+            for line in github_lines(&diags, &base, &root_base) {
                 println!("{line}");
             }
             // 注釈以外の行は Actions のパーサに無視される。ジョブログで全体の件数を
@@ -68,7 +92,7 @@ pub fn report(
         }
         Format::Json => println!(
             "{}",
-            render_json(&diags, prefix, ctx.pages, errors, warnings)?
+            render_json(&diags, prefix, Path::new(""), ctx.pages, errors, warnings)?
         ),
     }
 
@@ -112,6 +136,30 @@ fn sort_diagnostics(diags: &mut [Diagnostic]) {
     });
 }
 
+/// 診断の `rel` に前置する基点を選ぶ。`yuzu.jsonc` のような content 外の
+/// ファイルは `..` を使わずプロジェクトルート基点で組み立てる
+fn base_prefix<'a>(d: &Diagnostic, content: &'a Path, root: &'a Path) -> &'a Path {
+    match d.base {
+        DiagBase::Content => content,
+        DiagBase::ProjectRoot => root,
+    }
+}
+
+/// github 形式でのプロジェクトルートの基点（[`annotation_base`] の content なし版）
+fn annotation_root(root: &Path, workspace: Option<&Path>) -> PathBuf {
+    if let Some(ws) = workspace {
+        if let Ok(rel) = root.strip_prefix(ws) {
+            return rel.to_path_buf();
+        }
+        if let (Ok(ws), Ok(r)) = (ws.canonicalize(), root.canonicalize()) {
+            if let Ok(rel) = r.strip_prefix(&ws) {
+                return rel.to_path_buf();
+            }
+        }
+    }
+    PathBuf::new()
+}
+
 fn severity_str(severity: Severity) -> &'static str {
     match severity {
         Severity::Error => "error",
@@ -121,11 +169,11 @@ fn severity_str(severity: Severity) -> &'static str {
 
 /// `content/guide/x.md:12:1: warning[rule] メッセージ` 形式。
 /// ファイル単位の診断（span なし）は位置を省く
-fn human_lines(diags: &[Diagnostic], prefix: &Path) -> Vec<String> {
+fn human_lines(diags: &[Diagnostic], prefix: &Path, root_prefix: &Path) -> Vec<String> {
     diags
         .iter()
         .map(|d| {
-            let path = prefix.join(&d.rel);
+            let path = base_prefix(d, prefix, root_prefix).join(&d.rel);
             let severity = severity_str(d.severity);
             match d.span {
                 Some(span) => format!(
@@ -149,12 +197,12 @@ fn human_lines(diags: &[Diagnostic], prefix: &Path) -> Vec<String> {
 /// `endLine` / `endColumn` は出さない — yuzu の列は comrak 由来の**バイト基準**で
 /// GitHub は文字基準のため、日本語行では終端がずれて範囲ハイライトが崩れる
 /// （行の紐づけは正しいので注釈の実用性には影響しない）
-fn github_lines(diags: &[Diagnostic], base: &Path) -> Vec<String> {
+fn github_lines(diags: &[Diagnostic], base: &Path, root_base: &Path) -> Vec<String> {
     diags
         .iter()
         .map(|d| {
             let kind = severity_str(d.severity);
-            let file = escape_property(&slash(&base.join(&d.rel)));
+            let file = escape_property(&slash(&base_prefix(d, base, root_base).join(&d.rel)));
             let title = escape_property(&format!("yuzu[{}]", d.rule));
             let pos = match d.span {
                 Some(span) => format!(",line={},col={}", span.start_line, span.start_col),
@@ -251,6 +299,7 @@ struct JsonReport<'a> {
 fn render_json(
     diags: &[Diagnostic],
     prefix: &Path,
+    root_prefix: &Path,
     pages: usize,
     errors: usize,
     warnings: usize,
@@ -261,7 +310,7 @@ fn render_json(
             .map(|d| JsonDiagnostic {
                 rule: d.rule,
                 severity: severity_str(d.severity),
-                path: slash(&prefix.join(&d.rel)),
+                path: slash(&base_prefix(d, prefix, root_prefix).join(&d.rel)),
                 line: d.span.map(|s| s.start_line),
                 column: d.span.map(|s| s.start_col),
                 message: &d.message,
@@ -302,6 +351,7 @@ mod tests {
         Diagnostic {
             rule,
             severity,
+            base: DiagBase::Content,
             rel: PathBuf::from(rel),
             span,
             message: "メッセージ".to_string(),
@@ -318,7 +368,7 @@ mod tests {
             Some(span(12, 1)),
             None,
         )];
-        let lines = human_lines(&diags, Path::new("content"));
+        let lines = human_lines(&diags, Path::new("content"), Path::new(""));
         assert_eq!(
             lines[0],
             "content/guide/x.md:12:1: warning[duplicate-h1] メッセージ"
@@ -328,7 +378,7 @@ mod tests {
     #[test]
     fn span_なしの診断は位置を省いて出す() {
         let diags = vec![diag("fmt", Severity::Error, "x.md", None, None)];
-        let lines = human_lines(&diags, Path::new("content"));
+        let lines = human_lines(&diags, Path::new("content"), Path::new(""));
         assert_eq!(lines[0], "content/x.md: error[fmt] メッセージ");
     }
 
@@ -350,7 +400,7 @@ mod tests {
                 None,
             ),
         ];
-        let lines = github_lines(&diags, Path::new("docs/content"));
+        let lines = github_lines(&diags, Path::new("docs/content"), Path::new(""));
         assert!(lines[0].starts_with("::error file=docs/content/a.md,line=3,col=5,"));
         assert!(
             lines[0].contains("title=yuzu%5Bbroken-link%5D")
@@ -362,7 +412,7 @@ mod tests {
     #[test]
     fn github_形式はファイル単位の診断に位置を付けない() {
         let diags = vec![diag("fmt", Severity::Error, "x.md", None, None)];
-        let lines = github_lines(&diags, Path::new("content"));
+        let lines = github_lines(&diags, Path::new("content"), Path::new(""));
         assert!(lines[0].starts_with("::error file=content/x.md,title="));
         assert!(!lines[0].contains("line="));
     }
@@ -378,7 +428,7 @@ mod tests {
             None,
         );
         d.message = "リンク先 `%E8%A6%8B.md` が\n見つかりません".to_string();
-        let lines = github_lines(&[d], Path::new("content"));
+        let lines = github_lines(&[d], Path::new("content"), Path::new(""));
         assert!(lines[0].ends_with("::リンク先 `%25E8%25A6%258B.md` が%0A見つかりません"));
     }
 
@@ -422,7 +472,15 @@ mod tests {
             None,
         )];
         let (errors, warnings) = counts(&diags);
-        let out = render_json(&diags, Path::new("content"), 16, errors, warnings).unwrap();
+        let out = render_json(
+            &diags,
+            Path::new("content"),
+            Path::new(""),
+            16,
+            errors,
+            warnings,
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert!(v.is_object());
         assert_eq!(v["diagnostics"][0]["rule"], "broken-link");
@@ -437,7 +495,7 @@ mod tests {
     #[test]
     fn json_形式はファイル単位の診断の行と列を_null_にする() {
         let diags = vec![diag("fmt", Severity::Error, "x.md", None, None)];
-        let out = render_json(&diags, Path::new("content"), 1, 1, 0).unwrap();
+        let out = render_json(&diags, Path::new("content"), Path::new(""), 1, 1, 0).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert!(v["diagnostics"][0]["line"].is_null());
         assert!(v["diagnostics"][0]["column"].is_null());
@@ -461,7 +519,7 @@ mod tests {
                 None,
             ),
         ];
-        let out = render_json(&diags, Path::new("content"), 2, 0, 2).unwrap();
+        let out = render_json(&diags, Path::new("content"), Path::new(""), 2, 0, 2).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["diagnostics"][0]["fixable"], true);
         assert_eq!(v["diagnostics"][1]["fixable"], false);

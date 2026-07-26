@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 
 pub use aliases::{alias_routes, validate_aliases};
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
-pub use diagnostics::{Diagnostic, Severity};
+pub use diagnostics::{DiagBase, Diagnostic, Severity};
 pub use error::CoreError;
 pub use include::{parse_spec_file_ref, resolve_include, resolve_spec_file, validate_includes};
 pub use markdown::crossref::CaptionKind;

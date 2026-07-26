@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::MarkdownOptions;
-use crate::diagnostics::{Diagnostic, Severity};
+use crate::diagnostics::{DiagBase, Diagnostic, Severity};
 use crate::markdown;
 use crate::model::{Page, SourceSpan};
 
@@ -163,6 +163,7 @@ fn diag(page: &Page, span: Option<SourceSpan>, rule: &'static str, message: Stri
     Diagnostic {
         rule,
         severity: Severity::Error,
+        base: DiagBase::Content,
         rel: page.rel.clone(),
         span,
         message,

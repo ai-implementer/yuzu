@@ -34,9 +34,16 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `code-block-meta` | フェンス情報文字列の書き間違い・範囲外の行ハイライト | 不可 | 常時有効 |
 | `duplicate-label` | 図表ラベル（`{#fig:x}`）の同一ページ内での重複 | 不可 | 常時有効 |
 | `frontmatter-unknown-key` | frontmatter の未知のトップレベルキー | 不可 | 常時有効 |
+| `config-unknown-key` | `yuzu.jsonc` の未知のキー（タイポ） | 不可 | 常時有効 |
+| `config-duplicate-key` | `yuzu.jsonc` のキーの重複（JSONC は後勝ち） | 不可 | 常時有効 |
 
 `katakana-choon` の「条件付き」は、長音符ゆれを**多数派の表記へ寄せる**ため、
 同数で並んだときは正解を決められず報告だけになる、という意味です。
+
+`config-` で始まる 2 つだけは、ページではなく `yuzu.jsonc` を指します
+（パスはプロジェクトルート相対で出ます）。設定のタイポは無言で無視されて
+「設定したのに効かない」事故になりやすいため、`yuzu lint` / `check` で
+気づけるようにしてあります。
 
 `code-block-meta` はフェンス情報文字列の問題をまとめて報告します
 （`showLineNumbers` の書き間違い、`{2,4-6}` の解釈できない部分、`file=` のない `lines=`、

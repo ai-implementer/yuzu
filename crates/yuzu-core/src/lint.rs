@@ -19,7 +19,7 @@
 //! `fmt`（yuzu-cli の `commands/check.rs`）を報告する。
 //! 全ルールの一覧は `docs/content/reference/rules.md`
 
-use crate::diagnostics::{Diagnostic, Severity};
+use crate::diagnostics::{DiagBase, Diagnostic, Severity};
 use crate::error::CoreError;
 use crate::frontmatter::{KNOWN_KEYS, yaml_body};
 use crate::markdown;
@@ -92,6 +92,7 @@ fn check_char_classes(
                 out.push(Diagnostic {
                     rule: "fullwidth-alphanumeric",
                     severity: Severity::Warning,
+                    base: DiagBase::Content,
                     rel: page.rel.clone(),
                     span: Some(run_span(span, offset, run.len())),
                     message: format!("全角英数字「{run}」は半角「{suggestion}」を推奨します"),
@@ -105,6 +106,7 @@ fn check_char_classes(
                 out.push(Diagnostic {
                     rule: "halfwidth-kana",
                     severity: Severity::Warning,
+                    base: DiagBase::Content,
                     rel: page.rel.clone(),
                     span: Some(run_span(span, offset, run.len())),
                     message: format!("半角カナ「{run}」は全角「{suggestion}」を推奨します"),
@@ -254,6 +256,7 @@ fn check_katakana_choon(pages: &[Page], opts: &MarkdownOptions, out: &mut Vec<Di
                 out.push(Diagnostic {
                     rule: "katakana-choon",
                     severity: Severity::Warning,
+                    base: DiagBase::Content,
                     rel: rel.clone(),
                     span: Some(*span),
                     message: format!(
@@ -295,6 +298,7 @@ fn check_terms(
                     out.push(Diagnostic {
                         rule: "term-variant",
                         severity: Severity::Warning,
+                        base: DiagBase::Content,
                         rel: page.rel.clone(),
                         // comrak の列はバイト基準なので、ノード内バイトオフセットを足す
                         span: Some(SourceSpan {
@@ -323,6 +327,7 @@ fn check_headings(toc: &[TocEntry], page: &Page, out: &mut Vec<Diagnostic>) {
             out.push(Diagnostic {
                 rule: "duplicate-h1",
                 severity: Severity::Warning,
+                base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(dup.span),
                 message: format!(
@@ -341,6 +346,7 @@ fn check_headings(toc: &[TocEntry], page: &Page, out: &mut Vec<Diagnostic>) {
             out.push(Diagnostic {
                 rule: "heading-level-skip",
                 severity: Severity::Warning,
+                base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(next.span),
                 message: format!(
@@ -363,6 +369,7 @@ fn check_directory_depth(page: &Page, max_depth: u32, out: &mut Vec<Diagnostic>)
         out.push(Diagnostic {
             rule: "directory-too-deep",
             severity: Severity::Warning,
+            base: DiagBase::Content,
             rel: page.rel.clone(),
             span: None,
             message: format!(
@@ -383,6 +390,7 @@ fn check_code_meta(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic
         out.push(Diagnostic {
             rule: "code-block-meta",
             severity: Severity::Warning,
+            base: DiagBase::Content,
             rel: page.rel.clone(),
             span: Some(span),
             message,
@@ -470,6 +478,7 @@ fn check_duplicate_labels(page: &Page, out: &mut Vec<Diagnostic>) {
             out.push(Diagnostic {
                 rule: "duplicate-label",
                 severity: Severity::Warning,
+                base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(label.span),
                 message: format!(
@@ -503,6 +512,7 @@ fn check_frontmatter_keys(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Dia
         out.push(Diagnostic {
             rule: "frontmatter-unknown-key",
             severity: Severity::Warning,
+            base: DiagBase::Content,
             rel: page.rel.clone(),
             span: Some(key_span(&raw, &fm_span, key)),
             message: format!(
@@ -593,7 +603,7 @@ pub(crate) fn apply_fixes(source: &str, diags: &[Diagnostic]) -> (String, usize)
 mod tests {
     use std::fs;
 
-    use crate::{LintOptions, MarkdownOptions, Page, build_source_pages};
+    use crate::{DiagBase, LintOptions, MarkdownOptions, Page, build_source_pages};
 
     /// content 相対パス `rel` にページを置いて構築する（親ディレクトリは自動作成）
     fn page_from_rel(rel: &str, source: &str) -> Page {
@@ -1091,6 +1101,7 @@ mod tests {
         let mk = |start_col: usize, end_col: usize, fix: &str| crate::Diagnostic {
             rule: "term-variant",
             severity: crate::Severity::Warning,
+            base: DiagBase::Content,
             rel: "x.md".into(),
             span: Some(crate::SourceSpan {
                 start_line: 1,

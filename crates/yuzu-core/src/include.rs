@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use crate::MarkdownOptions;
-use crate::diagnostics::{Diagnostic, Severity};
+use crate::diagnostics::{DiagBase, Diagnostic, Severity};
 use crate::markdown;
 use crate::markdown::fence::{IncludeSpec, parse_fence_info};
 use crate::model::Page;
@@ -63,6 +63,7 @@ pub fn validate_includes(pages: &[Page], root: &Path, opts: &MarkdownOptions) ->
                 diags.push(Diagnostic {
                     rule: "include-error",
                     severity: Severity::Error,
+                    base: DiagBase::Content,
                     rel: page.rel.clone(),
                     span: Some(fence.span),
                     message,
