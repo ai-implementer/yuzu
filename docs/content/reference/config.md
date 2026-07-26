@@ -55,7 +55,7 @@ description: yuzu.jsonc の全設定キー・型・既定値
     "indexCode": false
   },
   "llms": { "enabled": true, "full": true },
-  "build": { "baseUrl": "/docs/" },
+  "build": { "baseUrl": "/docs/", "watchIgnore": ["**/target", "**/node_modules"] },
   "dev": { "host": "127.0.0.1", "port": 5173, "liveReload": true, "open": false },
   "git": { "lastUpdated": true, "editUrl": "https://github.com/me/docs/edit/main/content/{path}" }
 }
@@ -143,10 +143,26 @@ description: yuzu.jsonc の全設定キー・型・既定値
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
 | `build.baseUrl` | string / なし | `site.baseUrl` より優先する基点（CI 注入用。`--base-url` はさらに優先） |
+| `build.watchIgnore` | string\[\] / `["**/target", "**/node_modules"]` | `yuzu dev` / `build --watch` の監視から除外する glob（プロジェクトルート相対）。**指定すると既定値を置き換えます**（追記ではありません） |
 | `dev.host` | string / `"127.0.0.1"` | dev / preview のバインド先 |
 | `dev.port` | number / `5173` | ポート |
 | `dev.liveReload` | bool / `true` | WebSocket ライブリロード |
 | `dev.open` | bool / `false` | `yuzu dev` 起動時にブラウザを開く |
+
+監視は**プロジェクトルート全体**が対象です（コンテンツインクルードの参照先が
+`content/` の外にもあるため）。出力ディレクトリと隠しディレクトリ（`.git` /
+`.yuzu`）は `build.watchIgnore` の指定に関係なく常に除外されます。
+ビルド生成物を大量に書くツールを同居させている場合は、ここへ足してください。
+
+パターンはパス自身と**祖先ディレクトリ**に対して評価します。つまり
+`"**/target"` と書けば `target/` 配下すべてが除外されます（ディレクトリの
+作成イベント自体も含む）。`"**/target/**"` と書いても配下のファイルは除外
+されますが、`target/` が作られた瞬間の 1 回は再ビルドが走ります。
+
+`yuzu.jsonc` を保存すると設定を読み直してから再ビルドします。ただし監視と
+配信の前提になっている `output.dir` / `baseUrl` / `dev.host` / `dev.port` /
+`dev.liveReload` / `build.watchIgnore` は起動時の値のままで、変更すると
+「再起動しないと反映されません」と警告します。
 
 ## git
 

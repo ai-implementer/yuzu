@@ -86,6 +86,34 @@ pub(crate) fn scan_content_assets(
     Ok(files)
 }
 
+/// glob パターン集合のマッチャ。`input.ignore`（content 相対）と
+/// `build.watchIgnore`（プロジェクトルート相対）が**同じ解釈**を共有する。
+/// globset を公開 API へ露出させないための薄いラッパでもある
+pub struct IgnoreMatcher(GlobSet);
+
+impl IgnoreMatcher {
+    pub fn new(patterns: &[String]) -> Result<Self, CoreError> {
+        build_ignore_set(patterns).map(Self)
+    }
+
+    /// 相対パスが除外に当たるか（`/` 区切りへ正規化して判定する）
+    pub fn is_match(&self, rel: &std::path::Path) -> bool {
+        self.0.is_match(crate::urlpath::rel_to_slash(rel))
+    }
+
+    /// 相対パス自身か**祖先ディレクトリのどれか**が除外に当たるか。
+    ///
+    /// 「当たったディレクトリの配下はすべて除外」の意味になる（`**/target` で
+    /// `target/debug/x` も除外される）。ファイル監視ではディレクトリの作成
+    /// イベント自体も飛んでくるため、`**/target/**` のような「配下だけ」の
+    /// パターンでは `target` の作成を取りこぼす
+    pub fn is_match_or_ancestor(&self, rel: &std::path::Path) -> bool {
+        rel.ancestors()
+            .filter(|p| !p.as_os_str().is_empty())
+            .any(|p| self.is_match(p))
+    }
+}
+
 fn build_ignore_set(patterns: &[String]) -> Result<GlobSet, CoreError> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
@@ -141,8 +169,31 @@ pub(crate) fn stem_title(rel: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{route_for_rel, stem_title};
+    use super::{IgnoreMatcher, route_for_rel, stem_title};
     use std::path::Path;
+
+    #[test]
+    fn 祖先マッチはディレクトリ配下をすべて除外する() {
+        let m = IgnoreMatcher::new(&["**/target".to_string()]).unwrap();
+        // ディレクトリ自身（監視のディレクトリ作成イベント）
+        assert!(m.is_match_or_ancestor(Path::new("target")));
+        assert!(m.is_match_or_ancestor(Path::new("crates/x/target")));
+        // 配下のファイル
+        assert!(m.is_match_or_ancestor(Path::new("target/debug/yuzu")));
+        // 名前が前方一致するだけのパスは除外しない
+        assert!(!m.is_match_or_ancestor(Path::new("content/target.md")));
+        assert!(!m.is_match_or_ancestor(Path::new("targets/x")));
+        // is_match 単体は祖先を見ない（input.ignore の従来の意味）
+        assert!(!m.is_match(Path::new("target/debug/yuzu")));
+    }
+
+    #[test]
+    fn 配下だけのパターンでもファイルには当たる() {
+        let m = IgnoreMatcher::new(&["**/target/**".to_string()]).unwrap();
+        assert!(m.is_match_or_ancestor(Path::new("target/debug/yuzu")));
+        // このパターンはディレクトリ自身には当たらない（既定値が `**/target` の理由）
+        assert!(!m.is_match_or_ancestor(Path::new("target")));
+    }
 
     #[test]
     fn route_の決定() {

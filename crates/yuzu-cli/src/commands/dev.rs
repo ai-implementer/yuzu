@@ -17,15 +17,11 @@ pub fn run(
     force: bool,
     drafts: bool,
 ) -> anyhow::Result<()> {
-    let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
-    let root = yuzu_config::find_project_root(&cwd)?;
-    let mut rc = yuzu_config::load(&root)?;
-    // --host は dev.host の設定より優先（コンテナ内から 0.0.0.0 で配信する用途）。
-    // write_resolved より前に上書きし、.yuzu/settings.json にも反映する
-    if let Some(host) = host {
-        rc.config.dev.host = host;
-    }
-    yuzu_config::write_resolved(&rc)?;
+    let overrides = build::Overrides {
+        base_url: None,
+        host,
+    };
+    let rc = build::load_config(&overrides)?;
 
     // dev.liveReload=false は「WS 注入なしの監視ビルド＋配信のみ」
     let mode = if rc.config.dev.live_reload {
@@ -41,15 +37,15 @@ pub fn run(
     // プロジェクトルート全体を監視する（コンテンツインクルード `file=` の
     // 参照先は content/ の外にもあるため）。出力ディレクトリは必ず除外する
     // = 除外しないと再ビルド → 変更検知 → 再ビルドの無限ループになる。
-    // 設定は起動時のもので固定（yuzu.jsonc の変更は再起動で反映）
+    // yuzu.jsonc の変更は WatchBuild が取り込む（サーバの前提になる設定は除く）
     let paths = vec![rc.root.clone()];
-    let ignore = build::watch_ignore(&rc);
-    let rc_for_watch = rc.clone();
+    let ignore = build::watch_ignore(&rc)?;
     let notifier_for_watch = notifier.clone();
-    // session はクロージャへ move してセッション全体で再利用する
-    let _watch_handle = yuzu_server::watch(&paths, &ignore, build::DEBOUNCE, move || {
+    // session と設定はクロージャへ move してセッション全体で再利用する
+    let mut watcher = build::WatchBuild::new(rc.clone(), overrides, mode, drafts, session);
+    let _watch_handle = yuzu_server::watch(&paths, ignore, build::DEBOUNCE, move || {
         tracing::info!("変更を検知 → 再ビルド");
-        match build::build_once(&rc_for_watch, mode, &mut session, drafts) {
+        match watcher.rebuild() {
             // 通知は必ず再ビルド成功後（失敗時に通知すると壊れた dist を読ませる）
             Ok(()) => {
                 if let Some(n) = &notifier_for_watch {

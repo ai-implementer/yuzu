@@ -41,7 +41,9 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v12: 図表番号と相互参照（CachedMeta に labels 追加・キャプション行の HTML 化）
 /// - v13: 折りたたみ（`> [!NOTE]-` → `<details>` の AST 組み替え）。Phase 44 で
 ///   本文 HTML の生成ロジックを変えたのに bump し忘れていた分を後追いで計上する
-pub const CACHE_FORMAT_VERSION: u32 = 13;
+/// - v14: 検索 tf のキャッシュキーへ「インクルード参照先の内容ハッシュ」を追加
+///   （参照先だけの編集で検索結果が更新されなかった不具合の修正）
+pub const CACHE_FORMAT_VERSION: u32 = 14;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +95,14 @@ pub struct PageCacheEntry {
     pub meta: Option<CachedMeta>,
     pub body: Option<CachedBody>,
     pub search: Option<Vec<CachedSection>>,
+    /// 検索 tf が依存する外部ファイル（`file=` の参照先）の内容ハッシュ。
+    /// 引用なし・`search.indexCode` 無効なら None。
+    ///
+    /// ⚠️ **`source_sha256` へ畳み込んではいけない**。[`BuildCache::store`] は
+    /// source_sha256 の不一致でエントリを丸ごと作り直すため、参照先が変わるたびに
+    /// meta / body / llms まで巻き添えでリセットされる（＝毎ビルド全ミス）
+    #[serde(default)]
+    pub search_deps_sha256: Option<String>,
     /// llms-full 用の正規化 Markdown
     pub llms: Option<String>,
 }
@@ -112,6 +122,8 @@ pub struct CacheStats {
     pub body_hits: usize,
     pub body_misses: usize,
     pub search_hits: usize,
+    /// search_hits と対でビルドログへ出す。キャッシュ無効化の回帰が数値で見える
+    pub search_misses: usize,
     pub llms_hits: usize,
 }
 
@@ -260,7 +272,14 @@ impl BuildCache {
         });
     }
 
-    pub fn search(&self, rel: &Path, source: &str) -> Option<Vec<CachedSection>> {
+    /// 検索 tf のキャッシュ。`deps_hash` はインクルード参照先の内容ハッシュ
+    /// （引用なしは None）。source が同じでも参照先が変われば miss になる
+    pub fn search(
+        &self,
+        rel: &Path,
+        source: &str,
+        deps_hash: Option<&str>,
+    ) -> Option<Vec<CachedSection>> {
         let rel = rel_str(rel);
         let hash = Self::source_hash(source);
         let mut inner = self.inner.lock().unwrap();
@@ -268,17 +287,28 @@ impl BuildCache {
         let hit = inner
             .pages
             .get(&rel)
-            .filter(|s| s.entry.source_sha256 == hash)
+            .filter(|s| {
+                s.entry.source_sha256 == hash && s.entry.search_deps_sha256.as_deref() == deps_hash
+            })
             .and_then(|s| s.entry.search.clone());
-        if hit.is_some() {
-            inner.stats.search_hits += 1;
+        match hit.is_some() {
+            true => inner.stats.search_hits += 1,
+            false => inner.stats.search_misses += 1,
         }
         hit
     }
 
-    pub fn store_search(&self, rel: &Path, source: &str, sections: Vec<CachedSection>) {
+    pub fn store_search(
+        &self,
+        rel: &Path,
+        source: &str,
+        deps_hash: Option<&str>,
+        sections: Vec<CachedSection>,
+    ) {
+        let deps = deps_hash.map(str::to_string);
         self.store(&rel_str(rel), &Self::source_hash(source), |entry| {
-            entry.search = Some(sections)
+            entry.search = Some(sections);
+            entry.search_deps_sha256 = deps;
         });
     }
 
@@ -319,6 +349,7 @@ impl BuildCache {
                     meta: None,
                     body: None,
                     search: None,
+                    search_deps_sha256: None,
                     llms: None,
                 },
                 dirty: true,
@@ -330,6 +361,7 @@ impl BuildCache {
                 meta: None,
                 body: None,
                 search: None,
+                search_deps_sha256: None,
                 llms: None,
             };
         }

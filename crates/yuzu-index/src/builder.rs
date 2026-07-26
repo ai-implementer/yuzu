@@ -149,20 +149,32 @@ pub fn build_search_index_with(
     // rayon で並列化する（Phase 33）。キャッシュ判定を先行パスで済ませ、
     // miss があるときだけトークナイザを構築する（全ヒットなら zstd 展開ごと
     // スキップ = 従来どおり。並列ループ前に 1 回だけ作り &Tokenizer を共有）
-    let cached: Vec<Option<Vec<CachedSection>>> = site
+    // (依存ハッシュ, キャッシュヒット) をページ順に用意する
+    let prepared: Vec<(Option<String>, Option<Vec<CachedSection>>)> = site
         .pages
         .iter()
-        .map(|page| ctx.cache.and_then(|c| c.search(&page.rel, &page.source)))
+        .map(|page| {
+            let deps = include_deps_hash(
+                page,
+                md_opts,
+                params.index_code,
+                params.project_root.as_deref(),
+            );
+            let hit = ctx
+                .cache
+                .and_then(|c| c.search(&page.rel, &page.source, deps.as_deref()));
+            (deps, hit)
+        })
         .collect();
-    let tokenizer = match cached.iter().any(Option::is_none) {
+    let tokenizer = match prepared.iter().any(|(_, hit)| hit.is_none()) {
         true => Some(session.tokenizer(&model_bytes)?),
         false => None,
     };
     let sections_per_page: Vec<Vec<CachedSection>> = site
         .pages
         .par_iter()
-        .zip(cached)
-        .map(|(page, hit)| match hit {
+        .zip(prepared)
+        .map(|(page, (deps, hit))| match hit {
             Some(sections) => Ok(sections),
             None => {
                 let tokenizer = tokenizer.expect("miss があればトークナイザ構築済み");
@@ -174,7 +186,7 @@ pub fn build_search_index_with(
                     params.project_root.as_deref(),
                 )?;
                 if let Some(cache) = ctx.cache {
-                    cache.store_search(&page.rel, &page.source, computed.clone());
+                    cache.store_search(&page.rel, &page.source, deps.as_deref(), computed.clone());
                 }
                 Ok(computed)
             }
@@ -325,6 +337,48 @@ fn copy_wasm_assets(_search_dir: &Path, write: &WriteFn<'_>) -> Result<(), Index
 }
 
 /// 1 ページぶんのセクション tf を計算する（キャッシュ miss 時のみ呼ばれる）
+/// ページが引用する外部ファイル（`file=`）の内容ハッシュ。検索 tf の
+/// キャッシュキーに source ハッシュとは**別フィールドで**添える
+/// （畳み込むと meta / body / llms まで巻き添えでリセットされる）。
+///
+/// - `index_code = false`（既定）なら引用は索引されない（`extract_plain_sections`
+///   が早期 return する）ので常に None ＝ 従来どおり source だけで判定する
+/// - 事前フィルタ（`contains("file=")`）で、引用のない大多数のページでは
+///   comrak の再パースすら起こさない
+/// - 特別レンダリング言語の引用は索引に入らないので除外する（render の
+///   external_deps を流用すると openapi の `file:` まで巻き込んで過剰無効化になる）
+/// - ハッシュ対象は**解決後のテキスト**（行範囲の切り出し後）なので、
+///   参照先の引用範囲外の変更では無効化しない
+fn include_deps_hash(
+    page: &Page,
+    md_opts: &MarkdownOptions,
+    index_code: bool,
+    project_root: Option<&Path>,
+) -> Option<String> {
+    let root = project_root?;
+    if !index_code || !page.source.contains("file=") {
+        return None;
+    }
+    let parts: Vec<Vec<u8>> = yuzu_core::collect_include_specs(&page.source, md_opts)
+        .iter()
+        .filter(|inc| {
+            !inc.lang
+                .as_deref()
+                .is_some_and(|lang| yuzu_core::is_special_render_lang(lang, md_opts))
+        })
+        .map(|inc| match yuzu_core::resolve_include(root, &inc.spec) {
+            Ok(text) => text.into_bytes(),
+            // 読めない参照は固定マーカー（索引内容は失敗種別によらず「何も入らない」）
+            Err(_) => b"<unresolved>".to_vec(),
+        })
+        .collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let refs: Vec<&[u8]> = parts.iter().map(Vec::as_slice).collect();
+    Some(BuildCache::sha256_hex_parts(&refs))
+}
+
 fn compute_sections(
     page: &Page,
     md_opts: &MarkdownOptions,

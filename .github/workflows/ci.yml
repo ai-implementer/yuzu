@@ -152,6 +152,23 @@ jobs:
             | grep -q '"path": "yuzu.jsonc"'
           mv yuzu.jsonc.bak yuzu.jsonc
           "$GITHUB_WORKSPACE/target/debug/yuzu" check
+          # Phase 48: コンテンツインクルードの参照先だけを編集しても検索索引が追随する
+          # （検索 tf のキャッシュがページ source ハッシュだけで判定していた回帰ガード。
+          # --force を付けずにインクリメンタルで検証することが要点）
+          cp yuzu.jsonc yuzu.jsonc.bak
+          printf '{\n  "search": { "indexCode": true }\n}\n' > yuzu.jsonc
+          mkdir -p snippets
+          printf 'fn alphaSymbol() {}\n' > snippets/demo.rs
+          printf -- '---\ntitle: 引用\n---\n\n# 引用\n\n```rust file="snippets/demo.rs"\n```\n' > content/inc.md
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search alphaSymbol | grep -q "引用"
+          printf 'fn betaSymbol() {}\n' > snippets/demo.rs
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search betaSymbol | grep -q "引用"
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search alphaSymbol \
+            | grep -q "一致するページはありませんでした"
+          rm content/inc.md
+          mv yuzu.jsonc.bak yuzu.jsonc
           echo '[壊れリンク](missing.md)' >> content/index.md
           if "$GITHUB_WORKSPACE/target/debug/yuzu" check; then
             echo "check が壊れリンクを検出しなかった" >&2

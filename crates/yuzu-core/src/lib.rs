@@ -35,8 +35,8 @@ pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{DiagBase, Diagnostic, Severity};
 pub use error::CoreError;
 pub use include::{
-    SpecRefError, SpecSource, resolve_include, resolve_spec_file, resolve_spec_source,
-    validate_includes, validate_spec_refs,
+    IncludeRef, SpecRefError, SpecSource, collect_include_specs, resolve_include,
+    resolve_spec_file, resolve_spec_source, validate_includes, validate_spec_refs,
 };
 pub use markdown::crossref::CaptionKind;
 pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
@@ -45,6 +45,7 @@ pub use model::{
     CrossrefLabel, Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry,
 };
 pub use output::{OutputTracker, WriteOutcome};
+pub use scan::IgnoreMatcher;
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
 
 /// Markdown パースの挙動設定（設定ファイルの `markdown` セクションから写す）

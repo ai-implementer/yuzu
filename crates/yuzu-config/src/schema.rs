@@ -370,11 +370,29 @@ impl Default for LlmsConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BuildConfig {
     /// ビルド時の baseUrl 上書き（`site.baseUrl` より優先）
     pub base_url: Option<String>,
+    /// `yuzu dev` / `yuzu build --watch` の監視から除外する glob。
+    /// プロジェクトルート相対・`/` 区切りで評価し、**当たったディレクトリの
+    /// 配下もすべて除外**する（`**/target` で `target/debug/x` も除外）。
+    /// **指定すると既定値を置き換える**（追記ではない）。
+    /// 出力ディレクトリと隠しディレクトリ（`.git` / `.yuzu`）は指定に関係なく常に除外
+    pub watch_ignore: Vec<String>,
+}
+
+impl Default for BuildConfig {
+    fn default() -> Self {
+        Self {
+            base_url: None,
+            // ビルド生成物・依存物を既定で除外する。これが無いと `target/` の
+            // 1 回のコンパイルで大量のイベントが飛び、再ビルドが暴発する
+            // （`[]` を書けば外せる）
+            watch_ignore: vec!["**/target".to_string(), "**/node_modules".to_string()],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

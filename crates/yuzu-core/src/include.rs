@@ -14,7 +14,7 @@ use crate::MarkdownOptions;
 use crate::diagnostics::{DiagBase, Diagnostic, Severity};
 use crate::markdown;
 use crate::markdown::fence::{IncludeSpec, parse_fence_info};
-use crate::model::Page;
+use crate::model::{Page, SourceSpan};
 
 /// プロジェクトルート配下を canonicalize で強制してファイルを読む。
 /// `label` は表示用の呼び名（「参照ファイル」/「仕様ファイル」）で、
@@ -59,23 +59,50 @@ pub fn resolve_include(root: &Path, spec: &IncludeSpec) -> Result<String, String
     Ok(out)
 }
 
+/// コンテンツインクルード 1 件（引用指定・言語・位置）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IncludeRef {
+    /// フェンス情報文字列の先頭トークン（` ```rust file=… ` なら `Some("rust")`）。
+    /// 索引対象かの判定（[`crate::is_special_render_lang`]）に使う
+    pub lang: Option<String>,
+    pub spec: IncludeSpec,
+    /// フェンスブロック全体の位置（診断表示には開始行を使う）
+    pub span: SourceSpan,
+}
+
+/// ページのコンテンツインクルード（`file=`）を文書順に列挙する。
+///
+/// 情報文字列の解釈を crate 外へ出す唯一の口（[`crate::extract_fence_blocks`] は
+/// 本文しか持たない）。`yuzu check` の検証（[`validate_includes`]）と、
+/// 検索 tf キャッシュの依存ハッシュ（yuzu-index）が**同じ 1 実装**を通る
+pub fn collect_include_specs(source: &str, opts: &MarkdownOptions) -> Vec<IncludeRef> {
+    markdown::extract_fence_meta(source, opts)
+        .into_iter()
+        .filter_map(|fence| {
+            let (lang, meta) = parse_fence_info(&fence.info);
+            let lang = lang.map(str::to_string);
+            meta.include.map(|spec| IncludeRef {
+                lang,
+                spec,
+                span: fence.span,
+            })
+        })
+        .collect()
+}
+
 /// 全ページのコンテンツインクルードを検証する（`yuzu check` 用）。
 /// 参照切れ・ルート外・行範囲外を `include-error`（Error）として報告する
 pub fn validate_includes(pages: &[Page], root: &Path, opts: &MarkdownOptions) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for page in pages {
-        for fence in markdown::extract_fence_meta(&page.source, opts) {
-            let (_, meta) = parse_fence_info(&fence.info);
-            let Some(spec) = &meta.include else {
-                continue;
-            };
-            if let Err(message) = resolve_include(root, spec) {
+        for inc in collect_include_specs(&page.source, opts) {
+            if let Err(message) = resolve_include(root, &inc.spec) {
                 diags.push(Diagnostic {
                     rule: "include-error",
                     severity: Severity::Error,
                     base: DiagBase::Content,
                     rel: page.rel.clone(),
-                    span: Some(fence.span),
+                    span: Some(inc.span),
                     message,
                     fix: None,
                 });

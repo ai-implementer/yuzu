@@ -121,8 +121,9 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 - `yuzu build` / `dev` は常時インクリメンタル（`.yuzu/cache/`）。キャッシュ起因の不具合を疑うときは `--force`（または `.yuzu/cache/` 削除。いつでも安全）。**キャッシュ内容の意味が変わる変更**（本文 HTML の生成ロジック・検索 tf の重み等）では `yuzu-core/src/cache.rs` の `CACHE_FORMAT_VERSION` を上げる
 - yuzu-server の serve テストは TCP バインドするため、サンドボックス内では PermissionDenied で落ちる（コード起因ではない）
 - **comrak の AST を構造変更するときは「走査で集めて後段で適用」する**。`descendants()` のイテレート中に木を変えると *tree modified during iteration* でパニックする。段落 → `HtmlBlock` 化は**子を先に detach しないと** `InvalidChildType` でパニックする（HtmlBlock は子を持てない）。URL 書き換えのような**値の変更だけ**は走査中で安全
-- **`dev` / `build --watch` はプロジェクトルート全体を監視する**（インクルード `file=` の参照先が content 外にもあるため）。**出力ディレクトリの除外は必須** = 外すと「再ビルド → 変更検知 → 再ビルド」の無限ループになる。隠しディレクトリも除外する（`yuzu-server/src/watch.rs` の `should_ignore`）
-- **検索インデックスのキャッシュはページ source ハッシュだけで判定する**。本文 HTML は external_deps でキャッシュ非対象になるが検索 tf はならないため、**インクルードの参照先だけを編集すると表示は更新されるのに検索結果が古いまま**になる（`--force` で回避）
+- **`dev` / `build --watch` はプロジェクトルート全体を監視する**（インクルード `file=` の参照先が content 外にもあるため）。**出力ディレクトリの除外は必須** = 外すと「再ビルド → 変更検知 → 再ビルド」の無限ループになる。隠しディレクトリと `build.watchIgnore` の glob も除外する（`yuzu-server/src/watch.rs` の `WatchIgnore`。glob 判定は yuzu-core の `IgnoreMatcher` を**述語で**渡す = server は yuzu-core を知らない）。**除外はイベントのフィルタで監視登録は減らない**（notify にパス単位の除外が無い）
+- **watch 中の `yuzu.jsonc` 変更は取り込むが、監視・配信の前提になる設定は起動時固定**（`build.rs` の `WatchBuild` / `pin_restart_only`）。`output.dir` を差し替えると新しい出力先が監視除外から外れて無限ループになるため、`output.dir` / `baseUrl` / `dev.host` / `dev.port` / `dev.liveReload` / `build.watchIgnore` は警告だけ出して起動時の値を使う。**サーバや監視スレッドへ起動時に渡す設定を増やしたらこの関数にも足す**
+- **検索 tf のキャッシュはページ source ハッシュ＋インクルード参照先の内容ハッシュで判定する**（`PageCacheEntry::search_deps_sha256`。参照先だけの編集で検索結果が古いまま残る不具合の修正）。**参照先ハッシュを `source_sha256` へ畳み込んではいけない** = `BuildCache::store` がエントリを丸ごと作り直し、meta / body / llms まで巻き添えで毎ビルド全ミスになる
 - **`base.jinja` の 2 つのインライン script は外部 JS 化しない**（head の FOUC 回避 / サイドバーのスクロール位置復元）。どちらも**最初のペイントより前**に走る必要があるため。それ以外のテーマ JS は従来どおり `static/js/` の外部ファイル
 - rust-embed は debug ビルドだとテーマをファイルシステムから読む（テーマ編集が再コンパイル不要で反映される一方、debug バイナリ単体を別マシンへ持ち出すとアセットを見失う）。リリースビルドは常に埋め込み。**埋め込みフォルダへの新規ファイル追加は cargo の再コンパイル判定に載らない**ため、yuzu-theme は build.rs の `rerun-if-changed=assets` で監視している（これが無いと「debug では動くのに release が古い埋め込みを使い回して template not found」になる。埋め込み crate を増やすときは同じ build.rs を付けること）
 - minijinja はデフォルトで属性中の `/` をエスケープするため、テンプレートの URL 値には `| safe` を通している

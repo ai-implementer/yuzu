@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::Context;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_core::{BuildCache, MarkdownOptions, OutputTracker, output};
+use yuzu_core::{BuildCache, IgnoreMatcher, MarkdownOptions, OutputTracker, output};
 use yuzu_render::{LiveReloadMode, RenderCtx, RenderParams, RenderShared};
 
 use crate::commands::preview;
@@ -19,23 +19,70 @@ use crate::commands::preview;
 /// エディタの連続保存をまとめる debounce 幅（build --watch / dev 共通）
 pub(crate) const DEBOUNCE: Duration = Duration::from_millis(300);
 
-/// 監視から除外するディレクトリ（build --watch / dev 共通）。
+/// 監視除外（build --watch / dev 共通）。
 /// **出力ディレクトリの除外は必須**（含めると再ビルド → 変更検知の無限ループ）。
-/// `.yuzu` / `.git` 等の隠しディレクトリは yuzu_server 側で常に無視される
-pub(crate) fn watch_ignore(rc: &ResolvedConfig) -> Vec<std::path::PathBuf> {
-    vec![rc.output_dir.clone(), rc.root.join(".yuzu")]
+/// `.yuzu` / `.git` 等の隠しディレクトリは yuzu_server 側で常に無視される。
+///
+/// これに加えて `build.watchIgnore` の glob をプロジェクトルート相対で評価する
+/// （既定は `target/` と `node_modules/`。ビルド生成物の大量イベントで
+/// 再ビルドが暴発するのを防ぐ）。glob の解釈は `input.ignore` と同じ
+/// yuzu-core の [`IgnoreMatcher`] を通す
+pub(crate) fn watch_ignore(rc: &ResolvedConfig) -> anyhow::Result<yuzu_server::WatchIgnore> {
+    let matcher = IgnoreMatcher::new(&rc.config.build.watch_ignore)
+        .context("build.watchIgnore のパターンが不正です")?;
+    let root = rc.root.clone();
+    Ok(
+        yuzu_server::WatchIgnore::new(vec![rc.output_dir.clone(), rc.root.join(".yuzu")])
+            .with_extra(move |path| {
+                // 監視イベントは絶対パスで来る。ルート外（シンボリックリンク先など）は
+                // 相対化できないので除外しない。
+                // 祖先まで見るのは、ディレクトリ作成イベント（`target` そのもの）と
+                // その配下のファイルを 1 つのパターンで扱うため
+                path.strip_prefix(&root)
+                    .is_ok_and(|rel| matcher.is_match_or_ancestor(rel))
+            }),
+    )
 }
 
-pub fn run(watch: bool, base_url: Option<String>, force: bool, drafts: bool) -> anyhow::Result<()> {
+/// CLI フラグによる設定の上書き（`--base-url` / `--host`）。
+/// watch 中に `yuzu.jsonc` を読み直してもフラグ優先の契約を保つため保持する
+#[derive(Clone, Default)]
+pub(crate) struct Overrides {
+    /// `--base-url`（build）。site/build の設定より優先
+    pub(crate) base_url: Option<String>,
+    /// `--host`（dev）。dev.host より優先（コンテナ内から 0.0.0.0 で配信する用途）
+    pub(crate) host: Option<String>,
+}
+
+impl Overrides {
+    fn apply(&self, rc: &mut ResolvedConfig) {
+        if let Some(raw) = &self.base_url {
+            rc.base_url = yuzu_config::normalize_base_url(raw);
+        }
+        if let Some(host) = &self.host {
+            rc.config.dev.host = host.clone();
+        }
+    }
+}
+
+/// プロジェクトルートを探して設定を読み、CLI 上書きを当ててから
+/// `.yuzu/settings.json` へ書き出す（build / dev 共通の入口）
+pub(crate) fn load_config(overrides: &Overrides) -> anyhow::Result<ResolvedConfig> {
     let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
     let root = yuzu_config::find_project_root(&cwd)?;
     let mut rc = yuzu_config::load(&root)?;
-    // --base-url は site/build の設定より優先（CI から配信パスを注入する用途）。
-    // write_resolved より前に上書きし、.yuzu/settings.json にも反映する
-    if let Some(raw) = base_url {
-        rc.base_url = yuzu_config::normalize_base_url(&raw);
-    }
+    // 上書きは write_resolved より前に当てる（.yuzu/settings.json にも反映する）
+    overrides.apply(&mut rc);
     yuzu_config::write_resolved(&rc)?;
+    Ok(rc)
+}
+
+pub fn run(watch: bool, base_url: Option<String>, force: bool, drafts: bool) -> anyhow::Result<()> {
+    let overrides = Overrides {
+        base_url,
+        host: None,
+    };
+    let rc = load_config(&overrides)?;
 
     // --watch のときだけオートリフレッシュ JS（ポーリング式）を注入する
     let mode = if watch {
@@ -51,16 +98,15 @@ pub fn run(watch: bool, base_url: Option<String>, force: bool, drafts: bool) -> 
     }
 
     // プロジェクトルート全体を監視する（コンテンツインクルード `file=` の
-    // 参照先は content/ の外にもあるため）。出力ディレクトリは必ず除外する。
-    // 設定は起動時のもので固定（yuzu.jsonc の変更は再起動で反映）
+    // 参照先は content/ の外にもあるため）。出力ディレクトリは必ず除外する
     let paths = vec![rc.root.clone()];
-    let ignore = watch_ignore(&rc);
-    let rc_for_watch = rc.clone();
-    // session はクロージャへ move してセッション全体で再利用する
+    let ignore = watch_ignore(&rc)?;
+    // session と設定はクロージャへ move してセッション全体で再利用する
     //（キャッシュ・テンプレート Env・ハイライタ・トークナイザ）
-    let _watch_handle = yuzu_server::watch(&paths, &ignore, DEBOUNCE, move || {
+    let mut watcher = WatchBuild::new(rc.clone(), overrides, mode, drafts, session);
+    let _watch_handle = yuzu_server::watch(&paths, ignore, DEBOUNCE, move || {
         tracing::info!("変更を検知 → 再ビルド");
-        if let Err(e) = build_once(&rc_for_watch, LiveReloadMode::Poll, &mut session, drafts) {
+        if let Err(e) = watcher.rebuild() {
             // 執筆中の一時的な構文エラー等でプロセスは落とさない
             tracing::error!("再ビルドに失敗しました: {e:#}");
         }
@@ -69,6 +115,135 @@ pub fn run(watch: bool, base_url: Option<String>, force: bool, drafts: bool) -> 
     // 受け入れ条件「編集 → ブラウザ自動更新」を 1 コマンドで満たすため、
     // preview と同じ静的サーバも起動する（ブロッキング）
     preview::serve_dist(&rc, None)
+}
+
+/// 監視ビルド 1 本ぶんの状態（`build --watch` / `dev` 共通）。
+///
+/// **設定の持ち主はここ**。`yuzu.jsonc` も監視対象なので、起動時の設定で
+/// 固定すると「保存 → 再ビルドもライブリロードも走るのに設定だけ効かない」
+/// という気づきにくい状態になる（Phase 42 の副作用）
+pub(crate) struct WatchBuild {
+    rc: ResolvedConfig,
+    session: BuildSession,
+    overrides: Overrides,
+    live_reload: LiveReloadMode,
+    drafts: bool,
+    /// 最後に読み込んだ `yuzu.jsonc` の生テキスト。
+    /// 差分があるときだけ読み直す（無変更なら再ビルド 1 回あたり
+    /// 小さいファイルの読み込み 1 回で済み、セッション再構築も起きない）
+    config_text: String,
+}
+
+impl WatchBuild {
+    pub(crate) fn new(
+        rc: ResolvedConfig,
+        overrides: Overrides,
+        live_reload: LiveReloadMode,
+        drafts: bool,
+        session: BuildSession,
+    ) -> Self {
+        // 起動時に読めているので失敗はまず無い（空なら次回の差分判定で読み直す）
+        let config_text =
+            fs::read_to_string(rc.root.join(yuzu_config::CONFIG_FILE_NAME)).unwrap_or_default();
+        Self {
+            rc,
+            session,
+            overrides,
+            live_reload,
+            drafts,
+            config_text,
+        }
+    }
+
+    /// 変更検知 1 回ぶん。設定の変更を取り込んでから再ビルドする
+    pub(crate) fn rebuild(&mut self) -> anyhow::Result<()> {
+        self.reload_config();
+        build_once(&self.rc, self.live_reload, &mut self.session, self.drafts)
+    }
+
+    /// `yuzu.jsonc` の変更を取り込む。読めない・不正なときは**前回の設定で続行**する
+    /// （編集途中の壊れた JSONC でプロセスを落とさない。診断は load 側が警告する）
+    fn reload_config(&mut self) {
+        let path = self.rc.root.join(yuzu_config::CONFIG_FILE_NAME);
+        let Ok(text) = fs::read_to_string(&path) else {
+            return; // 一時的に消えた（エディタの保存方式）等
+        };
+        if text == self.config_text {
+            return;
+        }
+        self.config_text = text;
+
+        let mut next = match yuzu_config::load(&self.rc.root) {
+            Ok(next) => next,
+            Err(e) => {
+                tracing::error!("yuzu.jsonc を読み込めません（前回の設定で続行します）: {e}");
+                return;
+            }
+        };
+        self.overrides.apply(&mut next);
+        pin_restart_only(&mut next, &self.rc);
+
+        // envKey が変わるのでセッションごと作り直す（キャッシュはディスクから
+        // 読み直し、envKey 一致なら中身を引き継ぐので無駄な全再計算にはならない）。
+        // force は渡さない（設定変更でユーザのキャッシュを消す理由はない）
+        match BuildSession::new(&next, false) {
+            Ok(session) => {
+                self.session = session;
+                self.rc = next;
+                if let Err(e) = yuzu_config::write_resolved(&self.rc) {
+                    tracing::warn!(".yuzu/settings.json を更新できません: {e}");
+                }
+                tracing::info!("yuzu.jsonc の変更を反映しました");
+            }
+            Err(e) => tracing::error!("設定の変更を反映できません（前回の設定で続行します）: {e}"),
+        }
+    }
+}
+
+/// 監視・配信の前提に焼き付いている設定を起動時の値へ戻し、
+/// 再起動が必要だと警告する。
+///
+/// これらを watch 中に差し替えると壊れる:
+/// - `output.dir` — 新しい出力先が**監視除外に入らない**（再ビルド → 変更検知の無限ループ）。
+///   配信中のディレクトリでもある
+/// - `baseUrl` / `dev.host` / `dev.port` — 起動済みサーバの bind と URL 接頭辞
+/// - `dev.liveReload` — 注入済みの JS と WS 通知の有無
+/// - `build.watchIgnore` — 監視除外の glob（起動時に監視スレッドへ渡している）
+fn pin_restart_only(next: &mut ResolvedConfig, current: &ResolvedConfig) {
+    let mut pinned: Vec<&str> = Vec::new();
+    if next.config.output.dir != current.config.output.dir {
+        pinned.push("output.dir");
+        next.config.output.dir = current.config.output.dir.clone();
+        next.output_dir = current.output_dir.clone();
+    }
+    if next.base_url != current.base_url {
+        pinned.push("baseUrl");
+        next.base_url = current.base_url.clone();
+        next.config.site.base_url = current.config.site.base_url.clone();
+        next.config.build.base_url = current.config.build.base_url.clone();
+    }
+    if next.config.build.watch_ignore != current.config.build.watch_ignore {
+        pinned.push("build.watchIgnore");
+        next.config.build.watch_ignore = current.config.build.watch_ignore.clone();
+    }
+    if next.config.dev.host != current.config.dev.host {
+        pinned.push("dev.host");
+        next.config.dev.host = current.config.dev.host.clone();
+    }
+    if next.config.dev.port != current.config.dev.port {
+        pinned.push("dev.port");
+        next.config.dev.port = current.config.dev.port;
+    }
+    if next.config.dev.live_reload != current.config.dev.live_reload {
+        pinned.push("dev.liveReload");
+        next.config.dev.live_reload = current.config.dev.live_reload;
+    }
+    if !pinned.is_empty() {
+        tracing::warn!(
+            "{} の変更は再起動しないと反映されません（起動時の値のままビルドします）",
+            pinned.join(" / ")
+        );
+    }
 }
 
 /// ビルド間で再利用する状態一式。単発 build では 1 回だけ、
@@ -262,6 +437,8 @@ pub(crate) fn build_once(
     tracing::info!(
         body_hits = stats.body_hits,
         body_misses = stats.body_misses,
+        search_hits = stats.search_hits,
+        search_misses = stats.search_misses,
         orphans_removed = removed,
         elapsed = %format!("{:.2}s", started.elapsed().as_secs_f64()),
         "インクリメンタルビルド"
@@ -323,4 +500,129 @@ fn collect_git_dates(rc: &ResolvedConfig) -> Option<std::collections::HashMap<St
         }
     }
     Some(dates)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    /// 既定設定のプロジェクト（`/proj`）
+    fn resolved(root: &Path) -> ResolvedConfig {
+        let config = yuzu_config::Config::default();
+        ResolvedConfig {
+            content_dir: root.join(&config.input.dir),
+            output_dir: root.join(&config.output.dir),
+            theme_dir: None,
+            public_dir: None,
+            base_url: "/".to_string(),
+            root: root.to_path_buf(),
+            config,
+            diagnostics: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn 監視除外は出力ディレクトリと_watch_ignore_の_glob() {
+        let rc = resolved(Path::new("/proj"));
+        let ignore = watch_ignore(&rc).unwrap();
+        // 既定の watchIgnore（ビルド生成物）
+        assert!(ignore.is_ignored(Path::new("/proj/target/debug/yuzu")));
+        assert!(ignore.is_ignored(Path::new("/proj/web/node_modules/x/index.js")));
+        // ディレクトリ作成イベント自体も除外する（これを取りこぼすと
+        // `target/` が作られた瞬間に 1 回だけ再ビルドが走る）
+        assert!(ignore.is_ignored(Path::new("/proj/target")));
+        assert!(ignore.is_ignored(Path::new("/proj/target/debug")));
+        // 出力ディレクトリ（除外必須。外すと再ビルドの無限ループ）
+        assert!(ignore.is_ignored(Path::new("/proj/dist/index.html")));
+        // 監視対象（インクルード参照先が content 外にもあるため src も対象）
+        assert!(!ignore.is_ignored(Path::new("/proj/content/guide.md")));
+        assert!(!ignore.is_ignored(Path::new("/proj/src/api.rs")));
+        // パターンは「パス要素」に当たる必要がある（部分一致で消さない）
+        assert!(!ignore.is_ignored(Path::new("/proj/content/target.md")));
+        // ルート外は相対化できないので glob の対象外
+        assert!(!ignore.is_ignored(Path::new("/other/target/x")));
+    }
+
+    #[test]
+    fn watch_ignore_を空にすれば除外しない() {
+        let mut rc = resolved(Path::new("/proj"));
+        rc.config.build.watch_ignore = Vec::new();
+        let ignore = watch_ignore(&rc).unwrap();
+        assert!(!ignore.is_ignored(Path::new("/proj/target/debug/yuzu")));
+        // 出力ディレクトリは設定に関係なく常に除外
+        assert!(ignore.is_ignored(Path::new("/proj/dist/index.html")));
+    }
+
+    #[test]
+    fn 不正な_glob_はエラーになる() {
+        let mut rc = resolved(Path::new("/proj"));
+        rc.config.build.watch_ignore = vec!["[".to_string()];
+        assert!(watch_ignore(&rc).is_err());
+    }
+
+    #[test]
+    fn 再起動が必要な設定は起動時の値へ戻す() {
+        let current = resolved(Path::new("/proj"));
+        let mut next = resolved(Path::new("/proj"));
+        next.config.output.dir = "public_html".to_string();
+        next.output_dir = Path::new("/proj/public_html").to_path_buf();
+        next.base_url = "/docs/".to_string();
+        next.config.site.base_url = Some("/docs/".to_string());
+        next.config.dev.port = 9999;
+        next.config.dev.live_reload = !current.config.dev.live_reload;
+        next.config.build.watch_ignore = Vec::new();
+
+        pin_restart_only(&mut next, &current);
+
+        assert_eq!(next.output_dir, current.output_dir);
+        assert_eq!(next.config.output.dir, current.config.output.dir);
+        assert_eq!(next.base_url, current.base_url);
+        assert_eq!(next.config.site.base_url, None);
+        assert_eq!(next.config.dev.port, current.config.dev.port);
+        assert_eq!(
+            next.config.dev.live_reload, current.config.dev.live_reload,
+            "注入済みの JS と WS 通知の有無は途中で変えられない"
+        );
+        assert_eq!(
+            next.config.build.watch_ignore,
+            current.config.build.watch_ignore
+        );
+    }
+
+    #[test]
+    fn 反映できる設定はそのまま通す() {
+        let current = resolved(Path::new("/proj"));
+        let mut next = resolved(Path::new("/proj"));
+        next.config.site.title = "新しいタイトル".to_string();
+        next.config.markdown.mermaid.enabled = !current.config.markdown.mermaid.enabled;
+        next.config.input.ignore = vec!["**/_wip/**".to_string()];
+        next.config.search.index_code = !current.config.search.index_code;
+
+        pin_restart_only(&mut next, &current);
+
+        assert_eq!(next.config.site.title, "新しいタイトル");
+        assert_ne!(
+            next.config.markdown.mermaid.enabled,
+            current.config.markdown.mermaid.enabled
+        );
+        assert_eq!(next.config.input.ignore, ["**/_wip/**"]);
+        assert_ne!(
+            next.config.search.index_code,
+            current.config.search.index_code
+        );
+    }
+
+    #[test]
+    fn cli_の上書きは設定リロード後も優先する() {
+        let overrides = Overrides {
+            base_url: Some("docs".to_string()),
+            host: Some("0.0.0.0".to_string()),
+        };
+        let mut rc = resolved(Path::new("/proj"));
+        rc.config.site.base_url = Some("/from-file/".to_string());
+        overrides.apply(&mut rc);
+        assert_eq!(rc.base_url, "/docs/");
+        assert_eq!(rc.config.dev.host, "0.0.0.0");
+    }
 }

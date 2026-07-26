@@ -411,3 +411,135 @@ fn フレーズ検索はフィールド境界をまたいで偽ヒットしな�
     let results = search_dist(dist.path(), "ライブリロード", 10).unwrap();
     assert_eq!(results.len(), 2, "{results:?}");
 }
+
+/// 検索 tf キャッシュ × インクルード参照先（Phase 48）。
+///
+/// `file=` の参照先だけを編集したとき、ページの `.md` は無変更なので
+/// source ハッシュは変わらない。参照先の内容ハッシュを別キーで持たないと
+/// 検索結果が古いまま残る（実際に踏んだ不具合）
+mod 検索キャッシュとインクルード {
+    use super::*;
+    use yuzu_core::BuildCache;
+
+    /// content と参照先を持つプロジェクトを作る
+    fn fixture(code: &str) -> (tempfile::TempDir, tempfile::TempDir) {
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), "src/api.rs", code);
+        write(
+            root.path(),
+            "content/inc.md",
+            "---\ntitle: 引用\n---\n# 引用\n\n```rust file=\"src/api.rs\"\n```\n",
+        );
+        write(
+            root.path(),
+            "content/plain.md",
+            "---\ntitle: 素\n---\n# 素\n\n引用のないページ。\n",
+        );
+        let cache_dir = tempfile::tempdir().unwrap();
+        (root, cache_dir)
+    }
+
+    fn params(root: &Path) -> IndexParams {
+        IndexParams {
+            index_code: true,
+            project_root: Some(root.to_path_buf()),
+            ..IndexParams::default()
+        }
+    }
+
+    /// 1 回ビルドして (検索できる dist, ヒット数, ミス数) を返す
+    fn build(root: &Path, cache_dir: &Path) -> (tempfile::TempDir, usize, usize) {
+        let md_opts = MarkdownOptions::default();
+        let site = yuzu_core::build_site_model(&root.join("content"), &[], &md_opts).unwrap();
+        // 実運用の `yuzu build` 2 回はプロセスをまたぐので、毎回ディスクから読み直す
+        let cache = BuildCache::load(cache_dir, "env1");
+        cache.begin_build();
+        let dist = tempfile::tempdir().unwrap();
+        let session = IndexSession::default();
+        build_search_index_with(
+            &site,
+            &md_opts,
+            &params(root),
+            dist.path(),
+            &IndexCtx {
+                cache: Some(&cache),
+                outputs: None,
+                session: Some(&session),
+            },
+        )
+        .unwrap();
+        let stats = cache.stats();
+        cache.save().unwrap();
+        (dist, stats.search_hits, stats.search_misses)
+    }
+
+    #[test]
+    fn 参照先の変更で検索インデックスが更新される() {
+        let (root, cache_dir) = fixture("fn oldSymbol() {}\n");
+        let (dist, _, _) = build(root.path(), cache_dir.path());
+        assert_eq!(
+            search_dist(dist.path(), "oldSymbol", 10).unwrap().len(),
+            1,
+            "初回は引用の中身が索引される"
+        );
+
+        // ページの .md は触らず、参照先だけを書き換える
+        write(root.path(), "src/api.rs", "fn newSymbol() {}\n");
+        let (dist, _, misses) = build(root.path(), cache_dir.path());
+        assert_eq!(misses, 1, "引用ページだけがキャッシュミスになる");
+        assert_eq!(
+            search_dist(dist.path(), "newSymbol", 10).unwrap().len(),
+            1,
+            "新しい語が引ける"
+        );
+        assert!(
+            search_dist(dist.path(), "oldSymbol", 10)
+                .unwrap()
+                .is_empty(),
+            "古い語は引けない"
+        );
+    }
+
+    #[test]
+    fn 参照先が変わらなければ全ページがキャッシュにヒットする() {
+        let (root, cache_dir) = fixture("fn stable() {}\n");
+        build(root.path(), cache_dir.path());
+        let (_, hits, misses) = build(root.path(), cache_dir.path());
+        // 依存ハッシュの導入で「毎回ミス」に退行していないことのガード
+        assert_eq!((hits, misses), (2, 0));
+    }
+
+    #[test]
+    fn index_code_が無効なら参照先を変えてもヒットする() {
+        let (root, cache_dir) = fixture("fn a() {}\n");
+        let md_opts = MarkdownOptions::default();
+        let run = |expect_misses: usize| {
+            let site =
+                yuzu_core::build_site_model(&root.path().join("content"), &[], &md_opts).unwrap();
+            let cache = BuildCache::load(cache_dir.path(), "env1");
+            cache.begin_build();
+            let dist = tempfile::tempdir().unwrap();
+            // index_code は既定の false（引用は索引されない = 無効化する理由がない）
+            build_search_index_with(
+                &site,
+                &md_opts,
+                &IndexParams {
+                    project_root: Some(root.path().to_path_buf()),
+                    ..IndexParams::default()
+                },
+                dist.path(),
+                &IndexCtx {
+                    cache: Some(&cache),
+                    outputs: None,
+                    session: None,
+                },
+            )
+            .unwrap();
+            assert_eq!(cache.stats().search_misses, expect_misses);
+            cache.save().unwrap();
+        };
+        run(2);
+        write(root.path(), "src/api.rs", "fn b() {}\n");
+        run(0);
+    }
+}
