@@ -20,6 +20,25 @@ pub(crate) enum SpecKind {
     JsonSchema,
 }
 
+impl SpecKind {
+    /// 全バリアント（`yuzu_core::SPEC_LANGS` との突き合わせ用）
+    pub(crate) const ALL: [SpecKind; 2] = [SpecKind::OpenApi, SpecKind::JsonSchema];
+
+    /// このバリアントのフェンス言語名
+    pub(crate) fn lang(self) -> &'static str {
+        match self {
+            SpecKind::OpenApi => "openapi",
+            SpecKind::JsonSchema => "jsonschema",
+        }
+    }
+}
+
+/// フェンス言語 → 描画種別。描画のディスパッチと `yuzu check` の両方が
+/// これを使う（言語名の直書きを増やさない）
+pub(crate) fn spec_kind(lang: &str) -> Option<SpecKind> {
+    SpecKind::ALL.into_iter().find(|k| k.lang() == lang)
+}
+
 /// 仕様ファイルの読み込み口。実装側がルート配下の強制と
 /// 「外部ファイルに依存した」の記録（本文キャッシュ非対象化）を担う
 pub(crate) trait SpecFiles {

@@ -34,7 +34,10 @@ pub use aliases::{alias_routes, validate_aliases};
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{DiagBase, Diagnostic, Severity};
 pub use error::CoreError;
-pub use include::{parse_spec_file_ref, resolve_include, resolve_spec_file, validate_includes};
+pub use include::{
+    SpecRefError, SpecSource, resolve_include, resolve_spec_file, resolve_spec_source,
+    validate_includes, validate_spec_refs,
+};
 pub use markdown::crossref::CaptionKind;
 pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
 pub use markdown::{FenceBlock, extract_fence_blocks};
@@ -80,9 +83,20 @@ pub fn is_special_render_lang(lang: &str, opts: &MarkdownOptions) -> bool {
     match lang {
         "mermaid" => opts.mermaid,
         "math" => opts.math,
-        "openapi" | "jsonschema" => true,
-        _ => false,
+        // openapi / jsonschema は設定で無効化できないので常に true
+        _ => is_spec_lang(lang),
     }
+}
+
+/// API 仕様ブロックのフェンス言語（本文に `file: <パス>` 参照を書ける言語）。
+/// **ここが唯一の定義**で、[`is_special_render_lang`] と [`validate_spec_refs`]
+/// の両方がこれを見る。yuzu-render の `SpecKind` への写像との一致は
+/// speccheck のユニットテストが縛る
+pub const SPEC_LANGS: &[&str] = &["openapi", "jsonschema"];
+
+/// フェンス言語が API 仕様ブロックか
+pub fn is_spec_lang(lang: &str) -> bool {
+    SPEC_LANGS.contains(&lang)
 }
 
 /// 文書規約 lint の挙動設定（設定ファイルの `lint` セクションから写す）

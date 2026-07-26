@@ -74,10 +74,10 @@ index 時（ネイティブ）と query 時（wasm）で**同一トークナイ�
 
 同じ規則を 2 箇所で解釈すると必ずズレるため、意図的に 1 実装へ寄せてある。触るときは対になる側も確認する。
 
-- **特別レンダリング言語**: yuzu-core の `is_special_render_lang` と yuzu-render `highlight.rs::render` のディスパッチは**集合を同期**させる
+- **特別レンダリング言語**: yuzu-core の `is_special_render_lang` と yuzu-render `highlight.rs::render` のディスパッチは**集合を同期**させる（openapi / jsonschema は `SPEC_LANGS` が唯一の定義で、render 側 `SpecKind` との一致は speccheck のテストが縛る）
 - **URL 分類**: `linkcheck.rs` の判定と yuzu-render `urls.rs` の `UrlResolver::rewrite` を揃える
 - **アンカー採番**: extract_meta / 本文 HTML 化 / extract_plain_sections の **3 経路とも全見出しを文書順に** Anchorizer へ通す（片方で見出しを飛ばすと id がずれる）
-- **フェンス情報文字列**は `markdown/fence.rs`（描画・検索・lint が共有。lint 用に `parse_fence_info_detailed`）、**インクルード**は `include.rs`（描画・検索・check の 3 経路）、**エイリアス**は `aliases.rs`（render と check）
+- **フェンス情報文字列**は `markdown/fence.rs`（描画・検索・lint が共有。lint 用に `parse_fence_info_detailed`）、**外部ファイル参照**は `include.rs`（コンテンツインクルードの `file=` と openapi / jsonschema の `file:` が同居。ルート配下強制の同じ規律 `read_under_root` を共有し、本文の解決 `resolve_spec_source`（読み込み口はクロージャで受ける）と参照の検証 `validate_spec_refs` もここ。**仕様の中身の検証だけが yuzu-render**）、**エイリアス**は `aliases.rs`（render と check）
 - `comrak_options_keep_footnotes` は fmt / normalize / linkcheck 専用。**HTML レンダと extract_meta に使うと壊れる**
 
 ### インクリメンタルビルドの層構造

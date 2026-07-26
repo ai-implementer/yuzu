@@ -229,12 +229,6 @@ fn split_lines_balanced(html: &str) -> Vec<String> {
     result
 }
 
-/// 中身が `file: <パス>` の 1 行だけならそのパスを返す（外部ファイル参照の記法）。
-/// 解釈は core の 1 実装を共有する（`yuzu check` の検証と揃える）
-fn parse_file_ref(trimmed: &str) -> Option<&str> {
-    yuzu_core::parse_spec_file_ref(trimmed)
-}
-
 impl PageCodeRenderer<'_> {
     /// このページでクライアント描画へのフォールバックが発生したか
     /// （= このページに mermaid.js が必要か）
@@ -256,16 +250,20 @@ impl PageCodeRenderer<'_> {
             root: self.shared.project_root.as_deref(),
             external_deps: &self.external_deps,
         };
-        let trimmed = code.trim();
-        match parse_file_ref(trimmed) {
-            Some(rel) => match files.read(rel) {
-                Ok(text) => Some(apispec::render_spec(kind, &text, Some(rel), &files)),
-                Err(message) => {
-                    tracing::warn!(file = rel, "{message}");
-                    Some(apispec::error_box(&message, code))
-                }
-            },
-            None => Some(apispec::render_spec(kind, code, None, &files)),
+        // 本文の解釈（インライン / `file: <パス>`）は core の 1 実装に任せ、
+        // **読み込みは必ず ProjectSpecFiles::read を通す**
+        // （外部依存フラグの単一チョークポイント。文書内の $ref も同じ口を通る）
+        match yuzu_core::resolve_spec_source(code, |rel| files.read(rel)) {
+            Ok(source) => Some(apispec::render_spec(
+                kind,
+                source.text(),
+                source.origin(),
+                &files,
+            )),
+            Err(yuzu_core::SpecRefError { rel, message }) => {
+                tracing::warn!(file = rel, "{message}");
+                Some(apispec::error_box(&message, code))
+            }
         }
     }
 
@@ -306,17 +304,16 @@ impl CodeBlockRenderer for PageCodeRenderer<'_> {
     // ⚠️ このディスパッチの特別レンダリング言語集合（mermaid / openapi /
     // jsonschema / math）は yuzu_core::is_special_render_lang（検索インデックスの
     // コード除外判定）と同期させること。言語を追加・削除したら両方を更新する
+    // （openapi / jsonschema は yuzu_core::SPEC_LANGS と SpecKind の一致を
+    // speccheck.rs のテストが縛るので、ここでの直書きは無い）
     fn render(&self, lang: Option<&str>, meta: &CodeBlockMeta, code: &str) -> Option<String> {
         // 特別レンダリング言語は表示メタ（title / 行ハイライト / 行番号）を無視する
         if let Some(lang) = lang {
             if lang == "mermaid" {
                 return self.render_mermaid(code);
             }
-            if lang == "openapi" {
-                return self.render_apispec(SpecKind::OpenApi, code);
-            }
-            if lang == "jsonschema" {
-                return self.render_apispec(SpecKind::JsonSchema, code);
+            if let Some(kind) = apispec::spec_kind(lang) {
+                return self.render_apispec(kind, code);
             }
             // ```math は comrak の特殊化（<pre><code class="language-math"
             // data-math-style="display">）に任せる。syntect のトークン一致で
@@ -723,19 +720,6 @@ mod tests {
             )
             .unwrap();
         assert!(!p.external_deps_used(), "インラインはキャッシュ可能");
-    }
-
-    #[test]
-    fn file_参照の判定は一行のみ() {
-        assert_eq!(super::parse_file_ref("file: a.yaml"), Some("a.yaml"));
-        assert_eq!(super::parse_file_ref("file:a.yaml"), Some("a.yaml"));
-        assert_eq!(super::parse_file_ref("file:"), None);
-        assert_eq!(
-            super::parse_file_ref("file: a.yaml\nx: 1"),
-            None,
-            "複数行はインライン扱い"
-        );
-        assert_eq!(super::parse_file_ref("openapi: 3.0.3"), None);
     }
 
     #[test]
