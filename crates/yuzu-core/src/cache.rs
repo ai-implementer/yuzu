@@ -39,7 +39,9 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v10: frontmatter に aliases を追加（CachedMeta の Frontmatter に載る）
 /// - v11: コンテンツインクルード（`file=`）— 本文 HTML と検索 tf の両方が変わる
 /// - v12: 図表番号と相互参照（CachedMeta に labels 追加・キャプション行の HTML 化）
-pub const CACHE_FORMAT_VERSION: u32 = 12;
+/// - v13: 折りたたみ（`> [!NOTE]-` → `<details>` の AST 組み替え）。Phase 44 で
+///   本文 HTML の生成ロジックを変えたのに bump し忘れていた分を後追いで計上する
+pub const CACHE_FORMAT_VERSION: u32 = 13;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
