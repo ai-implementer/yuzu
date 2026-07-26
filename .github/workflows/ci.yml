@@ -150,3 +150,9 @@ jobs:
           # lint --fix と json を併用しても標準出力が JSON のまま（進捗は stderr へ）
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint --fix --format json 2>/dev/null \
             | head -1 | grep -q '^{$'
+          # tracing のログが標準出力へ漏れないこと（既定 writer は stdout なので明示指定が要る）。
+          # 重複キーは警告を出す数少ない経路で、混ざると JSON のパースが壊れる
+          # （設定キーはすべて省略可能なので、この最小 jsonc でも check は動く）
+          printf '{\n  "site": { "title": "A", "title": "B" }\n}\n' > yuzu.jsonc
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
+            | head -1 | grep -q '^{$'

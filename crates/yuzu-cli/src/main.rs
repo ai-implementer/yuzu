@@ -19,6 +19,10 @@ fn main() -> ExitCode {
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .with_target(false)
+        // ログは必ず stderr へ。tracing-subscriber の既定は stdout で、
+        // `yuzu check --format json` の「標準出力へ JSON 以外を書かない」契約を破る
+        // （yuzu.jsonc の重複キー警告が JSON の前に出てパースが失敗していた）
+        .with_writer(std::io::stderr)
         .init();
 
     match run(cli::Cli::parse()) {
