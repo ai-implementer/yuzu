@@ -78,20 +78,9 @@ impl apispec::SpecFiles for ProjectSpecFiles<'_> {
                 "このビルドではファイル参照が使えません（基準ディレクトリ未設定）".to_string(),
             );
         };
-        let root = root
-            .canonicalize()
-            .map_err(|e| format!("プロジェクトルートを解決できません: {e}"))?;
-        let path = root.join(rel);
-        let canonical = path
-            .canonicalize()
-            .map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))?;
-        if !canonical.starts_with(&root) {
-            return Err(format!(
-                "仕様ファイル {rel} はプロジェクトルートの外を指しています"
-            ));
-        }
-        std::fs::read_to_string(&canonical)
-            .map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))
+        // ルート配下の強制と読み込みは core の 1 実装を共有する
+        // （`yuzu check` の検証と解釈がズレないように）
+        yuzu_core::resolve_spec_file(root, rel)
     }
 }
 
@@ -240,13 +229,10 @@ fn split_lines_balanced(html: &str) -> Vec<String> {
     result
 }
 
-/// 中身が `file: <パス>` の 1 行だけならそのパスを返す（外部ファイル参照の記法）
+/// 中身が `file: <パス>` の 1 行だけならそのパスを返す（外部ファイル参照の記法）。
+/// 解釈は core の 1 実装を共有する（`yuzu check` の検証と揃える）
 fn parse_file_ref(trimmed: &str) -> Option<&str> {
-    if trimmed.lines().count() != 1 {
-        return None;
-    }
-    let rel = trimmed.strip_prefix("file:")?.trim();
-    (!rel.is_empty()).then_some(rel)
+    yuzu_core::parse_spec_file_ref(trimmed)
 }
 
 impl PageCodeRenderer<'_> {

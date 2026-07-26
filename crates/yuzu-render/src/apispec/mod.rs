@@ -51,6 +51,25 @@ pub(crate) fn render_spec(
     render::render(kind, source, origin, files)
 }
 
+/// 検証で見つかった 1 件（`yuzu check` 用）
+pub(crate) struct SpecIssue {
+    /// 表示用メッセージ（描画側のエラーボックス・注記と同じ文言）
+    pub message: String,
+    /// 致命（ブロック全体がエラーボックスになる）か、注記どまりか
+    pub fatal: bool,
+}
+
+/// 仕様テキストを検証する（HTML は組み立てない）。空 = 問題なし。
+/// [`render_spec`] と同じ分類の失敗を報告する
+pub(crate) fn check_spec(
+    kind: SpecKind,
+    source: &str,
+    origin: Option<&str>,
+    files: &dyn SpecFiles,
+) -> Vec<SpecIssue> {
+    render::check(kind, source, origin, files)
+}
+
 /// エラーボックス HTML（comrak alerts と同じ構造でテーマ CSS がそのまま当たる）。
 /// `message` は見出し行、`source` はエスケープして `<pre>` で併記する
 pub(crate) fn error_box(message: &str, source: &str) -> String {

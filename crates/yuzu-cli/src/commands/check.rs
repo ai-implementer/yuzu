@@ -56,6 +56,9 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
     diags.extend(yuzu_core::validate_aliases(&pages, &opts));
     // コンテンツインクルード（file=）の参照切れ・ルート外・行範囲外
     diags.extend(yuzu_core::validate_includes(&pages, &root, &opts));
+    // openapi / jsonschema の file: 参照とファイル間 $ref・仕様の妥当性。
+    // 描画は失敗してもエラーボックスで継続するため、ここでしか気づけない
+    diags.extend(yuzu_render::validate_api_specs(&pages, &root, &opts));
     // 内部リンク・アンカー
     diags.extend(yuzu_core::check_links(
         &pages,

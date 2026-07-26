@@ -34,9 +34,10 @@ pub use aliases::{alias_routes, validate_aliases};
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{Diagnostic, Severity};
 pub use error::CoreError;
-pub use include::{resolve_include, validate_includes};
+pub use include::{parse_spec_file_ref, resolve_include, resolve_spec_file, validate_includes};
 pub use markdown::crossref::CaptionKind;
 pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
+pub use markdown::{FenceBlock, extract_fence_blocks};
 pub use model::{
     CrossrefLabel, Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry,
 };

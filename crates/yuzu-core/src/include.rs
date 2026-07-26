@@ -1,9 +1,9 @@
-//! コンテンツインクルード（` ```rust file="src/api.rs" lines=10-25 `）の解決。
+//! コンテンツインクルード（` ```rust file="src/api.rs" lines=10-25 `）と、
+//! openapi / jsonschema ブロックの `file:` 参照の解決。
 //!
 //! 参照はプロジェクトルート相対で、canonicalize によりルート配下を強制する
-//! （openapi / jsonschema の `file:` 参照と同じ規律）。読み込みと行切り出しの
-//! 実装はここに 1 つだけ置き、描画（yuzu-render）・検索（yuzu-index）・
-//! `yuzu check` が共有する。
+//! （2 つの記法で同じ規律）。読み込みと行切り出しの実装はここに 1 つだけ置き、
+//! 描画（yuzu-render）・検索（yuzu-index）・`yuzu check` が共有する。
 
 use std::path::Path;
 
@@ -72,6 +72,36 @@ pub fn validate_includes(pages: &[Page], root: &Path, opts: &MarkdownOptions) ->
         }
     }
     diags
+}
+
+/// openapi / jsonschema ブロックの本文が `file: <パス>` の 1 行だけなら
+/// そのパスを返す（外部ファイル参照の記法）。複数行はインライン仕様とみなす。
+/// 描画（yuzu-render）と `yuzu check` はこの 1 実装を共有する
+pub fn parse_spec_file_ref(body: &str) -> Option<&str> {
+    let trimmed = body.trim();
+    if trimmed.lines().count() != 1 {
+        return None;
+    }
+    let rel = trimmed.strip_prefix("file:")?.trim();
+    (!rel.is_empty()).then_some(rel)
+}
+
+/// 仕様ファイルをプロジェクトルート相対で読む（canonicalize でルート配下を強制）。
+/// 失敗は表示用メッセージを Err で返す（[`resolve_include`] と同じ規約）
+pub fn resolve_spec_file(root: &Path, rel: &str) -> Result<String, String> {
+    let root = root
+        .canonicalize()
+        .map_err(|e| format!("プロジェクトルートを解決できません: {e}"))?;
+    let canonical = root
+        .join(rel)
+        .canonicalize()
+        .map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))?;
+    if !canonical.starts_with(&root) {
+        return Err(format!(
+            "仕様ファイル {rel} はプロジェクトルートの外を指しています"
+        ));
+    }
+    std::fs::read_to_string(&canonical).map_err(|e| format!("仕様ファイル {rel} を読めません: {e}"))
 }
 
 #[cfg(test)]

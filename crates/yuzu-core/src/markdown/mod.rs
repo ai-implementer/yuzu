@@ -610,6 +610,45 @@ pub(crate) struct FenceMeta {
     pub code_lines: usize,
 }
 
+/// フェンスコードブロック 1 つを本文つきで返す（core の外で本文を解釈する検査用）
+pub struct FenceBlock {
+    /// 情報文字列の先頭トークン（` ```openapi ` なら `Some("openapi")`）
+    pub lang: Option<String>,
+    /// フェンス本文（改行込み）
+    pub body: String,
+    /// ブロック全体の位置（診断表示には開始行を使う）
+    pub span: SourceSpan,
+}
+
+/// fenced コードブロックを本文つきで列挙する。comrak を触るのはこのモジュールだけ
+/// なので、`yuzu check` の apispec 検証のように本文を crate 外で解釈する経路は
+/// これを使う（[`extract_fence_meta`] は情報文字列と行数しか持たない）
+pub fn extract_fence_blocks(source: &str, opts: &MarkdownOptions) -> Vec<FenceBlock> {
+    let arena = Arena::new();
+    let options = comrak_options(opts);
+    let root = parse_document(&arena, source, &options);
+    let mut out = Vec::new();
+    for node in root.descendants() {
+        let data = node.data.borrow();
+        if let NodeValue::CodeBlock(cb) = &data.value {
+            if !cb.fenced {
+                continue;
+            }
+            out.push(FenceBlock {
+                lang: cb
+                    .info
+                    .split_whitespace()
+                    .next()
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
+                body: cb.literal.clone(),
+                span: span_of(&data.sourcepos),
+            });
+        }
+    }
+    out
+}
+
 /// fenced コードブロックだけを列挙する（インデントコードは対象外）
 pub(crate) fn extract_fence_meta(source: &str, opts: &MarkdownOptions) -> Vec<FenceMeta> {
     let arena = Arena::new();

@@ -91,6 +91,69 @@ pub(super) fn render(
     }
 }
 
+/// 仕様テキストを検証する（HTML は組み立てない）。`yuzu check` 用。
+///
+/// [`render`] がエラーボックス・注記にする失敗と**同じ分類・同じ文言**を返す。
+/// 描画側の挙動は変えない（従来どおりエラーボックスでビルドは継続する）
+pub(super) fn check(
+    kind: SpecKind,
+    source: &str,
+    origin: Option<&str>,
+    files: &dyn SpecFiles,
+) -> Vec<super::SpecIssue> {
+    let value: Value = match serde_yaml_ng::from_str(source) {
+        Ok(v) => v,
+        // パースできなければ以降の検査は無意味（描画もエラーボックスで打ち切る）
+        Err(e) => {
+            return vec![super::SpecIssue {
+                message: format!("パースに失敗しました: {e}"),
+                fatal: true,
+            }];
+        }
+    };
+
+    let mut issues = Vec::new();
+    if kind == SpecKind::OpenApi {
+        let v3 = value
+            .get("openapi")
+            .map(plain_value)
+            .is_some_and(|v| v.starts_with('3'));
+        let v2 = value.get("swagger").map(plain_value).as_deref() == Some("2.0");
+        if !v3 && !v2 {
+            return vec![super::SpecIssue {
+                message: "OpenAPI 3.x / Swagger 2.0 のみ対応しています\
+                          （`openapi: 3.x.y` か `swagger: \"2.0\"` が必要です）"
+                    .to_string(),
+                fatal: true,
+            }];
+        }
+    }
+
+    // $ref で到達する参照先の読み込み・パース失敗を拾う。描画では小さな注記
+    // （api-ref）へ縮退して見落としやすいぶん、検査の価値が高い
+    let main_key = origin
+        .map(|o| normalize_rel_path("", o).unwrap_or_else(|_| o.to_string()))
+        .unwrap_or_default();
+    let docs = load_documents(&main_key, value, files);
+    let mut failed: Vec<_> = docs.failed.iter().collect();
+    failed.sort_by(|a, b| a.0.cmp(b.0)); // HashMap の順序は不定なので安定させる
+    for (path, reason) in failed {
+        // reason 側が既にパスを含む（「仕様ファイル X を読めません」）ことがあるので
+        // その場合は前置きを重ねない
+        let message = if reason.contains(path.as_str()) {
+            format!("$ref の解決に失敗しました: {reason}")
+        } else {
+            format!("$ref 先 {path} を解決できません: {reason}")
+        };
+        issues.push(super::SpecIssue {
+            message,
+            // 参照ファイル数の上限は書き間違いではなく設計上の制限なので警告どまり
+            fatal: !reason.contains("参照ファイルが多すぎます"),
+        });
+    }
+    issues
+}
+
 /// メイン文書と、そこから `$ref` で到達できる参照先ファイル群（描画前に全ロード済み）
 struct DocSet {
     /// 正規化済みルート相対パス → パース済み文書（メイン文書は origin キーか空文字）

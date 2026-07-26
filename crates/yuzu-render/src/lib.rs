@@ -19,6 +19,7 @@ mod highlight;
 mod llms;
 mod pipeline;
 mod shared;
+mod speccheck;
 mod templates;
 mod urls;
 
@@ -27,4 +28,5 @@ pub use highlight::SyntectCodeRenderer;
 pub use llms::{generate_llms_full_txt, generate_llms_txt};
 pub use pipeline::{LiveReloadMode, RenderCtx, RenderParams, render_site};
 pub use shared::RenderShared;
+pub use speccheck::validate_api_specs;
 pub use urls::UrlResolver;
