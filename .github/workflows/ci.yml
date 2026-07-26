@@ -71,6 +71,8 @@ jobs:
           grep -q '<details class="markdown-alert markdown-alert-tip">' dist/guide/writing/index.html
           # 折りたたみ内へのアンカージャンプを開く JS が配信される
           grep -q 'js/details-target.js' dist/guide/writing/index.html
+          # サイドバーのスクロール位置維持（base.jinja のインライン script）が配信されている
+          grep -q 'yuzu-sidebar-scroll' dist/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
