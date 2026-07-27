@@ -5,6 +5,8 @@ use std::path::Path;
 
 use anyhow::{Context, bail};
 
+use crate::out::outln;
+
 /// 生成するファイル一式（scaffold/ からコンパイル時に埋め込む）
 const FILES: &[(&str, &str)] = &[
     ("yuzu.jsonc", include_str!("../../scaffold/yuzu.jsonc")),
@@ -18,6 +20,8 @@ const FILES: &[(&str, &str)] = &[
         "public/images/yuzu-logo.svg",
         include_str!("../../scaffold/yuzu-logo.svg"),
     ),
+    // content の外にある引用先（`file=` の実例。content/index.md から参照する）
+    ("snippets/greet.rs", include_str!("../../scaffold/greet.rs")),
     (
         "theme/README.md",
         include_str!("../../scaffold/theme-readme.md"),
@@ -46,17 +50,15 @@ pub fn run(dir: &Path) -> anyhow::Result<()> {
             .with_context(|| format!("{} を書き込めません", path.display()))?;
     }
 
-    println!("✔ {} にサンプルプロジェクトを作成しました", dir.display());
-    println!();
-    println!("次の一歩:");
-    println!("  cd {}", dir.display());
-    println!("  yuzu dev            # 開発サーバ（監視＋WS ライブリロード）で執筆");
-    println!("  yuzu build          # dist/ に静的サイトを出力");
-    println!("  yuzu preview        # dist/ をブラウザで確認");
-    println!();
-    println!("GitHub に push すると Pages へ自動デプロイできます");
-    println!(
-        "（.github/workflows/deploy.yml 同梱。Settings > Pages > Source を GitHub Actions に）"
-    );
+    outln!("✔ {} にサンプルプロジェクトを作成しました", dir.display());
+    outln!();
+    outln!("次の一歩:");
+    outln!("  cd {}", dir.display());
+    outln!("  yuzu dev            # 開発サーバ（監視＋WS ライブリロード）で執筆");
+    outln!("  yuzu build          # dist/ に静的サイトを出力");
+    outln!("  yuzu preview        # dist/ をブラウザで確認");
+    outln!();
+    outln!("GitHub に push すると Pages へ自動デプロイできます");
+    outln!("（.github/workflows/deploy.yml 同梱。Settings > Pages > Source を GitHub Actions に）");
     Ok(())
 }

@@ -2,6 +2,8 @@
 title: はじめに
 order: 1
 description: yuzu プロジェクトの基本操作
+# ページを移動しても旧 URL を生かす（/guide/intro/ にリダイレクト HTML が出ます）
+aliases: ["guide/intro/"]
 ---
 
 # はじめに
@@ -195,6 +197,17 @@ erDiagram
     }
 ```
 
+状態遷移図（stateDiagram-v2）— ページのライフサイクル:
+
+```mermaid
+stateDiagram-v2
+    [*] --> 下書き
+    下書き --> レビュー中 : draft を外す
+    レビュー中 --> 公開 : 承認
+    レビュー中 --> 下書き : 差し戻し
+    公開 --> [*]
+```
+
 クラス図（classDiagram）:
 
 ```mermaid
@@ -378,6 +391,25 @@ yuzu lint
 
 ```bash
 yuzu lint --fix
+```
+
+表記ゆれのほかに**文書規約**も常時検査します（h1 の重複 `duplicate-h1`・
+見出しレベルの飛び `heading-level-skip`・frontmatter の未知キー
+`frontmatter-unknown-key`・コードブロックの表示メタのタイポ `code-block-meta`・
+図表ラベルの重複 `duplicate-label`・`yuzu.jsonc` のキーのタイポ
+`config-unknown-key`）。`yuzu check` はこれにリンク切れ・アンカー切れ
+（`broken-link` / `broken-anchor`）・引用先の不備（`include-error`）・
+API 仕様の不備（`spec-error`）・整形差分（`fmt`）を足した統合チェックです。
+
+全ルールの一覧は[リファレンス](https://ai-implementer.github.io/yuzu/reference/rules/)にあります。
+
+CI へは終了コード（0 = 違反なし / 1 = 違反あり / 2 = 実行エラー）で組み込めます。
+GitHub Actions なら `--format github` で**注釈として PR の diff 行に**出せます:
+
+```bash
+yuzu check --format github   # PR の該当行に注釈
+yuzu check --format json     # 機械可読（単一 JSON オブジェクト）
+yuzu fmt --diff              # 整形差分を unified diff で確認（patch でそのまま当たる）
 ```
 
 ## 最終更新日と編集リンク

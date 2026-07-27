@@ -30,6 +30,7 @@ pub fn run(full: bool) -> anyhow::Result<()> {
     } else {
         yuzu_render::generate_llms_txt(&rc, &site)?
     };
-    print!("{text}");
+    // 全文を 1 回で書く（`| head` で下流が閉じても panic しない。out.rs 参照）
+    crate::out::str(&text);
     Ok(())
 }

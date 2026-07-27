@@ -62,6 +62,7 @@ description: yuzu の全コマンド・主要フラグ・終了コード規約
 | フラグ | 説明 |
 | --- | --- |
 | `fmt --check` | 書き換えず差分のあるファイルを列挙して終了コード 1（CI 用） |
+| `fmt --diff` | 書き換えず unified diff を標準出力へ（`--check` を含意。`patch -p1` に通る形） |
 | `lint --fix` | 表記ゆれの変換候補をソースへ自動適用（修正できない違反は報告のまま残る） |
 | `lint --format <形式>` | 出力形式（`human` / `json` / `github`。既定 `human`） |
 | `check --format <形式>` | 同上 |

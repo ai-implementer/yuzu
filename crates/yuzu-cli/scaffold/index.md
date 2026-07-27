@@ -11,13 +11,19 @@ description: yuzu のサンプルドキュメント
 
 ## 機能ハイライト
 
-| 機能 | 説明 | 状態 |
+| 機能 | 説明 | このサイトでの実例 |
 | --- | --- | --- |
-| GFM の表 | この表がそれです | ✅ |
-| コードハイライト | syntect（ビルド時・CSS クラス出力） | ✅ |
-| Mermaid 図 | クライアント描画（既定）/ `backend: "ssr"` で 5 図種をビルド時 SVG 化 | ✅ |
-| 日本語全文検索 | BM25 + vaporetto + Wasm（ヘッダーの検索ボックス） | ✅ |
-| llms.txt | LLM 向けの索引と全文（`/llms.txt`・`/llms-full.txt`） | ✅ |
+| GFM の表 | この表がそれです | ここ |
+| コードハイライト | syntect（ビルド時・CSS クラス出力） | [下](#コードブロック) |
+| コードの表示メタ | キャプション・行ハイライト・行番号（JS ゼロ） | [下](#コードブロック) |
+| ソースの埋め込み | `file=` で実ファイルの中身をビルド時に取り込む | [下](#コードブロック) |
+| Mermaid 図 | クライアント描画（既定）/ `backend: "ssr"` で 9 図種をビルド時 SVG 化 | [下](#図mermaid) |
+| 図表番号と相互参照 | `Figure:` の行で自動採番、空リンクに番号を補完 | [下](#図mermaid) |
+| 折りたたみ | `> [!TIP]-` で `<details>` になる | [はじめに](guide/getting-started.md) |
+| API 仕様の描画 | OpenAPI / JSON Schema をビルド時に HTML 化 | [はじめに](guide/getting-started.md) |
+| 日本語全文検索 | BM25 + vaporetto + Wasm（ヘッダーの検索ボックス） | ヘッダー |
+| llms.txt | LLM 向けの索引と全文（`/llms.txt`・`/llms-full.txt`） | `/llms.txt` |
+| 品質チェック | `yuzu fmt` / `lint` / `check`（CI 用の終了コードと機械可読出力） | [はじめに](guide/getting-started.md) |
 
 ## コードブロック
 
@@ -27,9 +33,6 @@ fn main() {
 }
 ```
 
-`file="src/main.rs" lines=10-25` と書くと、実ファイルの中身を
-ビルド時に読み込んで表示できます（設計書とコードの乖離を防げます）。
-
 言語に続けて `title="..."`（キャプション）・`{2}`（行ハイライト）・
 `showLineNumbers`（行番号）も書けます:
 
@@ -38,6 +41,15 @@ fn main() {
     println!("こんにちは、yuzu!");
 }
 ```
+
+`file="..."` と書くと、実ファイルの中身をビルド時に読み込んで表示できます
+（設計書とコードの乖離を防げます）。同梱の `snippets/greet.rs` を引用した例:
+
+```rust file="snippets/greet.rs"
+```
+
+`lines=10-25` のように行範囲だけを切り出すこともできます。
+参照先が無い・範囲外なら `yuzu check` がエラーにします。
 
 ## 図（Mermaid）
 

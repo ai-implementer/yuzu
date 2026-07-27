@@ -55,6 +55,11 @@
   //   "lastUpdated": true, // ページフッターに最終コミット日（git が無い環境では自動で非表示）
   //   "editUrl": "https://github.com/me/docs/edit/main/content/{path}" // 「このページを編集」リンク
   // },
+  // "build": {
+  //   // yuzu dev / build --watch の監視から除外する glob（プロジェクトルート相対。
+  //   // 指定すると既定値 ["**/target", "**/node_modules"] を置き換えます）
+  //   "watchIgnore": ["**/target", "**/node_modules", "**/vendor"]
+  // },
   "dev": {
     "port": 5173
     // "liveReload": true, // yuzu dev の WS ライブリロード（false で注入なし）

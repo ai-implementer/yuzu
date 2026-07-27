@@ -2189,6 +2189,7 @@ dependencies = [
  "open",
  "serde",
  "serde_json",
+ "similar",
  "tempfile",
  "tracing",
  "tracing-subscriber",

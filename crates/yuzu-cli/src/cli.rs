@@ -94,6 +94,10 @@ pub enum Command {
         /// 書き換えず、差分のあるファイルを列挙して非ゼロ終了する（CI 用）
         #[arg(long)]
         check: bool,
+        /// 書き換えず、整形前後の unified diff を標準出力へ出す（--check を含意）。
+        /// そのまま `patch -p1` / `git apply` に食わせられる
+        #[arg(long)]
+        diff: bool,
     },
 
     /// 文書規約の診断（見出し・frontmatter）。違反があれば非ゼロ終了

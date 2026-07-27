@@ -45,7 +45,10 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: None,
-                message: "整形差分があります（`yuzu fmt` を実行してください）".to_string(),
+                // 差分の中身は診断に載せない（github 形式は改行を %0A にするため
+                // 巨大な 1 行注釈になる）。見たい人を `fmt --diff` へ案内する
+                message: "整形差分があります（`yuzu fmt` で修正、`yuzu fmt --diff` で内容を確認できます）"
+                    .to_string(),
                 fix: None,
             });
         }

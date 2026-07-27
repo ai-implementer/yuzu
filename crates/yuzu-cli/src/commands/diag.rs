@@ -11,6 +11,8 @@ use std::process::ExitCode;
 use serde::Serialize;
 use yuzu_core::{DiagBase, Diagnostic, Severity};
 
+use crate::out::outln;
+
 /// `yuzu.jsonc` の診断（重複キー・未知キー）を [`Diagnostic`] へ写す。
 /// yuzu-config は yuzu-core に依存しないため、変換はここで行う
 pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
@@ -74,7 +76,7 @@ pub fn report(
     match format {
         Format::Human => {
             for line in human_lines(&diags, prefix, Path::new("")) {
-                println!("{line}");
+                outln!("{line}");
             }
             print_summary(&diags, ctx.pages, errors, warnings);
         }
@@ -84,13 +86,13 @@ pub fn report(
             let base = annotation_base(ctx.root, ctx.content_dir, workspace.as_deref());
             let root_base = annotation_root(ctx.root, workspace.as_deref());
             for line in github_lines(&diags, &base, &root_base) {
-                println!("{line}");
+                outln!("{line}");
             }
             // 注釈以外の行は Actions のパーサに無視される。ジョブログで全体の件数を
             // 見る唯一の手段になるので human と同じ集計行を残す
             print_summary(&diags, ctx.pages, errors, warnings);
         }
-        Format::Json => println!(
+        Format::Json => outln!(
             "{}",
             render_json(&diags, prefix, Path::new(""), ctx.pages, errors, warnings)?
         ),
@@ -107,9 +109,9 @@ pub fn report(
 /// 「問題ありません」「エラー N 件・警告 M 件」の集計行（human / github 共通）
 fn print_summary(diags: &[Diagnostic], pages: usize, errors: usize, warnings: usize) {
     if diags.is_empty() {
-        println!("問題ありません（{pages} ページ）");
+        outln!("問題ありません（{pages} ページ）");
     } else {
-        println!("エラー {errors} 件・警告 {warnings} 件");
+        outln!("エラー {errors} 件・警告 {warnings} 件");
     }
 }
 

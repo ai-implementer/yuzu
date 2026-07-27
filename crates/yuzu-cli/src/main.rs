@@ -1,7 +1,11 @@
 //! yuzu CLI のエントリポイント
+// 標準出力は out モジュールに集約する（SIGPIPE で panic しないため。out.rs 参照）。
+// print! / println! を書いた瞬間に clippy が落とすので、規律が機械的に守られる
+#![deny(clippy::print_stdout)]
 
 mod cli;
 mod commands;
+mod out;
 
 // 依存方向（cli → index）の配線。Phase 3 で実体を使う
 use yuzu_index as _;
@@ -25,13 +29,20 @@ fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
 
-    match run(cli::Cli::parse()) {
+    let code = match run(cli::Cli::parse()) {
         Ok(code) => code,
         Err(err) => {
             eprintln!("Error: {err:?}");
             ExitCode::from(2)
         }
+    };
+    // 標準出力の I/O エラー（ディスクフル等）は実行エラー扱い。
+    // 下流が閉じただけ（BrokenPipe）は成功で、コマンド本来の終了コードを保つ
+    if let Err(err) = out::finish() {
+        eprintln!("Error: 標準出力へ書き出せません: {err}");
+        return ExitCode::from(2);
     }
+    code
 }
 
 fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
@@ -55,7 +66,7 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
             commands::search::run(&query, limit, json).map(ok)
         }
         cli::Command::Llms { full } => commands::llms::run(full).map(ok),
-        cli::Command::Fmt { check } => commands::fmt::run(check),
+        cli::Command::Fmt { check, diff } => commands::fmt::run(check, diff),
         cli::Command::Lint { fix, format } => commands::lint::run(fix, format),
         cli::Command::Check { format } => commands::check::run(format),
     }

@@ -308,6 +308,27 @@ body {
   text-align: center;
 }
 
+/* 追加ロード行（ヒットの末尾。role="option" なので選択もできる） */
+.search-more {
+  padding: 0.5rem 0.8rem;
+  font-size: 0.8rem;
+  text-align: center;
+  color: var(--accent-fg);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.search-more:hover,
+.search-more.selected {
+  background: var(--bg-hover);
+}
+
+/* 読み込み中・失敗時（クリックしても二重発火しない状態） */
+.search-more[aria-disabled="true"] {
+  color: var(--fg-muted);
+  cursor: default;
+}
+
 /* フレーズ検索の発見用ヒント（ドロップダウン末尾） */
 .search-hint {
   padding: 0.35rem 0.8rem;

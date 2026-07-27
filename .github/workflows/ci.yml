@@ -78,6 +78,9 @@ jobs:
           grep -q 'yuzu-sidebar-scroll' dist/index.html
           # 診断ルールのリファレンス（Phase 46）が配信されている
           grep -q 'broken-anchor' dist/reference/rules/index.html
+          # 検索の追加読み込み（Phase 49）の JS が埋め込み経由で配信されている
+          # （機能自体はブラウザ操作なので CI では検証できない。配線ゲート）
+          grep -q 'search-more' dist/_assets/js/search-ui.js
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
@@ -111,6 +114,10 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" fmt --check
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint
           "$GITHUB_WORKSPACE/target/debug/yuzu" check
+          # Phase 49: scaffold に v0.8〜v0.9 機能の「動く実例」が入っている
+          # （エイリアスのリダイレクト HTML と、file= で引用したソースのキャプション）
+          test -f dist/guide/intro/index.html
+          grep -q '<figcaption>snippets/greet.rs</figcaption>' dist/index.html
           # Phase 22: openapi/jsonschema SSR — scaffold の jsonschema ブロックが
           # 静的 HTML 化されていること＋ file: 参照は仕様ファイルの変更だけで反映されること
           # （jsonschema は class="api-spec api-schema" なので閉じ引用符まで書かない）
@@ -169,6 +176,43 @@ jobs:
             | grep -q "一致するページはありませんでした"
           rm content/inc.md
           mv yuzu.jsonc.bak yuzu.jsonc
+          # Phase 49: fmt --diff は unified diff を出し、--check を含意する
+          # （書き換えない・差分ありで終了コード 1）。出力がそのまま当てられる
+          # パッチであることが実質の契約なので patch -p1 まで通す
+          printf -- '---\ntitle: 未整形\n---\n\n#   見出し\n\n*  項目\n' > content/unformatted.md
+          before=$(sha256sum content/unformatted.md)
+          if "$GITHUB_WORKSPACE/target/debug/yuzu" fmt --diff > "$RUNNER_TEMP/fmt.diff"; then
+            echo "fmt --diff が整形差分を検出しなかった" >&2
+            exit 1
+          fi
+          test "$before" = "$(sha256sum content/unformatted.md)"
+          grep -q '^--- a/content/unformatted.md$' "$RUNNER_TEMP/fmt.diff"
+          grep -q '^+++ b/content/unformatted.md$' "$RUNNER_TEMP/fmt.diff"
+          grep -q '^@@ ' "$RUNNER_TEMP/fmt.diff"
+          patch -p1 < "$RUNNER_TEMP/fmt.diff"
+          "$GITHUB_WORKSPACE/target/debug/yuzu" fmt --check
+          rm content/unformatted.md
+          # Phase 49: 下流が先に閉じても panic しない（SIGPIPE）。
+          # **パイプバッファ（64KB）を超える出力でないと EPIPE 自体が起きない**ので、
+          # 先に大きいページを作る（この前置きが無いとゲートが空振りする）
+          printf -- '---\ntitle: 大きなページ\n---\n\n# 大きなページ\n\n' > content/big.md
+          for i in $(seq 1 5000); do printf 'SIGPIPE 検証用の段落 %s です。\n\n' "$i"; done >> content/big.md
+          "$GITHUB_WORKSPACE/target/debug/yuzu" llms --full 2> "$RUNNER_TEMP/sigpipe.err" | head -c 1 > /dev/null
+          test "${PIPESTATUS[0]}" -eq 0
+          # `! grep` は set -e の対象外（POSIX の否定パイプライン）なので if で明示する
+          if grep -qiE 'broken pipe|panicked' "$RUNNER_TEMP/sigpipe.err"; then
+            echo "llms --full | head で panic した" >&2
+            exit 1
+          fi
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search 段落 --limit 5000 2> "$RUNNER_TEMP/sigpipe2.err" | head -c 1 > /dev/null
+          test "${PIPESTATUS[0]}" -eq 0
+          if grep -qiE 'broken pipe|panicked' "$RUNNER_TEMP/sigpipe2.err"; then
+            echo "search | head で panic した" >&2
+            exit 1
+          fi
+          rm content/big.md
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
           echo '[壊れリンク](missing.md)' >> content/index.md
           if "$GITHUB_WORKSPACE/target/debug/yuzu" check; then
             echo "check が壊れリンクを検出しなかった" >&2

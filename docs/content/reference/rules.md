@@ -62,7 +62,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |
 | `include-error` | コンテンツインクルード（`file=`）の参照先が読めない・範囲外 |
 | `spec-error` | `openapi` / `jsonschema` の `file:` 参照が読めない・仕様が壊れている・未対応バージョン・`$ref` 先が解決できない |
-| `fmt` | 整形差分がある（`yuzu fmt` を実行すれば解消します） |
+| `fmt` | 整形差分がある（`yuzu fmt` で修正、`yuzu fmt --diff` で内容を確認できます） |
 
 `spec-error` だけは警告版の `spec-warning` もあります（参照ファイル数の上限超過など、
 書き間違いではなく描画が注記へ縮退するだけのもの）。

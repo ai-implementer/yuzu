@@ -8,10 +8,12 @@ theme/
 ├─ templates/            # minijinja テンプレート
 │  ├─ base.jinja         # ページ全体の骨格
 │  ├─ page.jinja         # 本文レイアウト
-│  └─ partials/          # sidebar.jinja / toc.jinja / header.jinja
+│  ├─ 404.jinja          # 存在しない URL 用のページ
+│  ├─ redirect.jinja     # aliases のリダイレクト HTML
+│  └─ partials/          # header / sidebar / toc / toc-mobile / breadcrumb / pager
 └─ static/               # dist/_assets/ にコピーされる静的物
-   ├─ css/theme.css
-   └─ js/theme.js
+   ├─ css/theme.css      # 色は CSS 変数（--bg / --fg / --accent …）経由で
+   └─ js/                # theme / nav / scrollspy / copy-button / search-ui …
 ```
 
 デフォルトテーマの実体はリポジトリの `crates/yuzu-theme/assets/` にあります。

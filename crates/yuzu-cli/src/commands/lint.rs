@@ -12,6 +12,7 @@ use anyhow::Context;
 use yuzu_core::{Diagnostic, LintOptions, MarkdownOptions, Page};
 
 use super::diag;
+use crate::out::outln;
 
 /// fix の適用が別のゆれを生む連鎖に備えた再 lint の上限（通常は 1 周で収束）
 const MAX_FIX_ROUNDS: usize = 10;
@@ -93,7 +94,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
     for file in &fixed_files {
         let line = format!("修正: {}", file.display());
         if progress_to_stdout {
-            println!("{line}");
+            outln!("{line}");
         } else {
             eprintln!("{line}");
         }
@@ -104,7 +105,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
             fixed_files.len()
         );
         if progress_to_stdout {
-            println!("{line}");
+            outln!("{line}");
         } else {
             eprintln!("{line}");
         }
