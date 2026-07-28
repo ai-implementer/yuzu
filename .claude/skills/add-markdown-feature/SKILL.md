@@ -69,7 +69,7 @@ INSTA_UPDATE=always cargo test -p yuzu-core    # body_snapshot.rs にケース�
 
 - `crates/yuzu-cli/scaffold/`（`index.md` / `getting-started.md`）に実例
 - `docs/content/guide/*.md` に説明を書く（**dogfooding**。表記は長音符なし・`yuzu fmt` の正規形）
-- `README.md` のロードマップ表
+- `ROADMAP.md` の Phase 行（README は入口専用なので触らない）
 
 ### 9. ci.yml へ grep ゲートを 1 行（**毎回やる**）
 

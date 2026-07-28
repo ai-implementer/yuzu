@@ -1,6 +1,6 @@
 ---
 name: release
-description: yuzu の新バージョンをリリースする（README 更新 → バンプコミット → push → CI green → 注釈付きタグ → GitHub Release 公開）。マイナー / パッチの違いと release.yml の検証条件を含む。バージョンを上げるときに使う。
+description: yuzu の新バージョンをリリースする（ROADMAP.md 更新 → バンプコミット → push → CI green → 注釈付きタグ → GitHub Release 公開）。マイナー / パッチの違いと release.yml の検証条件を含む。バージョンを上げるときに使う。
 ---
 
 # yuzu リリース手順
@@ -24,7 +24,9 @@ rustup check           # サンドボックス外。マイナーがズレてい�
 
 マイナーがズレたまま進めるなら開発コンテナ（`scripts/dev-container.sh up`）で検証する。
 
-## 1. README ロードマップの更新
+## 1. ROADMAP.md の更新
+
+**ロードマップの正は `ROADMAP.md`**（README は入口専用で、版と概要しか置かない）。
 
 **マイナーとパッチで書き方が違う。**
 

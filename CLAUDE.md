@@ -62,7 +62,7 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 - **yuzu-theme**: デフォルトテーマを rust-embed でバイナリ埋め込み。プロジェクトの `theme/` に同じ相対パスのファイルを置くとファイル単位で上書き
 - **tankan**: Mermaid 互換 SSR（sequence / flowchart / class / state / ER / gantt / pie / mindmap / timeline → SVG）。render_svg が Err を返すと yuzu 側が自動でクライアント描画にフォールバックするので未対応でも壊れない。ただし**図種を足すと「従来フォールバックしていたページが SSR 成功へ変わる」＝本文 HTML が変わる**ため、tankan 内（`kind.rs::is_supported` / `lib.rs` の mod ＋ match / corpus）だけでなく yuzu 側の `CACHE_FORMAT_VERSION` とスナップショットも追随が要る（`tankan-add-diagram` スキル参照）
 
-### 凍結した設計判断（README「凍結した設計判断」参照。差し替えないこと）
+### 凍結した設計判断（docs `development/index.md`「凍結した設計判断」参照。差し替えないこと）
 
 comrak（Markdown）/ minijinja（テンプレート）/ syntect + two-face（ハイライト、CSS クラス出力）/ clap derive / serde + JSONC / rust-embed / axum + notify + WebSocket（dev サーバ）/ rayon（ページ並列化。出力はスレッド数に依らずバイト同一）。comrak・syntect・two-face は onig（C 依存）を引かないよう **必ず `default-features = false`**（Cargo.toml のコメント参照）。
 
@@ -89,7 +89,7 @@ index 時（ネイティブ）と query 時（wasm）で**同一トークナイ�
 - **yuzu-index**: `IndexCtx` と `IndexSession`（vaporetto トークナイザの遅延構築・再利用）
 - **yuzu-cli** `commands/build.rs`: `BuildSession` が上記を束ね、envKey 計算・routesKey 設定・マニフェスト保存を行う唯一の場所
 
-キャッシュするのは高価なページ派生物（メタ・本文 HTML・検索 tf・llms 正規化 md）だけで、nav / fst / llms 連結などの集約は毎回全実行する（クロスページ依存を依存解析なしで正しく保つための分離。README「インクリメンタルビルドの実装メモ」参照）。
+キャッシュするのは高価なページ派生物（メタ・本文 HTML・検索 tf・llms 正規化 md）だけで、nav / fst / llms 連結などの集約は毎回全実行する（クロスページ依存を依存解析なしで正しく保つための分離。docs `development/internals-build.md` 参照）。
 
 **クロスページ依存を持ち込むときは routesKey へ入れる**。例: `markdown.crossref.numbering: "site"` は先行ページの図表増減で後続ページの番号が変わるため、cli が routesKey にラベル個数を含めて本文キャッシュを無効化している。
 
@@ -99,9 +99,9 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 
 ## リリース手順（vX.Y.Z）
 
-**詳細と罠は `release` スキル**（マイナーとパッチで README の書き方が違う等）。骨子だけ再掲する:
+**詳細と罠は `release` スキル**（マイナーとパッチで ROADMAP.md の書き方が違う等）。骨子だけ再掲する:
 
-1. README ロードマップの Phase 状態を更新する
+1. ROADMAP.md の Phase 状態を更新する（README には版と概要しか置かない）
 2. バンプコミット「リリース: ワークスペースバージョンを X.Y.Z へ」: ルート Cargo.toml の `workspace.package.version` を変更し、`cargo build` で Cargo.lock を追随させる（変更はこの 2 ファイルだけ）
 3. push して CI green を確認する（release.yml はタグが main に含まれることを検証するため、この順序が必須）
 4. 注釈付きタグを push: `git tag -a vX.Y.Z -m "yuzu vX.Y.Z — <Phase 概要>"` → `git push origin vX.Y.Z`。`.github/workflows/release.yml` が 4 プラットフォームのバイナリを draft Release に集約し、SHA256SUMS を添付して公開する
@@ -113,7 +113,7 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 
 **tankan**（Mermaid SSR）と **mikan**（検索エンジン。旧 yuzu-index-format）を crates.io へ公開している（monorepo のまま。バージョンは workspace と独立で、各 `Cargo.toml` の `version` を明示指定＝現状どちらも 0.1.0）。変更が溜まったら: version を上げる → `cargo build`（Cargo.lock 追随）→ CI green → `cargo publish --dry-run -p <crate>` → `cargo publish -p <crate>`（要 `cargo login`。公開は取り消し不可・yank のみ可能）。ci.yml の `cargo package --locked -p tankan -p mikan` がメタデータ・同梱内容の回帰を PR で検出する。
 
-**mikan-wasm**（旧 yuzu-search-wasm）は公開しない（`publish = false`。`cargo add` する Rust ライブラリではなく wasm 成果物を作るビルド用 crate）。yuzu 本体側の crate も公開しない（`publish = false`。名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため。将来 本体を公開する構想は README ロードマップ参照）。
+**mikan-wasm**（旧 yuzu-search-wasm）は公開しない（`publish = false`。`cargo add` する Rust ライブラリではなく wasm 成果物を作るビルド用 crate）。yuzu 本体側の crate も公開しない（`publish = false`。名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため。将来 本体を公開する構想は ROADMAP.md 参照）。
 
 ## 罠・注意点
 

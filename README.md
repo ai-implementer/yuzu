@@ -11,6 +11,24 @@ Markdown で書いた設計書を、プロダクション品質の静的 HTML �
 ビルドして GitHub Pages へ公開している実例サイト（原稿は [docs/](docs/)、
 デプロイは [.github/workflows/docs.yml](.github/workflows/docs.yml)）。
 
+## できること
+
+- **書くことに集中できる**: `content/**/*.md` を置くだけでナビ・目次・前後ページ
+  リンク・パンくずが付く。`yuzu dev` は保存から約 1 秒で自動リロード
+- **設計書のための表現力**: シンタックスハイライト・数式（KaTeX）・Mermaid 互換の図
+  （sequence / flowchart / class / state / ER / gantt / pie / mindmap / timeline の
+  9 図種をビルド時に SVG 化）・OpenAPI / JSON Schema の静的レンダリング
+- **実ソースの埋め込み**: コードブロックに `file="src/api.rs" lines=10-25` と書くと
+  実ファイルを取り込む（設計書とコードの乖離を防ぐ）
+- **日本語のための検索**: 分かち書き＋BM25 の全文検索が静的ホスティングだけで動く。
+  誤字に寛容で、フレーズ検索・同義語展開・コードブロック検索にも対応
+- **品質を保つ道具**: `yuzu fmt`（決定的整形）・`yuzu lint`（表記ゆれの検出と自動修正）・
+  `yuzu check`（リンク切れ検査）。診断は `--format json` / `github` で CI にそのまま乗る
+- **LLM 連携**: llms.txt / llms-full.txt と、ページ単位の Markdown 配信・コピーボタン
+- **速い**: インクリメンタルビルド＋ページ並列化で、再ビルドは変更ページ分だけ
+- **クライアント JS はほぼゼロ**: 図もコードも API 仕様もビルド時に HTML 化する
+  （検索とテーマ切替だけが JS。無効でも本文は読める）
+
 ## クイックスタート
 
 [GitHub Releases](https://github.com/ai-implementer/yuzu/releases/latest) の
@@ -26,7 +44,6 @@ cd my-docs
 yuzu dev            # 開発サーバ（監視 + 自動再ビルド + WS ライブリロード）
 yuzu build          # dist/ に静的サイトを出力
 yuzu preview        # http://127.0.0.1:5173/ で確認
-yuzu build --watch  # ポーリング式の簡易リロード（WS が使えない環境向け）
 yuzu fmt            # Markdown を正規形へ整形（--check で差分検出・--diff で差分表示）
 yuzu lint --fix     # 表記ゆれ（全角英数字・半角カナ・用語・長音符）を自動修正
 yuzu check          # lint + リンク切れ + fmt 差分の統合チェック（CI 用）
@@ -34,472 +51,30 @@ yuzu check          # lint + リンク切れ + fmt 差分の統合チェック�
 # リポジトリの Settings > Pages > Source を「GitHub Actions」にするだけ）
 ```
 
-## できること
+設定はプロジェクトルートの `yuzu.jsonc` 1 枚（すべてのキーが省略可能）。
+終了コードは全コマンド共通で **0 = 成功 / 1 = 違反あり / 2 = 実行エラー**。
 
-### サイト生成
+## ドキュメント
 
-- `content/**/*.md`（GFM: 表・打ち消し線・autolink・タスクリスト）→ テーマ HTML
-- **左サイドバーナビ**（ディレクトリ階層 ＝ ナビ階層。frontmatter `title` / `order` で制御）
-- **ページ内 TOC**（h2/h3、アンカーは本文見出しと同期）
-- **前/次ページリンク＋階層パンくず**（サイドバー表示順で全ページを連結。
-  トップページではパンくず非表示。消したい場合はテーマ上書きで partial を空にする）
-- **ダークモード切替**（localStorage 保存、OS 設定に追従、FOUC なし）
-- **図表番号と相互参照**: 図・表・コードの前後に `Figure: 説明 {#fig:label}`
-  （日本語の `図:` / `表:` / `リスト:` も可）と書くとページ内で自動採番され、
-  `[](#fig:label)` の空リンクが「図 1」に補完される。採番は既定でページ内連番、
-  `markdown.crossref.numbering: "site"` でサイト全体の通し番号にできる。
-  ラベル切れは `yuzu check`、重複は `yuzu lint` が検出。記法はただの段落とリンクなので
-  素の Markdown でも壊れず、`yuzu fmt` を通しても書いた形のまま温存される
-- **Admonition / 脚注**: GitHub 互換の `> [!NOTE]`〜`> [!CAUTION]`（5 種・`> [!NOTE] タイトル` で上書き可・
-  種別直後の `-` / `+` で**折りたたみ**（`<details>` / `<details open>`。JS 不要・中身は検索と llms に収録））と
-  `[^1]` 脚注。`yuzu fmt` / llms-full.txt は脚注定義の位置・未参照定義を温存する
-- **画像・添付ファイル**: `public/` 配置（`/images/...` のサイト絶対参照）に加え、
-  **ページと同じディレクトリに置いて相対参照**もできる（`![図](diagram.png)`）。
-  content 配下の `.md` 以外は dist へ自動コピーされ、相対参照は正しい URL に
-  解決される（隠しファイルと `input.ignore` 一致は除外）。参照切れは `yuzu check` が検出する
-- frontmatter（YAML）: `title` / `order` / `draft` / `description` / `llms` / `aliases`
-
-### コードと図
-
-- **シンタックスハイライト**: syntect をビルド時に実行し **CSS クラス出力**
-  （クライアント JS ゼロ、ライト/ダーク両対応）
-- **ソースファイルの埋め込み**: ` ```rust file="src/api.rs" lines=10-25 ` で実ファイルを
-  ビルド時に読み込んで表示（設計書とコードの乖離を防ぐ）。ルート外参照は拒否、
-  参照切れ・行範囲外は `yuzu check` が検出、`yuzu dev` は参照先の編集も監視。
-  キャプションは自動（`パス:行範囲`）で、検索インデックスにも展開される
-- **コードブロックの表示メタ**: ` ```rust title="src/main.rs" {2,4-6} showLineNumbers `
-  の形で**ファイル名キャプション・行ハイライト・行番号**（サイト既定は
-  `markdown.highlight.lineNumbers`）。すべてビルド時 HTML 化（figcaption・
-  行クラス・CSS カウンタ）で JS ゼロのまま。行番号・キャプションはコピーに
-  混入せず、メタは検索インデックス対象外。`yuzu fmt` は情報文字列を逐語温存
-- **コピーボタン**: コードブロック右上からワンクリックコピー
-  （Clipboard API のプログレッシブエンハンスメント。JS 無効・非 https では現れない）
-- **数式**: GitHub 互換の `$...$` / `$$...$$` / `` $`...`$ `` / ` ```math `（`$100`
-  のような通貨表記は数式にならない）。同梱 KaTeX でクライアント描画し、
-  **数式のあるページだけ** CSS/JS（約 600KB）を読み込む。`markdown.math.enabled: false` で無効化
-- **Mermaid**: ` ```mermaid ` ブロック → 既定は同梱 mermaid.js でクライアント描画。
-  **`backend: "ssr"` にすると自作の [tankan](crates/tankan/) がビルド時に SVG 化**
-  （sequence・flowchart・class・state・ER・gantt・pie・mindmap・timeline 対応。未対応図種は自動でクライアント描画にフォールバックし、
-  フォールバックが発生したページだけ mermaid.js を読み込む。SSR の SVG は
-  CSS 変数経由でダークモードに**再描画なしで追従**。flowchart / state / ER / class は
-  `classDef`（`default` 含む）/ `:::` / `style` 文のスタイル指定も SSR
-  （複数ノードへの一括適用は flowchart・state・ER が `class` 文、class 図は宣言と衝突しないよう `cssClass` 文）。
-  ユーザ指定色は意図どおりの固定色で描き、色付きボックスの文字色は背景の明度から自動で読みやすい側を選ぶ。
-  linkStyle / click はフォールバック）
-- **API 仕様（OpenAPI / JSON Schema）**: ` ```openapi ` / ` ```jsonschema ` ブロックを
-  **ビルド時に静的 HTML 化**（SSR 自前・クライアント JS ゼロ・テーマ/ダークモード統合）。
-  YAML / JSON 両対応で、ブロック先頭 1 行を `file: specs/api.yaml`（プロジェクトルート相対）
-  にするとファイル参照になる（参照ページはキャッシュ対象外 = 仕様ファイルの変更が次ビルドで必ず反映）。
-  `$ref` は文書内（`#/...`）と**プロジェクト内の別ファイル**（`schemas/common.yaml#/...`。
-  仕様ファイル内はファイル相対・インラインブロック内はルート相対・HTTP とルート外は拒否）を
-  解決する（循環は参照名表示）。**Swagger 2.0 も描画対応**（`definitions` /
-  `in: body` のリクエストボディ / `produces`・`consumes`）。文書末尾に
-  **全スキーマの一覧**（`components/schemas` / `definitions`。操作から参照されない
-  スキーマも読める）を閉じた折りたたみで出力。パース失敗は
-  エラーボックス表示でビルドは継続する
-
-### 検索と LLM 連携
-
-- **日本語全文検索**（自前 BM25）: vaporetto の分かち書き＋**文字単位**の編集距離 1 の
-  タイポトレランス（「ダーくモード」でもダークモードがヒット）。インデックスは静的ファイル（`dist/_search/`）で、ブラウザは
-  wasm ＋ 2 段フェッチ（Pagefind 型）— サーバ不要、CDN/静的ホストだけで動く。
-  **検索はセクション（h2/h3）単位**で「ページ › 見出し」の結果から `#アンカー` へ
-  直接ジャンプ。抜粋はクエリ一致箇所周辺を動的生成し、分かち書き単位でハイライト。
-  **`lint.terms` の用語辞書と `search.synonyms` がクエリ拡張に使われ、
-  ゆれ表記（「サーバ」）で検索しても正表記（「サーバー」）の文書がヒット**
-  （ハイライトも正表記側に乗る）。`search.indexCode` を有効にすると
-  フェンスコードブロックも検索対象になり、**関数名・設定キーで設計書を引ける**
-  （既定 off。特別レンダリングされる mermaid / openapi / jsonschema / math のソースは除外。
-  mermaid / math を設定で無効化しプレーンコード表示にしている場合は見えるまま索引される）。
-  **`"..."` で囲むとフレーズ検索**: 引用部が連続で出現する文書だけにヒット
-  （出現位置インデックスの隣接照合。引用部はタイポ・同義語展開なしの完全一致。
-  抜粋はフレーズ全体を 1 まとまりでハイライトし、検索ボックスにも構文ヒントを表示）。
-  引用符なしの複数語クエリには**近接ブースト**が働き、語がクエリ順に隣接して
-  出現するページが上位に来る（ヒット集合は変えずスコアのみ）。
-  `yuzu search <クエリ>` で同じエンジンをターミナルからも使える
-- **llms.txt / llms-full.txt の自動生成**（[llms.txt 仕様](https://llmstxt.org/)準拠）:
-  `dist/` 直下にリンク索引と全ページの正規化 Markdown 連結を出力。
-  frontmatter `llms: false` で個別除外、`yuzu llms [--full]` で dist なしでも標準出力へ
-- **ページ単位 Markdown の配信とコピー**: 各ページの原文 Markdown を
-  `dist/<route>.md` に配信（llms.txt のリンク先も `.md`）。ページ右上の
-  「**Markdown をコピー**」ボタンでそのまま LLM に貼れる（`.md` を開くリンク付き。
-  プログレッシブエンハンスメント — JS 無効時は非表示）
-
-### 執筆ワークフロー
-
-- **`yuzu dev`**: notify でプロジェクトルート全体を監視（インクルードの参照先が
-  `content/` の外にもあるため。出力ディレクトリ・隠しディレクトリ・`build.watchIgnore`
-  の glob（既定は `target/` と `node_modules/`）は除外。`yuzu.jsonc` の変更は
-  読み直して反映する — 監視・配信の前提になる設定だけは起動時固定で警告）→ 自動再ビルド →
-  **WebSocket ライブリロード**（`/__livereload`。md 編集から約 1 秒で自動更新、
-  サーバ再起動後はブラウザが自動再接続してリロード）。`dev.open: true` で起動時にブラウザを開く
-- `yuzu build --watch`: 同じ監視ビルドを簡易オートリフレッシュ（build_id ポーリング）で。
-  WS が通らない環境向けの退避先
-- **draft プレビュー**: frontmatter `draft: true` のページは通常ビルドから除外されるが、
-  `yuzu dev --drafts` / `yuzu build --drafts` で**バナー付きで**確認できる
-  （通常ビルドに戻すと draft の出力は自動掃除される）
-- **インクリメンタルビルド**: `yuzu build` / `dev` は常時インクリメンタル
-  （`.yuzu/cache/` にページ単位キャッシュ）。未変更ページはパース・ハイライト・
-  トークナイズをスキップし、出力は内容一致なら書き込まない（mtime 温存）。
-  削除ページの古い出力はマニフェスト差分で自動掃除。設定変更・yuzu 更新時は
-  自動で全再計算に縮退する。`--force` でキャッシュを破棄してフルビルド
-  （`.yuzu/cache/` はいつ消しても安全）
-- **fmt / lint / check**: `yuzu fmt` は AST 経由の決定的整形（frontmatter は
-  バイト温存・冪等）。`yuzu lint` は文書規約（h1 重複・見出しレベル飛び・
-  frontmatter 未知キー・コードブロック表示メタの typo / 範囲外行ハイライト）に加え、
-  **用語統一チェック**（`lint.terms` の辞書で
-  「サーバ/サーバー」のような表記ゆれを行番号付きで検出）と**組み込みの表記ゆれ
-  ルール**（全角英数字・半角カナ・長音符ゆれの混在をプロジェクト横断で検出。
-  既定有効・`lint.rules` でルール単位の無効化可。コード・URL は対象外）。
-  **`yuzu lint --fix`** は表記ゆれ系の変換候補をソースへ自動適用する
-  （fmt と同じく冪等・差分のないファイルには書き込まない。長音符ゆれは
-  多数派へ統一し、同数タイは正解を決められないため報告のみ）。
-  `yuzu check` はさらに**内部リンク・アンカー切れを行番号付きで報告**する
-  統合 CI コマンド（終了コードは 0 = 違反なし / 1 = 違反あり / 2 = 実行エラー）
-
-### 配信とカスタマイズ
-
-- `public/` の静的物パススルー（画像等）
-- **base path 対応**: `baseUrl: "/docs/"` でリンク・アセット参照をサブパスへ解決（社内リバプロ配下の配信を想定）。
-  `yuzu build --base-url` で設定より優先して上書きできる（CI からの注入用）
-- **GitHub Pages デプロイ雛形**: `yuzu new` が `.github/workflows/deploy.yml` を同梱。
-  `configure-pages` の base_path を `--base-url` へ渡すため、project pages の
-  サブパス（`/<リポジトリ名>/`）も設定なしで正しく配信される
-- **404 ページ**: ビルド時に `404.html` を生成（テーマ統合・検索ボックスと
-  サイドバー付き。GitHub Pages が自動で使う）。`public/404.html` を置けば
-  そちらが優先される。`yuzu preview` / `dev` も存在しないパスへ同じ 404 を返す
-- **リダイレクト（aliases）**: ページ移動時に frontmatter `aliases` へ旧 URL を
-  書くと、リダイレクト HTML（meta refresh + canonical + JS）をビルド時に生成。
-  baseUrl 追随・削除時は孤児掃除・実ページや他エイリアスとの衝突は
-  ビルド中断＋ `yuzu check` がエラー報告
-- **sitemap.xml**: baseUrl がフル URL のとき全ページの sitemap を自動生成
-  （`git.lastUpdated` 有効なら `<lastmod>` 付き。`public/sitemap.xml` で上書き可）
-- テーマ上書き: プロジェクトの `theme/` に同じ相対パスのファイルを置くだけ
-- **git 連携メタ**: `git.lastUpdated` でページフッターに最終コミット日、
-  `git.editUrl` で「このページを編集」リンク（`{path}` が content 相対パスに置換）。
-  git が無い環境・未コミットのページでは日付を出さずに縮退する
-
-## 設定（`yuzu.jsonc`）
-
-JSONC（コメント可）。解決済み設定は `.yuzu/settings.json` に書き出されます。
-`yuzu.jsonc` のあるディレクトリがプロジェクトルートです（cwd から上方向に探索）。
-
-```jsonc
-{
-  "site": { "title": "My Docs", "description": "...", "lang": "ja", "baseUrl": "/docs/", "logo": "/images/logo.svg" }, // logo はヘッダーのロゴ画像（未指定なら 🍊）
-  "input": { "dir": "content", "ignore": ["**/_drafts/**"] },
-  "output": { "dir": "dist", "clean": true },
-  "theme": {
-    "name": "default",
-    "dark": true,
-    // テーマ CSS 変数の上書き（キーは -- 省略可。変数名は theme.css の :root を参照）
-    "cssVars": { "accent": "#0a6cff" },
-    "cssVarsDark": { "accent": "#7fb2ff" } // ダークモード時のみの上書き
-  },
-  "nav": { "auto": true },
-  "markdown": {
-    "gfm": true,
-    "highlight": { "enabled": true, "themeLight": "InspiredGitHub", "themeDark": "base16-ocean.dark", "lineNumbers": false },
-    "mermaid": { "enabled": true, "backend": "client" } // "ssr" = tankan でビルド時 SVG
-  },
-  "lint": {
-    "maxDirectoryDepth": 1, // content 配下のディレクトリ階層を制限（直下 = 0。未設定なら無制限）
-    // 用語統一の辞書（正しい表記 → ゆれ表記）。本文・見出しのゆれを行番号付きで検出
-    "terms": { "サーバー": ["サーバ"], "ユーザー": ["ユーザ"] },
-    // 組み込みの表記ゆれルール（既定はすべて有効。false で個別無効化）
-    "rules": { "fullwidthAlphanumeric": true, "halfwidthKana": true, "katakanaChoon": true }
-  },
-  "search": {
-    "enabled": true,
-    // "dictionary": "models/custom.model.zst", // vaporetto モデルの差し替え
-    "typoTolerance": { "enabled": true, "maxEdits": 1 },
-    "shard": { "maxTermsPerShard": 16384 },
-    // 同義語グループ（lint.terms と合成してクエリ拡張に使う）
-    "synonyms": [["ログイン", "サインイン"]]
-  },
-  "llms": { "enabled": true, "full": true }, // llms.txt / llms-full.txt
-  "build": { "baseUrl": "/docs/" }, // site.baseUrl より優先
-  "dev": { "host": "127.0.0.1", "port": 5173, "liveReload": true, "open": false },
-  "git": {
-    "lastUpdated": true, // ページフッターに最終コミット日（git 不在時は自動で非表示）
-    "editUrl": "https://github.com/me/docs/edit/main/content/{path}" // 「このページを編集」
-  }
-}
-```
-
-## ロードマップ
-
-v0.1（Phase 1〜6: build / dev サーバ / 日本語検索 / llms.txt / tankan SSR / fmt・lint・check）、
-v0.2（Phase 7〜12: 執筆表現 / 数式 / ページナビ / 検索セクション単位化 / デプロイ雛形 / インクリメンタルビルド）、
-v0.3（Phase 13〜18: 執筆の即効改善 / ページ Markdown 配信とコピー / 用語統一 lint / tankan class・pie / git 連携メタ / dogfooding 改善）、
-v0.4（Phase 19〜23: 表記ゆれ組み込み lint / 検索の同義語・タイポ改善 / OpenAPI・JSON Schema SSR / flowchart スタイル構文。v0.4.1 で content 同伴アセットの自動コピーを追加）、
-v0.5（Phase 24〜29: tankan スタイル構文の全図種展開 / 検索コードブロックの opt-in インデックス / OpenAPI Swagger 2.0・スキーマ一覧 / tankan mindmap・timeline / 形態素トークナイザ PoC は実測見送り / dogfooding 改善＝404 ページと lint --fix）、
-v0.6（Phase 30〜35: 検索インデックスの位置情報化（フォーマット v3） / フレーズ検索 / ビルドのページ並列化（render・index） / dogfooding 改善＝近接ブースト・フレーズヒント・ビルド時間表示 / 検索スタックのライブラリ化と OPFS キャッシュ）、
-v0.7（Phase 36〜38: 公開・配布の整備＝yuzu 自身の[ドキュメントサイト](https://ai-implementer.github.io/yuzu/)を GitHub Pages へ公開（dogfooding の総仕上げ） / tag push でバイナリ 4 プラットフォームを GitHub Release へ配布する release.yml / [tankan の crates.io 単独公開](https://crates.io/crates/tankan)（workspace と独立のバージョン 0.1.0）。名前 `yuzu`・`yuzu-core` の取得済み判明により yuzu 本体の crates.io 公開は将来構想へ再定義）、
-v0.8（Phase 39〜41: 執筆機能の拡充＝コードブロックの表示メタ（title / 行ハイライト / 行番号。JS ゼロ維持） / リダイレクト・エイリアス（frontmatter `aliases` から旧 URL のリダイレクト HTML を生成） / dogfooding 改善＝エイリアス診断の行番号・コードメタ lint・sitemap.xml・`git.lastUpdated` のサブディレクトリ運用バグ修正）、
-v0.9（Phase 42〜45: 執筆機能の拡充 第 2 弾＝コンテンツインクルード（`file=` で実ソースの行範囲を埋め込み） / 図表番号と相互参照（キャプション行で自動採番・空リンクを「図 1」へ補完） / 折りたたみ（`> [!NOTE]-` で `<details>` 化） / dogfooding 改善＝折りたたみの自動展開・fmt の独自記法温存・図表番号のサイト全体通し番号。v0.9.1 でサイドバーのスクロール位置をページ遷移をまたいで維持する改善を追加）、
-v0.10（Phase 46〜49: 実運用の質を上げる＝診断の機械可読出力（`yuzu check` / `lint` の `--format {human,json,github}`。github 形式は PR の diff 行へ注釈） / 検証の網羅性（API 仕様の `file:` 参照を check が検証・`yuzu.jsonc` のキーのタイポと重複を診断） / watch・キャッシュの正しさ（インクルード参照先で検索索引を無効化・`build.watchIgnore`・watch 中の設定リロード） / dogfooding 改善＝検索ドロップダウンの追加読み込み・`yuzu fmt --diff`・scaffold の刷新・SIGPIPE で panic しない出力層）は完了・リリース済み。
-
-以下の Phase 50〜53 がすべて完了した時点で **v0.11** としてリリースする。軸は「執筆機能の拡充 第 3 弾」。  
-v0.10 で「黙って効かない・検証されない」穴を塞いだので、その上に**書ける表現と文言の再利用**を積む回にする。共通の判断軸は従来どおり「**素の Markdown ビューアで壊れない**」「**クライアント JS ゼロを崩さない**」。Phase は価値と実装コスト・依存関係の順に並べている（着手時に個別に設計する）。
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **50 タブ / コードグループ** | 言語別サンプル（Rust / TypeScript）や OS 別手順を**切り替えて**見せたい場面で、現在は同じ内容を縦に並べるしかない。記法は 2 案あり着手時に決める: **(a) フェンス情報文字列に `tab="Rust"` を足して連続フェンスを 1 グループへ束ねる** — 素の Markdown ビューアでは単にコードが縦に並ぶだけで**無傷**、解釈は `markdown/fence.rs` の単一実装に足すだけ、`yuzu fmt` は情報文字列を逐語温存する契約（Phase 39）があるので fmt 側の追加作業がゼロ。**(b) comrak 0.53 の `block_directive`**（`:::tabs` → `<div class="tabs">`。フラグ 1 つで有効化でき自前パーサ不要）— コード以外の本文（箇条書き・注記）もタブにできる代わりに、素のビューアでは `:::` が本文に見え、`format_commonmark` が先頭 `:` をエスケープするため fmt の復元処理が要る。CSS は radio + flex `order` で**タブ枚数の上限なく JS ゼロ**（ラジオ名はページ内で一意にする）。論点: 隠れたタブの中身を検索・llms.txt へどう入れるか（折りたたみは「閉じていても HTML にあるのでそのまま索引」の前例あり）/ タブ見出しの表記ゆれを lint 対象にするか / `CACHE_FORMAT_VERSION` の bump | ⬜ |
-| **51 Markdown 片のインクルード** | `file=` は**コードブロック専用**で、共通の注意書き・用語定義・免責文を複数ページで再利用できない（設計書運用では「同じ文言が 5 ページに散り、片方だけ古い」が実際に起きる）。読み込みは `yuzu-core::include` の `read_under_root`（canonicalize でルート配下強制）をそのまま使えるが、**コードと違い Markdown は解釈される**ぶん論点が多い: 記法（フェンス方式なら素のビューアでは「コードとして見える」だけで壊れない）/ 見出しを含む断片のアンカー採番（extract_meta・本文 HTML・extract_plain_sections の 3 経路とも文書順に Anchorizer を通す不変条件を保てるか）/ 入れ子と循環（深さ上限）/ キャッシュ（本文 HTML は external_deps で非対象、検索 tf は Phase 48 の `searchDepsSha256` を流用できる）/ `yuzu fmt` は断片ファイル自体を整形対象にするか（content の外にも置ける）/ llms.txt は展開か原文か（Phase 42 は「検索は展開・llms は原文」）/ 断片内の見出しレベル飛びを lint の誰の責任にするか | ⬜ |
-| **52 用語集・略語** | 設計書は略語が多いのに、初出の説明を毎ページ書くか読み手の記憶に頼るしかない。`lint.terms`（表記ゆれ辞書）と同じ「**設定に辞書を置く**」形にすれば本文の Markdown は 1 バイトも汚れない（Markdown Extra の `*[API]: …` 記法は素のビューアで定義行がそのまま見えてしまい、comrak に該当拡張も無いので自前パースが要る点は同じ）。本文の出現を `<abbr title="…">` 化し、**用語集ページを自動生成**する案。論点: 置換対象の除外（コード・リンク・見出し・図表キャプション）/ 初出だけか全出現か / **AST は走査で集めて後段で適用**する（Phase 43・44 で踏んだ「イテレート中の木変更でパニック」）/ 用語の説明文を検索インデックスへ入れるか / 用語集ページの route 予約と nav への出し方 / `CACHE_FORMAT_VERSION` の bump | ⬜ |
-| **53 dogfooding 改善** | 恒例のバッファ枠（着手時にユーザが 3 点選ぶ）。候補: **`cjk_friendly_emphasis` の有効化**（comrak 0.53 のフラグ 1 つ。現状 `**「…」**が出ます` のように日本語の括弧・句読点に隣接する強調が効かず、v0.10 の docs 執筆中に実際に踏んだ。既存の本文 HTML が変わるのでスナップショット確認と `CACHE_FORMAT_VERSION` bump が要る）/ **印刷用 CSS**（`@media print` が 0 件で、PDF 保存するとサイドバー・TOC・検索ボックス・コピーボタンが全部紙に載る）/ **定義リスト**（comrak `description_lists` が未有効化。用語集と相性が良い）/ `--root` グローバルオプション / shell 補完（clap_complete）/ ポート衝突時のエラーにポート番号を出す / 検索結果の絞り込み | ⬜ |
-
-v0.12 以降の候補: i18n（テーマ UI 文字列の多言語化。`site.lang` は現在 `<html lang>` にしか効いていない。コア UI で 36 文字列・apispec を含めると +32）・全文検索の結果専用ページ（URL で共有できる検索結果。Phase 49 でドロップダウンの追加読み込みは解決済み）・lint の inline 抑制と全ルールの enable/disable・外部リンク切れ検査（「決定的・オフライン」の凍結方針と衝突するため opt-in 設計が要る）・ドキュメントバージョニング（要否含め保留中）・VS Code 拡張（wasm プレビュー。`yuzu-core` / `yuzu-render` が 9 ファイルで `std::fs` に依存しており I/O 抽象化が前提）・yuzu 本体の crates.io 公開（汎用ライブラリ層は tankan・mikan まで公開済み。残るは本体だが、名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため、単一パッケージ化するか名称を再検討する必要がある。Phase 37 の決定事項）。
-
-<details>
-<summary>完了済み: v0.10（Phase 46〜49）の内訳</summary>
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **46 診断の機械可読出力** | `yuzu check` / `lint` に `--format {human,json,github}` を追加（既定 human で従来の出力は不変）。**github 形式は GitHub Actions の注釈として PR の diff 行へ直接出す**。パスは `GITHUB_WORKSPACE` からの相対へ自動で付け替えるので、ワークフローが `cd docs` してから実行しても正しいファイルに紐づく（**これが無いと注釈が PR に出ない**のが実装上の要）。json は単一オブジェクト（`diagnostics` ＋ `summary`）で、**内部の `Diagnostic` に derive せず CLI 側に DTO を置いた**（`rel` の基点不明・非 UTF-8 での失敗・`fix` の置換文字列漏れ・`span` のネストを公開契約から切り離すため。yuzu-core は無改修）。注釈メッセージのエスケープは必須（`broken-link` が URL を生で埋め込むため `%` が実際に出る）。副次的に **`check` と `lint` の共通末尾を `diag::report` へ集約**し、`lint` のソート漏れも解消。**yuzu-cli 初のユニットテスト 13 本**を追加。あわせて全ルールのリファレンス（`reference/rules.md`。当時 16 ルール、現在 20）を新設し、ci.yml の docs 検証を `--format github` へ差し替えた | ✅ |
-| **47 検証の網羅性** | `openapi` / `jsonschema` の `file:` 参照を `yuzu check` が検証するようにした（`spec-error` / `spec-warning`）。描画は「Err を返さない」方針でエラーボックスにして継続するため、**仕様ファイルを消す・壊しても終了コードは 0 のまま**だった。とくに `$ref` 先の失敗はエラーボックスにすらならず小さな注記へ縮退するので見落としやすい。検証は apispec パーサのある yuzu-render に置き（core に別実装を作ると解釈がズレる）、`file:` の解釈とファイル読みだけ core へ移して 1 実装を共有。**`yuzu.jsonc` のキーのタイポと重複も診断化**（`config-unknown-key` / `config-duplicate-key`）— 既知キー木は `Config::default()` の JSON 化で実行時に得るので手書き定数とのズレが起きず、`deny_unknown_fields` は使わない（古いバイナリが新しい設定で落ちる＝前方互換を壊すため）。設定ファイルは content の外にあるので `Diagnostic` に基点（`DiagBase`）を追加した（`rel` に `..` を入れると JSON の path 契約が壊れ GitHub 注釈も紐づかない）。あわせて Phase 46 の契約穴（tracing の既定 writer が stdout で `--format json` を汚す）を修正 | ✅ |
-| **48 watch・キャッシュの正しさ** | Phase 42（コンテンツインクルード）がプロジェクトルート監視へ広げた副作用 3 件を解消。①**検索インデックスのキャッシュがページ source ハッシュだけで判定していた**ため、インクルード参照先だけを編集すると本文は更新されるのに**検索結果が古いまま**だった（本文 HTML は external_deps で非対象化済みなのに検索 tf は対象外）。参照先の内容ハッシュを**別フィールド**（`searchDepsSha256`）で持つ — `sourceHash` へ畳み込むとエントリが丸ごと作り直され、メタ・本文・llms まで巻き添えで毎ビルド全ミスになる。索引されない引用（`search.indexCode` 無効・特別レンダリング言語）はハッシュ対象から外し、フェンス情報文字列の解釈は core の `collect_include_specs` に寄せて check と 1 実装を共有 ②監視除外を **`build.watchIgnore`** で設定可能にした（既定 `**/target` / `**/node_modules`。従来は出力ディレクトリと隠しディレクトリだけで `target/` を丸ごと再帰監視していた）。glob の解釈は `input.ignore` と同じ core の `IgnoreMatcher` を通し、yuzu-server は yuzu-core を知らないまま**述語で受け取る**（凍結した依存グラフを守る）。判定は**パス自身＋祖先ディレクトリ**に対して行う — 実機確認で「`**/target/**` は `target/` の**作成イベント自体**に当たらず 1 回だけ再ビルドが走る」ことが判明したため。**除外はイベントのフィルタで監視登録自体は減らない**（notify にパス単位の除外が無い）③**`yuzu dev` / `build --watch` が `yuzu.jsonc` の変更を取り込む**ようにした（従来は再ビルドもライブリロードも走るのに設定だけ効かず「設定ミスを疑う」で時間を溶かした）。`WatchBuild` が設定の持ち主になり、envKey が変わるのでセッションごと作り直す。壊れた JSONC では前回の設定で続行してプロセスを落とさない。ただし**監視・配信の前提に焼き付いた設定は起動時の値へ固定して警告する**（`output.dir` を差し替えると新しい出力先が監視除外から外れて無限ループになる。`baseUrl` / `dev.host` / `dev.port` / `dev.liveReload` / `build.watchIgnore` も同様） | ✅ |
-| **49 dogfooding 改善** | 恒例のバッファ枠（ユーザ選定の 3 点＋小粒 1 件）: **①検索ドロップダウンの 10 件打ち止めを解消** — 末尾に「さらに N 件を表示（残り M 件）」行を置き、limit を増やして再クエリして**増えた分だけ追記描画**する（DOM を消さないのでスクロール位置と選択が保たれ、fragment fetch もクライアント側のメモ化で増分だけになる）。追記が正しいのは**エンジンの並びが (スコア降順, doc_id 昇順) の全順序で、limit を増やした結果が前回の厳密な接頭辞になる**ため。more 行は `<button>` ではなく **`role="option"`**（listbox に interactive を入れず Tab フォーカスを input に留める）で矢印キーの循環に含め、**キーボードだけで「続きがある」ことに気づける**。Enter は **IME ガード → more 行 → 遷移**の順（逆にすると Safari の確定 Enter で誤爆、分岐漏れは `href` が undefined で `/undefined` へ飛ぶ）。`search-ui.js` + `theme.css` だけで完結し、テンプレート無改修＝スナップショット・JS 無効時の挙動は不変。設定キーは足さない（v0.11 候補の検索結果ページと意味が衝突するため。件数を変えたい人はテーマ上書きで） **②`yuzu fmt --diff`** — unified diff を標準出力へ（`--check` を含意して書き換えない）。ヘッダはルート相対・`/` 区切り・タイムスタンプ無し・色無しで、**`> x.patch` → `patch -p1` がそのまま通る**ことを CI で縛る。集計行は stderr（`--format json` と同じ「stdout は契約物だけ」の規律）。diff 生成は `similar`（insta 経由で Cargo.lock に既存＝ロック不変・純 Rust）。`check` の `fmt` 診断には差分を載せず（github 形式は改行を `%0A` にするため巨大な 1 行注釈になる）メッセージから `--diff` へ誘導する **③scaffold の陳腐化を解消** — `index.md` の「5 図種」→ 9（リポジトリ唯一の食い違いで、次ページには 9 と書いてあった）、機能表を現行へ、`snippets/greet.rs` を同梱して**インクルードの動く実例**（`lines=` は使わない = 行範囲の結合を雛形に持ち込まない）、`aliases` の実例でリダイレクト HTML が出る状態に、state 図を足して 9 図種そろえ、lint 節に規約系ルールとルール一覧への導線、`build.watchIgnore` のコメント例 **④SIGPIPE で panic しない** — `yuzu search … \| head` が `failed printing to stdout: Broken pipe`（終了コード 101）で落ちていた。`libc` で `SIG_DFL` に戻す案は**終了コード 141 が漏れて 0/1/2 規約が壊れる**ので採らず、標準出力を `out.rs` へ集約して **BrokenPipe は「以降の出力を捨てる合図」**として扱う（本来の 0/1/2 を保つ）。再発防止に `#![deny(clippy::print_stdout)]`。**回帰ゲートは 64KB 超の出力＋`head -c 1`＋`PIPESTATUS`**（パイプバッファに収まると EPIPE 自体が起きず空振りする） | ✅ |
-
-</details>
-
-<details>
-<summary>完了済み: v0.9（Phase 42〜45）の内訳</summary>
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **42 コンテンツインクルード** | 実ソースファイルの一部をコードブロックへ埋め込む ` ```rust file="src/api.rs" lines=10-25 `（設計書とコードの乖離を防ぐ）。fence 情報文字列に `file=` / `lines=` を追加し（Phase 39 の `parse_fence_info` 基盤）、読み込みと行切り出しは `yuzu-core::include`（canonicalize でルート配下強制。描画・検索・check の 3 経路で共有）。`title` 省略時は `パス:行範囲` を自動キャプション、言語省略時は拡張子で syntect 構文を推定、行ハイライトは切り出し後の相対行。参照ページは既存 external_deps でキャッシュ非対象（参照先の変更が次ビルドで必ず反映）。不在・ルート外・行範囲外はエラーボックスでビルド継続＋`yuzu check` が `include-error` で報告、`lines=` 単独等の書き間違いは Phase 41 の `code-block-meta` lint が警告。**着手時の 3 判断**: 範囲指定は行番号のみ（region マーカーは不採用）/ 検索（`indexCode`）は展開・llms.txt は原文のまま（fmt 正規形との一致を保つ）/ `yuzu dev` はプロジェクトルート監視へ変更（**出力ディレクトリと隠しディレクトリを除外する仕組みを watch に新設** = 除外なしでは再ビルドの無限ループになる）。`CACHE_FORMAT_VERSION` 10→11 | ✅ |
-| **43 図表番号と相互参照** | 図・表・コードの前後に置く**キャプション行**（`Figure: 説明 {#fig:label}`。日本語の `図:` / `表:` / `リスト:` も受理）でページ内自動採番し、本文から参照できるようにした。着手時判断: 記法はキャプション行方式（**素の Markdown ビューアでも壊れないただの段落とリンク**）/ 採番はページ内連番（種別ごとに独立カウンタ）/ 対象は図・表・コードの 3 種。参照は空テキストリンク `[](#fig:label)` を「図 1」へ自動補完（テキスト付き `[この図](#fig:label)` は著者指定を尊重）。実装は `yuzu-core::markdown::crossref`（解釈・採番・HTML 化の単一実装）で、採番はメタ抽出（`Page.labels`）と本文 HTML 化の両方を同じ規則・文書順で回して一致させる。ラベルは linkcheck の有効アンカーに追加（切れは `broken-anchor`）、重複は lint の `duplicate-label` が警告。`CACHE_FORMAT_VERSION` 11→12。**AST 操作の注意**: comrak は `descendants()` のイテレート中に木構造を変えるとパニックするため、走査では置換対象を集めるだけにして適用は後段で行う（段落 → HtmlBlock 化では子ノードの切り離しも必要） | ✅ |
-| **44 折りたたみ** | Admonition の種別直後に `-`（閉じた状態）/ `+`（開いた状態）を付けると `<details>` / `<details open>` で描画する（Obsidian callouts 互換。ネイティブ要素なのでクライアント JS 不要）。comrak は `[!NOTE]-` の `-` をタイトルの一部として渡してくるため、`yuzu-core::markdown::collapse` がマーカーを剥がして判定し、`<details>` 開始タグ + 中身 + 終了タグへ **AST 上で組み替える**（comrak に details 出力が無いため。Alert ノードの子を外へ移して自身は detach）。タイトル省略時は comrak と同じ既定ラベル（Note / Tip …）。テーマ CSS は既存の `.markdown-alert` 共通ルールがそのまま効くので summary のクリック領域だけ追加。折りたたみの中身は閉じていても HTML に含まれるため検索・llms.txt にそのまま収録される。`yuzu fmt` は `> [!NOTE] - タイトル` の形へ正規化するが解釈は不変・冪等（docs に注記） | ✅ |
-| **45 dogfooding 改善** | 恒例のバッファ枠（ユーザ選定の 3 点）: **①折りたたみの自動展開** — 検索結果・目次・図表参照から `<details>` の中へアンカーで飛んだとき祖先を開いて該当箇所を見せる（`details-target.js`。プログレッシブエンハンスメントで JS 無効でも中身は HTML にある。ページ内検索の自動展開はブラウザ側の対応に委ねる = 閉じた details の中身は details 自身が隠すため `hidden=until-found` は効かない）。**②fmt 正規化の見た目改善** — `format_commonmark` は `#` を無条件にエスケープし（`{#fig:x}` → `{\#fig:x}`）Admonition のタイトル前に空白を入れる（`[!NOTE]-` → `[!NOTE] -`）。どちらも comrak 側にオプションが無いため、**fmt 出力に対象を絞った復元処理**（行末ラベルと Admonition マーカーだけ）を入れて書いた形を保つようにした（通常の `#` エスケープは従来どおり）。**③図表番号のサイト全体通し番号** — `markdown.crossref.numbering: "site"`（既定 `"page"`）でサイドバー表示順の通し番号にする。オフセット割り当ては nav とラベルの両方を持つ `build_site_model` で行い、先行ページの図表増減が後続ページの番号を変えるため routesKey にラベル個数を含めて本文キャッシュを無効化する。OG メタ・favicon は方針どおり対象外 | ✅ |
-
-</details>
-
-<details>
-<summary>完了済み: v0.8（Phase 39〜41）の内訳</summary>
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **39 コードブロックの拡充** | フェンス情報文字列を拡張し ` ```rust title="src/main.rs" {2,4-6} showLineNumbers ` の形で**ファイル名キャプション・行ハイライト・行番号**に対応。行番号のサイト既定は `markdown.highlight.lineNumbers`（既定 false）で、ブロック単位の `showLineNumbers` / `noLineNumbers` が優先。パースは `yuzu-core`（`markdown/fence.rs` の `parse_fence_info` = HTML 化と検索抽出の単一実装。`CodeBlockRenderer` trait に `CodeBlockMeta` を追加）、描画は `yuzu-render`（`highlight.rs`）。**全コードブロックを行 span 化**（syntect の一括 HTML を `split_lines_balanced` で行ごとに自己完結化 = 行またぎ scope は行末で閉じ次行頭で開き直す）し、キャプション = `<figcaption>`・行ハイライト = `hl` クラス・行番号 = CSS カウンタで**クライアント JS ゼロ維持**。改行は span 内に残すためコピーボタン（`code.textContent`）は改行を保ち、行番号・キャプションは混入しない。未知言語・言語なしでもメタか行番号指定があればエスケープ済みプレーン本文を同構造で描画（指定なしは従来どおりパーサ既定）。特別レンダリング言語（mermaid / openapi / jsonschema / math）はメタを無視。検索はコード本文だけを索引（メタ非混入）・`yuzu fmt` は情報文字列を逐語温存（冪等をテストで担保）・`CACHE_FORMAT_VERSION` 8→9。scaffold と docs サイトに実例を追加 | ✅ |
-| **40 リダイレクト / エイリアス** | frontmatter `aliases`（旧 URL の配列。先頭 `/`・末尾スラッシュ省略は正規化で吸収）から、旧パスへのリダイレクト HTML（`redirect.jinja` = meta refresh + canonical + `noindex` + JS フォールバック。テーマ上書き可）をビルド時に生成（静的ホスティングにサーバリダイレクトが無いための定石）。リダイレクト先は `UrlResolver` 経由で baseUrl に追随。出力はマニフェストに記録され、エイリアス削除時は孤児掃除で自動的に消える。検証は `yuzu-core::validate_aliases` に集約（形式不正 `alias-invalid`・実ページ route / 他エイリアスとの衝突 `alias-conflict`）: `yuzu check` は draft 込みの全ソースでエラー報告（exit 1）、render_site は書き出し前に検証して中断（exit 2。実ページの上書き事故をレンダラ自身でも防ぐ）。エイリアスは検索・llms.txt の対象外で、linkcheck の有効ターゲットにも含めない（本文からエイリアス URL へのリンクは check が指摘 = 内部リンクは常に正 URL へ）。`KNOWN_KEYS` へ追加・`CACHE_FORMAT_VERSION` 9→10（CachedMeta の Frontmatter 変更）。docs サイトで実運用（`guide/lint/` → 品質チェックページ。ci.yml にゲート） | ✅ |
-| **41 dogfooding 改善** | 恒例のバッファ枠（ユーザ選定の 3 点）: **①エイリアス診断の行番号** — `alias-invalid` / `alias-conflict` に frontmatter の該当行 span を付与（値の行 → `aliases:` キー行 → frontmatter 全体のフォールバック。`validate_aliases` が `MarkdownOptions` を受ける形に）。**②フェンス情報文字列のタイポ検出** — lint 新ルール `code-block-meta`（Warning・常時有効）: 未知トークン（`showLineNumber` 等のタイポ）・`{2,x}` の解釈不能要素・コード行数を超える行ハイライト・特別レンダリング言語への表示メタ指定（無視される旨）を行番号付きで警告。描画は従来どおり寛容（挙動を変えるのは lint だけ。`parse_fence_info_detailed` で「何を無視したか」を返す）。**③sitemap.xml の自動生成** — baseUrl がフル URL のときだけ全ページを `<loc>` 絶対 URL で列挙（`git.lastUpdated` 有効なら `<lastmod>` 付き）。エイリアス・404 は載せず、`public/sitemap.xml` で上書き可・孤児掃除対象。**④（検証中に発見したバグ修正）`git.lastUpdated` がサブディレクトリ運用で全滅していた問題** — `git log --name-only` のパスはリポジトリルート相対のため、yuzu プロジェクトが git リポジトリのサブディレクトリにある場合（monorepo 内の docs/ 等）に content プレフィクスの除去が全ファイルで失敗し、日付が静かに空になっていた。`--relative` を追加してプロジェクトルート相対に揃えて修正（= 自ドキュメントサイトのフッター最終更新日と sitemap の `<lastmod>` はこの修正で初めて機能）。OG メタ・favicon は方針どおり対象外 | ✅ |
-
-</details>
-
-<details>
-<summary>完了済み: v0.7（Phase 36〜38）の内訳</summary>
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **36 yuzu 自身のドキュメントサイト公開** | dogfooding の総仕上げとして、yuzu 自身のドキュメントを yuzu で書いて GitHub Pages に公開（https://ai-implementer.github.io/yuzu/ ）。`docs/` をこのリポジトリ自身の yuzu プロジェクトにし（`docs/yuzu.jsonc` ＋ content 16 ページ: トップ＋ガイド 9・リファレンス 3・開発 3。現在は 17 ページ）、README をページ階層へ再構成。主要機能を実運用で使用: tankan SSR（9 図種ギャラリー＋ワークスペース依存図。フォールバック 0 を CI でゲート）・OpenAPI（インライン＋ `file: specs/sample-api.yaml` 参照）・数式・検索（`indexCode` / `synonyms` / `lint.terms` クエリ拡張を有効化）・`lint.maxDirectoryDepth`・git 連携メタ（`fetch-depth: 0` で lastUpdated）。デプロイは `.github/workflows/docs.yml`（main push で自前 release バイナリをビルド → `yuzu check` 品質ゲート → `--base-url` に Pages のフル URL を注入 = llms.txt が絶対 URL → Pages へ配置）。ci.yml にも docs の check・build・SSR フォールバック検出を追加し、壊れた原稿はマージ前に検出する | ✅ |
-| **37 配布整備（バイナリ配布）** | 当初案は全クレートの依存順 crates.io 公開だったが、着手時調査で `yuzu`・`yuzu-core` の名前が crates.io 上の別プロジェクトに取得済みと判明（crates.io に namespace はなく、公開には依存クロージャ全公開が必須 = 部分公開は不可）。公開単位の検討の結果 **crates.io は今回使わない**と決定し、将来 tankan・検索スタック（yuzu-index-format）を切り離し公開した後に、それらへ依存する形で yuzu 本体を公開する構想へ再定義（v0.8 以降候補へ）。誤公開防止に全 10 crate へ `publish = false` を明示。バイナリ配布は tag push トリガーの `.github/workflows/release.yml`（手書き matrix + gh CLI・サードパーティアクション不使用）: タグ整合ガード（`v` + workspace バージョン一致・main 包含 = CI 済み担保）→ macOS arm64/x64（arm64 runner からクロス）・Linux x64（ubuntu-22.04 = glibc 2.35 基準）・Windows x64 を `--release --locked` ビルド → `--version` smoke → draft Release へ集約 → SHA256SUMS 添付 → 公開。部分失敗は Re-run failed jobs だけで復旧（--clobber + draft 非公開）。workflow_dispatch でタグなし検証可。README / docs のインストール手順をバイナリ + `cargo install --git` へ更新 | ✅ |
-| **38 tankan の分離公開** | Mermaid 互換 SSR だけを求める非 yuzu ユーザーへの訴求が目的。着手時判断で **monorepo のまま crates.io 単独公開**に決定（リポジトリ分離は開発の往復コストが恒常的に増えるため、需要を見て後日判断。後からの分離はいつでも可能）。tankan を **workspace と独立のバージョン 0.1.0** へ切り替え（yuzu のリリースと非同期に tankan の変更時だけ版を上げる）、`publish = false` を除去し crates.io メタデータを整備（description は英語化・keywords / categories・`readme`）。README の対応状況表を現行化（mindmap・timeline 追加、state / ER / class のスタイル構文対応を反映、`cargo add tankan` 導線）。ci.yml に `cargo package --locked -p tankan` ゲートを追加し、CLAUDE.md に tankan の公開手順を記録。実公開は `cargo publish -p tankan`（ユーザ実行） | ✅ |
-
-</details>
-
-<details>
-<summary>完了済み: v0.6（Phase 30〜35）の内訳</summary>
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **30 検索インデックスの位置情報化（フォーマット v3）** | postings に term の出現位置（セクション内トークン位置の delta varint 列。tf は見出し重み付きで出現数と一致しないため件数 varint を明示）を追加し `FORMAT_VERSION` 2→3。フィールド間（タイトル/見出し/本文）に位置ギャップを挟んで偽隣接を防ぐ。エンジンは位置を読み飛ばすだけで挙動不変（BM25 据え置き）＝フレーズ照合の土台のみ。`CachedSection` の変更に伴い `CACHE_FORMAT_VERSION` も上げる。**サイズ実測ゲート**: `dist/_search` 合計（素/gzip）の現行比を計測し「静的ホスティングだけで動く」方針と照合 → **通過**（scaffold 2 ページ: 合計 gzip +0.3%・語彙が極端に密な合成 301 ページ: 合計 gzip +14.0%〔1.18MB→1.34MB。postings 小計は 7.6KB→173KB〕。Phase 28 で見送った 9〜35 倍とは桁違いに小さい）。v2/v3 で `yuzu search` の結果はスコアまで完全一致を確認。wasm 再 vendor 済み | ✅ |
-| **31 フレーズ検索（クエリ照合＋UI）** | `"..."` 引用符でフレーズ指定（**引用符なしの既定挙動は不変**。全角・カーリー引用符も受理、閉じ忘れは末尾まで）。引用部はトークナイズ→位置の隣接照合で **filter**（含まない doc を除外。スコア加点は構成 term の BM25 が担う）。タイポ・同義語展開の対象外＝完全一致のみで、語彙に無いフレーズは 0 件。セクションまたぎ非対応。抜粋・ハイライトはフレーズ全体を 1 needle ＋隣接マージで 1 まとまりにマーク。実装は SearchEngine（yuzu-index-format）1 箇所で native/wasm 共有、CI e2e にフレーズ実ヒット・逆順 0 件の検証を追加、wasm 再 vendor 済み（481→492KB） | ✅ |
-| **32 ビルドのページ並列化（render）** | `render_site` のページループ（本文 HTML 生成〜テンプレート〜書き出し）を rayon で並列化。前提リファクタとしてハイライタのページ内状態をページローカルな `PageCodeRenderer` へ分離（`Cell` の `!Sync` が誤共有をコンパイル時に防ぐ）。集約（nav / llms / 404 / アセット）は直列のまま＝層構造不変。**決定性ゲート通過**: スレッド数 1/N・並列化前バイナリとの `diff -r` バイト同一。実測（release・--force）: render 支配のコーパス（201 ページ・ハイライト 1,200 ブロック＋mermaid SSR 200 図）で **2.07s → 0.69s（3.0 倍）**、テキスト主体 301 ページは 0.53s → 0.48s（トークナイズ支配 = Phase 33 の領分）。rayon は「凍結した設計判断」表へ追記 | ✅ |
-| **33 ビルドのページ並列化（index）＋実測** | 検索インデックスのページごとトークナイズ（compute_sections）を rayon 並列化。キャッシュ判定を先行パスに分け、miss があるときだけトークナイザを 1 回構築して `&Tokenizer` を共有（vaporetto Predictor は `Sync`＝コンパイルで確認）。集約（doc_id 採番・postings・fst）はページ順の直列のままで決定性維持（スレッド 1/N・改修前バイナリと `diff -r` バイト同一）。**実測（release・M 系 Mac）**: テキスト主体 301 ページのフル 0.54s→0.41s・1,001 ページのフル 1.6s→1.1s（1 スレッド比。無変更 0.33s・1 ページ編集 0.39s）。render 支配なら Phase 32 の 3.0 倍が効く。残る直列部はメタ抽出（comrak）・モデル展開・fst/書き出し | ✅ |
-| **34 dogfooding 改善** | 恒例のバッファ枠: **近接ブースト**（引用符なしの複数語クエリで、クエリ順に隣接出現するページを ×1.2/ペア のスコアで上位へ。フレーズ照合と同じ位置ロジックの soft 版で、ヒット集合は不変・タイポ/同義語展開語は対象外）・**フレーズ検索の発見性**（検索ドロップダウン末尾に `"..."` 構文のヒントを常時表示。引用符使用時は消える）・**ビルド時間の表示**（`build`/`dev` の完了ログに elapsed を追加。並列化の効果が見える）。OG メタ・favicon は今回も見送り | ✅ |
-| **35 検索スタックのライブラリ化＋OPFS キャッシュ** | 外部記事（DuckDB-Wasm/Lindera-Wasm/OPFS 構成のオフライン検索）を受けて調査した結果、トークナイザ差し替えは Phase 28 の却下理由（転送量 9〜35 倍）がそのまま当てはまるため**見送り、vaporetto＋自作 BM25 エンジンは維持**。代わりに (1) 集約ロジック（doc_id 採番・postings・fst・シャード分割・manifest 構築）を `yuzu-index`（yuzu-core 依存）から `yuzu-index-format::build`（yuzu-* 非依存）へ移設し、tankan と同水準の「分離可能な設計」を検索スタックにも適用、(2) `Manifest` に `contentHash`（terms.fst＋全シャード＋モデルバイトの sha256、`#[serde(default)]` で後方互換）を追加し、ブラウザ側 OPFS（Origin Private File System）キャッシュの版管理に使用。フェッチ・OPFS・wasm 起動のオーケストレーションは `crates/yuzu-search-wasm/js/search-client.js`＋汎用ブロブキャッシュ `opfs-cache.js`（新規、DOM 非依存）に切り出し、テーマの `search-ui.js` は DOM/UX 層に純化。OPFS は contentHash 不一致 or 非対応環境で即座にフェッチのみ経路へフォールバック（`yuzu search` ネイティブ CLI は無関係・無改修）。**サイズ実測ゲート**: scaffold 2 ページで `dist/_search` 合計が raw 922,722→931,133B（+0.91%）・gzip 626,774→630,538B（+0.60%）。新規 JS は語彙量に依存しない固定コスト（`search-client.js` 4.9KB＋`opfs-cache.js` 2.7KB）で、`search_bg.wasm` は 494KB のまま実質不変（Cargo 依存・エクスポート API を変えていないため）。決定性テスト（`content_hash` は同一入力で同一値・内容変更で別値）を追加 | ✅ |
-
-</details>
-
-<details>
-<summary>完了済み: v0.5（Phase 24〜29）の内訳</summary>
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **24 tankan スタイル構文の全図種展開** | flowchart で対応した `classDef` / `class` / `:::` / `style`（＋fill 明度からのラベル色自動選択）を **state / ER / class 図**へ展開。適用先は状態ボックス・エンティティ・クラスボックスで、色付きボックスはタイトル帯含め全体を塗り全テキストを自動読みやすい色に。共通ロジックは `tankan::common::style` に集約。class 図は宣言の `class` と衝突しないよう一括適用を `cssClass` に | ✅ |
-| **25 検索: コードブロックの opt-in インデックス** | `search.indexCode`（既定 off）でフェンスコードブロック本文を検索対象に追加。関数名・設定キーで設計書を引ける。tf 重みは本文と同じ 1・コードは抜粋にも出す（merge）・特別レンダリングされる言語（mermaid / openapi / jsonschema / math。無効化してプレーン表示なら索引対象）は除外・インデントコードは対象外・llms.txt には非混入。envKey が on/off を拾いキャッシュ自動無効化 | ✅ |
-| **26 OpenAPI レンダリングの拡充** | Swagger 2.0 対応（`definitions` の `$ref` は既存機構で解決・`in: body` はリクエストボディ表示・responses 直下の `schema`・`produces`/`consumes` のメディアタイプ表示は operation が top-level を上書き。host/basePath 等は非表示）と、**全スキーマ一覧の描画**（`components/schemas` / `definitions` を文書末尾に閉じた details で。操作から参照されないスキーマも読める）。2.0 分岐は `SpecVersion::V2` に隔離し 3.x パスは挙動不変 | ✅ |
-| **27 tankan 新図種** | **mindmap と timeline** を SSR 追加。mindmap は中央ルート左右振り分けの tidy tree（インデント階層パース・7 形状・ブランチごとのパレット色）、timeline は等間隔カラム＋セクション帯＋イベント縦積み。幅ベースの自動折返し `wrap_text` を common に新設（日本語は文字単位・ASCII は単語境界）。I/O なし・時刻非依存の設計原則は維持、corpus 11 本＋スナップショット 6 枚 | ✅ |
-| **28 形態素トークナイザ PoC** | vibrato / lindera への差し替えを実測し（wasm サイズ・精度・速度・辞書配布）、**見送り = 現行 vaporetto + SUW 継続を決定**。根拠: 差し替えは合計転送量が現行 ≈450KB の 9〜35 倍（vibrato+ipadic ≈7.8MB / lindera embed-ipadic は wasm 58MB・gzip 15.8MB）で「静的ホスティングだけで動く」方針と衝突。精度改善は辞書語の 1 語化に限られ、ipadic の誤分割（ワークス/ペース）やカタカナ連結による部分語 recall 低下も確認。SUW 細分割の弱点は同義語・タイポ機構（Phase 20/21）で緩和済み。v0.6 のフレーズ検索はトークナイザ据え置きで位置情報インデックスのみで実現する | ✅ |
-| **29 dogfooding 改善** | 実運用の不満の一括解消（バッファ枠）: **404 ページの生成**（テーマ統合・検索ボックス付き `404.html`。Pages デプロイ雛形同梱なのに直リンク切れが素の 404 だった穴。`public/404.html` で上書き可・`preview`/`dev` も 404 ステータスで配信）と **`yuzu lint --fix`**（表記ゆれ lint は変換候補まで出すのに適用が手作業だった穴。全角英数字・半角カナ・`lint.terms`・長音符ゆれ多数派を自動適用。冪等・mtime 温存・同数タイは報告のみ） | ✅ |
-
-</details>
-
-<details>
-<summary>完了済み: v0.4（Phase 19〜23）の内訳</summary>
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **19 表記ゆれ lint の組み込みルール** | `fullwidth-alphanumeric`（全角英数字。半角の変換候補付き）・`halfwidth-kana`（半角カナ。濁点合成込みの変換候補付き）・`katakana-choon`（長音符ゆれの混在をプロジェクト横断の多数決で検出。少数派の出現箇所に警告）。既定有効・`lint.rules` でルール単位の無効化可 | ✅ |
-| **20 検索の用語ゆれ・同義語対応** | `lint.terms` ＋ `search.synonyms` を manifest 経由でクエリ拡張に使用（同義語 = weight 1.0、変形上限 8）。ハイライトも同義語側に対応。実装は SearchEngine（yuzu-index-format）1 箇所で native/wasm 共有、wasm 再 vendor 済み | ✅ |
-| **21 検索 UX の磨き込み** | **日本語タイポトレランスの修正**（levenshtein_automata の文字単位 DFA へ置換。CI e2e も実ヒットを検証するよう強化）＋検索 UI の改善: 結果件数表示（`search_with_total`）・IME 変換中の検索抑制とキー競合回避・ローディング表示・未選択 Enter で先頭ヒットへ・aria-selected / aria-activedescendant の同期 | ✅ |
-| **22 OpenAPI / JSON Schema レンダリング** | ` ```openapi ` / ` ```jsonschema ` ブロックのビルド時 SSR（自前実装・JS ゼロ・テーマ統合）。インラインと `file:` 参照（ルート相対・ルート外拒否）の両対応、`$ref` ローカル解決＋循環ガード、参照ページはキャッシュ非対象で仕様変更が即反映。失敗はエラーボックスでビルド継続 | ✅ |
-| **23 dogfooding 改善** | 積み残しの一括解消（バッファ枠）: tankan flowchart のスタイル構文 SSR（`classDef` / `class` / `:::` / `style`）・OpenAPI のプロジェクト内ファイル間 `$ref` 解決（参照元ファイル相対・ルート外拒否・参照ページはキャッシュ非対象）・小粒の磨き込み（trace メソッド・description 二重表示修正・ドキュメント陳腐化）。リリース後の v0.4.1 で content 同伴アセット（ページ横の画像）の自動コピーと相対参照の URL 解決を追加 | ✅ |
-
-</details>
-
-<details>
-<summary>完了済み: v0.3（Phase 13〜18）の内訳</summary>
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **13 執筆の即効改善** | draft プレビュー（`dev --drafts` / `build --drafts` で下書きをバナー付き表示、通常ビルドに戻すと出力は自動掃除）・Mermaid client 描画のダークモード切替時の再描画（既知の制限の解消）・テーマ CSS 変数の設定化（`theme.cssVars` / `cssVarsDark`。値の検証込み） | ✅ |
-| **14 ページ単位 .md 配信とページコピー** | 各ページの原文 Markdown を `dist/<route>.md` に配信して llms.txt を `.md` リンク化（vitepress / docusaurus プラグインで優勢の形式）＋各ページに「Markdown をコピー」ボタンと `.md` リンク（fetch → クリップボード。コードコピーと同じプログレッシブエンハンスメント） | ✅ |
-| **15 日本語 lint: 用語統一** | `lint.terms` のプロジェクト用語辞書による用語統一チェック（`term-variant`）を `yuzu lint` / `check` に統合。本文・見出し・リンクラベルを行番号・列番号付きで報告し、コード・URL・正表記の部分一致は対象外。組み込みルール（全角/半角等）は実運用の需要を見て拡張 | ✅ |
-| **16 tankan 図種追加** | 設計書頻出の **class 図**（3 区画ボックス・関係 8 種・多重度・ジェネリクス・アノテーション）と **pie**（showData・凡例・CSS 変数パレット）を SSR 対応。corpus 13 本＋スナップショット＋wasm32 担保 | ✅ |
-| **17 git 連携メタ** | `git.lastUpdated`（1 回の git log で全ページの最終コミット日を収集しフッター表示）・`git.editUrl`（`{path}` 置換の編集リンク）。git 実行は cli 層のみ（render はデータ注入）で、git 不在・未コミットは表示なしに縮退 | ✅ |
-| **18 dogfooding 改善** | 実運用で踏んだ不満の解消: **JSONC 重複キーの警告**（後勝ちで設定が黙って無視される事故の検出。`site.title` 形式のパス付き）と **`yuzu dev --host` / `preview --host`**（コンテナ内から 0.0.0.0 で配信する用途。設定より優先） | ✅ |
-
-</details>
-
-<details>
-<summary>完了済み: v0.2（Phase 7〜12）の内訳</summary>
-
-| Phase | 内容 | 状態 |
-|---|---|---|
-| **7 執筆表現** | Admonition（`> [!NOTE]`、comrak alerts 拡張＋テーマ CSS）・脚注（footnotes 拡張）・コードブロックのコピーボタン（プログレッシブエンハンスメント JS）。fmt / llms.txt との整合（format_commonmark の出力確認）込み | ✅ |
-| **8 数式** | comrak math（`$...$` / `$$...$$`）→ KaTeX 描画。クライアント描画か SSR かの設計判断・vendor 資産の同梱方針を含む | ✅ |
-| **9 ページナビ** | 前/次ページリンク（nav 順から導出）＋階層パンくず。テンプレート＋nav モデルの拡張 | ✅ |
-| **10 検索セクション単位化** | fragment を見出し単位に分割して `#アンカー` へ直接ジャンプ＋クエリ一致箇所周辺の動的抜粋。index フォーマット変更のため wasm/native トークナイザ整合制約に注意 | ✅ |
-| **11 デプロイ雛形** | GitHub Pages デプロイ用 Actions ワークフローを `yuzu new` の scaffold に同梱（baseUrl 設定の導線込み） | ✅ |
-| **12 インクリメンタルビルド** | `.yuzu/cache/` のページ単位キャッシュで build / dev の再ビルドを短縮（常時有効・`--force` で全再計算）。未変更出力は書き込みスキップ（mtime 温存）＋削除ページの孤児出力をマニフェスト差分で掃除 | ✅ |
-
-</details>
-
-## 凍結した設計判断
-
-Web 調査込みで確定済み。差し替えないこと。
-
-| 領域 | 採用 | 要点 |
-|---|---|---|
-| Markdown パース | **comrak** | GFM 完備・可変 AST・sourcepos（将来の Linter 用）・`format_commonmark`（将来の Formatter 用）。frontmatter は YAML（front matter extension）。パーサは `yuzu-core` 内部に隠蔽し、公開 API はパーサ非依存 |
-| テンプレート | **minijinja** | ランタイム解釈 ＝ 将来 dev でテンプレのホットリロードが可能 |
-| ハイライト | **syntect**（`fancy-regex`）＋ **two-face** 拡張構文セット | pure-Rust（onig 非依存）。`ClassedHTMLGenerator` で **CSS クラス出力**、ビルド時実行。two-face（bat のアセット由来）で TypeScript/TSX/TOML/Dockerfile 等を補完 |
-| CLI | **clap（derive）** | `new` / `build` / `preview` / `dev` / `search` / `llms` / `fmt` / `lint` / `check`（終了コード: 0 = 成功 / 1 = 違反 / 2 = エラー） |
-| 設定 | **serde ＋ JSONC** | `yuzu.jsonc` → 解決形 `.yuzu/settings.json`。上方向探索でルート確定 |
-| テーマ同梱 | **rust-embed** | デフォルトテーマをバイナリ埋め込み、`theme/` でファイル単位の上書き |
-| Mermaid | **mermaid.js クライアント描画**（v0.1） | 自作 SSR（tankan、`backend: "ssr"`）は Phase 5 で実装済み。既定は client のまま |
-| dev サーバ | **axum ＋ notify（＋debouncer）＋ WebSocket** | `yuzu dev` は `/__livereload` への WS push でリロード。preview は純粋な静的配信 |
-| ページ並列化 | **rayon** | `render_site` のページループをデータ並列化（Phase 32）。ページ内状態は `PageCodeRenderer` がページローカルに持ち、`Cell` の `!Sync` が誤共有をコンパイル時に防ぐ。出力はスレッド数に依らずバイト同一（決定性ゲートで検証） |
-
-依存方向（凍結。逆方向依存は作らない）:
-
-```
-yuzu-cli → {yuzu-server, yuzu-render, yuzu-index, yuzu-core, yuzu-config}
-yuzu-render → yuzu-core, yuzu-config, yuzu-theme, tankan
-yuzu-index → yuzu-core, mikan       mikan-wasm → mikan
-（mikan が native/wasm 共通の本体で、mikan-wasm はその wasm ラッパ。
-トークナイザ・フォーマット・抜粋生成を 1 実装で共有する）
-tankan・mikan・mikan-wasm は yuzu-render/yuzu-theme/yuzu-core/
-yuzu-config 非依存の汎用ライブラリ（tankan・mikan は crates.io で公開。
-検索スタックの書き側集約ロジックは mikan::build に、読み側クエリエンジンは
-SearchEngine にあり、yuzu-index はページ抽出とファイル I/O だけを担う薄い呼び出し側）
-```
-
-検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ
-**mikan-wasm**（旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して
-改名し、mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
-
-## ワークスペース構成
-
-```
-crates/
-├─ tankan             # Mermaid 互換描画（テキスト → SVG。yuzu 非依存・crates.io で公開）
-├─ yuzu-core          # comrak パース → Document/サイトモデル（nav・TOC・slug・sourcepos）
-├─ yuzu-render        # サイトモデル → HTML（minijinja・syntect・mermaid 変換・base path 解決）
-├─ yuzu-config        # yuzu.jsonc（JSONC）の探索・スキーマ・解決
-├─ yuzu-theme         # デフォルトテーマ（rust-embed: テンプレ + CSS + JS + mermaid.js）
-├─ yuzu-cli           # CLI（bin: yuzu）
-├─ yuzu-server        # preview/watch 用最小静的サーバ + notify 監視
-├─ yuzu-index         # 検索インデクサ（BM25 転置・シャーディング・wasm 成果物の同梱）
-├─ mikan              # 索引フォーマット＋検索エンジン（native/wasm 共有。yuzu 非依存・crates.io で公開）
-└─ mikan-wasm         # クライアント検索クエリエンジン（cdylib。wasm 成果物のビルド用）
-```
+| 知りたいこと | 参照先 |
+| --- | --- |
+| インストールから公開まで | [ガイド](https://ai-implementer.github.io/yuzu/guide/) |
+| 記法（Admonition・図表番号・折りたたみ・インクルード） | [執筆の基本](https://ai-implementer.github.io/yuzu/guide/writing/) |
+| 設定キー・CLI・診断ルールの一覧 | [リファレンス](https://ai-implementer.github.io/yuzu/reference/) |
+| 内部設計・凍結した設計判断・ワークスペース構成 | [開発](https://ai-implementer.github.io/yuzu/development/) |
+| 開発計画とこれまでの内訳 | [ROADMAP.md](ROADMAP.md) |
 
 ## 開発
 
 ```bash
-cargo build
+cargo build --workspace
+cargo test --workspace                                  # insta スナップショットを含む
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace          # insta スナップショットテストを含む
-cargo fmt --all
+cargo fmt --all --check
 ```
 
-- **MSRV**: 1.85（edition 2024）
-- **コンテナ開発環境**: CI 相当の Linux 環境（stable + wasm32 + cargo-insta）を
-  ホストを汚さず使える。mac（apple container）は `scripts/dev-container.sh build` →
-  `up` → `shell`、Docker / VS Code は `.devcontainer/`（Reopen in Container）。
-  移行手順・落とし穴は [.devcontainer/README.md](.devcontainer/README.md)
-- **スナップショット**: レンダリング結果は `insta` で回帰検証。syntect のバージョン更新で
-  ハイライト HTML の差分が出た場合は `cargo insta review` で確認のうえ更新する
-- **rust-embed の注意**: debug ビルドはテーマをファイルシステムから読む
-  （テーマ編集が再コンパイルなしで反映）。debug バイナリ単体を別マシンへコピーすると
-  アセットを見失う。リリースビルドは常に埋め込み
-- **mermaid.min.js**（約 3.4MB）は `crates/yuzu-theme/assets/static/vendor/` に同梱
-  （`scripts/vendor-mermaid.sh` で更新）。`backend: "ssr"` ならフォールバック発生
-  ページ以外では配信されない（同梱自体はフォールバック用に継続）
-- Mermaid のダークモード追従: SSR の SVG は CSS 変数で再描画なしに追従、
-  client 描画は `data-theme` の変化を監視して同じ図を再描画する（Phase 13 で対応）
-
-### 検索まわりの実装メモ
-
-- **トークナイザ整合が最重要制約**: index 時（ネイティブ）と query 時（wasm）で
-  同一コード（`mikan`）＋同一モデルバイト（`dist/_search/model.zst`）を使う。
-  `yuzu search` はブラウザと同じエンジンを通るので整合の検証にも使える
-- **vaporetto モデル**（`bccwj-suw_c1.0`、圧縮 372KB、**MIT OR Apache-2.0**）は
-  `crates/mikan/assets/model/` に vendor（`scripts/vendor-vaporetto-model.sh` で更新）。
-  ブラウザは初回検索時にモデルを遅延ダウンロードする
-- **wasm 成果物**（467KB）は `crates/yuzu-index/assets/search/` に vendor
-  （`scripts/build-search-wasm.sh` で更新。要 wasm32 target ＋ wasm-bindgen-cli ＋ binaryen。
-  CLI は crate の `wasm-bindgen = "=x.y.z"` と完全同一バージョンにすること）
-- **doc = セクション（h2/h3 境界）**: fragment v2 は `{ title, heading, url, anchor, text }`。
-  `text` はセクション全文で、抜粋はクエリ時に `mikan::make_excerpt`
-  （native / wasm の 1 実装共有）で一致箇所周辺を動的生成する。ページタイトルの重みは
-  リード doc（アンカーなし）だけに載せ、タイトル検索の重複ヒットを防ぐ
-- manifest の `docLens` 直置きは維持: doc 数はセクション数に増えるが 1 doc 数バイトで、
-  初回ロードが manifest 1 fetch で済むメリットが勝つ（数千 doc で数十 KB 程度）
-- 設計ノートの「rkyv で直列化」は**不採用**: postings は元々 delta+varint の自前設計で
-  rkyv の出番がなく、fragment は JS が直接読むため JSON が自然（wasm サイズ・依存とも有利）
-- 検索 UI の確認は `yuzu preview` / `yuzu dev` 経由で行う（`file://` では fetch が動かない。
-  OPFS も同様にセキュアコンテキスト＝https か localhost が必要）
-- **OPFS によるブラウザ側キャッシュ**（Phase 35）: `manifest.json` は毎回ネットワークから
-  取得し、`contentHash`（terms.fst ＋ 全シャード ＋ モデルバイトの sha256）が OPFS 保存済みの
-  前回 manifest と一致すれば `terms.fst`/`model.zst`/シャードは OPFS から読み、再訪問時の
-  再フェッチを省略する。不一致・OPFS 非対応・非セキュアコンテキストでは既存のフェッチのみ
-  経路へ自然にフォールバックする（`crates/mikan-wasm/js/search-client.js` /
-  `opfs-cache.js`）。DuckDB-Wasm・Lindera-Wasm への置き換えは**行っていない**
-  （Phase 28 の却下理由がそのまま当てはまるため。既存の vaporetto＋自作 BM25 エンジンを維持）
-
-### llms.txt まわりの実装メモ
-
-- llms-full.txt の本文は原文ではなく **comrak `format_commonmark` による正規形**
-  （見出し ATX 化・箇条書き `-` 統一・裸 URL の `<url>` 化等）。`yuzu fmt`（Phase 6）と同じ基盤
-- llms.txt のリンクは `baseUrl` 由来。**公開サイトでは `build.baseUrl` にフル URL
-  （`https://…/docs/`）を設定すると絶対 URL になる**（llms.txt の慣行に合う）
-- `public/llms.txt` を手書きで置くと生成版を上書きできる（テーマ上書きと同じ思想）
-- ページ単位の md は**原文バイトそのまま**（frontmatter 込み）を `dist/<route>.md` に
-  配信する（`yuzu fmt` 運用なら正規形と一致）。llms.txt のリンク先はこの `.md`。
-  llms-full.txt は従来どおり正規化 Markdown の連結
-
-### インクリメンタルビルドの実装メモ
-
-- **キャッシュ対象は高価なページ派生物だけ**（メタ・本文 HTML・検索 tf・llms 正規化 md）。
-  テンプレート合成や nav / fst / llms 連結などの集約は毎回全実行する。
-  クロスページ依存はテンプレート段に閉じているため、この分離で依存解析なしに正しさを保てる
-- 無効化キーは 3 層: **envKey**（設定・yuzu バージョン・トークナイザモデルの
-  内容ハッシュ。不一致で全破棄）→ **routesKey**（rel→route 集合。`.md` リンク
-  解決の入力なので、ページ増減・改名時は本文 HTML だけ全破棄）→
-  **sourceHash**（ページ単体。変更されたページだけ再計算）
-- **外部ファイルを引用したページ**（コンテンツインクルード）はページの `.md` を
-  変えずに出力が変わるため、本文 HTML はキャッシュ対象から外し、検索 tf は
-  **参照先の内容ハッシュを sourceHash とは別のキー**で持つ（同じキーへ畳み込むと
-  エントリが丸ごと作り直され、メタ・本文・llms まで巻き添えで毎回ミスになる）
-- 出力は **compare-before-write**（内容一致なら書き込まず mtime 温存。`yuzu fmt` と
-  同じ思想）。書き出した dist 相対パスを `output-manifest.json` に記録し、
-  前回との差分で削除ページの孤児出力を掃除する
-- 不整合・破損・`.yuzu/cache/` 削除は常に「キャッシュなし = フルビルド」へ縮退。
-  インクリメンタル結果はフルビルドと**バイト同一**（`__yuzu/build_id` を除く）
+クレート構成・依存方向・凍結した設計判断は
+[開発ドキュメント](https://ai-implementer.github.io/yuzu/development/)にまとまっている。
 
 ## ライセンス
 

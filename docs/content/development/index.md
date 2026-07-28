@@ -60,12 +60,13 @@ Web 調査込みで確定済みの技術選定です（差し替えない前提�
 
 | 領域 | 採用 | 要点 |
 | --- | --- | --- |
-| Markdown パース | comrak | GFM 完備・可変 AST・sourcepos（lint 用）・`format_commonmark`（fmt 用）。パーサは yuzu-core 内部に隠蔽し、公開 API はパーサ非依存 |
+| Markdown パース | comrak | GFM 完備・可変 AST・sourcepos（lint 用）・`format_commonmark`（fmt 用）。frontmatter は YAML（front matter extension）。パーサは yuzu-core 内部に隠蔽し、公開 API はパーサ非依存 |
 | テンプレート | minijinja | ランタイム解釈 ＝ 将来 dev でテンプレのホットリロードが可能 |
-| ハイライト | syntect ＋ two-face | pure-Rust（onig 非依存）。CSS クラス出力でビルド時実行 |
+| ハイライト | syntect ＋ two-face | pure-Rust（onig 非依存）。CSS クラス出力でビルド時実行。two-face（bat のアセット由来）が TypeScript / TSX / TOML / Dockerfile 等を補完する |
 | CLI | clap（derive） | 終了コード規約は 0 / 1 / 2 |
 | 設定 | serde ＋ JSONC | `yuzu.jsonc` → 解決形 `.yuzu/settings.json`。上方向探索でルート確定 |
 | テーマ同梱 | rust-embed | バイナリ埋め込み＋ `theme/` でファイル単位の上書き |
+| Mermaid | 既定はクライアント描画 | `markdown.mermaid.backend: "ssr"` で自作 SSR（tankan）に切り替える。未対応の図種は自動でクライアント描画へフォールバックする |
 | dev サーバ | axum ＋ notify ＋ WebSocket | `/__livereload` への push でリロード |
 | ページ並列化 | rayon | render / index のページループをデータ並列化。出力はスレッド数に依らずバイト同一 |
 
