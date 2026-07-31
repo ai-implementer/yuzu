@@ -38,7 +38,15 @@ pub(crate) fn normalize_alias(raw: &str) -> Result<String, String> {
     if core.is_empty() {
         return Err("サイトルートへのエイリアスは指定できません".to_string());
     }
-    if core.split('/').any(|seg| seg.is_empty() || seg == "..") {
+    // `.` は「現在位置」を意味するが、エイリアスは常にサイトルート基準なので
+    // 意味を持たない。文字列上はルート（`""`）と別物に見えるのに、書き出しでは
+    // 同じ `index.html` を指すため、`..` と同じく拒否する
+    // （`urlpath::resolve_relative` が `.` を吸収するのは相対 URL 解決という
+    // 別の目的のため。扱いが違うのは意図的）
+    if core
+        .split('/')
+        .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+    {
         return Err(format!("エイリアスのパスが不正です: {trimmed}"));
     }
     Ok(format!("{core}/"))
@@ -230,6 +238,12 @@ mod tests {
             "../up",
             "a/../b",
             "a\\b",
+            // `.` は文字列上ルート（""）と別物に見えるのに、
+            // 書き出しでは同じ index.html を指してホームを上書きしてしまう
+            ".",
+            "./",
+            "/./",
+            "a/./b",
         ] {
             assert!(normalize_alias(bad).is_err(), "拒否されるべき: {bad:?}");
         }

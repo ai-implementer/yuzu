@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
 
@@ -58,7 +58,71 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
     // 重複キーは後勝ちで黙って上書きされ、未知キー（タイポ）は無言で無視される。
     // どちらも「設定したのに効かない」事故になりやすい（実運用で複数回発生）。
     // `yuzu lint` / `check` は診断として報告し、それ以外のコマンドはここの警告で気づかせる
-    let diagnostics = config_diagnostics(&text);
+    let mut diagnostics = config_diagnostics(&text);
+
+    // 出力ディレクトリの境界検証。`Path::join` は絶対パス引数で左辺を捨て `..` も
+    // 潰さないため、無検証だと output.clean の remove_dir_all がルート外・ルート自身へ
+    // 届く。ここが output.dir → output_dir の唯一の変換点なので、全コマンドを覆える
+    let output_dir = resolve_dir_setting(root, &config.output.dir).map_err(|issue| {
+        ConfigError::UnsafeOutputDir {
+            key: "output.dir",
+            value: config.output.dir.clone(),
+            reason: issue.reason(),
+            root: root.to_path_buf(),
+        }
+    })?;
+    // 入力側のディレクトリを output.clean の再帰削除から守る。
+    //
+    // ⚠️ 比較は 3 点そろって初めて正しい。どれか 1 つでも欠けるとすり抜ける:
+    //   1. **字句正規化してから比較する** — `input.dir: "a/../dist/content"` は
+    //      `root.join()` したままだと `dist` の前方一致にならない
+    //   2. **双方向で判定する** — 片方向だけだと `output.dir: "content/sub"`
+    //      （保護対象の子）を取りこぼす
+    //   3. **input.dir 以外も対象にする** — public / theme も原本であって生成物ではない
+    for (label, guard) in [
+        ("input.dir", root.join(&config.input.dir)),
+        ("public/", root.join(PUBLIC_DIR_NAME)),
+        ("theme/", root.join(THEME_DIR_NAME)),
+        (".yuzu", root.join(YUZU_DIR_NAME)),
+    ] {
+        let guard = lexically_normalize(&guard);
+        if guard.starts_with(&output_dir) || output_dir.starts_with(&guard) {
+            return Err(ConfigError::UnsafeOutputDir {
+                key: "output.dir",
+                value: config.output.dir.clone(),
+                reason: match label {
+                    "input.dir" => "原稿ディレクトリ（input.dir）と重なっています",
+                    "public/" => "public/（静的物の原本）と重なっています",
+                    "theme/" => "theme/（テーマの原本）と重なっています",
+                    _ => "ツール管理ディレクトリ（.yuzu）と重なっています",
+                },
+                root: root.to_path_buf(),
+            });
+        }
+    }
+
+    // input.dir は読むだけで削除経路がないため警告に留める（モノレポで原稿を
+    // 共有する運用を即死させない）。ただし診断のパス表示と ignore glob の評価は
+    // content_dir 相対を前提にしているので、黙って通すこともしない
+    let content_dir = match resolve_dir_setting(root, &config.input.dir) {
+        Ok(dir) => dir,
+        Err(issue) => {
+            let (line, col) = key_position(&text, &["input", "dir"]).unwrap_or((1, 1));
+            diagnostics.push(ConfigDiagnostic {
+                rule: "config-path-outside-root",
+                key_path: "input.dir".to_string(),
+                line,
+                col,
+                message: format!(
+                    "input.dir `{}` はプロジェクトルート配下ではありません（{}）。診断のパス表示と input.ignore の glob 評価が想定外になります",
+                    config.input.dir,
+                    issue.reason()
+                ),
+            });
+            root.join(&config.input.dir)
+        }
+    };
+
     for d in &diagnostics {
         tracing::warn!("yuzu.jsonc:{}:{}: {}", d.line, d.col, d.message);
     }
@@ -76,8 +140,8 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
     let public_dir = Some(root.join(PUBLIC_DIR_NAME)).filter(|p| p.is_dir());
 
     Ok(ResolvedConfig {
-        content_dir: root.join(&config.input.dir),
-        output_dir: root.join(&config.output.dir),
+        content_dir,
+        output_dir,
         theme_dir,
         public_dir,
         base_url,
@@ -85,6 +149,90 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
         config,
         diagnostics,
     })
+}
+
+/// ディレクトリ設定の値がプロジェクトルート配下でない理由
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PathIssue {
+    Absolute,
+    EscapesRoot,
+    RootItself,
+}
+
+impl PathIssue {
+    fn reason(self) -> &'static str {
+        match self {
+            Self::Absolute => "絶対パスは指定できません",
+            Self::EscapesRoot => ".. でプロジェクトルートの外へ出ることはできません",
+            Self::RootItself => "プロジェクトルート自身は指定できません",
+        }
+    }
+}
+
+/// プロジェクトルート配下の相対ディレクトリ設定を検証して絶対パスへ解決する。
+///
+/// I/O を伴わない字句正規化なので、**まだ存在しないディレクトリでも判定できる**
+/// （`yuzu_core::include` の `read_under_root` は canonicalize 方式で既存ファイル専用。
+/// 実体に対する最終防御は `yuzu_core::output::remove_dir_all_under` が受け持つ）。
+fn resolve_dir_setting(root: &Path, raw: &str) -> Result<PathBuf, PathIssue> {
+    let mut parts = Vec::new();
+    for c in Path::new(raw).components() {
+        match c {
+            // `.` は CurDir として現れるので、文字列比較では取りこぼす
+            Component::CurDir => {}
+            Component::Normal(s) => parts.push(s),
+            Component::ParentDir => return Err(PathIssue::EscapesRoot),
+            Component::RootDir | Component::Prefix(_) => return Err(PathIssue::Absolute),
+        }
+    }
+    if parts.is_empty() {
+        return Err(PathIssue::RootItself);
+    }
+    Ok(parts.iter().fold(root.to_path_buf(), |p, s| p.join(s)))
+}
+
+/// `.` と `..` を字句的に畳んだパスを返す（I/O なし）。
+///
+/// 保護対象の比較に使う。`root.join("a/../dist/content")` は文字列としては
+/// `dist` の前方一致にならないため、正規化せずに比較すると
+/// 「出力先が原稿を飲み込んでいる」を検出できない
+fn lexically_normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            c => out.push(c.as_os_str()),
+        }
+    }
+    out
+}
+
+/// `yuzu.jsonc` 内のキー（`["input", "dir"]` 形式）の 1 始まり (行, 列)。
+/// 構文エラー・キー不在なら None（呼び出し側が既定値へフォールバックする）
+fn key_position(text: &str, path: &[&str]) -> Option<(usize, usize)> {
+    use jsonc_parser::ast::Value;
+    use jsonc_parser::common::Ranged;
+
+    let parsed = jsonc_parser::parse_to_ast(
+        text,
+        &Default::default(),
+        &jsonc_parser::ParseOptions::default(),
+    )
+    .ok()?;
+    let mut current = parsed.value.as_ref()?;
+    let mut offset = None;
+    for name in path {
+        let Value::Object(obj) = current else {
+            return None;
+        };
+        let prop = obj.properties.iter().find(|p| p.name.as_str() == *name)?;
+        offset = Some(prop.name.range().start);
+        current = &prop.value;
+    }
+    Some(line_col(text, offset?))
 }
 
 /// `yuzu.jsonc` に対する診断 1 件。

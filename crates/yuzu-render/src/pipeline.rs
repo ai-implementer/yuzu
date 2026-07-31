@@ -54,6 +54,44 @@ pub struct RenderParams<'a> {
     pub git_dates: Option<&'a std::collections::HashMap<String, String>>,
 }
 
+/// ページ URL とエイリアスの妥当性を検証する（書き出し前の門番）。
+///
+/// - 同じ route のページは同じ `index.html` へ並列に書き込むため勝者が非決定になる
+/// - `#` 等を含むファイル名は nav・検索・llms のすべてで壊れたリンクになる
+/// - 不正・衝突するエイリアスは実ページや他のリダイレクトを上書きする
+///
+/// **cli は破壊的な clean より前にこれを呼ぶこと**（検証エラーで既存の dist を
+/// 失わないため）。`render_site` も冒頭で呼ぶので、呼び忘れても出力は壊れない
+pub fn validate_pages(site: &SiteModel, rc: &ResolvedConfig) -> Result<(), RenderError> {
+    let cfg = &rc.config;
+    let md_opts = MarkdownOptions {
+        gfm: cfg.markdown.gfm,
+        math: cfg.markdown.math.enabled,
+        mermaid: cfg.markdown.mermaid.enabled,
+        crossref_site_numbering: matches!(
+            cfg.markdown.crossref.numbering,
+            yuzu_config::CrossrefNumbering::Site
+        ),
+    };
+
+    let route_diags = yuzu_core::validate_routes(&site.pages);
+    if let Some(first) = route_diags.first() {
+        return Err(RenderError::InvalidRoutes {
+            count: route_diags.len(),
+            first: format!("{}: {}", first.rel.display(), first.message),
+        });
+    }
+
+    let alias_diags = yuzu_core::validate_aliases(&site.pages, &md_opts);
+    if let Some(first) = alias_diags.first() {
+        return Err(RenderError::InvalidAliases {
+            count: alias_diags.len(),
+            first: format!("{}: {}", first.rel.display(), first.message),
+        });
+    }
+    Ok(())
+}
+
 /// サイト全体を `dist/` に書き出す
 pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let rc = params.config;
@@ -71,20 +109,20 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         ),
     };
 
-    // エイリアス（frontmatter aliases）の検証。衝突・不正があると実ページや
-    // 他のリダイレクトを上書きしてしまうため、書き出す前にビルドごと中断する
-    // （check はより詳しい診断を出す。ここはレンダラ自身の防御）
-    let alias_diags = yuzu_core::validate_aliases(&params.site.pages, &md_opts);
-    if let Some(first) = alias_diags.first() {
-        return Err(RenderError::InvalidAliases {
-            count: alias_diags.len(),
-            first: format!("{}: {}", first.rel.display(), first.message),
-        });
-    }
+    // ページ URL とエイリアスの妥当性（cli は破壊的な clean より前に呼ぶが、
+    // ライブラリ直接利用と呼び忘れに備えてここでも自衛する）
+    validate_pages(params.site, rc)?;
+
+    // 出力先までの経路にシンボリックリンクが無いことを**毎ビルド**確認する。
+    // 削除経路（下の remove_dir_all_under）は clean 無効・インクリメンタルでは
+    // 走らないため、ここを通さないと書き込みだけがリンク先へ素通りする
+    yuzu_core::output::ensure_no_symlink_under(&rc.root, output_dir)
+        .map_err(RenderError::io(output_dir))?;
 
     // インクリメンタル時（outputs あり）は dist を残し、孤児掃除は cli 側が行う
-    if cfg.output.clean && ctx.outputs.is_none() && output_dir.exists() {
-        fs::remove_dir_all(output_dir).map_err(RenderError::io(output_dir))?;
+    if cfg.output.clean && ctx.outputs.is_none() {
+        yuzu_core::output::remove_dir_all_under(&rc.root, output_dir)
+            .map_err(RenderError::io(output_dir))?;
     }
     fs::create_dir_all(output_dir).map_err(RenderError::io(output_dir))?;
 

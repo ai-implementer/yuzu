@@ -34,8 +34,11 @@ pub(crate) const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: 
 /// 実際のレンダリングは [`SyntectCodeRenderer::page_renderer`] で作る
 /// ページローカルな [`PageCodeRenderer`] が行う
 pub struct SyntectCodeRenderer {
-    syntax_set: SyntaxSet,
-    highlight_enabled: bool,
+    /// syntect の構文セット。`markdown.highlight.enabled: false` では **None**
+    /// （two_face の重い構文セットをロードしない）。
+    /// 「ハイライト無効」の表現をこのフィールド 1 つへ寄せることで、
+    /// 早期 return が include 解決や表示メタを巻き添えにする事故を型で防ぐ
+    syntax_set: Option<SyntaxSet>,
     /// 行番号表示のサイト既定（`markdown.highlight.lineNumbers`。
     /// ブロック単位の `showLineNumbers` / `noLineNumbers` が優先される）
     line_numbers_default: bool,
@@ -108,8 +111,7 @@ impl SyntectCodeRenderer {
             // ClassedHTMLGenerator の行単位 API は newlines 版とセットで使う。
             // syntect デフォルトには TypeScript/TSX/TOML/Dockerfile 等がないため、
             // bat のアセット由来の拡張セット（two-face。デフォルト構文も内包）を使う
-            syntax_set: two_face::syntax::extra_newlines(),
-            highlight_enabled: highlight.enabled,
+            syntax_set: highlight.enabled.then(two_face::syntax::extra_newlines),
             line_numbers_default: highlight.line_numbers,
             mermaid_enabled: mermaid.enabled,
             mermaid_ssr_options,
@@ -144,11 +146,13 @@ impl SyntectCodeRenderer {
     }
 
     /// syntect ハイライト（CSS クラス出力の一括 HTML）。
-    /// 未知の言語・失敗は `None`（呼び出し側がプレーン表示へフォールバック）
+    /// ハイライト無効・未知の言語・失敗は `None`
+    /// （呼び出し側がプレーン表示へフォールバックする）
     fn highlight(&self, lang: &str, code: &str) -> Option<String> {
-        let syntax = self.syntax_set.find_syntax_by_token(lang)?;
+        let syntax_set = self.syntax_set.as_ref()?;
+        let syntax = syntax_set.find_syntax_by_token(lang)?;
         let mut generator =
-            ClassedHTMLGenerator::new_with_class_style(syntax, &self.syntax_set, CLASS_STYLE);
+            ClassedHTMLGenerator::new_with_class_style(syntax, syntax_set, CLASS_STYLE);
         for line in LinesWithEndings::from(code) {
             if let Err(e) = generator.parse_html_for_line_which_includes_newline(line) {
                 // ハイライト失敗でビルドは止めず、プレーン表示へフォールバック
@@ -322,9 +326,10 @@ impl CodeBlockRenderer for PageCodeRenderer<'_> {
                 return None;
             }
         }
-        if !self.shared.highlight_enabled {
-            return None;
-        }
+        // ⚠️ ハイライト無効（markdown.highlight.enabled: false）でも、ここから先の
+        // include 解決・表示メタは通す。無効化するのは着色だけで、`file=` の引用や
+        // キャプション・行番号まで消してはいけない（着色の有無は highlight_for が
+        // syntax_set の有無で判断し、以降は「未知の言語」と同じ経路になる）
         // コンテンツインクルード（file=）: 参照先を読んで本文に差し替える。
         // 読み込みは仕様ファイル参照と同じ規律（ルート配下強制・外部依存の記録で
         // 本文キャッシュ非対象 = 参照先の変更が次ビルドで必ず反映される）
@@ -1028,12 +1033,40 @@ mod tests {
     }
 
     #[test]
-    fn ハイライト無効ならメタがあっても_none() {
+    fn ハイライト無効でもメタは機能しプレーン表示になる() {
+        // 無効化するのは着色だけ。title / 行番号は「未知の言語」と同じ経路で機能する
         let r = SyntectCodeRenderer::new(&disabled_highlight(), &client_config());
+        let html = r
+            .page_renderer()
+            .render(Some("rust"), &meta(r#"title="x""#), "fn main() {}")
+            .expect("メタがあれば描画する");
+        assert!(html.contains("<figcaption>x</figcaption>"), "{html}");
+        assert!(html.contains("fn main() {}"), "本文が残る: {html}");
+        assert!(!html.contains("yz-"), "着色クラスは付かない: {html}");
+    }
+
+    #[test]
+    fn ハイライト無効なら構文セットをロードしない() {
+        let r = SyntectCodeRenderer::new(&disabled_highlight(), &client_config());
+        assert!(r.syntax_set.is_none());
+    }
+
+    #[test]
+    fn ハイライト無効でも_file_インクルードは展開され外部依存を立てる() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src/api.rs"), "fn one() {}\nfn two() {}\n").unwrap();
+        let mut r = SyntectCodeRenderer::new(&disabled_highlight(), &client_config());
+        r.set_project_root(dir.path().to_path_buf());
+
+        let p = r.page_renderer();
+        let html = p
+            .render(Some("rust"), &include_meta("src/api.rs", None), "")
+            .expect("インクルードは着色の有無に依らず展開する");
+        assert!(html.contains("fn one() {}"), "引用が空でない: {html}");
         assert!(
-            r.page_renderer()
-                .render(Some("rust"), &meta(r#"title="x""#), "fn main() {}")
-                .is_none()
+            p.external_deps_used(),
+            "本文キャッシュ非対象の印が立つ（参照先の変更が次ビルドで反映される）"
         );
     }
 

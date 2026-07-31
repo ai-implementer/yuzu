@@ -126,6 +126,124 @@ fn エイリアスはリダイレクト_html_になり_base_url_に追随する(
     );
 }
 
+/// yuzu には slug 化が無く、ファイル名がそのまま route → URL になる。
+/// `#` を含むファイル名の `/a#b/` は `/a` ＋ フラグメント `b/` と解釈され、
+/// nav・リダイレクト・検索・llms.txt のすべてで壊れたリンクになるので、
+/// テンプレートでのエスケープではなく**書き出し前に止める**
+#[test]
+fn 危険な文字を含むファイル名はビルドを中断する() {
+    for name in [r#"a"b.md"#, "a#b.md"] {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+        let dir = tempfile::tempdir().unwrap();
+        copy_tree(&fixture, dir.path());
+        fs::write(
+            dir.path().join("content").join(name),
+            "---\ntitle: 危険\n---\n\n# 危険\n",
+        )
+        .unwrap();
+
+        let rc = yuzu_config::load(dir.path()).unwrap();
+        let site = yuzu_core::build_site_model(
+            &rc.content_dir,
+            &rc.config.input.ignore,
+            &MarkdownOptions::default(),
+        )
+        .unwrap();
+        let err = render_site(&RenderParams {
+            config: &rc,
+            site: &site,
+            live_reload: LiveReloadMode::None,
+            ctx: yuzu_render::RenderCtx::default(),
+            git_dates: None,
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("URL"),
+            "{name}: URL 起因のエラー: {err}"
+        );
+        assert!(
+            !dir.path().join("dist/index.html").exists(),
+            "{name}: 書き出し前に中断される"
+        );
+    }
+}
+
+/// 設定由来の URL（route ではないのでビルドは通る）はテンプレートで
+/// エスケープされ、属性や `<script>` の文脈を壊さない
+#[test]
+fn 設定由来の_url_に危険な文字があってもエスケープされる() {
+    let dir = build_fixture_with(|root| {
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace(
+                r#""lang": "ja""#,
+                r#""lang": "ja", "logo": "/images/a\"b.svg""#,
+            ),
+        )
+        .unwrap();
+    });
+
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(
+        index.contains(r#"src="/docs/images/a%22b.svg""#),
+        "属性を抜けずエンコードされる: {index}"
+    );
+}
+
+/// 出力先がリンクだと書き込みが全部リンク先へ素通りする。
+/// **clean 無効でも**中断すること = 削除経路に頼った検証では塞げない穴の回帰テスト
+#[cfg(unix)]
+#[test]
+fn 出力先がシンボリックリンクならビルドを中断する() {
+    for clean in [true, false] {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+        let dir = tempfile::tempdir().unwrap();
+        copy_tree(&fixture, dir.path());
+
+        let outside = dir.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, dir.path().join("dist")).unwrap();
+
+        let path = dir.path().join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace(
+                r#""build": { "baseUrl": "/docs/" }"#,
+                &format!(r#""build": {{ "baseUrl": "/docs/" }}, "output": {{ "clean": {clean} }}"#),
+            ),
+        )
+        .unwrap();
+
+        let rc = yuzu_config::load(dir.path()).unwrap();
+        let site = yuzu_core::build_site_model(
+            &rc.content_dir,
+            &rc.config.input.ignore,
+            &MarkdownOptions::default(),
+        )
+        .unwrap();
+        let err = render_site(&RenderParams {
+            config: &rc,
+            site: &site,
+            live_reload: LiveReloadMode::None,
+            ctx: yuzu_render::RenderCtx::default(),
+            git_dates: None,
+        })
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("シンボリックリンク"),
+            "clean={clean}: リンク起因のエラー: {err}"
+        );
+        assert!(
+            !outside.join("index.html").exists(),
+            "clean={clean}: リンク先へ書き込まない"
+        );
+    }
+}
+
 #[test]
 fn エイリアス衝突はビルドを中断する() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
@@ -163,6 +281,82 @@ fn エイリアス衝突はビルドを中断する() {
         !dir.path()
             .join("dist/guide/getting-started/index.html")
             .exists(),
+        "書き出し前に中断される"
+    );
+}
+
+/// `highlight.enabled: false` は着色だけを止める設定で、
+/// `file=` の引用まで消してはいけない（従来は空の `<pre><code>` になっていた）
+#[test]
+fn ハイライト無効でも_file_引用が本文に出る() {
+    let dir = build_fixture_with(|root| {
+        fs::write(root.join("snippet.rs"), "fn 引用対象() {}\n").unwrap();
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace(
+                r#""build": { "baseUrl": "/docs/" }"#,
+                r#""build": { "baseUrl": "/docs/" },
+  "markdown": { "highlight": { "enabled": false } }"#,
+            ),
+        )
+        .unwrap();
+
+        let index = root.join("content/index.md");
+        let source = fs::read_to_string(&index).unwrap();
+        fs::write(
+            &index,
+            format!("{source}\n```rust file=\"snippet.rs\"\n```\n"),
+        )
+        .unwrap();
+    });
+
+    let html = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(
+        html.contains("fn 引用対象() {}"),
+        "引用が展開される: {html}"
+    );
+    assert!(
+        html.contains("<figcaption>snippet.rs</figcaption>"),
+        "{html}"
+    );
+    assert!(!html.contains("yz-"), "着色クラスは付かない");
+    // base.jinja が無条件で <link> するので、空でもファイルは要る
+    assert!(dir.path().join("dist/_assets/css/syntect.css").is_file());
+}
+
+#[test]
+fn route_衝突はビルドを中断する() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    // guide/index.md と guide.md はどちらも route `guide/` になる
+    for rel in ["content/guide/index.md", "content/guide.md"] {
+        fs::write(dir.path().join(rel), "---\ntitle: 重複\n---\n\n# 重複\n").unwrap();
+    }
+
+    let rc = yuzu_config::load(dir.path()).unwrap();
+    let site = yuzu_core::build_site_model(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &MarkdownOptions::default(),
+    )
+    .unwrap();
+    let err = render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
+    })
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("同じ URL"),
+        "route 衝突起因のエラー: {err}"
+    );
+    assert!(
+        !dir.path().join("dist/guide/index.html").exists(),
         "書き出し前に中断される"
     );
 }

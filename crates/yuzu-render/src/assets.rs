@@ -13,7 +13,9 @@ use yuzu_core::OutputTracker;
 
 use crate::error::RenderError;
 
-/// dist 相対パスへ書き出す（tracker があれば記録、なければ直接書き込み）
+/// dist 相対パスへ書き出す（tracker があれば記録、なければ直接書き込み）。
+/// rel の検証は両分岐とも `resolve_output_rel` に寄せる
+/// （エイリアス由来の `.` / `..` で実ページを上書きさせない）
 pub(crate) fn write_output(
     outputs: Option<&OutputTracker>,
     output_dir: &Path,
@@ -26,7 +28,11 @@ pub(crate) fn write_output(
                 .write(rel, data)
                 .map_err(RenderError::io(output_dir.join(rel)))?;
         }
-        None => write_file(&output_dir.join(rel), data)?,
+        // tracker 無し（ライブラリ直接利用）でも同じ検証を通す
+        None => {
+            yuzu_core::output::write_under(output_dir, rel, data)
+                .map_err(RenderError::io(output_dir.join(rel)))?;
+        }
     }
     Ok(())
 }
@@ -108,7 +114,20 @@ fn copy_tree(
     output_dir: &Path,
     outputs: Option<&OutputTracker>,
 ) -> Result<(), RenderError> {
-    for entry in WalkDir::new(src).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(src) {
+        // 走査失敗を握りつぶすと public/ の一部が欠けた dist を「成功」として
+        // deploy してしまう。ファイル読み込み失敗（下の fs::read）と扱いを揃える
+        let entry = entry.map_err(|e| {
+            let path = e.path().map(Path::to_path_buf).unwrap_or_default();
+            RenderError::Io {
+                path,
+                source: e.into_io_error().unwrap_or_else(|| {
+                    std::io::Error::other(
+                        "ディレクトリ走査に失敗しました（シンボリックリンクのループ）",
+                    )
+                }),
+            }
+        })?;
         if !entry.file_type().is_file() {
             continue;
         }
@@ -129,14 +148,5 @@ fn copy_tree(
         let data = fs::read(entry.path()).map_err(RenderError::io(entry.path()))?;
         write_output(outputs, output_dir, &dest_rel, &data)?;
     }
-    Ok(())
-}
-
-/// 絶対パスへの書き出し（内容一致ならスキップ = mtime 温存）
-pub(crate) fn write_file(path: &Path, data: &[u8]) -> Result<(), RenderError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(RenderError::io(parent))?;
-    }
-    yuzu_core::output::write_if_changed(path, data).map_err(RenderError::io(path))?;
     Ok(())
 }

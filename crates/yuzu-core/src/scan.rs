@@ -13,6 +13,29 @@ pub(crate) struct ScannedFile {
     pub rel: PathBuf,
 }
 
+/// 走査エラーを対象パス付きの [`CoreError`] へ詰め替える。
+///
+/// 握りつぶすと権限拒否やシンボリックリンクのループで**サブツリーが丸ごと
+/// 無言で消え、ビルドは成功扱い**になる（ページが消えたのに気づけない）。
+/// walkdir はループ検出時に io::Error を持たないので、そこだけ補う
+fn walk_error(e: walkdir::Error) -> CoreError {
+    let path = e.path().map(Path::to_path_buf).unwrap_or_default();
+    CoreError::Io {
+        path,
+        source: e.into_io_error().unwrap_or_else(|| {
+            std::io::Error::other("ディレクトリ走査に失敗しました（シンボリックリンクのループ）")
+        }),
+    }
+}
+
+/// 走査対象そのものが無いのは「0 ページ」であってエラーではない
+/// （`content/` を作る前の `yuzu build` を落とさない）
+fn is_missing_root(e: &walkdir::Error, root: &Path) -> bool {
+    e.io_error()
+        .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+        && e.path() == Some(root)
+}
+
 /// `content_dir` 以下の `*.md` をパスのソート順で列挙する。
 /// `ignore` glob（相対パス・`/` 区切りで評価）に一致するものは除外
 pub(crate) fn scan_markdown_files(
@@ -22,11 +45,12 @@ pub(crate) fn scan_markdown_files(
     let ignore_set = build_ignore_set(ignore)?;
     let mut files = Vec::new();
 
-    for entry in WalkDir::new(content_dir)
-        .sort_by_file_name()
-        .into_iter()
-        .filter_map(Result::ok)
-    {
+    for entry in WalkDir::new(content_dir).sort_by_file_name() {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) if is_missing_root(&e, content_dir) => return Ok(files),
+            Err(e) => return Err(walk_error(e)),
+        };
         if !entry.file_type().is_file() {
             continue;
         }
@@ -58,11 +82,23 @@ pub(crate) fn scan_content_assets(
     let ignore_set = build_ignore_set(ignore)?;
     let mut files = Vec::new();
 
-    for entry in WalkDir::new(content_dir)
+    // 隠しディレクトリ（`.git` 等）へは降りない。どうせ下の除外で捨てるので、
+    // 走査エラーを拾う面積だけを減らす（ルート自身には述語を当てない
+    // = content_dir の名前が `.` 始まりでも走査できる）
+    let walk = WalkDir::new(content_dir)
         .sort_by_file_name()
         .into_iter()
-        .filter_map(Result::ok)
-    {
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !e.file_name().to_string_lossy().starts_with('.')
+                || e.file_type().is_file()
+        });
+    for entry in walk {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) if is_missing_root(&e, content_dir) => return Ok(files),
+            Err(e) => return Err(walk_error(e)),
+        };
         if !entry.file_type().is_file() {
             continue;
         }

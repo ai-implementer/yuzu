@@ -3,7 +3,7 @@
 <ul>
 {% for item in items %}
 <li{% if item.active %} class="active"{% endif %}>
-{% if item.url %}<a href="{{ item.url | safe }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.title }}</a>{% else %}<span class="nav-label">{{ item.title }}</span>{% endif %}
+{% if item.url %}<a href="{{ item.url | url }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.title }}</a>{% else %}<span class="nav-label">{{ item.title }}</span>{% endif %}
 {% if item.children %}{{ nav_list(item.children) }}{% endif %}
 </li>
 {% endfor %}

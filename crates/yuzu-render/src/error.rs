@@ -28,6 +28,13 @@ pub enum RenderError {
         "frontmatter の aliases に問題が {count} 件あります（`yuzu check` で一覧できます）。最初の 1 件: {first}"
     )]
     InvalidAliases { count: usize, first: String },
+
+    /// route の衝突（`route-conflict`）とファイル名の不正（`unsafe-page-path`）。
+    /// どちらも「書き出すと壊れた URL が生成物に残る」ので中断する
+    #[error(
+        "ページ URL に問題が {count} 件あります（`yuzu check` で一覧できます）。最初の 1 件: {first}"
+    )]
+    InvalidRoutes { count: usize, first: String },
 }
 
 impl RenderError {

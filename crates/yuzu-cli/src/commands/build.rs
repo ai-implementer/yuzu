@@ -73,6 +73,15 @@ pub(crate) fn load_config(overrides: &Overrides) -> anyhow::Result<ResolvedConfi
     let mut rc = yuzu_config::load(&root)?;
     // 上書きは write_resolved より前に当てる（.yuzu/settings.json にも反映する）
     overrides.apply(&mut rc);
+    // ツール管理ディレクトリの経路も検証する。ここは settings.json の書き出しと
+    // `BuildSession::new` のキャッシュ破棄（--force）の**両方より前**なので、
+    // `.yuzu` 系の書き込み・削除を 1 箇所で覆える
+    // （yuzu-config は yuzu-core に依存しないので、settings.json の検証も cli の責務）
+    for rel in [".yuzu", ".yuzu/settings.json", ".yuzu/cache"] {
+        let path = rc.root.join(rel);
+        yuzu_core::output::ensure_no_symlink_under(&rc.root, &path)
+            .with_context(|| format!("{} を使えません", path.display()))?;
+    }
     yuzu_config::write_resolved(&rc)?;
     Ok(rc)
 }
@@ -259,8 +268,9 @@ impl BuildSession {
     /// `.yuzu/cache/` を読み込む。force なら先に破棄する（＝全再計算＋dist 再クリーン）
     pub(crate) fn new(rc: &ResolvedConfig, force: bool) -> anyhow::Result<Self> {
         let cache_dir = rc.root.join(".yuzu/cache");
-        if force && cache_dir.exists() {
-            fs::remove_dir_all(&cache_dir)
+        if force {
+            // 経路にシンボリックリンクがあればリンク先を消さずに中断する
+            output::remove_dir_all_under(&rc.root, &cache_dir)
                 .with_context(|| format!("キャッシュを削除できません: {}", cache_dir.display()))?;
         }
         Ok(Self {
@@ -350,11 +360,16 @@ pub(crate) fn build_once(
             .join("\n")
             .as_bytes()]));
 
+    // ⚠️ ページの検証は**破壊的な clean より前**に行う。render_site の中でも
+    // 検証するが、そこへ到達する前に dist を消してしまうと「不正なページのせいで
+    // 既存の正常な成果物を失う」ことになる
+    yuzu_render::validate_pages(&site, rc)?;
+
     // 前回の出力マニフェスト。無い（初回・--force 後・破損）なら既知状態がないので、
     // output.clean に従い dist を作り直してから全書き出しする
     let previous = output::load_manifest(&session.manifest_path);
-    if previous.is_none() && rc.config.output.clean && rc.output_dir.exists() {
-        fs::remove_dir_all(&rc.output_dir)
+    if previous.is_none() && rc.config.output.clean {
+        output::remove_dir_all_under(&rc.root, &rc.output_dir)
             .with_context(|| format!("dist を削除できません: {}", rc.output_dir.display()))?;
     }
 
@@ -366,7 +381,8 @@ pub(crate) fn build_once(
         .then(|| collect_git_dates(rc))
         .flatten();
 
-    let tracker = OutputTracker::new(&rc.output_dir);
+    let tracker = OutputTracker::new(&rc.output_dir)
+        .with_context(|| format!("出力先を使えません: {}", rc.output_dir.display()))?;
     yuzu_render::render_site(&RenderParams {
         config: rc,
         site: &site,

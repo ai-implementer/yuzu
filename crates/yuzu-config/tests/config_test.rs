@@ -263,3 +263,104 @@ fn 不正な_jsonc_はエラーになる() {
     fs::write(dir.path().join("yuzu.jsonc"), "{ broken").unwrap();
     assert!(load(dir.path()).is_err());
 }
+
+/// `output.clean` は既定 true で出力ディレクトリを丸ごと再帰削除するため、
+/// ルート外・ルート自身を指す値は load で弾く
+#[test]
+fn output_dir_にルート外を指す値は拒否される() {
+    for bad in [
+        "/etc",
+        "/tmp/dangerous",
+        "../site",
+        "a/../../x",
+        "",
+        ".",
+        "./",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("yuzu.jsonc"),
+            format!(r#"{{ "output": {{ "dir": "{bad}" }} }}"#),
+        )
+        .unwrap();
+        let err = load(dir.path()).expect_err(&format!("拒否されるべき: {bad:?}"));
+        assert!(
+            err.to_string().contains("output.dir"),
+            "エラー文言に output.dir が含まれること: {err}"
+        );
+    }
+}
+
+/// 保護対象（原稿・public・theme・.yuzu）と**重なる**出力先はすべて拒否する。
+/// 片方向比較や未正規化の比較だと、子ディレクトリや `..` 入りの値がすり抜ける
+#[test]
+fn output_dir_が原稿やキャッシュを飲み込む指定は拒否される() {
+    for bad in [
+        "content",
+        ".yuzu",
+        "public",
+        "theme",
+        // 保護対象の子（片方向比較のすり抜け）
+        "content/sub",
+        ".yuzu/cache",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("yuzu.jsonc"),
+            format!(r#"{{ "output": {{ "dir": "{bad}" }} }}"#),
+        )
+        .unwrap();
+        assert!(load(dir.path()).is_err(), "拒否されるべき: {bad:?}");
+    }
+}
+
+#[test]
+fn output_dir_は先頭のカレント参照を吸収する() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "output": { "dir": "./public_html" } }"#,
+    )
+    .unwrap();
+
+    let rc = load(dir.path()).unwrap();
+    assert_eq!(rc.output_dir, dir.path().join("public_html"));
+}
+
+/// input.dir は読むだけで削除経路がないため、ルート外でも警告に留める
+#[test]
+fn input_dir_がルート外なら診断を出すが読み込みは成功する() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        "{\n  \"input\": { \"dir\": \"../shared-docs\" }\n}",
+    )
+    .unwrap();
+
+    let rc = load(dir.path()).unwrap();
+    let diag = rc
+        .diagnostics
+        .iter()
+        .find(|d| d.rule == "config-path-outside-root")
+        .expect("診断が出ること");
+    assert_eq!(diag.key_path, "input.dir");
+    assert_eq!(diag.line, 2, "キーの行を指すこと");
+}
+
+/// input.dir 側に `..` が入っていても、出力先との重なりを検出できること
+/// （`root.join()` したままだと文字列前方一致にならない）
+#[test]
+fn 正規化前は重ならない_input_dir_でも拒否される() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{
+  "input": { "dir": "a/../dist/content" },
+  "output": { "dir": "dist", "clean": true }
+}"#,
+    )
+    .unwrap();
+
+    let err = load(dir.path()).expect_err("原稿を飲み込む出力先は拒否する");
+    assert!(err.to_string().contains("原稿"), "{err}");
+}

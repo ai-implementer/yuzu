@@ -26,7 +26,7 @@ mod urls;
 pub use error::RenderError;
 pub use highlight::SyntectCodeRenderer;
 pub use llms::{generate_llms_full_txt, generate_llms_txt};
-pub use pipeline::{LiveReloadMode, RenderCtx, RenderParams, render_site};
+pub use pipeline::{LiveReloadMode, RenderCtx, RenderParams, render_site, validate_pages};
 pub use shared::RenderShared;
 pub use speccheck::validate_api_specs;
 pub use urls::UrlResolver;

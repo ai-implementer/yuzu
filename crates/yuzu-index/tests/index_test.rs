@@ -543,3 +543,26 @@ mod 検索キャッシュとインクルード {
         run(0);
     }
 }
+
+/// 公開 API を既定設定（`project_root: None`）で直接呼ぶ経路でも、
+/// 出力先がシンボリックリンクならリンク先へ書き込まない
+#[cfg(unix)]
+#[test]
+fn 出力先がシンボリックリンクなら書き出さない() {
+    let content = tempfile::tempdir().unwrap();
+    write(content.path(), "index.md", "---\ntitle: t\n---\n# t\n");
+    let md_opts = MarkdownOptions::default();
+    let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let outside = dir.path().join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    let dist = dir.path().join("dist");
+    std::os::unix::fs::symlink(&outside, &dist).unwrap();
+
+    assert!(build_search_index(&site, &md_opts, &IndexParams::default(), &dist).is_err());
+    assert!(
+        !outside.join("_search").exists(),
+        "リンク先へ書き出していない"
+    );
+}

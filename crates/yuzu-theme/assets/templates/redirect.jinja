@@ -6,13 +6,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0; url={{ target_url | safe }}">
-<link rel="canonical" href="{{ target_url | safe }}">
+<meta http-equiv="refresh" content="0; url={{ target_url | url }}">
+<link rel="canonical" href="{{ target_url | url }}">
 <meta name="robots" content="noindex">
 <title>{{ target_title }} | {{ site.title }}</title>
-<script>location.replace("{{ target_url | safe }}");</script>
+<script>location.replace("{{ target_url | url }}");</script>
 </head>
 <body>
-<p>このページは移動しました: <a href="{{ target_url | safe }}">{{ target_title }}</a></p>
+<p>このページは移動しました: <a href="{{ target_url | url }}">{{ target_title }}</a></p>
 </body>
 </html>

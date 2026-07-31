@@ -134,6 +134,25 @@ pub fn build_search_index_with(
 ) -> Result<IndexStats, IndexError> {
     let search_dir = output_dir.join(SEARCH_DIR_NAME);
 
+    // 出力先までの経路にシンボリックリンクが無いことを毎回確認する
+    // （`_search` へ書くのはこの関数だけなので、単独で呼ばれても素通りしない）。
+    //
+    // 通常は project_root から見る（yuzu-config が output_dir をルート配下に
+    // 強制するので、ルート → output_dir → `_search` を一度に歩ける）。
+    // ライブラリ直接利用で無関係なパスを渡された場合は、書き込む `_search` の
+    // 側だけを見る（出力先がまだ無いなら、これから実ディレクトリを作るので検査不要）
+    match params.project_root.as_deref() {
+        Some(root) if search_dir.starts_with(root) => {
+            yuzu_core::output::ensure_no_symlink_under(root, &search_dir)
+                .map_err(IndexError::io(&search_dir))?;
+        }
+        _ if output_dir.exists() => {
+            yuzu_core::output::ensure_no_symlink_under(output_dir, &search_dir)
+                .map_err(IndexError::io(&search_dir))?;
+        }
+        _ => {}
+    }
+
     // モデル読み込み（このバイト列をそのまま dist へコピーし、
     // ネイティブ / wasm の両側で同一バイトを使う＝トークナイザ整合の保証）
     let model_bytes: Vec<u8> = match &params.dictionary {
@@ -234,8 +253,11 @@ pub fn build_search_index_with(
 
     // 書き出し。インクリメンタル時（outputs あり）は全削除をやめ、
     // compare-write ＋孤児掃除マニフェスト（cli 側）で差分管理する
-    if ctx.outputs.is_none() && search_dir.exists() {
-        fs::remove_dir_all(&search_dir).map_err(IndexError::io(&search_dir))?;
+    if ctx.outputs.is_none() {
+        // output_dir は yuzu-config が検証済み。`_search` がその直下であることを
+        // 確認してから削除する（yuzu-index はプロジェクトルートを知らない）
+        yuzu_core::output::remove_dir_all_under(output_dir, &search_dir)
+            .map_err(IndexError::io(&search_dir))?;
     }
     fs::create_dir_all(search_dir.join("index")).map_err(IndexError::io(&search_dir))?;
     let write = |rel: &str, data: &[u8]| -> Result<(), IndexError> {
@@ -246,12 +268,10 @@ pub fn build_search_index_with(
                     .write(&rel_from_dist, data)
                     .map_err(IndexError::io(search_dir.join(rel)))?;
             }
+            // tracker 経路と同じ検証を通す（rel の解釈を 1 実装に揃える）
             None => {
-                let path = search_dir.join(rel);
-                if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent).map_err(IndexError::io(parent))?;
-                }
-                fs::write(&path, data).map_err(IndexError::io(&path))?;
+                yuzu_core::output::write_under(output_dir, &rel_from_dist, data)
+                    .map_err(IndexError::io(search_dir.join(rel)))?;
             }
         }
         Ok(())

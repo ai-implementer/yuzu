@@ -62,7 +62,7 @@ fn build_incremental(root: &Path, cache: &BuildCache) -> (BTreeSet<String>, Cach
         .join("\n")
         .as_bytes()]));
 
-    let tracker = OutputTracker::new(&rc.output_dir);
+    let tracker = OutputTracker::new(&rc.output_dir).unwrap();
     render_site(&RenderParams {
         config: &rc,
         site: &site,

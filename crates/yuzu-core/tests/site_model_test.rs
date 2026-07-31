@@ -363,3 +363,36 @@ fn toc_は_sourcepos_を持つ() {
     assert_eq!(toc[0].span.start_line, 1);
     assert_eq!(toc[1].span.start_line, 5);
 }
+
+/// `content/` を作る前の `yuzu build` を落とさない（0 ページで成功）
+#[test]
+fn content_が存在しなければ空のサイトになる() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("content");
+
+    let site = build_site_model(&missing, &[], &MarkdownOptions::default()).unwrap();
+    assert!(site.pages.is_empty());
+}
+
+/// 走査エラーを握りつぶすと「ページが消えたのにビルド成功」になる
+#[cfg(unix)]
+#[test]
+fn 読めないディレクトリがあるとサイトモデル構築はエラーになる() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    write(dir.path(), "secret/page.md", "# 隠しページ\n");
+
+    let secret = dir.path().join("secret");
+    fs::set_permissions(&secret, fs::Permissions::from_mode(0o000)).unwrap();
+    // root 実行では権限が効かないので、実際に読めないことを確かめてから判定する
+    let unreadable = fs::read_dir(&secret).is_err();
+    let result = build_site_model(dir.path(), &[], &MarkdownOptions::default());
+    // tempdir の後片付けができるように戻す
+    fs::set_permissions(&secret, fs::Permissions::from_mode(0o755)).unwrap();
+
+    if unreadable {
+        assert!(result.is_err(), "無言でスキップせずエラーにする");
+    }
+}

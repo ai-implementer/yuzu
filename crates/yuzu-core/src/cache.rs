@@ -43,7 +43,11 @@ use crate::model::{Frontmatter, TocEntry};
 ///   本文 HTML の生成ロジックを変えたのに bump し忘れていた分を後追いで計上する
 /// - v14: 検索 tf のキャッシュキーへ「インクルード参照先の内容ハッシュ」を追加
 ///   （参照先だけの編集で検索結果が更新されなかった不具合の修正）
-pub const CACHE_FORMAT_VERSION: u32 = 14;
+/// - v15: `markdown.highlight.enabled: false` でも `file=` インクルードと表示メタ
+///   （title / 行ハイライト / 行番号）を反映する。従来は着色より前で早期 return して
+///   おり本文が空になっていた。加えて外部依存フラグが立たず、`file=` ページが誤って
+///   本文キャッシュに載っていたため、既存エントリを捨てる必要がある
+pub const CACHE_FORMAT_VERSION: u32 = 15;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -378,6 +382,9 @@ impl BuildCache {
     pub fn save(&self) -> std::io::Result<()> {
         let mut inner = self.inner.lock().unwrap();
         let pages_dir = self.dir.join("pages");
+        // `.yuzu/cache/pages` がシンボリックリンクだと、以下の書き出しと
+        // stale 掃除（remove_file）がリンク先へ届く。dist と同じ規律で守る
+        crate::output::ensure_no_symlink_under(&self.dir, &pages_dir)?;
         fs::create_dir_all(&pages_dir)?;
 
         // 削除ページのエントリを落とす
@@ -397,7 +404,7 @@ impl BuildCache {
             let file = format!("{}.json", Self::source_hash(&state.entry.rel));
             expected.insert(file.clone());
             if state.dirty {
-                fs::write(pages_dir.join(&file), serde_json::to_vec(&state.entry)?)?;
+                crate::output::write_under(&pages_dir, &file, &serde_json::to_vec(&state.entry)?)?;
                 state.dirty = false;
             }
         }
@@ -417,9 +424,10 @@ impl BuildCache {
             env_key: self.env_key.clone(),
             routes_key: inner.routes_key.clone(),
         };
-        fs::write(
-            self.dir.join("global.json"),
-            serde_json::to_vec_pretty(&global)?,
+        crate::output::write_under(
+            &self.dir,
+            "global.json",
+            &serde_json::to_vec_pretty(&global)?,
         )?;
         Ok(())
     }

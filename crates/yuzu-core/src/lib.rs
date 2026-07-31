@@ -23,6 +23,7 @@ mod markdown;
 mod model;
 mod nav;
 pub mod output;
+mod routes;
 mod scan;
 mod traits;
 pub mod urlpath;
@@ -45,6 +46,7 @@ pub use model::{
     CrossrefLabel, Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry,
 };
 pub use output::{OutputTracker, WriteOutcome};
+pub use routes::validate_routes;
 pub use scan::IgnoreMatcher;
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
 

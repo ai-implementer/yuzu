@@ -15,6 +15,7 @@
 //! - `katakana-choon` — 長音符ゆれの混在（組み込み・プロジェクト横断。既定有効）
 //!
 //! `yuzu check` はこれに加えて `alias-invalid` / `alias-conflict`（`aliases.rs`）・
+//! `route-conflict` / `unsafe-page-path`（`routes.rs`）・
 //! `include-error`（`include.rs`）・`broken-link` / `broken-anchor`（`linkcheck.rs`）・
 //! `fmt`（yuzu-cli の `commands/check.rs`）を報告する。
 //! 全ルールの一覧は `docs/content/reference/rules.md`

@@ -58,6 +58,9 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
     // エイリアス（frontmatter aliases）の形式・衝突。
     // draft 込みの全ソースで検証する（公開前に矛盾を検出する）
     diags.extend(yuzu_core::validate_aliases(&pages, &opts));
+    // ページ URL の一意性（`x.md` と `x/index.md` は同じ URL になる）。
+    // alias と同じく draft 込みで検証する（公開前に矛盾を検出する）
+    diags.extend(yuzu_core::validate_routes(&pages));
     // コンテンツインクルード（file=）の参照切れ・ルート外・行範囲外
     diags.extend(super::diag::config_diagnostics(&rc));
     diags.extend(yuzu_core::validate_includes(&pages, &root, &opts));
