@@ -38,15 +38,51 @@ ENV PATH=/home/vscode/.cargo/bin:/home/vscode/.local/bin:$PATH \
     CLAUDE_CONFIG_DIR=/home/vscode/.claude \
     CARGO_TERM_COLOR=always
 
-RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y \
-        --profile minimal --default-toolchain stable \
+# インストーラは「取得したスクリプトをそのまま shell へ渡す」形にしない。
+# バージョン固定の成果物を一時ファイルへ落とし、**公開 sha256 と照合してから**実行する
+# （更新するときは ARG のバージョンとハッシュをセットで書き換える。
+# ハッシュは rustup が `.../rustup-init.sha256`、cargo-binstall は release 資産の実測値）。
+#
+# ⚠️ toolchain 名は "stable" のまま = rust-toolchain.toml と一致させる意図的な追従
+# （固定するなら rust-toolchain.toml と対で変えること。冒頭の方針コメント参照）
+ARG RUSTUP_VERSION=1.29.0
+ARG RUSTUP_SHA256_X86_64=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10
+ARG RUSTUP_SHA256_AARCH64=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792
+RUN set -eux; \
+    case "$(uname -m)" in \
+        x86_64)  target=x86_64-unknown-linux-gnu;  sha="$RUSTUP_SHA256_X86_64" ;; \
+        aarch64) target=aarch64-unknown-linux-gnu; sha="$RUSTUP_SHA256_AARCH64" ;; \
+        *) echo "未対応のアーキテクチャ: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    curl --proto '=https' --tlsv1.2 -fsSL -o /tmp/rustup-init \
+        "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${target}/rustup-init"; \
+    echo "${sha}  /tmp/rustup-init" | sha256sum -c -; \
+    chmod +x /tmp/rustup-init; \
+    /tmp/rustup-init -y --profile minimal --default-toolchain stable \
         --component rustfmt --component clippy \
-        --target wasm32-unknown-unknown
+        --target wasm32-unknown-unknown; \
+    rm -f /tmp/rustup-init
 
 # cargo-insta（スナップショット更新用）はプレビルト取得を優先し、
-# 失敗時のみソースビルドへフォールバック
-RUN curl -fsSL https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash \
-    && (cargo binstall -y cargo-insta || cargo install cargo-insta --locked)
+# 失敗時のみソースビルドへフォールバック。
+# バージョンは Cargo.lock の insta と揃える（スナップショット形式の食い違い防止）
+ARG BINSTALL_VERSION=1.21.1
+ARG BINSTALL_SHA256_X86_64=630c8f8803a686aa6779497f0f0fb51d49822fb5fc3c514d8ced33b34e338e6e
+ARG BINSTALL_SHA256_AARCH64=1dc2979f3c83aade9a1b4344589d14fafa63459b759222528d11419f5cca9cc2
+ARG CARGO_INSTA_VERSION=1.48.0
+RUN set -eux; \
+    case "$(uname -m)" in \
+        x86_64)  target=x86_64-unknown-linux-musl;  sha="$BINSTALL_SHA256_X86_64" ;; \
+        aarch64) target=aarch64-unknown-linux-musl; sha="$BINSTALL_SHA256_AARCH64" ;; \
+        *) echo "未対応のアーキテクチャ: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    curl --proto '=https' --tlsv1.2 -fsSL -o /tmp/binstall.tgz \
+        "https://github.com/cargo-bins/cargo-binstall/releases/download/v${BINSTALL_VERSION}/cargo-binstall-${target}.tgz"; \
+    echo "${sha}  /tmp/binstall.tgz" | sha256sum -c -; \
+    tar xzf /tmp/binstall.tgz -C "$HOME/.cargo/bin" cargo-binstall; \
+    rm -f /tmp/binstall.tgz; \
+    cargo binstall -y "cargo-insta@${CARGO_INSTA_VERSION}" \
+        || cargo install "cargo-insta@${CARGO_INSTA_VERSION}" --locked
 
 WORKDIR /workspaces/yuzu
 

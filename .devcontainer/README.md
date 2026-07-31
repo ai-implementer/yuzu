@@ -73,6 +73,12 @@ cargo build -p yuzu-cli
   （publish 経由の疎通は実機確認済み）
 - **stable の追従**: イメージ内の toolchain はビルド時点の stable で固定。CI（常に最新
   stable）と clippy 結果がズレたら `scripts/dev-container.sh build --no-cache` で焼き直す
+  （toolchain 名 `stable` は `rust-toolchain.toml` と一致させる意図。版を固定するなら対で変える）
+- **インストーラはハッシュ検証つき**: rustup-init と cargo-binstall は
+  バージョン固定の成果物を落として sha256 を照合してから実行する（`curl | sh` にしない）。
+  更新は Dockerfile の `ARG` のバージョンとハッシュを**セットで**書き換える。
+  ハッシュは rustup が `https://static.rust-lang.org/rustup/archive/<版>/<target>/rustup-init.sha256`、
+  cargo-binstall は release 資産の実測値。`cargo-insta` は `Cargo.lock` の `insta` と版を揃える
 - **メモリ**: apple container はコンテナ = 軽量 VM。ラッパーが既定 8g を割り当てる
   （不足したら `YUZU_CONTAINER_MEMORY=12g scripts/dev-container.sh up`）
 - **`buildkit` コンテナが常駐する**（apple container）: `container build` を一度でも
