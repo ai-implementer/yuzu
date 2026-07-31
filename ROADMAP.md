@@ -121,6 +121,13 @@ Phase は価値と実装コスト・依存関係の順（着手時に個別に�
   （`--format {human,json,github}`） / 検証の網羅性（API 仕様の `file:` 参照・
   `yuzu.jsonc` のキー診断） / watch・キャッシュの正しさ / dogfooding 改善＝検索の
   追加読み込み・`yuzu fmt --diff`・scaffold 刷新・SIGPIPE 対応
+  （v0.10.1 でコードレビュー指摘の修正を追加＝出力先の境界検証・ページ URL の検証・
+  エイリアス `.` の拒否・ハイライト無効時のインクルード欠落修正・走査エラーの伝播・
+  URL エスケープ・vendor 取得のバージョンとアーカイブのチェックサム固定。**非互換**:
+  `output.dir` がルート外・ルート自身・`input.dir` / `public/` / `theme/` / `.yuzu` と
+  重なる場合はエラー、ルートから出力先（と `.yuzu`）までの経路に
+  シンボリックリンクがあればエラー、`x.md` と `x/index.md` の共存・
+  エイリアス `"."`・ファイル名の URL 危険文字（`#` `?` `%` `"` 等）もエラーになる）
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、

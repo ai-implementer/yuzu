@@ -36,6 +36,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `frontmatter-unknown-key` | frontmatter の未知のトップレベルキー | 不可 | 常時有効 |
 | `config-unknown-key` | `yuzu.jsonc` の未知のキー（タイポ） | 不可 | 常時有効 |
 | `config-duplicate-key` | `yuzu.jsonc` のキーの重複（JSONC は後勝ち） | 不可 | 常時有効 |
+| `config-path-outside-root` | `input.dir` がプロジェクトルートの外を指す | 不可 | 常時有効 |
 
 `katakana-choon` の「条件付き」は、長音符ゆれを**多数派の表記へ寄せる**ため、
 同数で並んだときは正解を決められず報告だけになる、という意味です。
@@ -60,12 +61,19 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `broken-anchor` | 見出し・図表ラベルへのアンカーの切れ |
 | `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない |
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |
+| `route-conflict` | 2 つ以上のページが同じ URL になる（`x.md` と `x/index.md`） |
+| `unsafe-page-path` | ファイル名に URL で意味を持つ文字（`#` `?` `%` `"` `'` `<` `>` `` ` `` `\`） |
 | `include-error` | コンテンツインクルード（`file=`）の参照先が読めない・範囲外 |
 | `spec-error` | `openapi` / `jsonschema` の `file:` 参照が読めない・仕様が壊れている・未対応バージョン・`$ref` 先が解決できない |
 | `fmt` | 整形差分がある（`yuzu fmt` で修正、`yuzu fmt --diff` で内容を確認できます） |
 
 `spec-error` だけは警告版の `spec-warning` もあります（参照ファイル数の上限超過など、
 書き間違いではなく描画が注記へ縮退するだけのもの）。
+
+`route-conflict` と `unsafe-page-path` は `yuzu build` も中断します。どちらも
+「生成物のどこかに壊れたリンクや非決定な出力が残る」問題で、書き出してしまうと
+気づけないためです。yuzu はファイル名を slug 化せずそのまま URL にするので、
+`a#b.md` の URL `/a#b/` はブラウザから `/a` ＋ フラグメント `b/` に見えます。
 
 > [!NOTE]
 > API 仕様の描画は失敗してもビルドを止めません（執筆中に止まらないよう、
@@ -75,8 +83,8 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 ## 位置情報が付かないルール
 
-`fmt` はファイル単位の診断、`directory-too-deep` はファイル配置そのものの問題なので、
-どちらも行番号を持ちません。出力では次のように見えます。
+`fmt` はファイル単位の診断、`directory-too-deep` / `route-conflict` / `unsafe-page-path` は
+ファイル配置そのものの問題なので、どれも行番号を持ちません。出力では次のように見えます。
 
 | 形式 | 見え方 |
 | --- | --- |

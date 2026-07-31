@@ -78,6 +78,9 @@ jobs:
           grep -q 'yuzu-sidebar-scroll' dist/index.html
           # 診断ルールのリファレンス（Phase 46）が配信されている
           grep -q 'broken-anchor' dist/reference/rules/index.html
+          # 出力先・URL の安全化（v0.10.1）で足したルールが原稿に載っている
+          grep -q 'route-conflict' dist/reference/rules/index.html
+          grep -q 'unsafe-page-path' dist/reference/rules/index.html
           # 検索の追加読み込み（Phase 49）の JS が埋め込み経由で配信されている
           # （機能自体はブラウザ操作なので CI では検証できない。配線ゲート）
           grep -q 'search-more' dist/_assets/js/search-ui.js

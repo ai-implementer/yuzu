@@ -75,10 +75,31 @@ description: yuzu.jsonc の全設定キー・型・既定値
 
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
-| `input.dir` | string / `"content"` | 原稿ディレクトリ |
+| `input.dir` | string / `"content"` | 原稿ディレクトリ（プロジェクトルート配下の相対パス） |
 | `input.ignore` | string\[\] / `[]` | 除外する glob パターン |
-| `output.dir` | string / `"dist"` | 出力ディレクトリ |
+| `output.dir` | string / `"dist"` | 出力ディレクトリ（プロジェクトルート配下の相対パス。制約は下記） |
 | `output.clean` | bool / `true` | ビルド前に出力をクリーンする |
+
+`output.dir` は**プロジェクトルート配下の相対パス**でなければなりません。
+`output.clean` がこのディレクトリを丸ごと削除するため、次はエラーになります。
+
+- 絶対パス（`"/var/www"`）
+- `..` でルートの外へ出るパス（`"../site"`）
+- プロジェクトルート自身（`""` / `"."`）
+- `input.dir` / `public/` / `theme/` / `.yuzu` と**重なる**パス
+  （同じ・親・子のいずれも。`"content/sub"` のような子も対象です）
+
+ルートから出力先までの**経路にシンボリックリンクがある**場合もビルドを中断します
+（`dist` 自身でも途中のディレクトリでも同じ）。リンク先が原稿やプロジェクト外を
+指していると、書き込みや `output.clean` の削除がそこへ届いてしまうためです。
+この検査は `output.clean` の設定やインクリメンタルビルドに関係なく毎回行います。
+
+出力先をリポジトリの外へ置きたいときは、`yuzu.jsonc` をその親ディレクトリへ移すか、
+ビルド後に成果物をコピーしてください。
+
+`input.dir` がルートの外を指す場合はエラーにしませんが、`yuzu lint` / `check` が
+`config-path-outside-root` の警告を出します（診断のパス表示と `input.ignore` の
+glob 評価が想定外になるため）。
 
 ## theme
 
@@ -100,7 +121,7 @@ description: yuzu.jsonc の全設定キー・型・既定値
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
 | `gfm` | bool / `true` | GFM 拡張（表・打ち消し線・autolink・タスクリスト） |
-| `highlight.enabled` | bool / `true` | ビルド時シンタックスハイライト |
+| `highlight.enabled` | bool / `true` | ビルド時シンタックスハイライト（`false` でも `file=` の引用・キャプション・行番号は機能します。止まるのは配色だけです） |
 | `highlight.themeLight` | string / `"InspiredGitHub"` | ライトモードの配色 |
 | `highlight.themeDark` | string / `"base16-ocean.dark"` | ダークモードの配色 |
 | `highlight.lineNumbers` | bool / `false` | コードブロックの行番号表示のサイト既定（ブロック単位の `showLineNumbers` / `noLineNumbers` が優先。[詳細](../guide/code-and-math.md)） |
