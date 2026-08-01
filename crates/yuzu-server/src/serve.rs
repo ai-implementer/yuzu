@@ -42,7 +42,17 @@ pub fn serve(opts: ServeOptions) -> Result<(), ServerError> {
         let app = build_router(&opts.dir, &base, opts.live_reload);
 
         let addr = SocketAddr::new(opts.host, opts.port);
-        let listener = tokio::net::TcpListener::bind(addr).await?;
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(listener) => listener,
+            // 既定ポートで dev を 2 つ立てると必ず踏むので、ここだけ専用の文言にする
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                return Err(ServerError::PortInUse {
+                    host: opts.host,
+                    port: opts.port,
+                });
+            }
+            Err(e) => return Err(e.into()),
+        };
         tracing::info!("http://{addr}{base} で配信中（Ctrl+C で停止）");
         axum::serve(listener, app).await?;
         Ok(())

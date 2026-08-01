@@ -41,6 +41,13 @@ pub enum Command {
         /// draft ページ（frontmatter `draft: true`）も含めてビルドする（プレビュー用途）
         #[arg(long)]
         drafts: bool,
+        /// --watch のときの配信ポート（既定は dev.port）。
+        /// `yuzu dev` と並走させるときに使う
+        #[arg(long)]
+        port: Option<u16>,
+        /// --watch のときの配信ホスト（既定は dev.host）
+        #[arg(long)]
+        host: Option<String>,
     },
 
     /// dist/ を配信する最小静的サーバ

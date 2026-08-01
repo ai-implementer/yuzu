@@ -434,7 +434,11 @@ impl BuildCache {
             env_key: self.env_key.clone(),
             routes_key: inner.routes_key.clone(),
         };
-        crate::output::write_under(
+        // ⚠️ global.json は事実上のコミットレコード（load はこれの format_version と
+        // env_key が一致したときだけ pages/ を読む）。**ここだけ原子的に書く** ——
+        // 書き込み途中で中断されると次回の load が壊れた JSON を掴んでキャッシュを
+        // 全部捨てることになる（実害はフルビルドへの縮退だけだが、tmp + rename で安価に防げる）
+        crate::output::write_atomic_under(
             &self.dir,
             "global.json",
             &serde_json::to_vec_pretty(&global)?,

@@ -54,7 +54,9 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
             base_url,
             force,
             drafts,
-        } => commands::build::run(watch, base_url, force, drafts).map(ok),
+            port,
+            host,
+        } => commands::build::run(watch, base_url, force, drafts, port, host).map(ok),
         cli::Command::Preview { port, host } => commands::preview::run(port, host).map(ok),
         cli::Command::Dev {
             port,

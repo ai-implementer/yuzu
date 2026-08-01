@@ -86,11 +86,15 @@ pub(crate) fn load_config(overrides: &Overrides) -> anyhow::Result<ResolvedConfi
     Ok(rc)
 }
 
-pub fn run(watch: bool, base_url: Option<String>, force: bool, drafts: bool) -> anyhow::Result<()> {
-    let overrides = Overrides {
-        base_url,
-        host: None,
-    };
+pub fn run(
+    watch: bool,
+    base_url: Option<String>,
+    force: bool,
+    drafts: bool,
+    port: Option<u16>,
+    host: Option<String>,
+) -> anyhow::Result<()> {
+    let overrides = Overrides { base_url, host };
     let rc = load_config(&overrides)?;
 
     // --watch のときだけオートリフレッシュ JS（ポーリング式）を注入する
@@ -122,8 +126,9 @@ pub fn run(watch: bool, base_url: Option<String>, force: bool, drafts: bool) -> 
     })?;
 
     // 受け入れ条件「編集 → ブラウザ自動更新」を 1 コマンドで満たすため、
-    // preview と同じ静的サーバも起動する（ブロッキング）
-    preview::serve_dist(&rc, None)
+    // preview と同じ静的サーバも起動する（ブロッキング）。
+    // ポート・ホストは `dev` と同じく上書きできる（両方を並走させる用途）
+    preview::serve_dist(&rc, port)
 }
 
 /// 監視ビルド 1 本ぶんの状態（`build --watch` / `dev` 共通）。

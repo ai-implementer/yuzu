@@ -187,6 +187,32 @@ pub fn write_under(
     Ok((path, outcome))
 }
 
+/// [`write_under`] の原子的版（tmp へ書いて rename）。
+///
+/// 使いどころは「**書き込み途中で中断されると、次回の読み手が壊れた内容を
+/// 掴む**」ファイルだけ。`.yuzu/cache/global.json` は事実上のコミットレコードで、
+/// これが健全なら配下のページキャッシュも整合する、という構造になっている。
+///
+/// 3 つの防御（字句検証・経路のリンク検査・親ディレクトリ作成）は [`write_under`]
+/// と同じものを通し、**tmp 側のパスにもリンク検査をかける**。
+/// compare-before-write（mtime 温存）はしない — 原子性のために必ず書き直すので、
+/// mtime を温存したい出力（dist 配下）にはこちらを使わないこと
+pub fn write_atomic_under(root: &Path, rel: &str, data: &[u8]) -> std::io::Result<PathBuf> {
+    let path = resolve_output_rel(root, rel)?;
+    ensure_no_symlink_under(root, &path)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    // 同一ディレクトリへ置く（rename が同一ファイルシステム内で完結する）。
+    // 名前は固定でよい: 同じ出力先への同時ビルドは元々想定していない
+    let tmp_rel = format!("{rel}.tmp");
+    let tmp = resolve_output_rel(root, &tmp_rel)?;
+    ensure_no_symlink_under(root, &tmp)?;
+    fs::write(&tmp, data)?;
+    fs::rename(&tmp, &path)?;
+    Ok(path)
+}
+
 /// このビルドで書き出した dist 相対パスの記録（孤児掃除マニフェストの元）
 pub struct OutputTracker {
     root: PathBuf,
@@ -603,5 +629,30 @@ mod tests {
         fs::write(&path, b"{ broken").unwrap();
         assert!(load_manifest(&path).is_none());
         assert!(load_manifest(&dir.path().join("nothing.json")).is_none());
+    }
+
+    #[test]
+    fn write_atomic_under_は_tmp_を残さない() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_atomic_under(dir.path(), "cache/global.json", b"{}").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"{}");
+        // 中間ファイルが残っていない（次回の load や孤児掃除が拾わない）
+        assert!(!dir.path().join("cache/global.json.tmp").exists());
+    }
+
+    #[test]
+    fn write_atomic_under_は既存を置き換える() {
+        let dir = tempfile::tempdir().unwrap();
+        write_atomic_under(dir.path(), "a.json", b"old").unwrap();
+        let path = write_atomic_under(dir.path(), "a.json", b"new").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+    }
+
+    #[test]
+    fn write_atomic_under_も経路を検証する() {
+        let dir = tempfile::tempdir().unwrap();
+        // ルート外・絶対パスは write_under と同じ規律で拒否する
+        assert!(write_atomic_under(dir.path(), "../outside.json", b"x").is_err());
+        assert!(write_atomic_under(dir.path(), "/abs.json", b"x").is_err());
     }
 }
