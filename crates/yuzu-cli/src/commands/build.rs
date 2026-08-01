@@ -330,6 +330,7 @@ pub(crate) fn build_once(
             rc.config.markdown.crossref.numbering,
             yuzu_config::CrossrefNumbering::Site
         ),
+        glossary: yuzu_render::glossary_options(&rc.config),
     };
     let site = yuzu_core::build_site_model_cached(
         &rc.content_dir,

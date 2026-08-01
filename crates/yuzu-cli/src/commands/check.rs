@@ -20,6 +20,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
             rc.config.markdown.crossref.numbering,
             yuzu_config::CrossrefNumbering::Site
         ),
+        glossary: yuzu_render::glossary_options(&rc.config),
     };
     let lint_opts = LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,

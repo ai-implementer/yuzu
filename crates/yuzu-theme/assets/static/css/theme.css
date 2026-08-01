@@ -720,6 +720,16 @@ body {
   text-decoration-thickness: 2px;
 }
 
+/* 用語集の略語（markdown.glossary）。ページ内の初出だけがこの形で包まれる。
+   ブラウザ既定は不統一（下線を出さない実装がある）ので明示する。
+   色は本文のままにして、リンクと見分けが付くようにする */
+.markdown-body abbr[title] {
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  cursor: help;
+}
+
 .markdown-body img {
   max-width: 100%;
 }

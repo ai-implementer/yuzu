@@ -65,6 +65,8 @@ pub struct MarkdownOptions {
     /// 図表番号をサイト全体の通し番号にするか（`markdown.crossref.numbering`）。
     /// true なら [`build_site_model`] がサイドバー表示順でオフセットを割り当てる
     pub crossref_site_numbering: bool,
+    /// 用語集・略語（`markdown.glossary`）。既定（空辞書）なら何も起きない
+    pub glossary: GlossaryOptions,
 }
 
 impl Default for MarkdownOptions {
@@ -74,6 +76,36 @@ impl Default for MarkdownOptions {
             math: true,
             mermaid: true,
             crossref_site_numbering: false,
+            glossary: GlossaryOptions::default(),
+        }
+    }
+}
+
+/// 用語集・略語の挙動設定（設定ファイルの `markdown.glossary` から写す）。
+///
+/// [`LintOptions`] と同じく yuzu-config 非依存の中立型で、cli が設定から写す。
+/// 既定は「辞書が空 = 何も起きない」で、`page` / `page_title` の既定文字列は
+/// yuzu-config 側の `GlossaryConfig::default()` が唯一の持ち主
+/// （2 箇所に既定値を書くと片方だけ変わる）
+#[derive(Debug, Clone)]
+pub struct GlossaryOptions {
+    /// 用語辞書（略語 → 説明文）
+    pub terms: std::collections::BTreeMap<String, String>,
+    /// 本文中の初出を `<abbr title="説明">略語</abbr>` にするか
+    pub abbr: bool,
+    /// 用語集ページの route 元（`content` 相対・拡張子なし）。空ならページを作らない
+    pub page: String,
+    /// 用語集ページのタイトル。空ならページ名から補う
+    pub page_title: String,
+}
+
+impl Default for GlossaryOptions {
+    fn default() -> Self {
+        Self {
+            terms: std::collections::BTreeMap::new(),
+            abbr: true,
+            page: String::new(),
+            page_title: String::new(),
         }
     }
 }
@@ -322,6 +354,7 @@ fn load_pages_cached(
             labels,
             crossref_offset: Default::default(),
             source,
+            generated: false,
         });
     }
     Ok(pages)

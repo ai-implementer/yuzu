@@ -114,6 +114,10 @@ pub struct Page {
     pub crossref_offset: crate::markdown::crossref::Numbering,
     /// Markdown 原文（本文 HTML 化・将来の `yuzu fmt` が再パースに使う）
     pub source: String,
+    /// ビルド時に合成したページ（用語集）。**実ファイルが無い**ので
+    /// `yuzu fmt` / `yuzu lint --fix` の書き込み対象から外し、「このページを編集」
+    /// リンクも出さない。リンク検査では**リンク先としてだけ**有効にする
+    pub generated: bool,
 }
 
 impl Page {

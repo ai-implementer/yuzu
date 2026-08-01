@@ -22,6 +22,7 @@ pub fn run(full: bool) -> anyhow::Result<()> {
                 rc.config.markdown.crossref.numbering,
                 yuzu_config::CrossrefNumbering::Site
             ),
+            glossary: yuzu_render::glossary_options(&rc.config),
         },
     )?;
 

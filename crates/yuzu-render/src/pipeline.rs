@@ -72,6 +72,7 @@ pub fn validate_pages(site: &SiteModel, rc: &ResolvedConfig) -> Result<(), Rende
             cfg.markdown.crossref.numbering,
             yuzu_config::CrossrefNumbering::Site
         ),
+        glossary: crate::glossary_options(cfg),
     };
 
     let route_diags = yuzu_core::validate_routes(&site.pages);
@@ -107,6 +108,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             cfg.markdown.crossref.numbering,
             yuzu_config::CrossrefNumbering::Site
         ),
+        glossary: crate::glossary_options(cfg),
     };
 
     // ページ URL とエイリアスの妥当性（cli は破壊的な clean より前に呼ぶが、

@@ -142,6 +142,37 @@ pub struct MarkdownConfig {
     pub mermaid: MermaidConfig,
     pub math: MathConfig,
     pub crossref: CrossrefConfig,
+    pub glossary: GlossaryConfig,
+}
+
+/// 用語集・略語（`<abbr title>` 化と用語集ページの自動生成）の設定。
+///
+/// 辞書を設定に置くのは `lint.terms` と同じ思想で、本文の Markdown を
+/// 汚さずに済む（素の Markdown ビューアでも読める、を保つ）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GlossaryConfig {
+    /// 用語辞書（略語 → 説明文）。例: `{ "API": "Application Programming Interface" }`。
+    /// `BTreeMap` なので反復順が決定的（出力バイト同一・envKey の安定に効く）
+    pub terms: BTreeMap<String, String>,
+    /// 本文中の初出を `<abbr title="説明">略語</abbr>` にするか
+    pub abbr: bool,
+    /// 用語集ページの route（`content` 相対のパス。拡張子なし）。
+    /// 空文字ならページを生成しない（`abbr` だけ使う運用）
+    pub page: String,
+    /// 用語集ページのタイトル（h1 とナビの表示名）
+    pub page_title: String,
+}
+
+impl Default for GlossaryConfig {
+    fn default() -> Self {
+        Self {
+            terms: BTreeMap::new(),
+            abbr: true,
+            page: "glossary".to_string(),
+            page_title: "用語集".to_string(),
+        }
+    }
 }
 
 /// 図表番号（`Figure:` / `Table:` / `Listing:` キャプション行）の採番設定
@@ -179,6 +210,7 @@ impl Default for MarkdownConfig {
             mermaid: MermaidConfig::default(),
             math: MathConfig::default(),
             crossref: CrossrefConfig::default(),
+            glossary: GlossaryConfig::default(),
         }
     }
 }

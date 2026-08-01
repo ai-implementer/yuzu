@@ -114,6 +114,7 @@ mod tests {
             toc: Vec::new(),
             labels: Vec::new(),
             crossref_offset: Default::default(),
+            generated: false,
             source: "# t\n".to_string(),
         }
     }

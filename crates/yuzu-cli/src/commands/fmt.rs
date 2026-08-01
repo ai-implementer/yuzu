@@ -31,6 +31,7 @@ pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
             rc.config.markdown.crossref.numbering,
             yuzu_config::CrossrefNumbering::Site
         ),
+        glossary: yuzu_render::glossary_options(&rc.config),
     };
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;

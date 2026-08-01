@@ -253,7 +253,12 @@ pub struct ConfigDiagnostic {
 }
 
 /// 自由キーのマップ（配下はユーザ任意の名前なので未知キー検査をしない）
-const FREE_FORM_PATHS: &[&str] = &["theme.cssVars", "theme.cssVarsDark", "lint.terms"];
+const FREE_FORM_PATHS: &[&str] = &[
+    "theme.cssVars",
+    "theme.cssVarsDark",
+    "lint.terms",
+    "markdown.glossary.terms",
+];
 
 /// バイトオフセットを 1 始まりの (行, 列) へ変換する
 fn line_col(text: &str, offset: usize) -> (usize, usize) {
@@ -492,6 +497,18 @@ mod tests {
         );
         assert!(
             config_diagnostics(r#"{ "lint": { "terms": { "サーバ": ["サーバー"] } } }"#).is_empty()
+        );
+        // 用語集の辞書も同じ（登録し忘れるとユーザの略語が全部 config-unknown-key になる）
+        let text = r#"{ "markdown": { "glossary": { "terms": { "SSG": "静的サイト生成" } } } }"#;
+        assert!(config_diagnostics(text).is_empty(), "{:?}", found(text));
+        // 一方で glossary 自身のキーのタイポは拾う
+        let typo = r#"{ "markdown": { "glossary": { "pageTitel": "用語集" } } }"#;
+        assert_eq!(
+            found(typo)
+                .iter()
+                .map(|(rule, key, _)| (*rule, key.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("config-unknown-key", "markdown.glossary.pageTitel")]
         );
     }
 

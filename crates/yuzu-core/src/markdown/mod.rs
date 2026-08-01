@@ -12,10 +12,11 @@ pub(crate) mod collapse;
 pub(crate) mod crossref;
 pub(crate) mod fence;
 pub(crate) mod fragment;
+pub(crate) mod glossary;
 pub(crate) mod tabs;
 
 /// 属性・テキストへ埋める文字列の HTML エスケープ。
-/// 本文 HTML を組み立てる collapse / crossref / tabs が共有する
+/// 本文 HTML を組み立てる collapse / crossref / tabs / glossary が共有する
 /// （同じ規則を複数実装するとエスケープ漏れが片方だけ起きる）
 pub(crate) fn escape_html(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -456,6 +457,47 @@ pub(crate) fn render_body_html(
         node.detach();
     }
 
+    // 適用E: 用語集の略語（ページ内初出を <abbr title> で包む）。
+    //
+    // ⚠️ **必ず適用 A〜D の後**に走らせる。この時点でコードブロックと図表キャプション段落は
+    // HtmlBlock へ差し替わっているため、`parse_caption` の再実装なしに除外が成立する
+    // （キャプションで置換すると collect_text が HtmlInline を落とし、アンカー ID が
+    // extract_meta / 本文 HTML / extract_plain_sections の 3 経路でずれる）。
+    // A〜D はいずれも兄弟順を保つので、ここでの再帰順 = 文書順 = 初出の順になる。
+    // 用語集ページ自身は置換しない（説明文の中で自分の用語が光るのは無意味）
+    if !page.generated {
+        if let Some(matcher) = glossary::Matcher::new(&opts.glossary) {
+            let mut used = std::collections::HashSet::new();
+            let mut splits = Vec::new();
+            collect_abbr(root, &matcher, &mut used, &mut splits);
+            for (node, pieces) in splits {
+                let start = node.data.borrow().sourcepos.start;
+                let alloc = |value: NodeValue| {
+                    arena.alloc(AstNode::new(std::cell::RefCell::new(
+                        comrak::nodes::Ast::new(value, start),
+                    )))
+                };
+                for piece in pieces {
+                    match piece {
+                        glossary::Piece::Text(text) => {
+                            node.insert_before(alloc(NodeValue::Text(text.into())));
+                        }
+                        glossary::Piece::Abbr { term, desc } => {
+                            node.insert_before(alloc(NodeValue::HtmlInline(
+                                glossary::abbr_open_tag(&desc),
+                            )));
+                            node.insert_before(alloc(NodeValue::Text(term.into())));
+                            node.insert_before(alloc(NodeValue::HtmlInline(
+                                glossary::ABBR_CLOSE_TAG.to_string(),
+                            )));
+                        }
+                    }
+                }
+                node.detach();
+            }
+        }
+    }
+
     let mut out = String::new();
     format_html(root, &options, &mut out)?;
     Ok(RenderedBody {
@@ -642,6 +684,46 @@ pub(crate) fn extract_plain_sections(
         section.body = section.body.trim().to_string();
     }
     Ok(sections)
+}
+
+/// 用語の初出を `<abbr>` 化する対象を集める（適用は呼び出し側）。
+///
+/// `descendants()` ではなく `collect_sections` と同じ自前再帰にするのは、
+/// **種別ごとに配下ごと打ち切る**（early return）ためで、comrak の AST では
+/// 親を辿れないので文脈による除外はこの形でしか書けない。
+///
+/// 除外の理由は種別ごとに違う:
+/// - `Image` — **必須**。alt テキストは comrak が「HTML を素通しできない文脈」として
+///   描くため、`HtmlInline` のリテラルがエスケープされて `alt="&lt;abbr …"` になる
+/// - `Heading` / `Link` — 方針。初出は散文で消費させたい（見出しやリンク文字列で
+///   使い切ると本文中の説明が出ない）し、リンク文字列は著者の指定を尊重する
+/// - `Code` / `Math` / `CodeBlock` / `HtmlBlock` / `HtmlInline` は**そもそも `Text` に
+///   ならない**ので、子へ降りても対象にならない（インラインコード・数式・生 HTML）
+fn collect_abbr<'a>(
+    node: &'a AstNode<'a>,
+    matcher: &glossary::Matcher<'_>,
+    used: &mut std::collections::HashSet<String>,
+    out: &mut Vec<(&'a AstNode<'a>, Vec<glossary::Piece>)>,
+) {
+    {
+        let data = node.data.borrow();
+        match &data.value {
+            NodeValue::Heading(_)
+            | NodeValue::Image(_)
+            | NodeValue::Link(_)
+            | NodeValue::FrontMatter(_) => return,
+            NodeValue::Text(literal) => {
+                if let Some(pieces) = matcher.split(literal, used) {
+                    out.push((node, pieces));
+                }
+                return;
+            }
+            _ => {}
+        }
+    }
+    for child in node.children() {
+        collect_abbr(child, matcher, used, out);
+    }
 }
 
 fn collect_sections<'a>(

@@ -25,6 +25,21 @@ mod urls;
 
 pub use error::RenderError;
 pub use highlight::SyntectCodeRenderer;
+
+/// `markdown.glossary` を yuzu-core 側の中立型へ写す。
+///
+/// **写像をここ 1 箇所に置く**理由: `MarkdownOptions` の構築点は cli と render に
+/// 8 箇所あり、辞書だけ配線を落とすと「設定したのに用語集が出ない」になる。
+/// yuzu-render は yuzu-config と yuzu-core の両方に依存する唯一の共通の下層
+pub fn glossary_options(cfg: &yuzu_config::Config) -> yuzu_core::GlossaryOptions {
+    let g = &cfg.markdown.glossary;
+    yuzu_core::GlossaryOptions {
+        terms: g.terms.clone(),
+        abbr: g.abbr,
+        page: g.page.clone(),
+        page_title: g.page_title.clone(),
+    }
+}
 pub use llms::{generate_llms_full_txt, generate_llms_txt};
 pub use pipeline::{LiveReloadMode, RenderCtx, RenderParams, render_site, validate_pages};
 pub use shared::RenderShared;

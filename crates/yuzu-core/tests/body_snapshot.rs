@@ -669,3 +669,130 @@ fn 断片内の相対リンクも_url_書き換えを通る() {
     .html;
     assert!(html.contains("href=\"/docs/guide/\""), "{html}");
 }
+
+/// 用語辞書つきの `MarkdownOptions`
+fn glossary_opts(pairs: &[(&str, &str)]) -> MarkdownOptions {
+    MarkdownOptions {
+        glossary: yuzu_core::GlossaryOptions {
+            terms: pairs
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .collect(),
+            ..yuzu_core::GlossaryOptions::default()
+        },
+        ..MarkdownOptions::default()
+    }
+}
+
+/// 単一ページを用語辞書つきで HTML 化する
+fn glossary_html(source: &str, pairs: &[(&str, &str)]) -> String {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("index.md"), source).unwrap();
+    let opts = glossary_opts(pairs);
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let page = site.pages.iter().find(|p| !p.generated).unwrap();
+    render_body_html(page, &opts, &MermaidOnlyRenderer, &NoopUrlRewriter, None)
+        .unwrap()
+        .html
+}
+
+#[test]
+fn 用語集_初出だけが_abbr_になる() {
+    let html = glossary_html(
+        "# ページ\n\n最初の SSG。2 回目の SSG。3 回目の SSG。\n",
+        &[("SSG", "Static Site Generator")],
+    );
+    assert_eq!(html.matches("<abbr").count(), 1, "初出だけ包む: {html}");
+    assert!(
+        html.contains(r#"最初の <abbr title="Static Site Generator">SSG</abbr>。2 回目の SSG。"#),
+        "{html}"
+    );
+}
+
+#[test]
+fn 用語集_見出しリンク画像コード数式は対象外() {
+    // 見出し・リンク文字列は方針として除外。画像 alt は**必須の除外**で、
+    // comrak が alt を「生 HTML を通せない文脈」で描くため、入れると
+    // alt="&lt;abbr …" とエスケープされて壊れる
+    let html = glossary_html(
+        "# SSG の見出し\n\n[SSG のリンク](/x/)\n\n![SSG の alt](/x.png)\n\n`SSG` と $SSG$。\n\n最後に散文の SSG。\n",
+        &[("SSG", "Static Site Generator")],
+    );
+    assert_eq!(html.matches("<abbr").count(), 1, "散文の 1 回だけ: {html}");
+    assert!(
+        html.contains(r#"alt="SSG の alt""#),
+        "alt が壊れない: {html}"
+    );
+    assert!(html.contains("<code>SSG</code>"), "{html}");
+    assert!(
+        html.contains(r#"散文の <abbr title="Static Site Generator">SSG</abbr>"#),
+        "{html}"
+    );
+}
+
+#[test]
+fn 用語集_見出しで初出を使い切らない() {
+    // 見出しを除外する実利: 見出しに出た用語も本文で説明が出る
+    let html = glossary_html(
+        "# SSG とは\n\nyuzu は SSG です。\n",
+        &[("SSG", "Static Site Generator")],
+    );
+    assert_eq!(html.matches("<abbr").count(), 1, "{html}");
+    // 見出しは素のまま（アンカー ID の採番も従来どおり）
+    assert!(html.contains(r#"id="ssg-とは""#), "{html}");
+    assert!(html.contains("></a>SSG とは</h1>"), "{html}");
+}
+
+#[test]
+fn 用語集_最長一致と単語境界() {
+    let html = glossary_html(
+        "# ページ\n\nRAPID な API キーと API を使う。\n",
+        &[("API", "インターフェース"), ("API キー", "認証用の文字列")],
+    );
+    // RAPID には当たらず、API キー（最長一致）と API がそれぞれ 1 回
+    assert_eq!(html.matches("<abbr").count(), 2, "{html}");
+    assert!(html.contains("RAPID な <abbr"), "{html}");
+    assert!(
+        html.contains(r#"<abbr title="認証用の文字列">API キー</abbr>"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"<abbr title="インターフェース">API</abbr>"#),
+        "{html}"
+    );
+}
+
+#[test]
+fn 用語集_折りたたみの中身も対象になる() {
+    // 折りたたみ（適用 D）が Alert の外へ移した散文はフェーズ E の対象
+    let html = glossary_html(
+        "# ページ\n\n> [!NOTE]- ヒント\n> 中身の SSG。\n",
+        &[("SSG", "Static Site Generator")],
+    );
+    assert_eq!(html.matches("<abbr").count(), 1, "{html}");
+    assert!(html.contains("<details"), "{html}");
+}
+
+#[test]
+fn 用語集_キャプション行は対象外() {
+    // キャプション段落は適用 A で HtmlBlock 化済み ＝ Text ノードが無い
+    let html = glossary_html(
+        "# ページ\n\nFigure: SSG の図 {#fig:x}\n\n散文の SSG。\n",
+        &[("SSG", "Static Site Generator")],
+    );
+    assert_eq!(html.matches("<abbr").count(), 1, "{html}");
+    assert!(html.contains(r#"id="fig:x""#), "{html}");
+    assert!(html.contains("SSG の図"), "キャプションは素のまま: {html}");
+}
+
+#[test]
+fn 用語集_title_の引用符はエスケープされる() {
+    let html = glossary_html(
+        "# ページ\n\n本文の SSG。\n",
+        &[("SSG", r#"「"静的"」 <b> & 生成"#)],
+    );
+    assert!(
+        html.contains(r#"<abbr title="「&quot;静的&quot;」 &lt;b&gt; &amp; 生成">"#),
+        "{html}"
+    );
+}
