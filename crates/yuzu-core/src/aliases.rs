@@ -80,7 +80,9 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
     // 正規化済みエイリアス → 最初に宣言したページ（ページ間重複の検出用）
     let mut claimed: HashMap<String, &Page> = HashMap::new();
 
-    for page in pages {
+    // 合成ページ（用語集）は frontmatter を持たないのでエイリアス元にはならない。
+    // ただし上の routes には入れて**衝突先**としては検出する
+    for page in pages.iter().filter(|p| !p.generated) {
         let fm = markdown::frontmatter_raw(&page.source, opts);
         for raw in &page.frontmatter.aliases {
             let span = fm
@@ -96,6 +98,8 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
             if let Some(hit) = routes.get(route.as_str()) {
                 let target = if hit.rel == page.rel {
                     "このページ自身".to_string()
+                } else if hit.generated {
+                    "自動生成される用語集ページ".to_string()
                 } else {
                     format!("ページ {} ", hit.rel.display())
                 };

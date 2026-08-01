@@ -86,7 +86,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
         &diag::Context {
             root: &root,
             content_dir: &rc.content_dir,
-            pages: pages.len(),
+            pages: pages.iter().filter(|p| !p.generated).count(),
         },
     )
 }

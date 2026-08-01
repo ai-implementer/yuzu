@@ -68,7 +68,11 @@ pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
     }
     if !dry_run {
         if changed == 0 {
-            outln!("整形の必要はありません（{} ページ）", pages.len());
+            // 集計行は原稿の数を出す（合成した用語集ページは整形対象外）
+            outln!(
+                "整形の必要はありません（{} ページ）",
+                pages.iter().filter(|p| !p.generated).count()
+            );
         } else {
             outln!("{changed} ファイルを整形しました");
         }

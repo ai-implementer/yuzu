@@ -42,6 +42,26 @@ pub fn validate_routes(pages: &[Page]) -> Vec<Diagnostic> {
     for page in pages {
         check_page_path(page, &mut diags);
         match claimed.get(page.route.as_str()) {
+            // 用語集ページ（設定から合成）が絡む衝突は、直す場所も報告先も違う。
+            // 実在しないファイルを rel にすると `--format github` の注釈が
+            // 付かないので、報告は必ず**実ページ側の rel** で行う
+            Some(first) if page.generated || first.generated => {
+                let real: &Page = if page.generated { first } else { page };
+                let rel = real.rel.clone();
+                diags.push(Diagnostic {
+                    rule: "route-conflict",
+                    severity: Severity::Error,
+                    base: DiagBase::Content,
+                    rel,
+                    span: None,
+                    message: format!(
+                        "自動生成される用語集ページの URL /{} がページ {} と衝突しています。`markdown.glossary.page` かページのファイル名を変えてください",
+                        page.route,
+                        real.rel.display()
+                    ),
+                    fix: None,
+                });
+            }
             Some(first) => diags.push(Diagnostic {
                 rule: "route-conflict",
                 severity: Severity::Error,
@@ -91,9 +111,16 @@ fn check_page_path(page: &Page, out: &mut Vec<Diagnostic>) {
         base: DiagBase::Content,
         rel: page.rel.clone(),
         span: None,
-        message: format!(
-            "ファイル名に URL で意味を持つ文字（{list}）が含まれています。yuzu はファイル名をそのまま URL にするため、このページへのリンクが壊れます。ファイル名を変えてください"
-        ),
+        message: if page.generated {
+            // 用語集ページは設定から合成されるので、直す場所はファイル名ではない
+            format!(
+                "`markdown.glossary.page` に URL で意味を持つ文字（{list}）が含まれています。yuzu は値をそのまま URL にするため、用語集ページへのリンクが壊れます"
+            )
+        } else {
+            format!(
+                "ファイル名に URL で意味を持つ文字（{list}）が含まれています。yuzu はファイル名をそのまま URL にするため、このページへのリンクが壊れます。ファイル名を変えてください"
+            )
+        },
         fix: None,
     });
 }

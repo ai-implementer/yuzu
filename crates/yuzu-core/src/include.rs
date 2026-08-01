@@ -97,7 +97,9 @@ pub fn collect_include_specs(source: &str, opts: &MarkdownOptions) -> Vec<Includ
 /// 描画は寛容に継続するため、公開前に気づける場所はここだけ
 pub fn validate_includes(pages: &[Page], root: &Path, opts: &MarkdownOptions) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for page in pages {
+    // 合成ページ（用語集）はフェンスを含まないが、実在しないファイルを指す診断を
+    // 構造的に出さないため入口で外す（他の検証と同じ規律）
+    for page in pages.iter().filter(|p| !p.generated) {
         for inc in collect_include_specs(&page.source, opts) {
             let diag = |message: String| Diagnostic {
                 rule: "include-error",
@@ -216,7 +218,7 @@ pub fn resolve_spec_source<'a>(
 /// 担当する（同じ失敗を二重に報告しない分担）
 pub fn validate_spec_refs(pages: &[Page], root: &Path, opts: &MarkdownOptions) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for page in pages {
+    for page in pages.iter().filter(|p| !p.generated) {
         for fence in markdown::extract_fence_blocks(&page.source, opts) {
             if !fence.lang.as_deref().is_some_and(crate::is_spec_lang) {
                 continue;

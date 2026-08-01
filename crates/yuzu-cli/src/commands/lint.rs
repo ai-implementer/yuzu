@@ -118,7 +118,8 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
         &diag::Context {
             root: &root,
             content_dir: &rc.content_dir,
-            pages: pages.len(),
+            // 集計行は原稿の数を出す（合成した用語集ページは数えない）
+            pages: pages.iter().filter(|p| !p.generated).count(),
         },
     )
 }

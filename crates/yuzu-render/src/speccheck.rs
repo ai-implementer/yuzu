@@ -45,7 +45,7 @@ impl SpecFiles for CheckSpecFiles<'_> {
 pub fn validate_api_specs(pages: &[Page], root: &Path, opts: &MarkdownOptions) -> Vec<Diagnostic> {
     let files = CheckSpecFiles { root };
     let mut diags = Vec::new();
-    for page in pages {
+    for page in pages.iter().filter(|p| !p.generated) {
         for fence in yuzu_core::extract_fence_blocks(&page.source, opts) {
             let Some(kind) = fence.lang.as_deref().and_then(apispec::spec_kind) else {
                 continue;
