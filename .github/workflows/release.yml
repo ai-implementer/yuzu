@@ -54,7 +54,18 @@ jobs:
             exit 0
           fi
           PREV="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          # 変更内容は**注釈付きタグの本文**（1 行目の要約より後ろ）を使う。
+          # リリース手順が `git tag -a` を必須にしているので、情報源がタグ 1 つに収まり
+          # 「タグの注釈がそのままリリース説明になる」という git の素直な使い方になる。
+          # 本文が空なら節ごと省く（v0.7.0〜v0.11.0 は要約 1 行だけだったので後から手で埋めた）
+          NOTES="$(git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME")"
           {
+            if [ -n "$(printf '%s' "$NOTES" | tr -d '[:space:]')" ]; then
+              echo "## 変更内容"
+              echo ""
+              printf '%s\n' "$NOTES"
+              echo ""
+            fi
             echo "## インストール"
             echo ""
             echo "Assets からお使いのプラットフォームのアーカイブをダウンロードして展開し、"

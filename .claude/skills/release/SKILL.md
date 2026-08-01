@@ -59,11 +59,22 @@ gh run list --branch main --limit 2   # CI と docs の両方が success にな�
 ## 4. 注釈付きタグを push
 
 ```bash
-git tag -a vX.Y.Z -m "yuzu vX.Y.Z — <日本語概要>"
+git tag -a vX.Y.Z -F - <<'EOF'
+yuzu vX.Y.Z — <日本語概要>
+
+- **<Phase 名>** — <何が変わったか。判断の根拠まで書く>
+- **<Phase 名>** — <同上>
+EOF
 git push origin vX.Y.Z
 ```
 
-- **注釈付き（`-a`）必須**。メッセージ形式は過去 11 タグすべて `yuzu vX.Y.Z — <概要>`（em dash）で統一
+- **注釈付き（`-a`）必須**。1 行目は過去 11 タグすべて `yuzu vX.Y.Z — <概要>`（em dash）で統一
+- **2 行目以降がそのままリリース本文の「## 変更内容」になる**（release.yml が
+  `git tag -l --format='%(contents:body)'` で取り出す）。**空にすると節ごと消える** —
+  v0.7.0〜v0.11.0 は要約 1 行しか書いておらず、リリースが「インストール」だけになっていた
+  （v0.6.0 以前は手作業で本文を書いていたので、自動化の副作用で情報が落ちていた。
+  この 7 件は後から `gh release edit` で埋め戻した）
+- 素材は ROADMAP の「完了済み: vX.Y の内訳」から取る（1 つの Phase ＝ 1 項目）
 - 公開の確認:
   ```bash
   gh run list --workflow release.yml --limit 1
