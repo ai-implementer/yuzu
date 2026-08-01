@@ -796,3 +796,72 @@ fn 用語集_title_の引用符はエスケープされる() {
         "{html}"
     );
 }
+
+/// 日本語の約物に隣接した強調（`cjk_friendly_emphasis`）。
+/// CommonMark の flanking 規則だけでは閉じ `**` が成立せず素通しになる形
+#[test]
+fn 約物に隣接した強調が効く() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("index.md"),
+        concat!(
+            "# 見出し\n\n",
+            "これは**「重要」**です。\n\n",
+            "**この文は重要です。**但し例外があります。\n\n",
+            "行末の強調**です**。\n",
+        ),
+    )
+    .unwrap();
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+        None,
+    )
+    .unwrap()
+    .html;
+
+    assert!(
+        html.contains("これは<strong>「重要」</strong>です。"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<strong>この文は重要です。</strong>但し例外があります。"),
+        "{html}"
+    );
+    assert!(html.contains("行末の強調<strong>です</strong>。"), "{html}");
+    // 生の ** が残っていない（＝ すべて強調として解釈された）
+    assert!(!html.contains("**"), "{html}");
+}
+
+/// 定義リスト（`description_lists`）
+#[test]
+fn 定義リストは_dl_になる() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("index.md"),
+        "# 見出し\n\nSSG\n\n: 静的サイトジェネレータ。\n\nSSR\n\n: サーバ側レンダリング。\n",
+    )
+    .unwrap();
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+        None,
+    )
+    .unwrap()
+    .html;
+
+    assert!(html.contains("<dl>"), "{html}");
+    assert!(html.contains("<dt>SSG</dt>"), "{html}");
+    assert!(html.contains("静的サイトジェネレータ。"), "{html}");
+    assert!(html.contains("<dt>SSR</dt>"), "{html}");
+    // 用語集ページのアンカー契約と混同しないこと: dt に id は振られない
+    assert!(!html.contains(r#"<dt id="#), "{html}");
+}

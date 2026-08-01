@@ -684,6 +684,32 @@ body {
   margin: 0.25rem 0;
 }
 
+/* 定義リスト（`用語` → 空行 → `: 説明`）。UA 既定は dd のインデントだけで
+   本文の density に合わないので、用語を強調して説明を左罫線で束ねる */
+.markdown-body dl {
+  margin: 0.75rem 0;
+}
+
+.markdown-body dt {
+  font-weight: 600;
+  margin-top: 0.75rem;
+}
+
+.markdown-body dt:first-child {
+  margin-top: 0;
+}
+
+.markdown-body dd {
+  margin: 0.3rem 0 0;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--border-muted);
+}
+
+/* dd 直下の p は上下の余白を詰める（loose list と同じ扱い） */
+.markdown-body dd > p {
+  margin: 0.25rem 0;
+}
+
 /* マーカーはオレンジ小物。番号は文字として読まれるため AA を満たす --accent-2-fg */
 .markdown-body ul > li::marker {
   color: var(--accent-2);

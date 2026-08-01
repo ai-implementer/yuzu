@@ -182,3 +182,26 @@ fn fmt_は_include_フェンスを温存し冪等() {
     assert_eq!(once, src, "1 バイトも変わらない");
     assert_eq!(format_str(&once), once, "冪等");
 }
+
+#[test]
+fn 定義リストと約物強調は_fmt_を往復しても壊れない() {
+    // Phase 53 で有効化した 2 フラグ（description_lists / cjk_friendly_emphasis）は
+    // comrak_options 経由で fmt / normalize / linkcheck にも効く。
+    // 「整形すると記法が別物になる」ことが無いのを冪等性で縛る
+    let source = concat!(
+        "# 見出し\n",
+        "\n",
+        "これは**「重要」**です。\n",
+        "\n",
+        "SSG\n",
+        "\n",
+        ": 静的サイトジェネレータ。\n",
+    );
+    let once = format_str(source);
+    assert!(once.contains("**「重要」**"), "強調が壊れる:\n{once}");
+    assert!(
+        once.contains(": 静的サイトジェネレータ。"),
+        "定義が壊れる:\n{once}"
+    );
+    assert_eq!(format_str(&once), once, "冪等でない:\n{once}");
+}

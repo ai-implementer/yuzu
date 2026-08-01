@@ -54,7 +54,9 @@ use crate::model::{Frontmatter, TocEntry};
 ///   断片を含むようになる
 /// - v18: 用語集・略語（`markdown.glossary`）。本文中の初出が
 ///   `<abbr title="…">` で包まれるので本文 HTML が変わる
-pub const CACHE_FORMAT_VERSION: u32 = 18;
+/// - v19: comrak の `cjk_friendly_emphasis`（日本語の約物に隣接した強調）と
+///   `description_lists`（`: ` の定義リスト）を有効化。どちらもパースが変わる
+pub const CACHE_FORMAT_VERSION: u32 = 19;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

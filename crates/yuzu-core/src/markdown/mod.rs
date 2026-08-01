@@ -66,6 +66,13 @@ fn comrak_options(opts: &MarkdownOptions) -> Options<'static> {
     }
     options.extension.front_matter_delimiter = Some("---".to_string());
     options.extension.header_id_prefix = Some(String::new());
+    // 日本語の約物に隣接した強調（`**この文は重要です。**但し…`）。CommonMark の
+    // flanking 規則では閉じ `**` が「約物に前置・非約物に後続」だと成立せず、
+    // `**「重要」**です` のような日本語で頻出する形が素通しになる
+    options.extension.cjk_friendly_emphasis = true;
+    // 定義リスト（`用語` → 空行 → `: 説明` → <dl>/<dt>/<dd>）。
+    // format_commonmark も対応しているので `yuzu fmt` の往復が成立する
+    options.extension.description_lists = true;
     options.render.r#unsafe = true;
     options
 }
