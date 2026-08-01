@@ -76,6 +76,8 @@ jobs:
           grep -q 'js/details-target.js' dist/guide/writing/index.html
           # サイドバーのスクロール位置維持（base.jinja のインライン script）が配信されている
           grep -q 'yuzu-sidebar-scroll' dist/index.html
+          # タブ / コードグループ（Phase 50）: radio + label のマークアップが出ている
+          grep -q 'class="tab-label"' dist/guide/code-and-math/index.html
           # 診断ルールのリファレンス（Phase 46）が配信されている
           grep -q 'broken-anchor' dist/reference/rules/index.html
           # 出力先・URL の安全化（v0.10.1）で足したルールが原稿に載っている

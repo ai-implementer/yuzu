@@ -48,6 +48,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 `code-block-meta` はフェンス情報文字列の問題をまとめて報告します
 （`showLineNumbers` の書き間違い、`{2,4-6}` の解釈できない部分、`file=` のない `lines=`、
+隣接するフェンスが無い単独の `tab=`、
 コード行数を超える行ハイライト、特別描画される言語への表示メタ指定）。
 記法は[コードと数式](../guide/code-and-math.md)を参照してください。
 

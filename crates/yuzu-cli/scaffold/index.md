@@ -17,6 +17,7 @@ description: yuzu のサンプルドキュメント
 | コードハイライト | syntect（ビルド時・CSS クラス出力） | [下](#コードブロック) |
 | コードの表示メタ | キャプション・行ハイライト・行番号（JS ゼロ） | [下](#コードブロック) |
 | ソースの埋め込み | `file=` で実ファイルの中身をビルド時に取り込む | [下](#コードブロック) |
+| タブ / コードグループ | 連続フェンスの `tab=` で切り替え表示（JS ゼロ） | [下](#コードブロック) |
 | Mermaid 図 | クライアント描画（既定）/ `backend: "ssr"` で 9 図種をビルド時 SVG 化 | [下](#図mermaid) |
 | 図表番号と相互参照 | `Figure:` の行で自動採番、空リンクに番号を補完 | [下](#図mermaid) |
 | 折りたたみ | `> [!TIP]-` で `<details>` になる | [はじめに](guide/getting-started.md) |
@@ -50,6 +51,19 @@ fn main() {
 
 `lines=10-25` のように行範囲だけを切り出すこともできます。
 参照先が無い・範囲外なら `yuzu check` がエラーにします。
+
+連続するフェンスに `tab="..."` を書くと、1 つのタブグループになります
+（切り替えは CSS だけで、クライアント JS は使いません）:
+
+```sh tab="macOS / Linux"
+curl -fsSL https://example.com/install.sh | sh
+```
+
+```powershell tab="Windows"
+winget install example
+```
+
+素の Markdown ビューアではコードが縦に並ぶだけなので壊れません。
 
 ## 図（Mermaid）
 

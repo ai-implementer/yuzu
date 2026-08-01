@@ -102,6 +102,43 @@ fn main() {
 > （表示されているものは検索できる、を保つため）。一方 llms.txt は原文の
 > ままです（`yuzu fmt` の正規形と一致する不変条件を保つため）。
 
+## タブ / コードグループ
+
+連続するフェンスに `tab="..."` を書くと、**1 つのタブグループ**に束ねられます。
+言語別のサンプルや OS 別の手順を切り替えて見せるときに使います。
+
+````markdown
+```sh tab="macOS / Linux"
+curl -fsSL https://example.com/install.sh | sh
+```
+
+```powershell tab="Windows"
+winget install example
+```
+````
+
+```sh tab="macOS / Linux"
+curl -fsSL https://example.com/install.sh | sh
+```
+
+```powershell tab="Windows"
+winget install example
+```
+
+- グループになるのは**隣接したフェンス**だけです。間に段落や見出しを挟むと
+  そこでグループが切れるので、意図しないブロックを巻き込みません
+- 切り替えは radio と CSS の `order` だけで、**クライアント JS は使いません**。
+  タブの枚数に上限はありません
+- `title=` や行ハイライトなど、ほかの表示メタと併用できます
+- 素の Markdown ビューアで開くと、**コードが縦に並ぶだけ**で壊れません
+- 選択されていないタブの中身も HTML には含まれるため、検索・llms.txt の扱いは
+  通常のコードブロックと同じです（折りたたみと同じ考え方）
+
+> [!NOTE]
+> `tab=` を 1 つのフェンスだけに書くと切り替え先が無いため、通常のコード
+> ブロックとして描画されます。指定が効かないまま気づけないので、
+> `yuzu lint` が `code-block-meta` で警告します。
+
 ## コピーボタン
 
 コードブロックの右上から、中身をワンクリックでコピーできます
