@@ -39,22 +39,35 @@ comrak 0.53 で両案を実測したうえでの判断:
 - タブ見出しは既存の `code-block-meta` lint に相乗りする（新ルールを作らない）
 - `CACHE_FORMAT_VERSION` の bump が要る
 
-### 51 Markdown 片のインクルード ⬜
+### 51 Markdown 片のインクルード ✅
 
 `file=` は**コードブロック専用**で、共通の注意書き・用語定義・免責文を複数ページで
 再利用できない（設計書運用では「同じ文言が 5 ページに散り、片方だけ古い」が起きる）。
-読み込みは `yuzu-core::include` の `read_under_root`（canonicalize でルート配下強制）を
-そのまま使えるが、**コードと違い Markdown は解釈される**ぶん論点が多い。
+` ```include file="snippets/note.md" ` が Markdown 断片を本文の AST へ展開する。
 
-- 記法（フェンス方式なら素のビューアでは「コードとして見える」だけで壊れない）
-- 見出しを含む断片のアンカー採番（extract_meta・本文 HTML・extract_plain_sections の
-  3 経路とも文書順に Anchorizer を通す不変条件を保てるか）
-- 入れ子と循環（深さ上限）
-- キャッシュ（本文 HTML は external_deps で非対象、検索 tf は Phase 48 の
-  `searchDepsSha256` を流用できる）
-- `yuzu fmt` は断片ファイル自体を整形対象にするか（content の外にも置ける）
-- llms.txt は展開か原文か（Phase 42 は「検索は展開・llms は原文」）
-- 断片内の見出しレベル飛びを lint の誰の責任にするか
+論点 7 つへの回答（着手時の設計判断）:
+
+- **記法**: フェンス（言語トークン `include` ＋ `file=` / `lines=` 再利用）。
+  素のビューアでは空のコードブロックに見えるだけで壊れず、`yuzu fmt` は情報
+  文字列を逐語温存する契約（Phase 39）なので追加作業ゼロ
+- **断片は散文専用**（見出し・図表キャプション行・脚注・frontmatter を check が
+  `include-error` でエラーに）。これにより extract_meta は無展開のままでよく、
+  **アンカー採番の 3 経路同期・meta キャッシュ無効化の問題がそもそも発生しない**。
+  展開が要るのは本文 HTML と検索の 2 経路だけ
+- **入れ子は禁止**（断片内の `file=` 付きフェンス全般を禁止。検索の deps ハッシュが
+  入れ子の参照先を追えず、Phase 48 修正前の「参照先を編集しても検索が古い」を
+  再導入するため）。循環検出・深さ上限は不要になった
+- **キャッシュ**: 本文 HTML は `RenderedBody.used_fragment` で非対象化
+  （core 展開は renderer の external_deps を通らないため、戻り値で報告する。
+  v15 事故の再演防止）。検索 tf は `searchDepsSha256` を per-spec ゲート化して流用
+  （断片は indexCode と無関係に常に索引）
+- **fmt は断片自体を対象にしない**（断片は content 外の `snippets/` に置く慣例。
+  content 内に置くとページになるので避けるか input.ignore で除外）
+- **llms.txt は原文のまま**（Phase 42 と同じ非対称。fmt 正規形との一致を保つ）
+- **断片内の見出しレベル飛び lint は「見出し自体を禁止」で解消**
+
+制限（docs に明記済み）: 断片内リンクは linkcheck 対象外・相対リンクは
+取り込み先ページ基準で解決・断片内の tab= は無効。
 
 ### 52 用語集・略語 ⬜
 

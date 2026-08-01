@@ -78,6 +78,8 @@ jobs:
           grep -q 'yuzu-sidebar-scroll' dist/index.html
           # タブ / コードグループ（Phase 50）: radio + label のマークアップが出ている
           grep -q 'class="tab-label"' dist/guide/code-and-math/index.html
+          # Markdown 断片（Phase 51）: docs/snippets/ の断片が展開された散文で出ている
+          grep -q '取り込まれた Markdown 断片です' dist/guide/writing/index.html
           # 診断ルールのリファレンス（Phase 46）が配信されている
           grep -q 'broken-anchor' dist/reference/rules/index.html
           # 出力先・URL の安全化（v0.10.1）で足したルールが原稿に載っている
@@ -123,6 +125,8 @@ jobs:
           # （エイリアスのリダイレクト HTML と、file= で引用したソースのキャプション）
           test -f dist/guide/intro/index.html
           grep -q '<figcaption>snippets/greet.rs</figcaption>' dist/index.html
+          # Phase 51: scaffold の Markdown 断片が展開されている（フェンス原文ではなく散文で照合）
+          grep -q '参照している全ページに反映されます' dist/index.html
           # Phase 22: openapi/jsonschema SSR — scaffold の jsonschema ブロックが
           # 静的 HTML 化されていること＋ file: 参照は仕様ファイルの変更だけで反映されること
           # （jsonschema は class="api-spec api-schema" なので閉じ引用符まで書かない）

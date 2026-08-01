@@ -139,6 +139,10 @@ winget install example
 > ブロックとして描画されます。指定が効かないまま気づけないので、
 > `yuzu lint` が `code-block-meta` で警告します。
 
+Markdown の断片（注意書き・免責文など）を取り込みたい場合は、コード引用ではなく
+[Markdown 断片のインクルード](writing.md#markdown-断片のインクルード)
+（` ```include `）を使います。
+
 ## コピーボタン
 
 コードブロックの右上から、中身をワンクリックでコピーできます

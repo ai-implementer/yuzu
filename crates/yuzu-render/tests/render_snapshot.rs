@@ -1059,3 +1059,35 @@ fn 壊れた_openapi_はエラーボックスでビルドは継続する() {
     );
     assert!(html.contains("後続の本文。"), "ページ自体は生成される");
 }
+
+/// pipeline が render_body_html へプロジェクトルートを渡していることの固定
+/// （Markdown 断片は core 側で展開されるため、配線が切れると黙って
+/// エラーボックスになる）
+#[test]
+fn markdown_断片が_dist_の_html_へ展開される() {
+    let dir = build_fixture_with(|root| {
+        fs::create_dir_all(root.join("snippets")).unwrap();
+        fs::write(
+            root.join("snippets/note.md"),
+            "共通の**注意書き**が展開されます。\n",
+        )
+        .unwrap();
+        let index = root.join("content/index.md");
+        let source = fs::read_to_string(&index).unwrap();
+        fs::write(
+            &index,
+            format!("{source}\n```include file=\"snippets/note.md\"\n```\n"),
+        )
+        .unwrap();
+    });
+
+    let html = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(
+        html.contains("共通の<strong>注意書き</strong>が展開されます。"),
+        "断片が散文として展開される: {html}"
+    );
+    assert!(
+        !html.contains("language-include"),
+        "include フェンスがコードブロックとして残らない"
+    );
+}

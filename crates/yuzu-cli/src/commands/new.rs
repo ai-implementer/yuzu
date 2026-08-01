@@ -20,8 +20,10 @@ const FILES: &[(&str, &str)] = &[
         "public/images/yuzu-logo.svg",
         include_str!("../../scaffold/yuzu-logo.svg"),
     ),
-    // content の外にある引用先（`file=` の実例。content/index.md から参照する）
+    // content の外にある引用先（`file=` / ```include の実例。
+    // content/index.md から参照する）
     ("snippets/greet.rs", include_str!("../../scaffold/greet.rs")),
+    ("snippets/note.md", include_str!("../../scaffold/note.md")),
     (
         "theme/README.md",
         include_str!("../../scaffold/theme-readme.md"),
