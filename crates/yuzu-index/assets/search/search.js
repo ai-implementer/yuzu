@@ -35,6 +35,23 @@ export class YuzuSearch {
         }
     }
     /**
+     * グループ（絞り込み単位）の表示名を JSON 配列で返す: `["ガイド","リファレンス"]`。
+     * 古いインデックスでは空配列 = UI が絞り込みを出さない
+     * @returns {string}
+     */
+    groups() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.yuzusearch_groups(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * fetch 済みシャードを登録する
      * @param {number} shard_id
      * @param {Uint8Array} bytes
@@ -84,6 +101,11 @@ export class YuzuSearch {
     /**
      * BM25 の上位 `limit` 件と総ヒット数を JSON 文字列で返す:
      * `{"total":12,"hits":[{"docId":0,"score":1.2},…]}`
+     *
+     * ⚠️ **このシグネチャは変えない**。`search_bg.wasm` は `_search/` の固定 URL で
+     * 配信されるため HTTP キャッシュに旧版が残りうる。ここへ絞り込み引数を足すと、
+     * 旧 wasm が余分な引数を黙って無視して「絞り込んでいないのに絞り込んだ件数」を
+     * 表示する（静かに嘘をつく）。絞り込みは [`Self::search_in`] を新設して足した
      * @param {string} query
      * @param {number} limit
      * @returns {string}
@@ -100,6 +122,32 @@ export class YuzuSearch {
             return getStringFromWasm0(ret[0], ret[1]);
         } finally {
             wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * [`Self::search`] のグループ絞り込み版。`groups_json` は表示名の JSON 配列
+     * （`["ガイド"]`）で、空文字・空配列なら絞り込まない。
+     * 返す JSON に `totalUnfiltered` と `groupCounts` を足す（`{total,hits}` を読む
+     * 旧 UI からは無害な追加）
+     * @param {string} query
+     * @param {number} limit
+     * @param {string} groups_json
+     * @returns {string}
+     */
+    searchIn(query, limit, groups_json) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(query, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(groups_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ret = wasm.yuzusearch_searchIn(this.__wbg_ptr, ptr0, len0, limit, ptr1, len1);
+            deferred3_0 = ret[0];
+            deferred3_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
         }
     }
     /**
