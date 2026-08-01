@@ -88,6 +88,20 @@ jobs:
           grep -q 'href="/glossary/"' dist/index.html
           # 用語集ページ自身は abbr 化しない（説明文の中で用語が光る循環を防ぐ）
           ! grep -q '<abbr' dist/glossary/index.html
+          # 約物に隣接した強調（Phase 53 の cjk_friendly_emphasis）
+          grep -q '<strong>「重要」</strong>' dist/guide/writing/index.html
+          grep -q '<strong>この文は重要です。</strong>但し' dist/guide/writing/index.html
+          # 定義リスト（Phase 53 の description_lists）
+          grep -q '<dl>' dist/guide/writing/index.html
+          # 検索の絞り込み: インデックスにナビ由来の区分が焼き込まれている
+          grep -q '"groups"' dist/_search/manifest.json
+          grep -q '"docGroups"' dist/_search/manifest.json
+          # エンジン側で絞り込めて件数も絞り込み後になる（ブラウザ操作は CI で
+          # 検証できないので、同一エンジンを通る CLI で担保する）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search --section 開発 "キャッシュ" | grep -q '/development/'
+          # 絞り込み UI の配線ゲート（機能自体はブラウザ操作なので CI では検証できない）
+          grep -q 'search-filter-chip' dist/_assets/js/search-ui.js
+          grep -q 'composedPath' dist/_assets/js/search-ui.js
           # 診断ルールのリファレンス（Phase 46）が配信されている
           grep -q 'broken-anchor' dist/reference/rules/index.html
           # 出力先・URL の安全化（v0.10.1）で足したルールが原稿に載っている
@@ -138,6 +152,10 @@ jobs:
           # Phase 52: scaffold の略語が <abbr> 化され、用語集ページが生成される
           grep -q '<abbr title="Static Site Generator' dist/index.html
           test -f dist/glossary/index.html
+          # Phase 53: 定義リストが描画される
+          grep -q '<dl>' dist/index.html
+          # Phase 53: 未知のセクション名は実行エラー（終了コード 2）
+          ! "$GITHUB_WORKSPACE/target/debug/yuzu" search --section 存在しない "はじめに"
           # Phase 22: openapi/jsonschema SSR — scaffold の jsonschema ブロックが
           # 静的 HTML 化されていること＋ file: 参照は仕様ファイルの変更だけで反映されること
           # （jsonschema は class="api-spec api-schema" なので閉じ引用符まで書かない）

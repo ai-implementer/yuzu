@@ -27,6 +27,7 @@ yuzu は SSG です。原稿には「SSG」と書くだけで、`yuzu.jsonc` の
 | 折りたたみ | `> [!TIP]-` で `<details>` になる | [はじめに](guide/getting-started.md) |
 | API 仕様の描画 | OpenAPI / JSON Schema をビルド時に HTML 化 | [はじめに](guide/getting-started.md) |
 | 用語集と略語 | 設定の辞書から初出を `<abbr>` 化し用語集ページを自動生成 | [用語集](glossary.md) |
+| 定義リスト | 用語 → 空行 → `: 説明` が `<dl>` になる | [下](#定義リスト) |
 | 日本語全文検索 | BM25 + vaporetto + Wasm（ヘッダーの検索ボックス） | ヘッダー |
 | llms.txt | LLM 向けの索引と全文（`/llms.txt`・`/llms-full.txt`） | `/llms.txt` |
 | 品質チェック | `yuzu fmt` / `lint` / `check`（CI 用の終了コードと機械可読出力） | [はじめに](guide/getting-started.md) |
@@ -109,6 +110,16 @@ Figure: ライブリロードの流れ {#fig:reload}
 `![図](diagram.png)` のように相対パスで参照することもできます。
 `.md` 以外のファイルは `dist/` へ自動コピーされ、リンクは正しい URL に
 解決されます。参照切れは `yuzu check` が検出します。
+
+## 定義リスト
+
+用語の段落 → 空行 → コロン（`:`）で始まる段落を書くと定義リストになります。
+
+SSG
+
+: Markdown などの原稿から静的な HTML サイトを生成する仕組み。
+
+用語をまとめて見せたいだけなら[用語集](glossary.md)の自動生成が使えます。
 
 -----
 

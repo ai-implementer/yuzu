@@ -65,6 +65,10 @@ grep -q '<abbr title="Server-Side Rendering' dist/guide/writing/index.html     #
 grep -q 'id="ssr"' dist/glossary/index.html                                    # 用語集ページの自動生成
 grep -q 'href="/glossary/"' dist/index.html                                    # 生成ページが nav に載る
 ! grep -q '<abbr' dist/glossary/index.html                                     # 用語集ページ自身は abbr 化しない
+grep -q '<strong>「重要」</strong>' dist/guide/writing/index.html              # 約物に隣接した強調
+grep -q '<dl>' dist/guide/writing/index.html                                   # 定義リスト
+grep -q '"docGroups"' dist/_search/manifest.json                               # 検索の絞り込み区分
+<repo>/target/debug/yuzu search --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
 grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html" && echo "NG: フォールバック発生"
 ```
