@@ -659,11 +659,27 @@ fn collect_sections<'a>(
                 return;
             }
             NodeValue::CodeBlock(cb) => {
+                let (lang, meta) = parse_fence_info(&cb.info);
+                // Markdown 断片（```include）は散文なので indexCode と無関係に
+                // 常に索引する。記法を落としたプレーンテキストを現セクションへ
+                // 足す（見出し境界は作らない = 断片に見出しは来ない契約）。
+                // 読めない場合は黙って諦める（既存の include と同じ方針）
+                if lang == Some(fragment::FRAGMENT_LANG) {
+                    if let (Some(spec), Some(root)) = (&meta.include, project_root) {
+                        if let Ok(text) = crate::include::resolve_include(root, spec) {
+                            sections
+                                .last_mut()
+                                .unwrap()
+                                .body
+                                .push_str(&fragment::collect_plain_text(&text, opts));
+                        }
+                    }
+                    return;
+                }
                 // 既定は除外。`index_code` の opt-in 時のみ、フェンスコードブロックに限り
                 // 本文を含める（インデントコードは公開ドキュメントの「フェンス」に合わせ除外）。
                 // 特別レンダリングされる言語（図・仕様・数式ソース）は検索ノイズなので除外
                 // — ただし機能が無効でプレーンコード表示になる場合は見えるまま索引する
-                let (lang, meta) = parse_fence_info(&cb.info);
                 let lang = lang.unwrap_or("");
                 if !index_code || !cb.fenced || crate::is_special_render_lang(lang, opts) {
                     return;

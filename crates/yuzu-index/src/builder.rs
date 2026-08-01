@@ -361,8 +361,8 @@ fn copy_wasm_assets(_search_dir: &Path, write: &WriteFn<'_>) -> Result<(), Index
 /// キャッシュキーに source ハッシュとは**別フィールドで**添える
 /// （畳み込むと meta / body / llms まで巻き添えでリセットされる）。
 ///
-/// - `index_code = false`（既定）なら引用は索引されない（`extract_plain_sections`
-///   が早期 return する）ので常に None ＝ 従来どおり source だけで判定する
+/// - コード引用は `index_code` 有効時のみ索引されるのでそのときだけハッシュへ。
+///   Markdown 断片（```include）は散文として**常に**索引されるので常にハッシュへ
 /// - 事前フィルタ（`contains("file=")`）で、引用のない大多数のページでは
 ///   comrak の再パースすら起こさない
 /// - 特別レンダリング言語の引用は索引に入らないので除外する（render の
@@ -376,15 +376,19 @@ fn include_deps_hash(
     project_root: Option<&Path>,
 ) -> Option<String> {
     let root = project_root?;
-    if !index_code || !page.source.contains("file=") {
+    // プレフィルタ: 断片（```include）もコード引用も file= が必須なので有効なまま
+    if !page.source.contains("file=") {
         return None;
     }
     let parts: Vec<Vec<u8>> = yuzu_core::collect_include_specs(&page.source, md_opts)
         .iter()
-        .filter(|inc| {
-            !inc.lang
-                .as_deref()
-                .is_some_and(|lang| yuzu_core::is_special_render_lang(lang, md_opts))
+        .filter(|inc| match inc.lang.as_deref() {
+            // Markdown 断片は indexCode と無関係に常に索引される → 常にハッシュへ
+            Some(yuzu_core::FRAGMENT_LANG) => true,
+            // 特別レンダリング言語（openapi の file: 等）は索引に入らない（既存どおり）
+            Some(lang) if yuzu_core::is_special_render_lang(lang, md_opts) => false,
+            // コード引用は indexCode 有効時のみ索引される
+            _ => index_code,
         })
         .map(|inc| match yuzu_core::resolve_include(root, &inc.spec) {
             Ok(text) => text.into_bytes(),

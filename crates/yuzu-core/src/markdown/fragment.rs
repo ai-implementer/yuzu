@@ -17,6 +17,10 @@
 //! - 脚注禁止の理由: 断片は独立してパースされるので、脚注セクションが
 //!   取り込み先ページの途中に紛れ込む
 
+use comrak::nodes::NodeValue;
+use comrak::{Arena, parse_document};
+
+use crate::MarkdownOptions;
 use crate::markdown::escape_html;
 
 /// 断片インクルードのフェンス言語トークン。
@@ -39,6 +43,41 @@ pub(crate) fn error_box(message: &str, path: &str) -> String {
     )
 }
 
+/// 断片テキストのプレーンテキスト抽出（検索用）。
+///
+/// 記法（強調・リンク等）を落とし、ブロック境界で改行を入れる。
+/// 検索 UI の抜粋にそのまま出るため、生 Markdown を返さない。
+/// Anchorizer は**通さない**（断片に見出しは来ない契約。来ても check が
+/// エラーにする。ここで見出し境界を作ると 3 経路のアンカー同期が壊れる）。
+/// コードブロック・HTML・frontmatter は含めない（`file=` 入れ子禁止と整合）
+pub(crate) fn collect_plain_text(text: &str, opts: &MarkdownOptions) -> String {
+    let arena = Arena::new();
+    let options = crate::markdown::comrak_options(opts);
+    let root = parse_document(&arena, text, &options);
+
+    let mut out = String::new();
+    for node in root.descendants() {
+        let data = node.data.borrow();
+        match &data.value {
+            NodeValue::Text(t) => out.push_str(t),
+            NodeValue::Code(c) => out.push_str(&c.literal),
+            NodeValue::Math(m) => out.push_str(&m.literal),
+            NodeValue::SoftBreak | NodeValue::LineBreak => out.push(' '),
+            // ブロックの開始で改行を入れる（トークナイズの文脈を切る）
+            NodeValue::Paragraph | NodeValue::Item(_)
+                if !out.is_empty() && !out.ends_with('\n') =>
+            {
+                out.push('\n');
+            }
+            _ => {}
+        }
+    }
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,5 +88,17 @@ mod tests {
         assert!(html.contains("&lt;msg&gt; &amp; &quot;x&quot;"), "{html}");
         assert!(html.contains("file=&quot;a&quot;b.md&quot;") || !html.contains("file=\"a\"b"));
         assert!(!html.contains("<msg>"));
+    }
+
+    #[test]
+    fn プレーンテキスト抽出は記法を落とす() {
+        let text = collect_plain_text(
+            "これは**強調**と[リンクラベル](https://example.com)です。\n\n次の段落。\n",
+            &MarkdownOptions::default(),
+        );
+        assert!(text.contains("これは強調とリンクラベルです。"), "{text}");
+        assert!(!text.contains("**"), "{text}");
+        assert!(!text.contains("example.com"), "URL は索引しない: {text}");
+        assert!(text.contains("次の段落。"));
     }
 }

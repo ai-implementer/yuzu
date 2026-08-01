@@ -105,7 +105,8 @@ pub struct PageCacheEntry {
     pub body: Option<CachedBody>,
     pub search: Option<Vec<CachedSection>>,
     /// 検索 tf が依存する外部ファイル（`file=` の参照先）の内容ハッシュ。
-    /// 引用なし・`search.indexCode` 無効なら None。
+    /// コード引用は `search.indexCode` 有効時のみ、Markdown 断片（```include）は
+    /// 常に対象。どちらも無ければ None。
     ///
     /// ⚠️ **`source_sha256` へ畳み込んではいけない**。[`BuildCache::store`] は
     /// source_sha256 の不一致でエントリを丸ごと作り直すため、参照先が変わるたびに

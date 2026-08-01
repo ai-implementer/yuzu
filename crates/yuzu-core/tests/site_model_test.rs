@@ -402,3 +402,53 @@ fn 読めないディレクトリがあるとサイトモデル構築はエラ�
         assert!(result.is_err(), "無言でスキップせずエラーにする");
     }
 }
+
+#[test]
+fn 断片は_index_code_無効でも索引される() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("content")).unwrap();
+    fs::create_dir_all(root.path().join("snippets")).unwrap();
+    fs::write(
+        root.path().join("content/index.md"),
+        "# ページ\n\n本文。\n\n```include file=\"snippets/note.md\"\n```\n",
+    )
+    .unwrap();
+    fs::write(
+        root.path().join("snippets/note.md"),
+        "断片の**注意書き**と[リンク](/guide/)です。\n",
+    )
+    .unwrap();
+
+    let site = build_site_model(
+        &root.path().join("content"),
+        &[],
+        &MarkdownOptions::default(),
+    )
+    .unwrap();
+    // index_code = false（既定）のまま断片が索引される
+    let sections = yuzu_core::extract_plain_sections(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        false,
+        Some(root.path()),
+    )
+    .unwrap();
+    let lead = &sections[0].body;
+    assert!(
+        lead.contains("断片の注意書きとリンクです。"),
+        "記法が落ちる: {lead}"
+    );
+    assert!(!lead.contains("**"), "{lead}");
+
+    // 読めない断片は黙ってスキップ（本文の索引は続く）
+    fs::remove_file(root.path().join("snippets/note.md")).unwrap();
+    let sections = yuzu_core::extract_plain_sections(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        false,
+        Some(root.path()),
+    )
+    .unwrap();
+    assert!(sections[0].body.contains("本文。"));
+    assert!(!sections[0].body.contains("注意書き"));
+}

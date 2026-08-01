@@ -566,3 +566,93 @@ fn 出力先がシンボリックリンクなら書き出さない() {
         "リンク先へ書き出していない"
     );
 }
+
+mod 検索キャッシュと断片 {
+    use super::*;
+    use yuzu_core::BuildCache;
+
+    /// 断片を参照するページを持つプロジェクト（**index_code は既定の false のまま**）
+    fn fixture(fragment: &str) -> (tempfile::TempDir, tempfile::TempDir) {
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), "snippets/note.md", fragment);
+        write(
+            root.path(),
+            "content/frag.md",
+            "---\ntitle: 断片\n---\n# 断片\n\n```include file=\"snippets/note.md\"\n```\n",
+        );
+        write(
+            root.path(),
+            "content/plain.md",
+            "---\ntitle: 素\n---\n# 素\n\n断片のないページ。\n",
+        );
+        let cache_dir = tempfile::tempdir().unwrap();
+        (root, cache_dir)
+    }
+
+    fn params(root: &Path) -> IndexParams {
+        IndexParams {
+            // 断片は indexCode と無関係に索引される（per-spec ゲートの検証の要）
+            index_code: false,
+            project_root: Some(root.to_path_buf()),
+            ..IndexParams::default()
+        }
+    }
+
+    fn build(root: &Path, cache_dir: &Path) -> (tempfile::TempDir, usize, usize) {
+        let md_opts = MarkdownOptions::default();
+        let site = yuzu_core::build_site_model(&root.join("content"), &[], &md_opts).unwrap();
+        let cache = BuildCache::load(cache_dir, "env1");
+        cache.begin_build();
+        let dist = tempfile::tempdir().unwrap();
+        let session = IndexSession::default();
+        build_search_index_with(
+            &site,
+            &md_opts,
+            &params(root),
+            dist.path(),
+            &IndexCtx {
+                cache: Some(&cache),
+                outputs: None,
+                session: Some(&session),
+            },
+        )
+        .unwrap();
+        let stats = cache.stats();
+        cache.save().unwrap();
+        (dist, stats.search_hits, stats.search_misses)
+    }
+
+    #[test]
+    fn 断片の編集で検索インデックスが更新される() {
+        let (root, cache_dir) = fixture("アボカドの注意書きです。\n");
+        let (dist, _, _) = build(root.path(), cache_dir.path());
+        assert_eq!(
+            search_dist(dist.path(), "アボカド", 10).unwrap().len(),
+            1,
+            "断片の中身が索引される（indexCode 無効のまま）"
+        );
+
+        // ページの .md は触らず、断片だけを書き換える
+        write(root.path(), "snippets/note.md", "バナナの注意書きです。\n");
+        let (dist, _, misses) = build(root.path(), cache_dir.path());
+        assert_eq!(misses, 1, "断片参照ページだけがキャッシュミスになる");
+        assert_eq!(
+            search_dist(dist.path(), "バナナ", 10).unwrap().len(),
+            1,
+            "断片の編集が検索へ反映される"
+        );
+        assert!(
+            search_dist(dist.path(), "アボカド", 10).unwrap().is_empty(),
+            "古い内容は消える"
+        );
+    }
+
+    #[test]
+    fn 断片が変わらなければキャッシュにヒットする() {
+        let (root, cache_dir) = fixture("変わらない注意書き。\n");
+        build(root.path(), cache_dir.path());
+        let (_, hits, misses) = build(root.path(), cache_dir.path());
+        assert_eq!(misses, 0, "全ページヒット");
+        assert_eq!(hits, 2);
+    }
+}
