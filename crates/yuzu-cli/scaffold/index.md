@@ -9,6 +9,9 @@ description: yuzu のサンプルドキュメント
 これは `yuzu new` が生成したサンプルドキュメントです。
 左のサイドバーでページを辿り、右の「目次」で見出しへ飛べます。
 
+yuzu は SSG です。原稿には「SSG」と書くだけで、`yuzu.jsonc` の用語辞書から
+ページ内の初出だけに説明（点線の下線）が付き、[用語集](glossary.md)も自動生成されます。
+
 ## 機能ハイライト
 
 | 機能 | 説明 | このサイトでの実例 |
@@ -23,6 +26,7 @@ description: yuzu のサンプルドキュメント
 | 図表番号と相互参照 | `Figure:` の行で自動採番、空リンクに番号を補完 | [下](#図mermaid) |
 | 折りたたみ | `> [!TIP]-` で `<details>` になる | [はじめに](guide/getting-started.md) |
 | API 仕様の描画 | OpenAPI / JSON Schema をビルド時に HTML 化 | [はじめに](guide/getting-started.md) |
+| 用語集と略語 | 設定の辞書から初出を `<abbr>` 化し用語集ページを自動生成 | [用語集](glossary.md) |
 | 日本語全文検索 | BM25 + vaporetto + Wasm（ヘッダーの検索ボックス） | ヘッダー |
 | llms.txt | LLM 向けの索引と全文（`/llms.txt`・`/llms-full.txt`） | `/llms.txt` |
 | 品質チェック | `yuzu fmt` / `lint` / `check`（CI 用の終了コードと機械可読出力） | [はじめに](guide/getting-started.md) |

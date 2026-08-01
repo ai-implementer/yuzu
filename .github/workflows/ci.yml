@@ -66,7 +66,7 @@ jobs:
           # エイリアス（guide/quality の旧 URL）にリダイレクト HTML が生成される
           grep -q 'http-equiv="refresh"' dist/guide/lint/index.html
           # コンテンツインクルード: yuzu.jsonc の引用が展開されている
-          grep -q '<figcaption>yuzu.jsonc:15-21</figcaption>' dist/guide/code-and-math/index.html
+          grep -q '<figcaption>yuzu.jsonc:15-31</figcaption>' dist/guide/code-and-math/index.html
           # 図表番号: キャプションの採番と参照リンクの自動補完
           grep -q 'id="fig:deps"' dist/development/index.html
           grep -q '<a href="#fig:deps">図 1</a>' dist/development/index.html
@@ -80,6 +80,14 @@ jobs:
           grep -q 'class="tab-label"' dist/guide/code-and-math/index.html
           # Markdown 断片（Phase 51）: docs/snippets/ の断片が展開された散文で出ている
           grep -q '取り込まれた Markdown 断片です' dist/guide/writing/index.html
+          # 用語集（Phase 52）: 本文の略語が辞書の説明つきで <abbr> 化されている
+          grep -q '<abbr title="Server-Side Rendering' dist/guide/writing/index.html
+          # 用語集ページが自動生成され、用語ごとのアンカーが振られている
+          grep -q 'id="ssr"' dist/glossary/index.html
+          # 合成ページが nav 経路に乗っている（サイドバーに出る）
+          grep -q 'href="/glossary/"' dist/index.html
+          # 用語集ページ自身は abbr 化しない（説明文の中で用語が光る循環を防ぐ）
+          ! grep -q '<abbr' dist/glossary/index.html
           # 診断ルールのリファレンス（Phase 46）が配信されている
           grep -q 'broken-anchor' dist/reference/rules/index.html
           # 出力先・URL の安全化（v0.10.1）で足したルールが原稿に載っている
@@ -127,6 +135,9 @@ jobs:
           grep -q '<figcaption>snippets/greet.rs</figcaption>' dist/index.html
           # Phase 51: scaffold の Markdown 断片が展開されている（フェンス原文ではなく散文で照合）
           grep -q '参照している全ページに反映されます' dist/index.html
+          # Phase 52: scaffold の略語が <abbr> 化され、用語集ページが生成される
+          grep -q '<abbr title="Static Site Generator' dist/index.html
+          test -f dist/glossary/index.html
           # Phase 22: openapi/jsonschema SSR — scaffold の jsonschema ブロックが
           # 静的 HTML 化されていること＋ file: 参照は仕様ファイルの変更だけで反映されること
           # （jsonschema は class="api-spec api-schema" なので閉じ引用符まで書かない）

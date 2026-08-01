@@ -53,18 +53,25 @@ cd docs
 test -f dist/index.html && test -f dist/_search/manifest.json
 # 機能ごとの配信ゲート（CI と同じ。新機能を足したら 1 行増やす）
 grep -q 'http-equiv="refresh"' dist/guide/lint/index.html                      # エイリアス
-grep -q '<figcaption>yuzu.jsonc:15-21</figcaption>' dist/guide/code-and-math/index.html  # インクルード
+grep -q '<figcaption>yuzu.jsonc:15-31</figcaption>' dist/guide/code-and-math/index.html  # インクルード
 grep -q 'id="fig:deps"' dist/development/index.html                            # 図表番号
 grep -q '<a href="#fig:deps">図 1</a>' dist/development/index.html             # 参照の自動補完
 grep -q '<details class="markdown-alert markdown-alert-tip">' dist/guide/writing/index.html  # 折りたたみ
 grep -q 'js/details-target.js' dist/guide/writing/index.html                   # 折りたたみ自動展開 JS
 grep -q 'yuzu-sidebar-scroll' dist/index.html                                  # サイドバー位置維持
+grep -q 'class="tab-label"' dist/guide/code-and-math/index.html                # タブ / コードグループ
+grep -q '取り込まれた Markdown 断片です' dist/guide/writing/index.html          # Markdown 断片
+grep -q '<abbr title="Server-Side Rendering' dist/guide/writing/index.html     # 用語集（本文の abbr 化）
+grep -q 'id="ssr"' dist/glossary/index.html                                    # 用語集ページの自動生成
+grep -q 'href="/glossary/"' dist/index.html                                    # 生成ページが nav に載る
+! grep -q '<abbr' dist/glossary/index.html                                     # 用語集ページ自身は abbr 化しない
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
 grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html" && echo "NG: フォールバック発生"
 ```
 
-**`docs/yuzu.jsonc` の 15-21 行目**はインクルードの `lines=` で引用されている。
-この範囲を動かすと原稿の中身とゲートが同時に壊れるので、動かしたら両方直す。
+**`docs/yuzu.jsonc` の 15-31 行目**（`markdown` ブロック全体）はインクルードの `lines=` で
+引用されている。この範囲を動かすと原稿の中身とゲートが同時に壊れるので、
+`docs/content/guide/code-and-math.md` の `lines=` 3 箇所と ci.yml の grep を同時に直す。
 
 ## 6. e2e（CLI 実機）
 

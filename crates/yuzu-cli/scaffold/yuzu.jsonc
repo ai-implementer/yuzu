@@ -36,6 +36,16 @@
       // 図表番号（Figure: / Table: / Listing: のキャプション行）の採番単位。
       // "page" = ページ内連番（既定）/ "site" = サイドバー表示順の通し番号
       "numbering": "page"
+    },
+    "glossary": {
+      // 略語 → 説明文の辞書。本文の Markdown は一切変えずに、
+      // 各ページの初出だけが <abbr title="説明"> になります（ホバーで説明が出ます）
+      "terms": {
+        "SSG": "Static Site Generator。Markdown などの原稿から静的な HTML サイトを生成する仕組み"
+      },
+      "page": "glossary", // 用語集ページの URL（"" にすると生成しません）
+      "pageTitle": "用語集",
+      "abbr": true // false にすると用語集ページだけを作り、本文は書いたままにします
     }
   },
   // "lint": {

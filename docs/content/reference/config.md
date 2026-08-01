@@ -39,7 +39,8 @@ description: yuzu.jsonc の全設定キー・型・既定値
     "highlight": { "enabled": true, "themeLight": "InspiredGitHub", "themeDark": "base16-ocean.dark", "lineNumbers": false },
     "mermaid": { "enabled": true, "backend": "client" },
     "math": { "enabled": true },
-    "crossref": { "numbering": "page" } // "site" でサイト全体の通し番号
+    "crossref": { "numbering": "page" }, // "site" でサイト全体の通し番号
+    "glossary": { "terms": { "SSG": "Static Site Generator" }, "abbr": true, "page": "glossary", "pageTitle": "用語集" }
   },
   "lint": {
     "maxDirectoryDepth": 1,
@@ -129,6 +130,10 @@ glob 評価が想定外になるため）。
 | `mermaid.backend` | `"client"` \| `"ssr"` / `"client"` | [SSR にすると 9 図種をビルド時 SVG 化](../guide/diagrams.md) |
 | `math.enabled` | bool / `true` | 数式（同梱 KaTeX でクライアント描画） |
 | `crossref.numbering` | `"page"` \| `"site"` / `"page"` | [図表番号](../guide/writing.md#図表番号と相互参照)の採番単位（ページ内連番 / サイト全体の通し番号） |
+| `glossary.terms` | object / `{}` | [用語集](../guide/writing.md#用語集と略語)の辞書（略語 → 説明文）。空なら機能ごと無効 |
+| `glossary.abbr` | bool / `true` | 本文の初出を `<abbr title="説明">` にする（`false` で用語集ページだけ生成） |
+| `glossary.page` | string / `"glossary"` | 用語集ページの URL（`content` 相対・拡張子なし）。`""` で生成しない |
+| `glossary.pageTitle` | string / `"用語集"` | 用語集ページのタイトル（h1 とサイドバーの表示名） |
 
 ## lint
 

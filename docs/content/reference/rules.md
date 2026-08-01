@@ -62,8 +62,8 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `broken-anchor` | 見出し・図表ラベルへのアンカーの切れ |
 | `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない |
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |
-| `route-conflict` | 2 つ以上のページが同じ URL になる（`x.md` と `x/index.md`） |
-| `unsafe-page-path` | ファイル名に URL で意味を持つ文字（`#` `?` `%` `"` `'` `<` `>` `` ` `` `\`） |
+| `route-conflict` | 2 つ以上のページが同じ URL になる（`x.md` と `x/index.md`）。自動生成される[用語集ページ](../guide/writing.md#用語集と略語)との衝突もここで報告します |
+| `unsafe-page-path` | ファイル名（または `markdown.glossary.page`）に URL で意味を持つ文字（`#` `?` `%` `"` `'` `<` `>` `` ` `` `\`） |
 | `include-error` | コンテンツインクルード（`file=`）の参照先が読めない・範囲外。Markdown 断片（\`\`\`include）の散文違反（見出し・キャプション行・脚注・frontmatter・`file=` の入れ子）もここで報告 |
 | `spec-error` | `openapi` / `jsonschema` の `file:` 参照が読めない・仕様が壊れている・未対応バージョン・`$ref` 先が解決できない |
 | `fmt` | 整形差分がある（`yuzu fmt` で修正、`yuzu fmt --diff` で内容を確認できます） |
