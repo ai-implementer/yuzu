@@ -418,6 +418,17 @@ fn check_code_meta(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic
             }
         }
 
+        // `tab=` は隣接する `tab=` 付きフェンスと 2 枚以上そろって初めて効く。
+        // 1 枚だけだと切り替え先が無いので通常のコードブロックとして描画され、
+        // 「指定したのに効かない」まま気づけない
+        if meta.tab.is_some() && !fence.tab_grouped {
+            push(
+                fence.span,
+                "tab= が単独で指定されています（隣接するフェンスにも tab= を書くとタブになります）"
+                    .to_string(),
+            );
+        }
+
         for issue in issues {
             match issue {
                 FenceMetaIssue::UnknownToken(token) => push(
@@ -988,6 +999,30 @@ mod tests {
             ("b.md", "# B\n\nサーバーを停止。\n"),
         ]);
         assert!(diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn 単独の_tab_は警告する() {
+        let diags = lint("# t\n\n```rust tab=\"Rust\"\nfn main() {}\n```\n\n段落。\n");
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule == "code-block-meta")
+            .collect();
+        assert_eq!(hits.len(), 1, "{diags:?}");
+        assert!(hits[0].message.contains("tab="), "{}", hits[0].message);
+    }
+
+    #[test]
+    fn 隣接する_tab_は警告しない() {
+        let diags = lint(concat!(
+            "# t\n\n",
+            "```rust tab=\"Rust\"\nfn main() {}\n```\n\n",
+            "```ts tab=\"TypeScript\"\nconsole.log(1)\n```\n",
+        ));
+        assert!(
+            diags.iter().all(|d| d.rule != "code-block-meta"),
+            "{diags:?}"
+        );
     }
 
     #[test]

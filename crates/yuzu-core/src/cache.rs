@@ -47,7 +47,9 @@ use crate::model::{Frontmatter, TocEntry};
 ///   （title / 行ハイライト / 行番号）を反映する。従来は着色より前で早期 return して
 ///   おり本文が空になっていた。加えて外部依存フラグが立たず、`file=` ページが誤って
 ///   本文キャッシュに載っていたため、既存エントリを捨てる必要がある
-pub const CACHE_FORMAT_VERSION: u32 = 15;
+/// - v16: タブ / コードグループ（` ```rust tab="Rust" `）。隣接フェンスが
+///   radio + label + panel のマークアップで包まれるので本文 HTML が変わる
+pub const CACHE_FORMAT_VERSION: u32 = 16;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

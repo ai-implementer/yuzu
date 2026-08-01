@@ -30,10 +30,14 @@ impl IncludeSpec {
 /// - `{2,4-6}` — ハイライトする行（1 始まり・両端含む。数値とレンジのカンマ区切り）
 /// - `showLineNumbers` / `noLineNumbers` — 行番号表示のブロック単位上書き
 /// - `file="src/api.rs"` / `lines=10-25` — 外部ソースファイルの引用
+/// - `tab="Rust"` — タブの見出し。連続するフェンスが 1 グループへ束ねられる
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodeBlockMeta {
     /// キャプション（`<figcaption>` に出す。エスケープは描画側の責務）
     pub title: Option<String>,
+    /// タブの見出し。隣接する `tab=` 付きフェンスが 1 つのタブグループになる
+    /// （素の Markdown ビューアではコードが縦に並ぶだけで壊れない）
+    pub tab: Option<String>,
     /// ハイライト行の範囲リスト（1 始まり・両端含む・未ソート可）
     pub highlight_lines: Vec<(usize, usize)>,
     /// 行番号表示の上書き。`None` = サイト設定（`markdown.highlight.lineNumbers`）に従う
@@ -45,7 +49,8 @@ pub struct CodeBlockMeta {
 impl CodeBlockMeta {
     /// メタ指定がひとつも無いか
     pub fn is_empty(&self) -> bool {
-        self.title.is_none()
+        self.tab.is_none()
+            && self.title.is_none()
             && self.highlight_lines.is_empty()
             && self.line_numbers.is_none()
             && self.include.is_none()
@@ -186,6 +191,17 @@ fn apply_token(
             .unwrap_or(value);
         if !value.is_empty() {
             meta.title = Some(value.to_string());
+        }
+    } else if let Some(value) = token.strip_prefix("tab=") {
+        let value = value
+            .strip_prefix('"')
+            .and_then(|v| v.strip_suffix('"'))
+            .unwrap_or(value);
+        // 見出しの無いタブは切り替えようがないので、空値は無視して lint へ回す
+        if value.is_empty() {
+            issues.push(FenceMetaIssue::UnknownToken(token.to_string()));
+        } else {
+            meta.tab = Some(value.to_string());
         }
     } else if let Some(value) = token.strip_prefix("file=") {
         let value = value

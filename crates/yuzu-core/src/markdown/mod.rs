@@ -11,6 +11,24 @@
 pub(crate) mod collapse;
 pub(crate) mod crossref;
 pub(crate) mod fence;
+pub(crate) mod tabs;
+
+/// 属性・テキストへ埋める文字列の HTML エスケープ。
+/// 本文 HTML を組み立てる collapse / crossref / tabs が共有する
+/// （同じ規則を複数実装するとエスケープ漏れが片方だけ起きる）
+pub(crate) fn escape_html(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
 
 use std::path::Path;
 
@@ -217,6 +235,9 @@ pub(crate) fn render_body_html(
     let mut block_replacements = Vec::new();
     let mut ref_fills = Vec::new();
     let mut collapsibles = Vec::new();
+    // タブ（`tab="Rust"`）を持つコードブロックを文書順に集める。
+    // グループ化（隣接判定）は木を触らない後段で行う
+    let mut tab_members: Vec<(&AstNode, String)> = Vec::new();
 
     for node in root.descendants() {
         // 折りたたみ Admonition（`> [!NOTE]- タイトル`）→ <details> へ組み替える
@@ -232,6 +253,13 @@ pub(crate) fn render_body_html(
             match &data.value {
                 NodeValue::CodeBlock(cb) => {
                     let (lang, meta) = parse_fence_info(&cb.info);
+                    // グループを作れるものだけ集める。判定は lint と共有する
+                    // （`tabs::has_tab_neighbor` の doc コメント参照）
+                    if let Some(tab) = &meta.tab {
+                        if tabs::has_tab_neighbor(node, opts) {
+                            tab_members.push((node, tab.clone()));
+                        }
+                    }
                     code.render(lang, &meta, &cb.literal)
                 }
                 // キャプション行 → 採番済みキャプション（アンカー付き）へ
@@ -289,6 +317,49 @@ pub(crate) fn render_body_html(
         )));
         node.append(child);
     }
+    // タブ: 隣接する `tab=` 付きコードブロックを 1 グループへ束ねる。
+    // 「隣接」は**兄弟として直接つながっていること**で判定するので、間に段落が
+    // 挟まればそこでグループが切れる（著者が意図せず巻き込まれない）
+    let mut member_idx = 0;
+    let mut group_seq = 0;
+    while member_idx < tab_members.len() {
+        let mut end = member_idx + 1;
+        while end < tab_members.len()
+            && tab_members[end - 1]
+                .0
+                .next_sibling()
+                .is_some_and(|next| std::ptr::eq(next, tab_members[end].0))
+        {
+            end += 1;
+        }
+        // 1 枚だけのタブはグループにしない（切り替え先が無く、ラベルだけが浮く）
+        if end - member_idx >= 2 {
+            let start = tab_members[member_idx].0.data.borrow().sourcepos.start;
+            let html_block = |literal: String| {
+                arena.alloc(AstNode::new(std::cell::RefCell::new(
+                    comrak::nodes::Ast::new(
+                        NodeValue::HtmlBlock(NodeHtmlBlock {
+                            block_type: 6,
+                            literal,
+                        }),
+                        start,
+                    ),
+                )))
+            };
+            for (i, (node, label)) in tab_members[member_idx..end].iter().enumerate() {
+                if i == 0 {
+                    node.insert_before(html_block(tabs::open_group(group_seq)));
+                }
+                node.insert_before(html_block(tabs::open_tab(group_seq, i, label)));
+            }
+            tab_members[end - 1]
+                .0
+                .insert_after(html_block(tabs::CLOSE_GROUP.to_string()));
+            group_seq += 1;
+        }
+        member_idx = end;
+    }
+
     // 折りたたみ: Alert ノードを「開始タグ HtmlBlock → 中身 → 終了タグ」へ
     // 展開する（comrak は details 出力を持たないため AST 上で組み替える）
     for (node, open_tag) in collapsibles {
@@ -608,6 +679,9 @@ pub(crate) struct FenceMeta {
     pub span: SourceSpan,
     /// コード本文の行数（行ハイライトの範囲外検査用）
     pub code_lines: usize,
+    /// `tab=` が実際にグループを作れるか（隣接する兄弟にも `tab=` がある）。
+    /// false のまま `tab=` が書かれていると「指定したのに効かない」ので lint が警告する
+    pub tab_grouped: bool,
 }
 
 /// フェンスコードブロック 1 つを本文つきで返す（core の外で本文を解釈する検査用）
@@ -661,10 +735,15 @@ pub(crate) fn extract_fence_meta(source: &str, opts: &MarkdownOptions) -> Vec<Fe
             if !cb.fenced {
                 continue;
             }
+            let code_lines = cb.literal.lines().count();
+            let span = span_of(&data.sourcepos);
+            let info = cb.info.clone();
+            drop(data);
             out.push(FenceMeta {
-                info: cb.info.clone(),
-                span: span_of(&data.sourcepos),
-                code_lines: cb.literal.lines().count(),
+                info,
+                span,
+                code_lines,
+                tab_grouped: tabs::has_tab_neighbor(node, opts),
             });
         }
     }

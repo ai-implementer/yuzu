@@ -10,6 +10,8 @@
 
 use comrak::nodes::AlertType;
 
+use crate::markdown::escape_html;
+
 /// 折りたたみの指定（種別直後のマーカー）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Collapse {
@@ -52,20 +54,6 @@ pub(crate) fn open_tag(kind: AlertType, collapse: Collapse, title: &str) -> Stri
 pub(crate) const CLOSE_TAG: &str = "</details>\n";
 
 /// HTML エスケープ（テキストノード用の最小集合）
-fn escape_html(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

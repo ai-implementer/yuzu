@@ -372,3 +372,80 @@ fn サイト通し番号は表示順で連続する() {
     assert_eq!(number_of("fig:b"), 1);
     assert_eq!(number_of("fig:c"), 1);
 }
+
+#[test]
+fn 隣接する_tab_付きフェンスは_1_グループになる() {
+    const SRC: &str = concat!(
+        "# 見出し\n\n",
+        "```rust tab=\"Rust\"\nfn main() {}\n```\n\n",
+        "```ts tab=\"TypeScript\"\nconsole.log(1)\n```\n\n",
+        "```sh tab=\"Shell\"\necho hi\n```\n",
+    );
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("index.md"), SRC).unwrap();
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+    )
+    .unwrap();
+
+    assert_eq!(html.matches(r#"<div class="tabs""#).count(), 1, "{html}");
+    assert_eq!(html.matches(r#"class="tab-label""#).count(), 3, "{html}");
+    // 先頭だけ checked（= 初期表示）
+    assert_eq!(html.matches(" checked>").count(), 1, "{html}");
+    assert!(html.contains(">Rust</label>"), "{html}");
+    assert!(html.contains(">TypeScript</label>"), "{html}");
+    // JS ゼロ: script を差し込まない
+    assert!(!html.contains("<script"), "{html}");
+}
+
+#[test]
+fn 段落を挟むとタブグループが切れる() {
+    const SRC: &str = concat!(
+        "```rust tab=\"A\"\na\n```\n\n",
+        "```rust tab=\"B\"\nb\n```\n\n",
+        "区切りの段落。\n\n",
+        "```rust tab=\"C\"\nc\n```\n\n",
+        "```rust tab=\"D\"\nd\n```\n",
+    );
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("index.md"), SRC).unwrap();
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+    )
+    .unwrap();
+
+    assert_eq!(html.matches(r#"<div class="tabs""#).count(), 2, "{html}");
+    // ラジオ名がグループごとに異なる（別グループを巻き添えで切り替えない）
+    assert!(html.contains(r#"name="yz-tabs-0""#), "{html}");
+    assert!(html.contains(r#"name="yz-tabs-1""#), "{html}");
+}
+
+#[test]
+fn タブが一枚だけならグループにしない() {
+    const SRC: &str = "```rust tab=\"Rust\"\nfn main() {}\n```\n\n段落。\n";
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("index.md"), SRC).unwrap();
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+    )
+    .unwrap();
+
+    // 切り替え先が無いのでラベルだけが浮く。通常のコードブロックとして出す
+    assert!(!html.contains(r#"class="tabs""#), "{html}");
+    assert!(!html.contains("tab-label"), "{html}");
+}

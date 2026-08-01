@@ -810,6 +810,72 @@ body {
   --alert-color: var(--alert-caution);
 }
 
+/* ---- タブ / コードグループ（```rust tab="Rust"）----
+
+   切り替えは radio + `order` だけで行い、クライアント JS は使わない。
+   DOM 順は「input → label → panel」の繰り返しで、flex の order で
+   ラベル群だけを先頭へ引き上げる（タブ枚数に上限が無い）。
+   ラジオは display:none にしない — キーボード操作を殺さないため、
+   視覚的にだけ隠して :focus-visible でラベル側にリングを出す */
+
+.markdown-body .tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.markdown-body .tabs > .tab-radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.markdown-body .tabs > .tab-label {
+  order: -1; /* ラベルはすべてパネルより前（DOM 順に左から並ぶ） */
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.9rem;
+  color: var(--fg-muted);
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.markdown-body .tabs > .tab-panel {
+  display: none;
+  width: 100%;
+}
+
+/* 選択中のタブ: ラベルを前面色に、対応するパネルだけを表示する */
+.markdown-body .tabs > .tab-radio:checked + .tab-label {
+  color: var(--accent-fg);
+  background: var(--bg);
+  border-bottom-color: transparent;
+  font-weight: 600;
+}
+
+.markdown-body .tabs > .tab-radio:checked + .tab-label + .tab-panel {
+  display: block;
+}
+
+.markdown-body .tabs > .tab-radio:focus-visible + .tab-label {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* パネル内のコードは角丸・外枠を持たない（タブの枠が兼ねる） */
+.markdown-body .tabs > .tab-panel > :is(figure, pre) {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
 /* ---- 脚注（comrak footnotes: ページ末尾に集約される section.footnotes） ---- */
 
 .markdown-body section.footnotes {

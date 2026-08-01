@@ -11,6 +11,8 @@
 //! 記法はプレーンな Markdown ビューアで壊れない形（ただの段落とリンク）に
 //! 寄せている。採番はページ内連番で、種別ごとに独立したカウンタを使う。
 
+use crate::markdown::escape_html;
+
 /// キャプションの種別（種別ごとに独立採番する）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CaptionKind {
@@ -147,20 +149,6 @@ pub(crate) fn render_caption(caption: &Caption, numbering: &mut Numbering) -> St
 }
 
 /// HTML エスケープ（テキストノード・属性値用の最小集合）
-fn escape_html(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
