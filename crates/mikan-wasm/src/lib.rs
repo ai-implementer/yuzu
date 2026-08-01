@@ -54,13 +54,55 @@ impl YuzuSearch {
 
     /// BM25 の上位 `limit` 件と総ヒット数を JSON 文字列で返す:
     /// `{"total":12,"hits":[{"docId":0,"score":1.2},…]}`
+    ///
+    /// ⚠️ **このシグネチャは変えない**。`search_bg.wasm` は `_search/` の固定 URL で
+    /// 配信されるため HTTP キャッシュに旧版が残りうる。ここへ絞り込み引数を足すと、
+    /// 旧 wasm が余分な引数を黙って無視して「絞り込んでいないのに絞り込んだ件数」を
+    /// 表示する（静かに嘘をつく）。絞り込みは [`Self::search_in`] を新設して足した
     pub fn search(&self, query: &str, limit: usize) -> String {
-        let (hits, total) = self.inner.search_with_total(query, limit);
-        let hits: Vec<String> = hits
-            .into_iter()
+        self.search_in(query, limit, "")
+    }
+
+    /// [`Self::search`] のグループ絞り込み版。`groups_json` は表示名の JSON 配列
+    /// （`["ガイド"]`）で、空文字・空配列なら絞り込まない。
+    /// 返す JSON に `totalUnfiltered` と `groupCounts` を足す（`{total,hits}` を読む
+    /// 旧 UI からは無害な追加）
+    #[wasm_bindgen(js_name = searchIn)]
+    pub fn search_in(&self, query: &str, limit: usize, groups_json: &str) -> String {
+        let names: Vec<String> = match groups_json.trim().is_empty() {
+            true => Vec::new(),
+            false => serde_json::from_str(groups_json).unwrap_or_default(),
+        };
+        let ids: Vec<u16> = names
+            .iter()
+            .filter_map(|name| self.inner.group_id(name))
+            .collect();
+        let outcome = self
+            .inner
+            .search_with_options(query, &mikan::SearchOptions::new(limit).with_groups(&ids));
+        let hits: Vec<String> = outcome
+            .hits
+            .iter()
             .map(|h| format!(r#"{{"docId":{},"score":{}}}"#, h.doc_id, h.score))
             .collect();
-        format!(r#"{{"total":{total},"hits":[{}]}}"#, hits.join(","))
+        let counts: Vec<String> = outcome
+            .group_counts
+            .iter()
+            .map(|n| n.to_string())
+            .collect();
+        format!(
+            r#"{{"total":{},"totalUnfiltered":{},"groupCounts":[{}],"hits":[{}]}}"#,
+            outcome.total,
+            outcome.total_unfiltered,
+            counts.join(","),
+            hits.join(",")
+        )
+    }
+
+    /// グループ（絞り込み単位）の表示名を JSON 配列で返す: `["ガイド","リファレンス"]`。
+    /// 古いインデックスでは空配列 = UI が絞り込みを出さない
+    pub fn groups(&self) -> String {
+        serde_json::to_string(self.inner.groups()).unwrap_or_else(|_| "[]".into())
     }
 
     /// クエリをエンジンと同一の分かち書きで token 配列（JSON）にする: `["検索","エンジン"]`

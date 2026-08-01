@@ -86,7 +86,10 @@ export function createSearchClient({ searchBase }) {
     return enginePromise;
   }
 
-  async function search(query, limit) {
+  // groups は絞り込む区分の表示名（配列）。省略・空なら絞り込まない。
+  // 返り値は {total, hits} に加えて、絞り込み対応の wasm なら
+  // {totalUnfiltered, groupCounts} も含む
+  async function search(query, limit, groups) {
     const { instance, cache } = await ensureEngine();
     const needed = Array.from(instance.neededShards(query)).filter((id) => !shardCache.has(id));
     await Promise.all(
@@ -97,6 +100,11 @@ export function createSearchClient({ searchBase }) {
         shardCache.add(id);
       }),
     );
+    // 旧 wasm（searchIn 無し）では従来の search へ落とす。search_bg.wasm は
+    // 固定 URL なので HTTP キャッシュに旧版が残りうる = ここで必ず存在を確かめる
+    if (typeof instance.searchIn === "function") {
+      return JSON.parse(instance.searchIn(query, limit, JSON.stringify(groups ?? [])));
+    }
     return JSON.parse(instance.search(query, limit));
   }
 
@@ -120,5 +128,15 @@ export function createSearchClient({ searchBase }) {
     return JSON.parse(engine.instance.excerpt(text, query, maxChars));
   }
 
-  return { ensureEngine, search, fetchFragment, tokenize, excerpt };
+  // 絞り込み区分の表示名。**絞り込みに対応していない wasm では空配列**を返す
+  // （search_bg.wasm は固定 URL なので HTTP キャッシュに旧版が残りうる）。
+  // 呼び出し側は「区分が 2 つ以上あるか」だけを見ればよく、
+  // 古いインデックス・階層の無いサイト・旧 wasm がすべて同じ分岐に落ちる
+  function groups() {
+    if (!engine) throw new Error("ensureEngine() を先に呼んでください");
+    if (typeof engine.instance.groups !== "function") return [];
+    return JSON.parse(engine.instance.groups());
+  }
+
+  return { ensureEngine, search, fetchFragment, tokenize, excerpt, groups };
 }
