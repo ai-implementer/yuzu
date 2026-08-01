@@ -170,8 +170,10 @@ fn 重複見出しの_toc_id_が本文アンカーと一致する() {
         &MarkdownOptions::default(),
         &NoopCodeBlockRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
     for id in ids {
         assert!(
             html.contains(&format!("id=\"{id}\"")),
@@ -198,8 +200,10 @@ fn 見出し内の数式は_toc_と本文のアンカーが一致する() {
         &MarkdownOptions::default(),
         &NoopCodeBlockRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
 
     let toc_id = &page.toc[1].id;
     assert!(
@@ -250,8 +254,10 @@ fn extract_plain_sections_は_h2_h3_で分割しリード文を先頭に置く()
         &MarkdownOptions::default(),
         &NoopCodeBlockRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
     for section in &sections[1..] {
         let id = section.anchor.as_deref().unwrap();
         assert!(

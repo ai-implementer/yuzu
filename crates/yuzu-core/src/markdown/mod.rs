@@ -11,6 +11,7 @@
 pub(crate) mod collapse;
 pub(crate) mod crossref;
 pub(crate) mod fence;
+pub(crate) mod fragment;
 pub(crate) mod tabs;
 
 /// 属性・テキストへ埋める文字列の HTML エスケープ。
@@ -212,15 +213,95 @@ fn restore_line(text: &str) -> String {
 }
 
 /// 本文を HTML 化する（コードブロック差し替え・URL 書き換えつき）
+/// [`render_body_html`] の結果
+pub struct RenderedBody {
+    /// 本文 HTML
+    pub html: String,
+    /// Markdown 断片（` ```include `）を参照したか（= 本文キャッシュ非対象の印。
+    /// 解決の成否に依らず立てる — 参照先が後から現れたときも再描画が要るため。
+    /// コード引用の `file=` は yuzu-render 側の `external_deps` が担い、
+    /// こちらは core 展開ぶんを補完する。片方だけ見ると v15 の事故が再演する）
+    pub used_fragment: bool,
+}
+
 pub(crate) fn render_body_html(
     page: &Page,
     opts: &MarkdownOptions,
     code: &dyn CodeBlockRenderer,
     urls: &dyn UrlRewriter,
-) -> Result<String, CoreError> {
+    project_root: Option<&Path>,
+) -> Result<RenderedBody, CoreError> {
     let arena = Arena::new();
     let options = comrak_options(opts);
     let root = parse_document(&arena, &page.source, &options);
+    let mut used_fragment = false;
+
+    // ── パス0: 木を触らない軽い収集（CodeBlock だけを見る）──
+    // - `include` フェンス → 断片展開の対象
+    // - `tab=` 付きフェンス → タブ成員
+    // ⚠️ タブ判定は**展開前のこの木**で行う。lint（extract_fence_meta）も原文の木で
+    // 同じ判定をするので、空断片を展開してもグループ判定が lint とずれない
+    let mut fragment_nodes: Vec<(&AstNode, Option<fence::IncludeSpec>)> = Vec::new();
+    let mut tab_members: Vec<(&AstNode, String)> = Vec::new();
+    for node in root.descendants() {
+        let data = node.data.borrow();
+        if let NodeValue::CodeBlock(cb) = &data.value {
+            let (lang, meta) = parse_fence_info(&cb.info);
+            if lang == Some(fragment::FRAGMENT_LANG) {
+                fragment_nodes.push((node, meta.include));
+                continue;
+            }
+            if let Some(tab) = &meta.tab {
+                if tabs::has_tab_neighbor(node, opts) {
+                    tab_members.push((node, tab.clone()));
+                }
+            }
+        }
+    }
+
+    // ── パス0 適用: 断片展開（走査は終わっているので構造変更が安全）──
+    // 断片ノードはこの後のパス1 を通るので、URL 書き換え・断片内コードの
+    // ハイライト・折りたたみは通常の本文と同じ経路で処理される
+    for (node, spec) in fragment_nodes {
+        let Some(spec) = spec else {
+            // file= の無い ```include はエラーボックス（lint も警告する）
+            node.data.borrow_mut().value = NodeValue::HtmlBlock(NodeHtmlBlock {
+                block_type: 6,
+                literal: fragment::error_box("file= がありません", ""),
+            });
+            continue;
+        };
+        used_fragment = true;
+        let text = match project_root {
+            None => {
+                Err("このビルドではファイル参照が使えません（基準ディレクトリ未設定）".to_string())
+            }
+            Some(root) => crate::include::resolve_include(root, &spec),
+        };
+        match text {
+            Err(message) => {
+                node.data.borrow_mut().value = NodeValue::HtmlBlock(NodeHtmlBlock {
+                    block_type: 6,
+                    literal: fragment::error_box(&message, &spec.path),
+                });
+            }
+            Ok(text) => {
+                // 同一 arena なのでライフタイムが揃い、host の木へそのまま移せる
+                let frag = parse_document(&arena, &text, &options);
+                while let Some(child) = frag.first_child() {
+                    child.detach();
+                    // 断片先頭の frontmatter は黙って捨てる（check がエラーにする。
+                    // 描画で出すと format_html は無出力・意図も不明瞭なため）
+                    if matches!(child.data.borrow().value, NodeValue::FrontMatter(_)) {
+                        continue;
+                    }
+                    node.insert_before(child);
+                }
+                // 空断片なら何も挿入されず include ノードが消えるだけ
+                node.detach();
+            }
+        }
+    }
 
     // 相互参照の解決表（`#fig:deps` → 「図 1」）。ラベルはメタ抽出時に
     // 同じ規則で採番済みなので、ここでは引くだけ
@@ -235,9 +316,6 @@ pub(crate) fn render_body_html(
     let mut block_replacements = Vec::new();
     let mut ref_fills = Vec::new();
     let mut collapsibles = Vec::new();
-    // タブ（`tab="Rust"`）を持つコードブロックを文書順に集める。
-    // グループ化（隣接判定）は木を触らない後段で行う
-    let mut tab_members: Vec<(&AstNode, String)> = Vec::new();
 
     for node in root.descendants() {
         // 折りたたみ Admonition（`> [!NOTE]- タイトル`）→ <details> へ組み替える
@@ -253,13 +331,6 @@ pub(crate) fn render_body_html(
             match &data.value {
                 NodeValue::CodeBlock(cb) => {
                     let (lang, meta) = parse_fence_info(&cb.info);
-                    // グループを作れるものだけ集める。判定は lint と共有する
-                    // （`tabs::has_tab_neighbor` の doc コメント参照）
-                    if let Some(tab) = &meta.tab {
-                        if tabs::has_tab_neighbor(node, opts) {
-                            tab_members.push((node, tab.clone()));
-                        }
-                    }
                     code.render(lang, &meta, &cb.literal)
                 }
                 // キャプション行 → 採番済みキャプション（アンカー付き）へ
@@ -387,7 +458,10 @@ pub(crate) fn render_body_html(
 
     let mut out = String::new();
     format_html(root, &options, &mut out)?;
-    Ok(out)
+    Ok(RenderedBody {
+        html: out,
+        used_fragment,
+    })
 }
 
 /// 本文を正規化 Markdown として出力する（frontmatter は含めない）。

@@ -28,6 +28,11 @@ fn tab_label(node: &AstNode, opts: &MarkdownOptions) -> Option<String> {
     if lang.is_some_and(|l| crate::is_special_render_lang(l, opts)) {
         return None;
     }
+    // Markdown 断片（```include）は展開で消えるノードなのでタブ成員にしない
+    // （lint も同じ判定を共有するため、tab= を書いても両側一貫して無視される）
+    if lang == Some(crate::markdown::fragment::FRAGMENT_LANG) {
+        return None;
+    }
     meta.tab
 }
 

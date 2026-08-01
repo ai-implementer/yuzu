@@ -450,3 +450,49 @@ fn ページ追加は_routes_key_の変化で全_body_を再計算する() {
         "既存 3 + 新規 1 全て再計算: {stats:?}"
     );
 }
+
+#[test]
+fn 断片参照ページは_body_キャッシュに載らず断片の編集が反映される() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_project(dir.path());
+    write(dir.path(), "snippets/note.md", "共通の注意書きv1です。\n");
+    write(
+        dir.path(),
+        "content/frag.md",
+        "---\ntitle: 断片\n---\n# 断片\n\n```include file=\"snippets/note.md\"\n```\n",
+    );
+    let cache_dir = dir.path().join(".yuzu/cache");
+
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (_, stats1) = build_incremental(dir.path(), &cache);
+    assert_eq!(stats1.body_misses, 4, "初回は全ミス: {stats1:?}");
+
+    let frag_html = dir.path().join("dist/frag/index.html");
+    assert!(
+        fs::read_to_string(&frag_html)
+            .unwrap()
+            .contains("共通の注意書きv1です。"),
+        "断片が展開される"
+    );
+
+    // 2 回目: 断片参照ページだけ body キャッシュに載らず毎回再レンダされる
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (_, stats2) = build_incremental(dir.path(), &cache);
+    assert_eq!(
+        stats2.body_misses, 1,
+        "断片参照ページは毎回ミス: {stats2:?}"
+    );
+    assert_eq!(stats2.body_hits, 3);
+
+    // ページ .md は無変更のまま断片だけ変更 → 次ビルドで反映される
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    write(dir.path(), "snippets/note.md", "共通の注意書きv2です。\n");
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    let html = fs::read_to_string(&frag_html).unwrap();
+    assert!(
+        html.contains("共通の注意書きv2です。"),
+        "断片の編集が反映される"
+    );
+    assert!(!html.contains("v1です。"), "古い内容が残らない");
+}

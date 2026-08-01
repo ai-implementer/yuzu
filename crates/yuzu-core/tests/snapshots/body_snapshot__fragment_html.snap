@@ -1,0 +1,15 @@
+---
+source: crates/yuzu-core/tests/body_snapshot.rs
+expression: html
+---
+<h1><a href="#ページ" aria-hidden="true" class="anchor" id="ページ"></a>ページ</h1>
+<p>前の段落。</p>
+<div class="markdown-alert markdown-alert-note">
+<p class="markdown-alert-title">Note</p>
+<p>共通の<strong>注意書き</strong>です。</p>
+</div>
+<ul>
+<li>項目 1</li>
+<li>項目 2</li>
+</ul>
+<p>後の段落。</p>

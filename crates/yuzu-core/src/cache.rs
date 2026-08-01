@@ -49,7 +49,10 @@ use crate::model::{Frontmatter, TocEntry};
 ///   本文キャッシュに載っていたため、既存エントリを捨てる必要がある
 /// - v16: タブ / コードグループ（` ```rust tab="Rust" `）。隣接フェンスが
 ///   radio + label + panel のマークアップで包まれるので本文 HTML が変わる
-pub const CACHE_FORMAT_VERSION: u32 = 16;
+/// - v17: Markdown 断片のインクルード（` ```include `）。従来は `file=` の
+///   コード引用として描画されていた意味が展開へ変わり、検索 tf の deps 判定も
+///   断片を含むようになる
+pub const CACHE_FORMAT_VERSION: u32 = 17;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

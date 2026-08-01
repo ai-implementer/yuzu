@@ -172,3 +172,13 @@ fn math_無効なら_dollar_はテキストのまま() {
     let out = format_document(&page_from("# t\n\n式 $x^2$ と $5 の話。\n"), &opts).unwrap();
     assert!(out.contains("式 $x^2$ と $5 の話。"), "out:\n{out}");
 }
+
+#[test]
+fn fmt_は_include_フェンスを温存し冪等() {
+    // 断片インクルード（Phase 51）は fmt では展開しない。
+    // 情報文字列（file= / lines=）はバイト等価で往復する（Phase 39 の契約）
+    let src = "# t\n\n```include file=\"snippets/note.md\" lines=2-5\n```\n\n本文。\n";
+    let once = format_str(src);
+    assert_eq!(once, src, "1 バイトも変わらない");
+    assert_eq!(format_str(&once), once, "冪等");
+}

@@ -41,7 +41,8 @@ pub use include::{
 };
 pub use markdown::crossref::CaptionKind;
 pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
-pub use markdown::{FenceBlock, extract_fence_blocks};
+pub use markdown::fragment::FRAGMENT_LANG;
+pub use markdown::{FenceBlock, RenderedBody, extract_fence_blocks};
 pub use model::{
     CrossrefLabel, Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry,
 };
@@ -331,13 +332,16 @@ fn load_pages_cached(
 /// - コードブロックは [`CodeBlockRenderer`] に通し、`Some(html)` が返れば
 ///   その HTML で丸ごと差し替える（syntect ハイライトや `<pre class="mermaid">` 化）
 /// - リンク・画像の URL は [`UrlRewriter`] に通す（base path 解決・`.md` リンク解決）
+/// - ` ```include file="..." ` の Markdown 断片は本文へ展開する。`root` は
+///   その基準ディレクトリ（`None` なら断片はエラーボックスになる = 単体テスト用）
 pub fn render_body_html(
     page: &Page,
     opts: &MarkdownOptions,
     code: &dyn CodeBlockRenderer,
     urls: &dyn UrlRewriter,
-) -> Result<String, CoreError> {
-    markdown::render_body_html(page, opts, code, urls)
+    root: Option<&Path>,
+) -> Result<RenderedBody, CoreError> {
+    markdown::render_body_html(page, opts, code, urls, root)
 }
 
 /// ページ本文を h2/h3 見出し境界で分割したプレーンテキストセクションを返す（検索用）。

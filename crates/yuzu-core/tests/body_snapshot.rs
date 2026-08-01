@@ -74,8 +74,10 @@ fn 本文_html_のスナップショット() {
         &MarkdownOptions::default(),
         &MermaidOnlyRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
 
     insta::assert_snapshot!("body_html", html);
 }
@@ -135,8 +137,10 @@ fn 数式の_html_スナップショット() {
         &MarkdownOptions::default(),
         &MermaidOnlyRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
 
     // 通貨表記は数式化されない
     assert!(html.contains("$100 と $200"), "html:\n{html}");
@@ -154,8 +158,10 @@ fn alerts_と脚注の_html_スナップショット() {
         &MarkdownOptions::default(),
         &MermaidOnlyRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
 
     assert_eq!(html.matches("<section class=\"footnotes\"").count(), 1);
     insta::assert_snapshot!("alerts_footnotes_html", html);
@@ -204,8 +210,10 @@ fn 図表キャプションの採番と参照補完() {
         &MarkdownOptions::default(),
         &MermaidOnlyRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
 
     // キャプションはアンカー付きで採番表示される
     assert!(html.contains(r#"<p class="caption caption-fig" id="fig:deps"><span class="caption-label">図 1</span>: 依存関係</p>"#), "{html}");
@@ -266,8 +274,10 @@ fn 折りたたみ_admonition_は_details_になる() {
         &MarkdownOptions::default(),
         &MermaidOnlyRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
 
     // `-` は閉じた details、`+` は open 付き
     assert!(
@@ -351,7 +361,15 @@ fn サイト通し番号は表示順で連続する() {
 
     // 本文 HTML のキャプション・参照も同じ通し番号になる
     let third = site.pages.iter().find(|p| p.route == "third/").unwrap();
-    let html = render_body_html(third, &site_opts, &MermaidOnlyRenderer, &NoopUrlRewriter).unwrap();
+    let html = render_body_html(
+        third,
+        &site_opts,
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+        None,
+    )
+    .unwrap()
+    .html;
     assert!(
         html.contains(r#"<span class="caption-label">図 3</span>"#),
         "{html}"
@@ -390,8 +408,10 @@ fn 隣接する_tab_付きフェンスは_1_グループになる() {
         &MarkdownOptions::default(),
         &MermaidOnlyRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
 
     assert_eq!(html.matches(r#"<div class="tabs""#).count(), 1, "{html}");
     assert_eq!(html.matches(r#"class="tab-label""#).count(), 3, "{html}");
@@ -421,8 +441,10 @@ fn 段落を挟むとタブグループが切れる() {
         &MarkdownOptions::default(),
         &MermaidOnlyRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
 
     assert_eq!(html.matches(r#"<div class="tabs""#).count(), 2, "{html}");
     // ラジオ名がグループごとに異なる（別グループを巻き添えで切り替えない）
@@ -442,10 +464,208 @@ fn タブが一枚だけならグループにしない() {
         &MarkdownOptions::default(),
         &MermaidOnlyRenderer,
         &NoopUrlRewriter,
+        None,
     )
-    .unwrap();
+    .unwrap()
+    .html;
 
     // 切り替え先が無いのでラベルだけが浮く。通常のコードブロックとして出す
     assert!(!html.contains(r#"class="tabs""#), "{html}");
     assert!(!html.contains("tab-label"), "{html}");
+}
+
+/// 断片テスト用: プロジェクトルート（content/ と snippets/ を持つ）を作る
+fn fragment_fixture(page_src: &str, fragment_src: &str) -> (tempfile::TempDir, String) {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("content")).unwrap();
+    fs::create_dir_all(root.path().join("snippets")).unwrap();
+    fs::write(root.path().join("content/index.md"), page_src).unwrap();
+    fs::write(root.path().join("snippets/note.md"), fragment_src).unwrap();
+
+    let site = build_site_model(
+        &root.path().join("content"),
+        &[],
+        &MarkdownOptions::default(),
+    )
+    .unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+        Some(root.path()),
+    )
+    .unwrap()
+    .html;
+    (root, html)
+}
+
+#[test]
+fn include_断片は本文へ展開される() {
+    let (_root, html) = fragment_fixture(
+        "# ページ\n\n前の段落。\n\n```include file=\"snippets/note.md\"\n```\n\n後の段落。\n",
+        "> [!NOTE]\n> 共通の**注意書き**です。\n\n- 項目 1\n- 項目 2\n",
+    );
+    insta::assert_snapshot!("fragment_html", html);
+}
+
+#[test]
+fn include_断片の_frontmatter_は出力されない() {
+    let (_root, html) = fragment_fixture(
+        "```include file=\"snippets/note.md\"\n```\n",
+        "---\ntitle: 断片のメタ\n---\n\n本文だけが出ます。\n",
+    );
+    assert!(html.contains("本文だけが出ます。"), "{html}");
+    assert!(!html.contains("断片のメタ"), "{html}");
+    assert!(
+        !html.contains("<hr"),
+        "--- が区切り線として漏れない: {html}"
+    );
+}
+
+#[test]
+fn include_断片内のコードフェンスは_code_フックを通る() {
+    // MermaidOnlyRenderer は mermaid だけ差し替える → 断片内の mermaid が
+    // <pre class="mermaid"> になっていればパス1 を通った証拠
+    let (_root, html) = fragment_fixture(
+        "```include file=\"snippets/note.md\"\n```\n",
+        "図の断片:\n\n```mermaid\ngraph TD; A-->B;\n```\n",
+    );
+    assert!(html.contains("<pre class=\"mermaid\">"), "{html}");
+}
+
+#[test]
+fn include_の失敗はエラーボックスで継続する() {
+    // 不在
+    let (_root, html) = fragment_fixture(
+        "前。\n\n```include file=\"snippets/missing.md\"\n```\n\n後。\n",
+        "（使われない）\n",
+    );
+    assert!(html.contains("markdown-alert-caution"), "{html}");
+    assert!(html.contains("後。"), "ページの残りは描画される: {html}");
+
+    // root 未設定（ライブラリ単体利用）
+    let root = tempfile::tempdir().unwrap();
+    fs::write(
+        root.path().join("index.md"),
+        "```include file=\"x.md\"\n```\n",
+    )
+    .unwrap();
+    let site = build_site_model(root.path(), &[], &MarkdownOptions::default()).unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+        None,
+    )
+    .unwrap()
+    .html;
+    assert!(html.contains("基準ディレクトリ未設定"), "{html}");
+}
+
+#[test]
+fn file_指定のない_include_はエラーボックスになる() {
+    let (_root, html) = fragment_fixture("```include\n```\n", "（使われない）\n");
+    assert!(html.contains("file= がありません"), "{html}");
+}
+
+#[test]
+fn 空断片は何も挿入されない() {
+    let (_root, html) = fragment_fixture(
+        "前。\n\n```include file=\"snippets/note.md\"\n```\n\n後。\n",
+        "",
+    );
+    assert!(!html.contains("include"), "{html}");
+    assert!(html.contains("前。") && html.contains("後。"));
+}
+
+#[test]
+fn タブ二枚の間の_include_は空断片でもグループを切る() {
+    // lint は展開前の source を見て「tab= 単独」警告を出す。描画も同じ判定で
+    // グループ化しないことで、両者が一貫する（空断片で物理的に隣接しても）
+    let (_root, html) = fragment_fixture(
+        concat!(
+            "```rust tab=\"A\"\nfn a() {}\n```\n\n",
+            "```include file=\"snippets/note.md\"\n```\n\n",
+            "```rust tab=\"B\"\nfn b() {}\n```\n",
+        ),
+        "",
+    );
+    assert!(!html.contains("class=\"tabs\""), "{html}");
+    assert!(!html.contains("tab-label"), "{html}");
+}
+
+#[test]
+fn 断片を使うと_used_fragment_が立つ() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("content")).unwrap();
+    fs::create_dir_all(root.path().join("snippets")).unwrap();
+    fs::write(root.path().join("snippets/note.md"), "断片。\n").unwrap();
+
+    let render = |src: &str| {
+        fs::write(root.path().join("content/index.md"), src).unwrap();
+        let site = build_site_model(
+            &root.path().join("content"),
+            &[],
+            &MarkdownOptions::default(),
+        )
+        .unwrap();
+        render_body_html(
+            &site.pages[0],
+            &MarkdownOptions::default(),
+            &MermaidOnlyRenderer,
+            &NoopUrlRewriter,
+            Some(root.path()),
+        )
+        .unwrap()
+    };
+
+    assert!(render("```include file=\"snippets/note.md\"\n```\n").used_fragment);
+    // 失敗（不在）でも立てる: 参照先が後から現れたとき再描画が要るため
+    assert!(render("```include file=\"snippets/missing.md\"\n```\n").used_fragment);
+    assert!(!render("断片なしの本文。\n").used_fragment);
+    // file= の無い include は展開対象ではない（エラーボックス固定）ので立てない
+    assert!(!render("```include\n```\n").used_fragment);
+}
+
+#[test]
+fn 断片内の相対リンクも_url_書き換えを通る() {
+    struct PrefixRewriter;
+    impl yuzu_core::UrlRewriter for PrefixRewriter {
+        fn rewrite(&self, _page: &yuzu_core::Page, url: &str) -> Option<String> {
+            url.starts_with('/').then(|| format!("/docs{url}"))
+        }
+    }
+
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("content")).unwrap();
+    fs::create_dir_all(root.path().join("snippets")).unwrap();
+    fs::write(
+        root.path().join("content/index.md"),
+        "```include file=\"snippets/note.md\"\n```\n",
+    )
+    .unwrap();
+    fs::write(
+        root.path().join("snippets/note.md"),
+        "[ガイド](/guide/)を参照。\n",
+    )
+    .unwrap();
+
+    let site = build_site_model(
+        &root.path().join("content"),
+        &[],
+        &MarkdownOptions::default(),
+    )
+    .unwrap();
+    let html = render_body_html(
+        &site.pages[0],
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &PrefixRewriter,
+        Some(root.path()),
+    )
+    .unwrap()
+    .html;
+    assert!(html.contains("href=\"/docs/guide/\""), "{html}");
 }

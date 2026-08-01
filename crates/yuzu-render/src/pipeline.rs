@@ -166,24 +166,31 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                     Some(cached) => (cached.html, cached.mermaid_fallback),
                     None => {
                         let renderer = shared.highlighter.page_renderer();
-                        let body =
-                            yuzu_core::render_body_html(page, &md_opts, &renderer, &resolver)?;
+                        let rendered = yuzu_core::render_body_html(
+                            page,
+                            &md_opts,
+                            &renderer,
+                            &resolver,
+                            Some(&rc.root),
+                        )?;
                         let fallback = renderer.mermaid_fallback_occurred();
-                        // 外部ファイル参照（openapi/jsonschema の file:）を使ったページは
-                        // キャッシュしない: ページ source が変わらなくても仕様ファイルの
-                        // 変更を次ビルドで反映するため、毎回レンダリングする
-                        let cacheable = !renderer.external_deps_used();
+                        // 外部ファイル参照を使ったページはキャッシュしない: ページ source が
+                        // 変わらなくても参照先の変更を次ビルドで反映するため、毎回レンダリング
+                        // する。コード引用・仕様の file: は renderer 側のフラグ、Markdown 断片
+                        // （```include）は core 展開なので used_fragment 側が担う（片方だけ
+                        // 見ると v15 の「誤ってキャッシュに載る」事故が再演する）
+                        let cacheable = !renderer.external_deps_used() && !rendered.used_fragment;
                         if let (Some(cache), true) = (ctx.cache, cacheable) {
                             cache.store_body(
                                 &page.rel,
                                 &page.source,
                                 CachedBody {
-                                    html: body.clone(),
+                                    html: rendered.html.clone(),
                                     mermaid_fallback: fallback,
                                 },
                             );
                         }
-                        (body, fallback)
+                        (rendered.html, fallback)
                     }
                 };
             // 「このページで mermaid.js を読み込むか」。client は従来どおり常に読み、
