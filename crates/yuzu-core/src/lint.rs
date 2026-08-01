@@ -5,7 +5,8 @@
 //! - `heading-level-skip` — 隣接見出し間でレベルが 2 以上深くなる（markdownlint MD001 相当）
 //! - `frontmatter-unknown-key` — 既知キー以外のトップレベルキー（typo 検出）
 //! - `duplicate-label` — 図表ラベル（`{#fig:x}`）の重複
-//! - `code-block-meta` — フェンス情報文字列の表示メタの typo・範囲外の行ハイライト
+//! - `code-block-meta` — フェンス情報文字列の表示メタの typo・範囲外の行ハイライト・
+//!   ` ```include ` の file= 漏れと無視される表示メタ
 //!   （描画は寛容に無視するため、気づける場所は lint だけ）
 //! - `directory-too-deep` — content 配下のディレクトリ階層が深すぎる
 //!   （`lint.maxDirectoryDepth` 設定時のみ）
@@ -401,6 +402,30 @@ fn check_code_meta(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic
 
     for fence in markdown::extract_fence_meta(&page.source, opts) {
         let (lang, meta, issues) = parse_fence_info_detailed(&fence.info);
+
+        // Markdown 断片（```include）: file= が無ければ展開できずエラーボックスに
+        // なる。表示メタは展開で捨てられるので「無視される」ことを伝える
+        if lang == Some(crate::FRAGMENT_LANG) {
+            if meta.include.is_none() {
+                push(
+                    fence.span,
+                    "```include に file= がありません（`file=\"snippets/note.md\"` の形で断片を指定してください）"
+                        .to_string(),
+                );
+            }
+            if meta.title.is_some()
+                || meta.tab.is_some()
+                || !meta.highlight_lines.is_empty()
+                || meta.line_numbers.is_some()
+            {
+                push(
+                    fence.span,
+                    "include ブロックでは表示メタ（title / tab / 行ハイライト / 行番号）は無視されます"
+                        .to_string(),
+                );
+            }
+            continue;
+        }
 
         // 特別レンダリング言語（mermaid / openapi / jsonschema / math）は
         // 表示メタ自体が無視されるので、個別の指摘ではなくその事実だけ伝える
@@ -999,6 +1024,45 @@ mod tests {
             ("b.md", "# B\n\nサーバーを停止。\n"),
         ]);
         assert!(diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn include_フェンスの_file_なしは警告() {
+        let diags = lint("# t\n\n```include\n```\n");
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule == "code-block-meta")
+            .collect();
+        assert_eq!(hits.len(), 1, "{diags:?}");
+        assert!(
+            hits[0].message.contains("file= がありません"),
+            "{}",
+            hits[0].message
+        );
+    }
+
+    #[test]
+    fn include_フェンスの表示メタは無視警告() {
+        let diags = lint("# t\n\n```include file=\"snippets/note.md\" title=\"x\"\n```\n");
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule == "code-block-meta")
+            .collect();
+        assert_eq!(hits.len(), 1, "{diags:?}");
+        assert!(
+            hits[0].message.contains("無視されます"),
+            "{}",
+            hits[0].message
+        );
+    }
+
+    #[test]
+    fn 正しい_include_は警告なし() {
+        let diags = lint("# t\n\n```include file=\"snippets/note.md\"\n```\n");
+        assert!(
+            diags.iter().all(|d| d.rule != "code-block-meta"),
+            "{diags:?}"
+        );
     }
 
     #[test]

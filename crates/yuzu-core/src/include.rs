@@ -91,21 +91,33 @@ pub fn collect_include_specs(source: &str, opts: &MarkdownOptions) -> Vec<Includ
 }
 
 /// 全ページのコンテンツインクルードを検証する（`yuzu check` 用）。
-/// 参照切れ・ルート外・行範囲外を `include-error`（Error）として報告する
+/// 参照切れ・ルート外・行範囲外に加え、Markdown 断片（```include）は
+/// 散文専用の規約（見出し・キャプション行・脚注・frontmatter・`file=` の
+/// 入れ子を置かない）も `include-error`（Error）として報告する。
+/// 描画は寛容に継続するため、公開前に気づける場所はここだけ
 pub fn validate_includes(pages: &[Page], root: &Path, opts: &MarkdownOptions) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for page in pages {
         for inc in collect_include_specs(&page.source, opts) {
-            if let Err(message) = resolve_include(root, &inc.spec) {
-                diags.push(Diagnostic {
-                    rule: "include-error",
-                    severity: Severity::Error,
-                    base: DiagBase::Content,
-                    rel: page.rel.clone(),
-                    span: Some(inc.span),
-                    message,
-                    fix: None,
-                });
+            let diag = |message: String| Diagnostic {
+                rule: "include-error",
+                severity: Severity::Error,
+                base: DiagBase::Content,
+                rel: page.rel.clone(),
+                span: Some(inc.span),
+                message,
+                fix: None,
+            };
+            match resolve_include(root, &inc.spec) {
+                Err(message) => diags.push(diag(message)),
+                // 断片の中身の検査は lines= 切り出し後のテキストで行う
+                // （引用範囲の外にある見出しでは鳴らさない）
+                Ok(text) if inc.lang.as_deref() == Some(markdown::fragment::FRAGMENT_LANG) => {
+                    for violation in markdown::fragment::violations(&text, opts) {
+                        diags.push(diag(format!("断片 {} {violation}", inc.spec.path)));
+                    }
+                }
+                Ok(_) => {}
             }
         }
     }
@@ -405,5 +417,98 @@ mod tests {
     fn 仕様言語以外のフェンスは対象外() {
         let (dir, pages) = project("```rust\nfile: specs/api.yaml\n```\n");
         assert!(refs(dir.path(), &pages).is_empty());
+    }
+
+    /// validate_includes 用の最小ページ
+    fn page_with(source: &str) -> crate::Page {
+        crate::Page {
+            src: std::path::PathBuf::from("/content/index.md"),
+            rel: std::path::PathBuf::from("index.md"),
+            route: String::new(),
+            frontmatter: crate::Frontmatter::default(),
+            title: "t".to_string(),
+            toc: Vec::new(),
+            labels: Vec::new(),
+            crossref_offset: Default::default(),
+            source: source.to_string(),
+        }
+    }
+
+    #[test]
+    fn 断片の散文違反は_include_error_になる() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("snippets")).unwrap();
+        std::fs::write(dir.path().join("snippets/bad.md"), "# 見出し\n\n本文。\n").unwrap();
+
+        let page = page_with("```include file=\"snippets/bad.md\"\n```\n");
+        let diags = validate_includes(
+            std::slice::from_ref(&page),
+            dir.path(),
+            &MarkdownOptions::default(),
+        );
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].rule, "include-error");
+        assert!(
+            diags[0].message.contains("断片 snippets/bad.md"),
+            "{}",
+            diags[0].message
+        );
+        assert!(diags[0].message.contains("見出し"), "{}", diags[0].message);
+        assert!(diags[0].span.is_some(), "span はホスト側フェンスの位置");
+    }
+
+    #[test]
+    fn 散文だけの断片は診断を出さない() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("snippets")).unwrap();
+        std::fs::write(
+            dir.path().join("snippets/ok.md"),
+            "共通の注意書き。**強調**も可。\n",
+        )
+        .unwrap();
+
+        let page = page_with("```include file=\"snippets/ok.md\"\n```\n");
+        let diags = validate_includes(
+            std::slice::from_ref(&page),
+            dir.path(),
+            &MarkdownOptions::default(),
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn lines_切り出し後のテキストで検査される() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("snippets")).unwrap();
+        // 1 行目は見出しだが、lines=3 で範囲外
+        std::fs::write(
+            dir.path().join("snippets/mixed.md"),
+            "# 範囲外の見出し\n\n散文の行。\n",
+        )
+        .unwrap();
+
+        let page = page_with("```include file=\"snippets/mixed.md\" lines=3\n```\n");
+        let diags = validate_includes(
+            std::slice::from_ref(&page),
+            dir.path(),
+            &MarkdownOptions::default(),
+        );
+        assert!(diags.is_empty(), "範囲外の見出しでは鳴らない: {diags:?}");
+    }
+
+    #[test]
+    fn コード引用の断片検査は走らない() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        // Rust コードだが Markdown として見れば「# 見出し」を含む
+        std::fs::write(dir.path().join("src/lib.rs"), "# comment like heading\n").unwrap();
+
+        let page = page_with("```rust file=\"src/lib.rs\"\n```\n");
+        let diags = validate_includes(
+            std::slice::from_ref(&page),
+            dir.path(),
+            &MarkdownOptions::default(),
+        );
+        assert!(diags.is_empty(), "コード引用は散文検査の対象外: {diags:?}");
     }
 }

@@ -48,7 +48,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 `code-block-meta` はフェンス情報文字列の問題をまとめて報告します
 （`showLineNumbers` の書き間違い、`{2,4-6}` の解釈できない部分、`file=` のない `lines=`、
-隣接するフェンスが無い単独の `tab=`、
+隣接するフェンスが無い単独の `tab=`、` ```include ` の `file=` 漏れと無視される表示メタ、
 コード行数を超える行ハイライト、特別描画される言語への表示メタ指定）。
 記法は[コードと数式](../guide/code-and-math.md)を参照してください。
 
@@ -64,7 +64,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |
 | `route-conflict` | 2 つ以上のページが同じ URL になる（`x.md` と `x/index.md`） |
 | `unsafe-page-path` | ファイル名に URL で意味を持つ文字（`#` `?` `%` `"` `'` `<` `>` `` ` `` `\`） |
-| `include-error` | コンテンツインクルード（`file=`）の参照先が読めない・範囲外 |
+| `include-error` | コンテンツインクルード（`file=`）の参照先が読めない・範囲外。Markdown 断片（```include）の散文違反（見出し・キャプション行・脚注・frontmatter・`file=` の入れ子）もここで報告 |
 | `spec-error` | `openapi` / `jsonschema` の `file:` 参照が読めない・仕様が壊れている・未対応バージョン・`$ref` 先が解決できない |
 | `fmt` | 整形差分がある（`yuzu fmt` で修正、`yuzu fmt --diff` で内容を確認できます） |
 

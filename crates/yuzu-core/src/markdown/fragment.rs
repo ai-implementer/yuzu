@@ -21,7 +21,7 @@ use comrak::nodes::NodeValue;
 use comrak::{Arena, parse_document};
 
 use crate::MarkdownOptions;
-use crate::markdown::escape_html;
+use crate::markdown::{crossref, escape_html};
 
 /// 断片インクルードのフェンス言語トークン。
 ///
@@ -41,6 +41,54 @@ pub(crate) fn error_box(message: &str, path: &str) -> String {
         escape_html(message),
         escape_html(path),
     )
+}
+
+/// 断片テキストを散文専用の規約で検査する（`yuzu check` 用）。
+///
+/// `lines=` 切り出し**後**のテキストを渡すこと（範囲外の見出しで鳴らさない）。
+/// 脚注定義を位置のまま見るため keep_footnotes 版オプションでパースする。
+/// メッセージは「断片 {path} 」が前置される前提の述部で返す
+pub(crate) fn violations(text: &str, opts: &MarkdownOptions) -> Vec<String> {
+    let arena = Arena::new();
+    let options = crate::markdown::comrak_options_keep_footnotes(opts);
+    let root = parse_document(&arena, text, &options);
+
+    let mut out = Vec::new();
+    for node in root.descendants() {
+        let data = node.data.borrow();
+        match &data.value {
+            NodeValue::FrontMatter(_) => out.push(
+                "に frontmatter があります（断片では無視されます。削除してください）".to_string(),
+            ),
+            NodeValue::Heading(_) => out.push(
+                "に見出しがあります（断片は散文専用です。見出しは取り込み先の目次・アンカー採番とずれます）"
+                    .to_string(),
+            ),
+            NodeValue::Paragraph
+                if crossref::parse_caption(&crate::markdown::collect_text(node)).is_some() =>
+            {
+                out.push(
+                    "に図表キャプション行があります（断片は散文専用です。図表番号の採番がずれます）"
+                        .to_string(),
+                )
+            }
+            NodeValue::CodeBlock(cb) => {
+                let (lang, meta) = crate::markdown::fence::parse_fence_info(&cb.info);
+                if lang == Some(FRAGMENT_LANG) || meta.include.is_some() {
+                    out.push(
+                        "の中で file= 付きのフェンスは使えません（入れ子のインクルードは非対応です）"
+                            .to_string(),
+                    );
+                }
+            }
+            NodeValue::FootnoteDefinition(_) | NodeValue::FootnoteReference(_) => out.push(
+                "に脚注があります（脚注は取り込み先ページの脚注セクションと衝突します）"
+                    .to_string(),
+            ),
+            _ => {}
+        }
+    }
+    out
 }
 
 /// 断片テキストのプレーンテキスト抽出（検索用）。
@@ -100,5 +148,30 @@ mod tests {
         assert!(!text.contains("**"), "{text}");
         assert!(!text.contains("example.com"), "URL は索引しない: {text}");
         assert!(text.contains("次の段落。"));
+    }
+
+    #[test]
+    fn 散文違反を種類ごとに検出する() {
+        let opts = MarkdownOptions::default();
+        let cases: &[(&str, &str)] = &[
+            ("# 見出し\n", "見出し"),
+            ("Figure: 図の説明 {#fig:x}\n", "キャプション"),
+            ("```include file=\"other.md\"\n```\n", "入れ子"),
+            ("```rust file=\"src/a.rs\"\n```\n", "入れ子"),
+            ("本文[^a]。\n\n[^a]: 脚注。\n", "脚注"),
+            ("---\ntitle: t\n---\n\n本文。\n", "frontmatter"),
+        ];
+        for (src, expect) in cases {
+            let vs = violations(src, &opts);
+            assert!(!vs.is_empty(), "{expect} を検出するべき: {src:?} -> {vs:?}");
+        }
+    }
+
+    #[test]
+    fn 違反のない散文は空を返す() {
+        let src = "共通の注意書きです。**強調**と[リンク](/guide/)も使えます。\n\n\
+                   - リスト\n- も入る\n\n> [!NOTE]\n> 注記も散文の一部。\n\n\
+                   ```rust\nfn main() {}\n```\n";
+        assert!(violations(src, &MarkdownOptions::default()).is_empty());
     }
 }
