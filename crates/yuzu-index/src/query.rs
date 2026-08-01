@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::Path;
 
-use mikan::{Fragment, Manifest, SearchEngine};
+use mikan::{Fragment, Manifest, SearchEngine, SearchOptions};
 
 use crate::SEARCH_DIR_NAME;
 use crate::error::IndexError;
@@ -28,14 +28,40 @@ pub struct SearchResult {
     pub anchor: Option<String>,
     /// クエリ一致箇所周辺の動的抜粋
     pub excerpt: String,
+    /// 絞り込みグループ（ナビ第 1 階層）の表示名。未分類は None
+    pub section: Option<String>,
 }
 
-/// `dist/_search/` を読み込んで検索する
+/// 絞り込み込みの検索結果（件数表示とファセットに必要な情報つき）
+#[derive(Debug, Clone)]
+pub struct SearchOutput {
+    pub results: Vec<SearchResult>,
+    /// 絞り込み後の総ヒット数
+    pub total: usize,
+    /// 絞り込み前の総ヒット数
+    pub total_unfiltered: usize,
+    /// (グループ表示名, 絞り込み前のヒット数) をナビ順で
+    pub group_counts: Vec<(String, u32)>,
+}
+
+/// `dist/_search/` を読み込んで検索する（総ヒット数つき）
 pub fn search_dist_with_total(
     dist: &Path,
     query: &str,
     limit: usize,
 ) -> Result<(Vec<SearchResult>, usize), IndexError> {
+    let out = search_dist_with_options(dist, query, limit, &[])?;
+    Ok((out.results, out.total))
+}
+
+/// グループ絞り込みに対応した検索。`sections` はグループの**表示名**（OR）で、
+/// 空なら絞り込まない。未知の名前は [`IndexError::UnknownSection`]
+pub fn search_dist_with_options(
+    dist: &Path,
+    query: &str,
+    limit: usize,
+    sections: &[String],
+) -> Result<SearchOutput, IndexError> {
     let search_dir = dist.join(SEARCH_DIR_NAME);
     let manifest_path = search_dir.join("manifest.json");
     if !manifest_path.is_file() {
@@ -61,9 +87,30 @@ pub fn search_dist_with_total(
         engine.load_shard(shard_id, &bytes)?;
     }
 
-    let (hits, total) = engine.search_with_total(query, limit);
-    let mut results = Vec::with_capacity(hits.len());
-    for hit in hits {
+    // 表示名 → グループ id。未知の名前は候補を添えて弾く（黙って 0 件にしない）
+    let mut group_ids = Vec::with_capacity(sections.len());
+    for name in sections {
+        match engine.group_id(name) {
+            Some(id) => group_ids.push(id),
+            None => {
+                return Err(IndexError::UnknownSection {
+                    name: name.clone(),
+                    available: engine.groups().to_vec(),
+                });
+            }
+        }
+    }
+
+    let outcome =
+        engine.search_with_options(query, &SearchOptions::new(limit).with_groups(&group_ids));
+    let group_counts: Vec<(String, u32)> = engine
+        .groups()
+        .iter()
+        .cloned()
+        .zip(outcome.group_counts.iter().copied())
+        .collect();
+    let mut results = Vec::with_capacity(outcome.hits.len());
+    for hit in outcome.hits {
         let path = search_dir.join(format!("fragment/{}.json", hit.doc_id));
         let bytes = fs::read(&path).map_err(IndexError::io(&path))?;
         let fragment: Fragment = serde_json::from_slice(&bytes)?;
@@ -73,6 +120,14 @@ pub fn search_dist_with_total(
             .into_iter()
             .map(|s| s.text)
             .collect();
+        // グループは manifest の写像（doc_id → id → 表示名）から引く。
+        // url から導き直すと 2 実装になるので必ずこちらを通す
+        let section = engine
+            .manifest()
+            .doc_groups
+            .get(hit.doc_id as usize)
+            .and_then(|&gid| engine.groups().get(gid as usize))
+            .cloned();
         results.push(SearchResult {
             doc_id: hit.doc_id,
             score: hit.score,
@@ -81,9 +136,15 @@ pub fn search_dist_with_total(
             url: fragment.url,
             anchor: fragment.anchor,
             excerpt,
+            section,
         });
     }
-    Ok((results, total))
+    Ok(SearchOutput {
+        results,
+        total: outcome.total,
+        total_unfiltered: outcome.total_unfiltered,
+        group_counts,
+    })
 }
 
 /// [`search_dist_with_total`] の従来形（総ヒット数なし）

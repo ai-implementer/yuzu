@@ -656,3 +656,97 @@ mod 検索キャッシュと断片 {
         assert_eq!(hits, 2);
     }
 }
+
+#[test]
+fn グループがナビ由来で_manifest_へ焼き込まれる() {
+    let (_content, dist) = build_fixture();
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(dist.path().join("_search/manifest.json")).unwrap())
+            .unwrap();
+
+    // fixture は index.md（ルート）と guide/ 配下 2 ページ。
+    // ルート直下の単独ページはグループにしないので 1 つだけ。
+    // `guide/index.md` が無いので表示名はディレクトリ名へフォールバックする
+    // （scaffold もこの形なので、生名フォールバックは実運用で起きる）
+    assert_eq!(manifest["groups"], serde_json::json!(["guide"]));
+
+    // **doc_groups は docCount と同じ長さ**（エンジン側は寛容に縮退するので、
+    // 長さの整合はここで縛る）
+    let doc_groups = manifest["docGroups"].as_array().unwrap();
+    assert_eq!(
+        doc_groups.len(),
+        manifest["docCount"].as_u64().unwrap() as usize
+    );
+    // 1 ページ = 複数 doc なので、ページ単位のグループがセクション数ぶん展開される
+    assert!(doc_groups.iter().any(|v| v.as_u64() == Some(0)));
+    // ルートページは未分類（u16::MAX）
+    assert!(
+        doc_groups
+            .iter()
+            .any(|v| v.as_u64() == Some(u16::MAX as u64))
+    );
+}
+
+#[test]
+fn セクション絞り込みは件数まで正確() {
+    let (_content, dist) = build_fixture();
+
+    let all = yuzu_index::search_dist_with_options(dist.path(), "検索", 10, &[]).unwrap();
+    let guide =
+        yuzu_index::search_dist_with_options(dist.path(), "検索", 10, &["guide".to_string()])
+            .unwrap();
+
+    assert!(guide.total > 0);
+    assert!(guide.total <= all.total);
+    assert_eq!(guide.total_unfiltered, all.total);
+    // 絞り込むと guide 配下だけになる
+    assert!(guide.results.iter().all(|r| r.url.starts_with("guide/")));
+    assert!(
+        guide
+            .results
+            .iter()
+            .all(|r| r.section.as_deref() == Some("guide"))
+    );
+    // ファセット件数は絞り込みの有無で変わらない
+    assert_eq!(guide.group_counts, all.group_counts);
+}
+
+#[test]
+fn 未知のセクション名はエラーになる() {
+    let (_content, dist) = build_fixture();
+    let err =
+        yuzu_index::search_dist_with_options(dist.path(), "検索", 10, &["存在しない".to_string()])
+            .unwrap_err();
+    let message = err.to_string();
+    // 指定できる名前を添えて案内する（黙って 0 件にしない）
+    assert!(message.contains("存在しない"), "{message}");
+    assert!(message.contains("guide"), "{message}");
+}
+
+#[test]
+fn グループが変わっても_content_hash_は変わらない() {
+    // content_hash の対象は terms.fst ＋ シャード ＋ モデルだけ。ここへ manifest 由来の
+    // 値（docGroups / groups）を混ぜると、区分名を変えただけでブラウザの OPFS
+    // キャッシュが全破棄される。**本文・タイトルを完全に同じにして
+    // ディレクトリ名だけ変える**ことで、グループの違いだけを取り出して比較する
+    let hash_of = |dir_name: &str| -> String {
+        let content = tempfile::tempdir().unwrap();
+        write(content.path(), "index.md", "# top\n\n共通の本文。\n");
+        write(
+            content.path(),
+            &format!("{dir_name}/a.md"),
+            "---\ntitle: A\n---\n# A\n\n検索の本文。\n",
+        );
+        let md_opts = MarkdownOptions::default();
+        let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+        let dist = tempfile::tempdir().unwrap();
+        build_search_index(&site, &md_opts, &IndexParams::default(), dist.path()).unwrap();
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(dist.path().join("_search/manifest.json")).unwrap())
+                .unwrap();
+        // 前提: グループ名は実際に違っている（比較が無意味になっていないこと）
+        assert_eq!(manifest["groups"], serde_json::json!([dir_name]));
+        manifest["contentHash"].as_str().unwrap().to_string()
+    };
+    assert_eq!(hash_of("alpha"), hash_of("beta"));
+}

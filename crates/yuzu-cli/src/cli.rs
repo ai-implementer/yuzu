@@ -77,6 +77,9 @@ pub enum Command {
         /// 表示件数
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        /// セクション（サイドバーの第 1 階層）で絞り込む。複数指定でいずれか
+        #[arg(long, value_name = "名前")]
+        section: Vec<String>,
         /// JSON で出力する
         #[arg(long)]
         json: bool,

@@ -26,6 +26,12 @@ pub enum IndexError {
         "検索インデックス（{0}）がありません。`yuzu build` を実行してください（search.enabled が true であること）"
     )]
     MissingIndex(PathBuf),
+
+    #[error("セクション「{name}」はありません（指定できるのは: {}）", available.join(" / "))]
+    UnknownSection {
+        name: String,
+        available: Vec<String>,
+    },
 }
 
 impl IndexError {

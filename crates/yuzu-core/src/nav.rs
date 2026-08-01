@@ -113,3 +113,148 @@ fn to_nav_children(dir: &DirNode) -> Vec<NavNode> {
 fn sort_key(order: Option<i64>, name: String) -> (i64, String) {
     (order.unwrap_or(i64::MAX), name)
 }
+
+/// 検索結果の絞り込み単位（ナビ第 1 階層）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NavGroup {
+    /// route の先頭セグメント（`guide/x/` → `guide`。ルート直下は `""`）
+    pub key: String,
+    /// 表示名（`<dir>/index.md` の title。無ければディレクトリ名）
+    pub label: String,
+}
+
+/// route の先頭セグメント（純関数）。`guide/` も `guide/x/` も `guide`、
+/// サイトのトップ（`""`）は `""`。
+///
+/// これ単体では「ディレクトリ配下か、ルート直下の単独ページか」を区別できない
+/// （`about.md` の route も `about/` になる）。区別は [`nav_groups`] が返すキー集合との
+/// 照合で行う ＝ **判定規則を 1 つに保つ**ための分担
+pub fn route_group_key(route: &str) -> &str {
+    route.split_once('/').map_or(route, |(head, _)| head)
+}
+
+/// ナビ第 1 階層のうち**ディレクトリ**（＝子を持つノード）をグループ列にする。
+///
+/// 検索の絞り込みチップに使うので、並びはサイドバーと一致させる
+/// （パス順とナビ順は `order` の指定で食い違う）。
+/// 子を持たない第 1 階層ノード（`index.md` や `about.md` のような単独ページ）は
+/// グループにしない ＝ チップが「ページ 1 枚」にならない
+pub fn nav_groups(nodes: &[NavNode]) -> Vec<NavGroup> {
+    let mut out: Vec<NavGroup> = Vec::new();
+    for node in nodes {
+        if node.children.is_empty() {
+            continue;
+        }
+        // index.md を持たないディレクトリノードは route が None なので、
+        // 最初の子孫 route からキーを拾う
+        let route = node
+            .route
+            .as_deref()
+            .or_else(|| first_route(&node.children));
+        let Some(route) = route else { continue };
+        let key = route_group_key(route);
+        if key.is_empty() || out.iter().any(|g| g.key == key) {
+            continue;
+        }
+        out.push(NavGroup {
+            key: key.to_string(),
+            label: node.title.clone(),
+        });
+    }
+    out
+}
+
+/// 深さ優先で最初に見つかる route
+fn first_route(nodes: &[NavNode]) -> Option<&str> {
+    for node in nodes {
+        if let Some(route) = node.route.as_deref() {
+            return Some(route);
+        }
+        if let Some(route) = first_route(&node.children) {
+            return Some(route);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod group_tests {
+    use super::*;
+
+    #[test]
+    fn route_からグループキーを取り出す() {
+        assert_eq!(route_group_key(""), "");
+        assert_eq!(route_group_key("guide/"), "guide");
+        assert_eq!(route_group_key("guide/start/"), "guide");
+        assert_eq!(route_group_key("guide/a/b/"), "guide");
+        // ルート直下の単独ページも形は同じ。除外は nav_groups のキー集合が担う
+        assert_eq!(route_group_key("about/"), "about");
+    }
+
+    fn node(title: &str, route: Option<&str>, children: Vec<NavNode>) -> NavNode {
+        NavNode {
+            title: title.to_string(),
+            route: route.map(str::to_string),
+            order: None,
+            children,
+        }
+    }
+
+    #[test]
+    fn ナビ第一階層をナビ順で返す() {
+        // order で並べ替わった後のナビを想定（パス順とは違う）
+        let nav = vec![
+            node("ホーム", Some(""), vec![]),
+            node(
+                "ガイド",
+                Some("guide/"),
+                vec![node("はじめに", Some("guide/start/"), vec![])],
+            ),
+            node(
+                "開発",
+                Some("development/"),
+                vec![node("内部", Some("development/internals/"), vec![])],
+            ),
+        ];
+        assert_eq!(
+            nav_groups(&nav),
+            vec![
+                NavGroup {
+                    key: "guide".to_string(),
+                    label: "ガイド".to_string()
+                },
+                NavGroup {
+                    key: "development".to_string(),
+                    label: "開発".to_string()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn index_の無いディレクトリはディレクトリ名へフォールバックする() {
+        // build_nav は index.md が無いディレクトリの title にディレクトリ名を入れる
+        let nav = vec![node(
+            "guide",
+            None,
+            vec![node("はじめに", Some("guide/start/"), vec![])],
+        )];
+        assert_eq!(
+            nav_groups(&nav),
+            vec![NavGroup {
+                key: "guide".to_string(),
+                label: "guide".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn 子を持たない第一階層はグループにしない() {
+        // トップページと、ディレクトリを作っていない単独ページ
+        let nav = vec![
+            node("ホーム", Some(""), vec![]),
+            node("概要", Some("about/"), vec![]),
+        ];
+        assert!(nav_groups(&nav).is_empty());
+    }
+}

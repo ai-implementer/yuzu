@@ -46,6 +46,7 @@ pub use markdown::{FenceBlock, RenderedBody, extract_fence_blocks};
 pub use model::{
     CrossrefLabel, Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry,
 };
+pub use nav::{NavGroup, nav_groups, route_group_key};
 pub use output::{OutputTracker, WriteOutcome};
 pub use routes::validate_routes;
 pub use scan::IgnoreMatcher;

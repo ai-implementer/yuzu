@@ -62,9 +62,12 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
             force,
             drafts,
         } => commands::dev::run(port, host, force, drafts).map(ok),
-        cli::Command::Search { query, limit, json } => {
-            commands::search::run(&query, limit, json).map(ok)
-        }
+        cli::Command::Search {
+            query,
+            limit,
+            section,
+            json,
+        } => commands::search::run(&query, limit, &section, json).map(ok),
         cli::Command::Llms { full } => commands::llms::run(full).map(ok),
         cli::Command::Fmt { check, diff } => commands::fmt::run(check, diff),
         cli::Command::Lint { fix, format } => commands::lint::run(fix, format),

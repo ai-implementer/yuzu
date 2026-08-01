@@ -215,6 +215,16 @@ pub fn build_search_index_with(
     // ページ → ドキュメント入力への薄いマッピング。doc_id 採番・postings 集約・
     // fst/シャード構築・manifest 生成は mikan::build（yuzu 非依存の
     // 汎用ロジック）に委譲する
+    // 絞り込みグループ = ナビ第 1 階層（サイドバーの区分そのもの）。
+    // 順序もナビに従うので、検索のチップとサイドバーの並びが一致する
+    let nav_groups = yuzu_core::nav_groups(&site.nav);
+    let group_of = |route: &str| -> Option<String> {
+        let key = yuzu_core::route_group_key(route);
+        nav_groups
+            .iter()
+            .find(|g| g.key == key)
+            .map(|g| g.label.clone())
+    };
     let docs: Vec<DocumentInput> = site
         .pages
         .iter()
@@ -222,8 +232,7 @@ pub fn build_search_index_with(
         .map(|(page, sections)| DocumentInput {
             title: page.title.clone(),
             url: page.route.clone(),
-            // ナビ第 1 階層の解決は次のコミットで足す
-            group: None,
+            group: group_of(&page.route),
             sections: sections
                 .iter()
                 .map(|s| SectionInput {
@@ -250,7 +259,7 @@ pub fn build_search_index_with(
         },
         max_terms_per_shard: params.max_terms_per_shard,
         synonyms: params.synonyms.clone(),
-        groups: Vec::new(),
+        groups: nav_groups.iter().map(|g| g.label.clone()).collect(),
     };
     let built = build(&docs, &build_opts)?;
 
