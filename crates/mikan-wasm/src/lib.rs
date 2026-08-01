@@ -85,11 +85,7 @@ impl YuzuSearch {
             .iter()
             .map(|h| format!(r#"{{"docId":{},"score":{}}}"#, h.doc_id, h.score))
             .collect();
-        let counts: Vec<String> = outcome
-            .group_counts
-            .iter()
-            .map(|n| n.to_string())
-            .collect();
+        let counts: Vec<String> = outcome.group_counts.iter().map(|n| n.to_string()).collect();
         format!(
             r#"{{"total":{},"totalUnfiltered":{},"groupCounts":[{}],"hits":[{}]}}"#,
             outcome.total,

@@ -30,6 +30,75 @@ function setup() {
   // 検索の世代。debounce + 非同期なので、入力が進んだ後に古い応答が
   // 返ってくることがある。描画の直前に世代を照合して古い結果を捨てる
   let seq = 0;
+  // 絞り込み（Phase 53）。選択は表示名の配列で持ち、エンジンへそのまま渡す
+  let groupNames = []; // インデックス由来の区分名（ナビ順）。空 = 絞り込み非対応
+  // 選択はページ遷移をまたいで保持する（検索 → 結果を開く → 戻って絞り込み直す、が
+  // 主要な使い方なので、遷移のたびに解除されると絞り込みの意味がない）。
+  // 同一オリジンに複数の yuzu サイトが並ぶ場合に備えて baseUrl で名前空間を切り、
+  // タブ内で完結させたいので sessionStorage（サイドバーのスクロール保持と同じ流儀）。
+  // **id ではなく表示名で保存する** — id はビルドのたびに変わりうる
+  const GROUPS_KEY = "yuzu-search-groups:" + BASE;
+  let selectedGroups = loadSelectedGroups();
+
+  function loadSelectedGroups() {
+    try {
+      const raw = sessionStorage.getItem(GROUPS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((g) => typeof g === "string") : [];
+    } catch (e) {
+      return []; // プライベートブラウジング等では保持しない
+    }
+  }
+
+  function saveSelectedGroups() {
+    try {
+      sessionStorage.setItem(GROUPS_KEY, JSON.stringify(selectedGroups));
+    } catch (e) {
+      /* 保存できなくても絞り込み自体は動く */
+    }
+  }
+
+  // 検索結果から遷移したときだけ、遷移先で結果一覧を開き直すための一時保存。
+  // **一覧の全ページ再表示ではなく「結果を辿る」ための一発限りの引き継ぎ**にする
+  // （サイドバーやページ内リンクの遷移では開かない = 読みに来たページを覆わない）
+  const RESTORE_KEY = "yuzu-search-restore:" + BASE;
+
+  function markRestoreOnNavigate(ev) {
+    // 新しいタブ・ウィンドウで開く操作（修飾キー・中クリック）はこのタブを
+    // 遷移させないので、引き継ぎの対象にしない
+    if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    try {
+      sessionStorage.setItem(RESTORE_KEY, currentQuery);
+    } catch (e) {
+      /* 保存できなくても遷移自体は普通に動く */
+    }
+  }
+
+  // 遷移直後に 1 回だけ結果を開き直す。**取り出したら即座に消す**ので、
+  // 手動リロードや戻る操作で勝手に開き続けることはない
+  function restoreAfterNavigate() {
+    let query = "";
+    try {
+      query = sessionStorage.getItem(RESTORE_KEY) || "";
+      sessionStorage.removeItem(RESTORE_KEY);
+    } catch (e) {
+      return;
+    }
+    if (!query) return;
+    input.value = query;
+    // フォーカスは奪わない（遷移先のページを読みに来ているため）。
+    // 結果はそのまま見えているので、続けて別のヒットをクリックできる
+    runSearch(query).catch(showError);
+  }
+  // チップ行は listbox の**外**に置く。#yuzu-search-results は role="listbox" で、
+  // 中へフォーカス可能な要素を入れない既存の規律を守るため
+  // （テンプレートは触らない = theme/ を上書きしている利用者でも機能する）
+  const filtersBox = document.createElement("div");
+  filtersBox.className = "search-filters";
+  filtersBox.setAttribute("role", "group");
+  filtersBox.setAttribute("aria-label", "検索結果の絞り込み");
+  filtersBox.hidden = true;
+  resultsBox.before(filtersBox);
 
   function ensureClient() {
     clientPromise ??= import(SEARCH_BASE + "search-client.js").then(({ createSearchClient }) =>
@@ -115,8 +184,20 @@ function setup() {
     }
   });
 
+  // 検索 UI のルート（外側クリック判定の基準）
+  const searchRoot = input.closest("#yuzu-search") ?? resultsBox.parentElement;
+
   document.addEventListener("click", (ev) => {
-    if (!ev.target.closest("#yuzu-search")) close();
+    // ⚠️ 判定に `ev.target.closest()` を使ってはいけない。**押した要素が
+    // ハンドラ内の再描画で DOM から外れている**ことがあり（絞り込みチップと
+    // 「さらに N 件を表示」がまさにそれ）、外れた要素の closest は必ず null に
+    // なるため「外側のクリック」と誤判定して検索を閉じてしまう。
+    // composedPath はディスパッチ時の経路を保持するので切り離しの影響を受けない
+    const path = ev.composedPath?.() ?? [];
+    const inside = path.length
+      ? path.includes(searchRoot)
+      : Boolean(ev.target.closest?.("#yuzu-search"));
+    if (!inside) close();
   });
 
   // 選択対象（ヒット行と「さらに N 件を表示」行）
@@ -145,11 +226,72 @@ function setup() {
     }
     currentQuery = query;
     const client = await ensureClient();
-    const { total, hits } = await client.search(query, PAGE_SIZE);
+    const result = await client.search(query, PAGE_SIZE, selectedGroups);
+    const { total, hits } = result;
     const fragments = await Promise.all(hits.map((h) => client.fetchFragment(h.docId)));
     if (my !== seq) return; // 入力が進んでいる = この結果はもう古い
+    if (!groupNames.length) {
+      groupNames = client.groups();
+      // 前回の選択が今回のインデックスに無い区分（改名・削除）なら捨てる
+      const alive = selectedGroups.filter((g) => groupNames.includes(g));
+      if (alive.length !== selectedGroups.length) {
+        selectedGroups = alive;
+        saveSelectedGroups();
+      }
+    }
     shown = fragments.length;
-    render(client, query, fragments, total, 0);
+    renderFilters(result.groupCounts);
+    render(client, query, fragments, total, 0, result.totalUnfiltered);
+  }
+
+  // 区分チップ。件数は**絞り込み前**の値なので、選んでも数字が動かない
+  // （押す前に何件あるかが分かる）。ヒットのある区分が 2 つ未満なら行ごと出さない
+  // = 階層の無いサイト・古いインデックス・旧 wasm がすべてここに落ちる
+  function renderFilters(counts) {
+    const at = (i) => (Array.isArray(counts) ? (counts[i] ?? 0) : 0);
+    const live = groupNames.filter((_, i) => at(i) > 0).length;
+    if (live < 2) {
+      filtersBox.hidden = true;
+      filtersBox.innerHTML = "";
+      return;
+    }
+    filtersBox.innerHTML = "";
+    const chip = (label, active, onClick, count) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "search-filter-chip";
+      b.setAttribute("aria-pressed", active ? "true" : "false");
+      b.append(document.createTextNode(label));
+      if (count !== undefined) {
+        const n = document.createElement("span");
+        n.className = "search-filter-count";
+        n.textContent = String(count);
+        b.append(n);
+      }
+      b.addEventListener("click", onClick);
+      filtersBox.append(b);
+    };
+    chip("すべて", selectedGroups.length === 0, () => {
+      selectedGroups = [];
+      saveSelectedGroups();
+      runSearch(currentQuery).catch(showError);
+    });
+    groupNames.forEach((name, i) => {
+      if (!at(i)) return; // ヒット 0 の区分は出さない
+      chip(
+        name,
+        selectedGroups.includes(name),
+        () => {
+          selectedGroups = selectedGroups.includes(name)
+            ? selectedGroups.filter((g) => g !== name)
+            : [...selectedGroups, name];
+          saveSelectedGroups();
+          runSearch(currentQuery).catch(showError);
+        },
+        at(i),
+      );
+    });
+    filtersBox.hidden = false;
   }
 
   // 「さらに N 件を表示」。limit を増やして再クエリし、増えた分だけ追記する。
@@ -166,12 +308,15 @@ function setup() {
     more.textContent = "読み込み中…";
     try {
       const client = await ensureClient();
-      const { total, hits } = await client.search(currentQuery, offset + PAGE_SIZE);
+      // ⚠️ 現在の絞り込みを必ず渡す。渡し忘れると「limit を増やした結果は前回の
+      // 接頭辞になる」性質が崩れて、追加分が二重に並ぶ
+      const result = await client.search(currentQuery, offset + PAGE_SIZE, selectedGroups);
+      const { total, hits } = result;
       // fragment はクライアント側でメモ化されているので、実際に取りに行くのは増えた分だけ
       const fragments = await Promise.all(hits.map((h) => client.fetchFragment(h.docId)));
       if (my !== seq) return; // クエリが変わった = この追加分は捨てる
       shown = fragments.length;
-      render(client, currentQuery, fragments, total, offset);
+      render(client, currentQuery, fragments, total, offset, result.totalUnfiltered);
       const items = optionItems();
       if (fromKeyboard && items[offset]) {
         selected = offset;
@@ -191,7 +336,7 @@ function setup() {
 
   // offset === 0 は新しい検索（箱をクリア）、offset > 0 は追加ロード（追記）。
   // 追記のときは DOM を消さないので、スクロール位置と選択状態がそのまま残る
-  function render(client, query, fragments, total, offset) {
+  function render(client, query, fragments, total, offset, totalUnfiltered) {
     if (offset === 0) {
       selected = -1;
       input.removeAttribute("aria-activedescendant");
@@ -216,10 +361,13 @@ function setup() {
     }
     const count = resultsBox.querySelector(".search-count");
     if (count) {
+      // 絞り込み中は全体の件数も添える（何を絞ったのかが分かる）
+      const scope =
+        selectedGroups.length && totalUnfiltered > total ? `・全体 ${totalUnfiltered} 件` : "";
       count.textContent =
         total > fragments.length
-          ? `${total} 件（上位 ${fragments.length} 件を表示）`
-          : `${total} 件`;
+          ? `${total} 件（上位 ${fragments.length} 件を表示${scope}）`
+          : `${total} 件${scope ? `（${scope.slice(1)}）` : ""}`;
     }
     for (const [i, fragment] of fragments.slice(offset).entries()) {
       const a = document.createElement("a");
@@ -229,6 +377,7 @@ function setup() {
       a.setAttribute("aria-selected", "false");
       // セクション doc は見出しアンカーへ直接ジャンプする
       a.href = BASE + fragment.url + (fragment.anchor ? "#" + fragment.anchor : "");
+      a.addEventListener("click", markRestoreOnNavigate);
       const title = document.createElement("div");
       title.className = "search-hit-title";
       title.append(...markSegments(client, fragment.title, query));
@@ -294,6 +443,7 @@ function setup() {
 
   function close() {
     resultsBox.hidden = true;
+    filtersBox.hidden = true;
     input.setAttribute("aria-expanded", "false");
     input.removeAttribute("aria-activedescendant");
     selected = -1;
@@ -301,6 +451,7 @@ function setup() {
 
   // 一時メッセージ（読み込み中等）。検索結果が来たら render が上書きする
   function showMessage(text) {
+    filtersBox.hidden = true;
     resultsBox.innerHTML = "";
     const div = document.createElement("div");
     div.className = "search-empty search-loading";
@@ -314,4 +465,6 @@ function setup() {
     resultsBox.innerHTML = `<div class="search-empty">検索を初期化できませんでした（コンソール参照）</div>`;
     open();
   }
+
+  restoreAfterNavigate();
 }

@@ -45,6 +45,8 @@
   --sidebar-width: 17rem;
   --toc-width: 14rem;
   --header-height: 3.25rem;
+  /* 検索の絞り込みチップ行（1 行固定。JS で高さを測らずに結果箱を押し下げる） */
+  --search-filters-h: 2.25rem;
   --content-max: 62rem; /* 992px。.layout の max-width とセットで調整する */
 }
 
@@ -229,6 +231,76 @@ body {
 #yuzu-search-input:focus-visible {
   outline: none; /* フォーカスはアクセント色ボーダーで表現（リングと二重にしない） */
   border-color: var(--accent);
+}
+
+/* 検索結果の絞り込みチップ（Phase 53）。listbox の**外**（結果箱の直前の兄弟）に
+   JS が挿入するので、結果箱はその高さぶん押し下げる。高さを JS で測らずに済むよう
+   1 行固定にし、区分が多いときは横スクロールさせる */
+.search-filters {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 21;
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  width: 26rem;
+  max-width: 85vw;
+  height: var(--search-filters-h);
+  padding: 0 0.5rem;
+  overflow-x: auto;
+  white-space: nowrap;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow);
+}
+
+/* ⚠️ `display: flex` は UA の `[hidden] { display: none }` を上書きしてしまうので、
+   hidden 用の指定を必ず添える（無いと検索前からチップ行の枠だけが出る） */
+.search-filters[hidden] {
+  display: none;
+}
+
+.search-filters:not([hidden]) ~ .search-results {
+  top: calc(100% + 0.4rem + var(--search-filters-h));
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.search-filter-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.55rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.search-filter-chip:hover {
+  background: var(--bg-hover);
+}
+
+.search-filter-chip[aria-pressed="true"] {
+  color: var(--accent-fg);
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+}
+
+/* 件数は**絞り込み前**の値（選んでも動かない = 押す前に何件あるか分かる） */
+.search-filter-count {
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.search-filter-chip[aria-pressed="true"] .search-filter-count {
+  color: inherit;
 }
 
 .search-results {
@@ -1352,6 +1424,7 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
 .sidebar,
 .toc,
 .search-results,
+.search-filters,
 .markdown-body pre,
 .markdown-body table {
   scrollbar-width: thin;
