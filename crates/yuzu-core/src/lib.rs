@@ -214,6 +214,11 @@ pub fn build_site_model_cached(
             !page.frontmatter.draft
         });
     }
+    // 用語集ページは nav 構築より前に混ぜる（サイドバー・パンくず・pager・
+    // 通し番号の順序決めがすべて pages を入力にしているため）
+    if let Some(page) = glossary_page(content_dir, opts)? {
+        pages.push(page);
+    }
     let nav = nav::build_nav(&pages);
     if opts.crossref_site_numbering {
         assign_crossref_offsets(&mut pages, &nav);
@@ -279,7 +284,15 @@ pub fn build_source_pages(
     ignore: &[String],
     opts: &MarkdownOptions,
 ) -> Result<Vec<Page>, CoreError> {
-    load_pages(content_dir, ignore, opts)
+    let mut pages = load_pages(content_dir, ignore, opts)?;
+    // 用語集ページはソースが無いので fmt / lint の対象にはならないが、
+    // **リンク検査の有効ターゲット**（`[用語集](../glossary.md#api)`）と
+    // route 衝突検査には要るのでここでも混ぜる。実際の除外は
+    // `generated` を見る各呼び出し側の責務
+    if let Some(page) = glossary_page(content_dir, opts)? {
+        pages.push(page);
+    }
+    Ok(pages)
 }
 
 /// 走査＋メタ抽出の共通部（draft を含む全ページ）
@@ -358,6 +371,45 @@ fn load_pages_cached(
         });
     }
     Ok(pages)
+}
+
+/// 用語集ページ（`markdown.glossary`）を合成する。辞書が空 / route が空なら `None`。
+///
+/// **`Page` として作って `pages` に混ぜる**のが要点で、こうすると nav・パンくず・
+/// pager・sitemap・llms.txt・検索索引・route 衝突検査・routesKey がすべて既存経路の
+/// ままで効く（HTML を単発で書き出す 404.html 方式ではこれらを個別に配線し直すことになる）。
+/// メタは通常ページと同じ [`markdown::extract_meta`] から取るので、
+/// 見出しアンカーの採番が本文 HTML と自動的に一致する
+fn glossary_page(content_dir: &Path, opts: &MarkdownOptions) -> Result<Option<Page>, CoreError> {
+    let Some(rel) = markdown::glossary::page_rel(&opts.glossary) else {
+        return Ok(None);
+    };
+    let heading = match opts.glossary.page_title.trim() {
+        "" => scan::stem_title(&rel),
+        title => title.to_string(),
+    };
+    let source = markdown::glossary::page_markdown(&heading, &opts.glossary.terms);
+    let src = content_dir.join(&rel);
+    let meta = markdown::extract_meta(&source, opts, &src)?;
+    let title = meta
+        .frontmatter
+        .title
+        .clone()
+        .or(meta.first_h1)
+        .unwrap_or(heading);
+    let route = scan::route_for_rel(&rel);
+    Ok(Some(Page {
+        src,
+        rel,
+        route,
+        frontmatter: meta.frontmatter,
+        title,
+        toc: meta.toc,
+        labels: meta.labels,
+        crossref_offset: Default::default(),
+        source,
+        generated: true,
+    }))
 }
 
 /// パス2: ページ本文を HTML 化する。

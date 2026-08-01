@@ -452,3 +452,180 @@ fn 断片は_index_code_無効でも索引される() {
     assert!(sections[0].body.contains("本文。"));
     assert!(!sections[0].body.contains("注意書き"));
 }
+
+/// 用語辞書つきの `MarkdownOptions`
+fn glossary_opts(pairs: &[(&str, &str)], page: &str) -> MarkdownOptions {
+    MarkdownOptions {
+        glossary: yuzu_core::GlossaryOptions {
+            terms: pairs
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .collect(),
+            page: page.to_string(),
+            page_title: "用語集".to_string(),
+            ..yuzu_core::GlossaryOptions::default()
+        },
+        ..MarkdownOptions::default()
+    }
+}
+
+#[test]
+fn 用語辞書が空なら用語集ページは作られない() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+
+    // 既定（辞書が空）では従来どおり = 既存プロジェクトの出力が 1 バイトも変わらない
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    assert_eq!(site.pages.len(), 1);
+    assert!(site.pages.iter().all(|p| !p.generated));
+
+    // 辞書があっても page が空なら作らない
+    let opts = glossary_opts(&[("SSG", "Static Site Generator")], "");
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    assert_eq!(site.pages.len(), 1);
+}
+
+#[test]
+fn 用語集ページが合成されナビにも載る() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    let opts = glossary_opts(
+        &[("SSG", "Static Site Generator"), ("TOC", "目次")],
+        "glossary",
+    );
+
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let page = site.pages.iter().find(|p| p.generated).unwrap();
+    assert_eq!(page.route, "glossary/");
+    assert_eq!(page.rel, Path::new("glossary.md"));
+    assert_eq!(page.title, "用語集");
+    // 用語ごとに h2 = アンカー（`glossary.md#ssg` へのリンクが解決できる）
+    let ids: Vec<&str> = page.toc.iter().map(|t| t.id.as_str()).collect();
+    assert_eq!(ids, ["用語集", "ssg", "toc"]);
+    // サイドバーに出る
+    assert!(
+        site.nav
+            .iter()
+            .any(|n| n.route.as_deref() == Some("glossary/")),
+        "{:?}",
+        site.nav
+    );
+    // build_source_pages（fmt / lint / check の入力）にも載る = リンク検査の
+    // 有効ターゲットになる
+    let pages = build_source_pages(dir.path(), &[], &opts).unwrap();
+    assert!(pages.iter().any(|p| p.generated && p.route == "glossary/"));
+}
+
+#[test]
+fn 用語集ページは_fmt_の正規形と一致する() {
+    // `yuzu check` の整形差分でも llms-full.txt でも食い違わないことの保証
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    let opts = glossary_opts(
+        &[
+            ("SSG", "Static Site Generator。静的サイト生成"),
+            ("TOC", "目次"),
+        ],
+        "glossary",
+    );
+
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let page = site.pages.iter().find(|p| p.generated).unwrap();
+    assert_eq!(
+        yuzu_core::format_document(page, &opts).unwrap(),
+        page.source,
+        "生成 Markdown が fmt の正規形でない"
+    );
+    // 決定的（BTreeMap のキー順）
+    assert_eq!(
+        page.source,
+        "# 用語集\n\n## SSG\n\nStatic Site Generator。静的サイト生成\n\n## TOC\n\n目次\n"
+    );
+}
+
+#[test]
+fn 用語集ページの_route_はディレクトリ配下にも置ける() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    write(dir.path(), "reference/index.md", "# リファレンス\n");
+    let opts = glossary_opts(&[("SSG", "Static Site Generator")], "reference/glossary");
+
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let page = site.pages.iter().find(|p| p.generated).unwrap();
+    assert_eq!(page.route, "reference/glossary/");
+    // nav も rel のパス要素からツリーを組むので reference の配下に入る
+    let reference = site
+        .nav
+        .iter()
+        .find(|n| n.route.as_deref() == Some("reference/"))
+        .unwrap();
+    assert!(
+        reference
+            .children
+            .iter()
+            .any(|c| c.route.as_deref() == Some("reference/glossary/")),
+        "{reference:?}"
+    );
+}
+
+#[test]
+fn 不正な_page_値では用語集ページを作らない() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    // content_dir の外へ出る値・空セグメントは黙って無効にする
+    // （設定の書き間違いでビルドを止めず、かつルート外へは絶対に書かない）
+    for page in [
+        "../outside",
+        "a/../../x",
+        "a//b",
+        ".",
+        "..",
+        "\\abs",
+        "C:/x",
+    ] {
+        let opts = glossary_opts(&[("SSG", "Static Site Generator")], page);
+        let site = build_site_model(dir.path(), &[], &opts).unwrap();
+        assert!(
+            site.pages.iter().all(|p| !p.generated),
+            "page={page} で合成されてしまう"
+        );
+    }
+}
+
+#[test]
+fn page_値の前後のスラッシュは吸収する() {
+    // frontmatter の aliases と同じ正規化（`/x/` も `x` も同じ route になる）
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    for page in ["glossary", "/glossary", "glossary/", "/glossary/"] {
+        let opts = glossary_opts(&[("SSG", "Static Site Generator")], page);
+        let site = build_site_model(dir.path(), &[], &opts).unwrap();
+        let generated = site.pages.iter().find(|p| p.generated).unwrap();
+        assert_eq!(generated.route, "glossary/", "page={page}");
+    }
+}
+
+#[test]
+fn 用語集ページは_lint_の対象外() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    // 説明文に全角英数字（lint 対象の文字）を入れても診断が出ないこと
+    let opts = glossary_opts(
+        &[("SSG", "Ｓｔａｔｉｃ Ｓｉｔｅ Ｇｅｎｅｒａｔｏｒ")],
+        "glossary",
+    );
+    let pages = build_source_pages(dir.path(), &[], &opts).unwrap();
+    let lint_opts = yuzu_core::LintOptions::default();
+
+    let generated = pages.iter().find(|p| p.generated).unwrap();
+    assert!(
+        yuzu_core::lint_page(generated, &opts, &lint_opts)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        yuzu_core::lint_project(&pages, &opts, &lint_opts)
+            .unwrap()
+            .is_empty()
+    );
+}

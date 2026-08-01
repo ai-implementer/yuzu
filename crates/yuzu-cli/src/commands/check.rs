@@ -38,8 +38,9 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
     for page in &pages {
         // 文書規約
         diags.extend(yuzu_core::lint_page(page, &opts, &lint_opts)?);
-        // fmt 差分（ファイル単位・位置なし）
-        if yuzu_core::format_document(page, &opts)? != page.source {
+        // fmt 差分（ファイル単位・位置なし）。合成ページは `yuzu fmt` の
+        // 対象外なので差分を報告しても直しようがない
+        if !page.generated && yuzu_core::format_document(page, &opts)? != page.source {
             diags.push(Diagnostic {
                 rule: "fmt",
                 severity: Severity::Error,

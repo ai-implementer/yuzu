@@ -58,7 +58,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
                 yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
             let diags = collect(&pages)?;
             let mut applied_this_round = 0usize;
-            for page in &pages {
+            for page in pages.iter().filter(|p| !p.generated) {
                 let page_diags: Vec<Diagnostic> = diags
                     .iter()
                     .filter(|d| d.rel == page.rel && d.fix.is_some())

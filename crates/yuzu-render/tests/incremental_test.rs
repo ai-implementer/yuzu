@@ -43,7 +43,11 @@ fn setup_project(root: &Path) {
 fn build_incremental(root: &Path, cache: &BuildCache) -> (BTreeSet<String>, CacheStats) {
     cache.begin_build();
     let rc = yuzu_config::load(root).unwrap();
-    let md_opts = MarkdownOptions::default();
+    // 設定由来の写像は cli と同じ 1 実装を通す（用語集ページの合成もここで効く）
+    let md_opts = MarkdownOptions {
+        glossary: yuzu_render::glossary_options(&rc.config),
+        ..MarkdownOptions::default()
+    };
     let site = yuzu_core::build_site_model_cached(
         &rc.content_dir,
         &rc.config.input.ignore,
@@ -495,4 +499,36 @@ fn 断片参照ページは_body_キャッシュに載らず断片の編集が�
         "断片の編集が反映される"
     );
     assert!(!html.contains("v1です。"), "古い内容が残らない");
+}
+
+#[test]
+fn 用語集を無効にすると生成ページが孤児掃除される() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_project(dir.path());
+    let with_glossary = r#"{ "site": { "title": "Incr Docs" }, "build": { "baseUrl": "/docs/" }, "search": { "enabled": false },
+      "markdown": { "glossary": { "terms": { "SSG": "Static Site Generator" } } } }"#;
+    write(dir.path(), "yuzu.jsonc", with_glossary);
+    let cache_dir = dir.path().join(".yuzu/cache");
+    let manifest = cache_dir.join("output-manifest.json");
+
+    let cache = BuildCache::load(&cache_dir, "env1");
+    let (previous, _) = build_incremental(dir.path(), &cache);
+    output::save_manifest(&manifest, &previous).unwrap();
+    assert!(previous.contains("glossary/index.html"), "{previous:?}");
+    assert!(dir.path().join("dist/glossary/index.html").is_file());
+
+    // 辞書を消す = envKey も変わるので、cli と同じく新しいキーで読み直す
+    write(
+        dir.path(),
+        "yuzu.jsonc",
+        r#"{ "site": { "title": "Incr Docs" }, "build": { "baseUrl": "/docs/" }, "search": { "enabled": false } }"#,
+    );
+    let cache = BuildCache::load(&cache_dir, "env2");
+    let (written, _) = build_incremental(dir.path(), &cache);
+    assert!(!written.contains("glossary/index.html"), "{written:?}");
+    output::remove_orphans(&dir.path().join("dist"), &previous, &written).unwrap();
+    assert!(
+        !dir.path().join("dist/glossary/index.html").exists(),
+        "生成ページが孤児掃除されない"
+    );
 }

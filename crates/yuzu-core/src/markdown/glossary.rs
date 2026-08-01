@@ -137,6 +137,50 @@ pub(crate) fn abbr_open_tag(desc: &str) -> String {
 
 pub(crate) const ABBR_CLOSE_TAG: &str = "</abbr>";
 
+/// 用語集ページの content 相対パス（`glossary` → `glossary.md`）。
+///
+/// 辞書が空・route が空・パスが不正（絶対パス / `..` / 空セグメント）なら `None`
+/// ＝ページを作らない。`..` を弾くのは `content_dir.join(rel)` が外へ出ないため
+pub(crate) fn page_rel(opts: &GlossaryOptions) -> Option<std::path::PathBuf> {
+    if opts.terms.is_empty() {
+        return None;
+    }
+    let raw = opts.page.trim().trim_matches('/');
+    if raw.is_empty() || raw.starts_with('\\') || raw.contains(':') {
+        return None;
+    }
+    let segments: Vec<&str> = raw.split('/').collect();
+    if segments
+        .iter()
+        .any(|s| s.is_empty() || *s == "." || *s == "..")
+    {
+        return None;
+    }
+    Some(std::path::PathBuf::from(format!("{raw}.md")))
+}
+
+/// 用語集ページの Markdown 原文。
+///
+/// **`yuzu fmt` の正規形と一致させる**（`format_commonmark` が ATX 見出し・
+/// ブロック間 1 行空け・末尾改行で出すのと同じ形）。一致していれば
+/// llms-full.txt の `normalize_markdown` 出力も原文と揃う。
+/// frontmatter は付けない — タイトルは h1 から解決され、
+/// 付けると `frontmatter-unknown-key` lint やバイト温存規約と余計に絡む
+pub(crate) fn page_markdown(
+    title: &str,
+    terms: &std::collections::BTreeMap<String, String>,
+) -> String {
+    let mut out = format!("# {title}\n");
+    // BTreeMap のキー順 = 決定的（rayon の並列化があっても出力バイトは同一）
+    for (term, desc) in terms {
+        if term.is_empty() || desc.is_empty() {
+            continue;
+        }
+        out.push_str(&format!("\n## {term}\n\n{}\n", desc.trim()));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

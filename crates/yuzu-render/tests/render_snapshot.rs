@@ -50,6 +50,8 @@ fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
             gfm: rc.config.markdown.gfm,
             math: rc.config.markdown.math.enabled,
             mermaid: rc.config.markdown.mermaid.enabled,
+            // 設定由来の写像は cli と同じ 1 実装を通す（用語集の配線もここで効く）
+            glossary: yuzu_render::glossary_options(&rc.config),
             ..MarkdownOptions::default()
         },
     )
@@ -434,7 +436,10 @@ fn build_fixture_with(edit: impl FnOnce(&Path)) -> tempfile::TempDir {
     let site = yuzu_core::build_site_model(
         &rc.content_dir,
         &rc.config.input.ignore,
-        &yuzu_core::MarkdownOptions::default(),
+        &yuzu_core::MarkdownOptions {
+            glossary: yuzu_render::glossary_options(&rc.config),
+            ..yuzu_core::MarkdownOptions::default()
+        },
     )
     .unwrap();
     render_site(&RenderParams {
@@ -1090,4 +1095,57 @@ fn markdown_断片が_dist_の_html_へ展開される() {
         !html.contains("language-include"),
         "include フェンスがコードブロックとして残らない"
     );
+}
+
+#[test]
+fn 用語集ページが生成されサイドバーと本文に反映される() {
+    // 共有 fixture（build_fixture）には glossary を入れない = 既存
+    // スナップショット 5 件が動かないことを保ったまま、設定を足した版で検証する
+    let dir = build_fixture_with(|root| {
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace(
+                r#""site":"#,
+                r#""markdown": { "glossary": { "terms": { "SSG": "Static Site Generator" } }, "crossref": {} },
+  "site":"#,
+            ),
+        )
+        .unwrap();
+        // 本文へ略語を仕込む（同じ用語を 2 回置いて初出だけ包まれることを見る）
+        let index = root.join("content/index.md");
+        let src = fs::read_to_string(&index).unwrap();
+        fs::write(
+            &index,
+            format!("{src}\n\nyuzu は SSG です。SSG は 2 回目。\n"),
+        )
+        .unwrap();
+    });
+    let dist = dir.path().join("dist");
+
+    // 用語集ページとページ単位 Markdown が出る
+    let glossary = fs::read_to_string(dist.join("glossary/index.html")).unwrap();
+    assert!(
+        glossary.contains(r#"id="ssg""#),
+        "用語ごとのアンカー:\n{glossary}"
+    );
+    assert!(dist.join("glossary.md").is_file());
+    // 用語集ページ自身は abbr 化しない
+    assert!(!glossary.contains("<abbr"), "{glossary}");
+    // 実ファイルが無いので「このページを編集」リンクは出さない
+    assert!(!glossary.contains("edit/main"), "{glossary}");
+
+    // 本文はページ内初出だけが包まれる
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert_eq!(index.matches("<abbr").count(), 1, "{index}");
+    assert!(
+        index.contains(r#"<abbr title="Static Site Generator">SSG</abbr>"#),
+        "{index}"
+    );
+    // サイドバー（nav）にも載る
+    assert!(index.contains("glossary/\">用語集"), "{index}");
+    // llms.txt にも通常ページとして載る
+    let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
+    assert!(llms.contains("用語集"), "{llms}");
 }

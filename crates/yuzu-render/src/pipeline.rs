@@ -217,10 +217,13 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 .git_dates
                 .and_then(|dates| dates.get(&rel_key))
                 .cloned();
+            // 合成ページ（用語集）は実ファイルが無いので編集リンクを出さない
+            // （last_updated は git_dates に無いので自動的に None になる）
             let edit_url = cfg
                 .git
                 .edit_url
                 .as_ref()
+                .filter(|_| !page.generated)
                 .map(|tpl| tpl.replace("{path}", &rel_key));
             let html = template.render(context! {
                 site => site_ctx,

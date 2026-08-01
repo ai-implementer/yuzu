@@ -37,7 +37,9 @@ pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
 
     let mut changed = 0usize;
-    for page in &pages {
+    // 合成ページ（用語集）は原稿ではないので整形対象外。**ガードが無いと
+    // `fs::write` が実在しない content/glossary.md を新規作成してしまう**
+    for page in pages.iter().filter(|p| !p.generated) {
         let formatted = yuzu_core::format_document(page, &opts)?;
         if formatted == page.source {
             continue;
