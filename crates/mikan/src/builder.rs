@@ -28,6 +28,9 @@ pub struct DocumentInput {
     pub title: String,
     /// サイト相対 URL（route）
     pub url: String,
+    /// 結果の絞り込み単位（yuzu ではナビ第 1 階層）の表示名。`None` なら未分類。
+    /// ⚠️ 下の `sections`（h2/h3 = doc）とは**別概念**
+    pub group: Option<String>,
     pub sections: Vec<SectionInput>,
 }
 
@@ -39,6 +42,9 @@ pub struct BuildOptions {
     pub max_terms_per_shard: u32,
     /// 同義語グループ（正規化前）。クエリ拡張に使われる
     pub synonyms: Vec<Vec<String>>,
+    /// グループの表示名（この順で採番する）。ここに無い名前は初出順で末尾へ追加される。
+    /// 空なら全部初出順（＝ 呼び出し側が順序を気にしない場合の既定）
+    pub groups: Vec<String>,
 }
 
 /// [`build`] の出力。書き出しは呼び出し側の責務（I/O を持たない）
@@ -60,10 +66,24 @@ pub fn build(docs: &[DocumentInput], opts: &BuildOptions) -> Result<BuiltIndex, 
     let mut terms: BTreeMap<String, Vec<Posting>> = BTreeMap::new();
     let mut fragments: Vec<Fragment> = Vec::new();
     let mut doc_id: u32 = 0;
+    // グループは opts.groups の順で先に採番し、未宣言の名前は初出順で末尾へ足す
+    // （同じ入力なら同じ manifest バイト列になる = 決定性を保つ）
+    let mut groups: Vec<String> = opts.groups.clone();
+    let mut doc_groups: Vec<u16> = Vec::new();
 
     for doc in docs {
+        let group_id = doc.group.as_ref().map_or(crate::UNGROUPED, |name| {
+            match groups.iter().position(|g| g == name) {
+                Some(i) => i as u16,
+                None => {
+                    groups.push(name.clone());
+                    (groups.len() - 1) as u16
+                }
+            }
+        });
         for section in &doc.sections {
             doc_lens.push(section.doc_len);
+            doc_groups.push(group_id);
             // doc_id 昇順で処理しているので postings は自然に昇順になる
             for (term, count, positions) in &section.tf {
                 terms.entry(term.clone()).or_default().push(Posting {
@@ -130,6 +150,8 @@ pub fn build(docs: &[DocumentInput], opts: &BuildOptions) -> Result<BuiltIndex, 
         shards: shards_meta,
         synonyms: normalized_synonyms(&opts.synonyms),
         content_hash: String::new(),
+        doc_groups,
+        groups,
     };
 
     Ok(BuiltIndex {
@@ -177,6 +199,22 @@ mod tests {
             },
             max_terms_per_shard: 16384,
             synonyms: Vec::new(),
+            groups: Vec::new(),
+        }
+    }
+
+    /// グループ指定つきの入力を作るヘルパ
+    fn doc_in(
+        title: &str,
+        url: &str,
+        group: Option<&str>,
+        sections: Vec<SectionInput>,
+    ) -> DocumentInput {
+        DocumentInput {
+            title: title.to_string(),
+            url: url.to_string(),
+            group: group.map(str::to_string),
+            sections,
         }
     }
 
@@ -199,11 +237,13 @@ mod tests {
             DocumentInput {
                 title: "A".to_string(),
                 url: "a/".to_string(),
+                group: None,
                 sections: vec![section("alpha", vec![("alpha", 1, vec![0])])],
             },
             DocumentInput {
                 title: "B".to_string(),
                 url: "b/".to_string(),
+                group: None,
                 sections: vec![
                     section("beta", vec![("beta", 1, vec![0])]),
                     section("gamma", vec![("gamma", 1, vec![0])]),
@@ -224,6 +264,7 @@ mod tests {
         let docs = vec![DocumentInput {
             title: "A".to_string(),
             url: "a/".to_string(),
+            group: None,
             sections: vec![section(
                 "alpha beta",
                 vec![("alpha", 1, vec![0]), ("beta", 1, vec![1])],
@@ -247,6 +288,7 @@ mod tests {
         let docs = vec![DocumentInput {
             title: "A".to_string(),
             url: "a/".to_string(),
+            group: None,
             sections: vec![section("x", vec![("x", 1, vec![0])])],
         }];
         let mut o = opts();
@@ -263,9 +305,133 @@ mod tests {
         let docs = vec![DocumentInput {
             title: "A".to_string(),
             url: "a/".to_string(),
+            group: None,
             sections: vec![section("x", vec![("x", 1, vec![0])])],
         }];
         let built = build(&docs, &opts()).unwrap();
         assert_eq!(built.manifest.content_hash, "");
+    }
+
+    #[test]
+    fn グループは_opts_の順で採番され未宣言は末尾へ足される() {
+        let docs = vec![
+            doc_in(
+                "A",
+                "guide/a/",
+                Some("ガイド"),
+                vec![section("alpha", vec![("alpha", 1, vec![0])])],
+            ),
+            doc_in(
+                "B",
+                "x/b/",
+                Some("未宣言"),
+                vec![section("beta", vec![("beta", 1, vec![0])])],
+            ),
+            doc_in(
+                "C",
+                "ref/c/",
+                Some("リファレンス"),
+                vec![section("gamma", vec![("gamma", 1, vec![0])])],
+            ),
+        ];
+        let mut opts = opts();
+        opts.groups = vec!["ガイド".to_string(), "リファレンス".to_string()];
+        let built = build(&docs, &opts).unwrap();
+
+        // 宣言順が保たれ、未宣言は初出順で末尾
+        assert_eq!(built.manifest.groups, ["ガイド", "リファレンス", "未宣言"]);
+        assert_eq!(built.manifest.doc_groups, [0, 2, 1]);
+    }
+
+    #[test]
+    fn グループ未指定の_doc_は未分類になる() {
+        let docs = vec![
+            doc_in(
+                "A",
+                "a/",
+                None,
+                vec![section("alpha", vec![("alpha", 1, vec![0])])],
+            ),
+            doc_in(
+                "B",
+                "b/",
+                Some("ガイド"),
+                vec![section("beta", vec![("beta", 1, vec![0])])],
+            ),
+        ];
+        let built = build(&docs, &opts()).unwrap();
+        assert_eq!(built.manifest.doc_groups, [crate::UNGROUPED, 0]);
+        assert_eq!(built.manifest.groups, ["ガイド"]);
+    }
+
+    #[test]
+    fn doc_groups_は_doc_count_と同じ長さになる() {
+        // 1 ページ = 複数セクション（doc）なので、ページ単位のグループが
+        // セクション数ぶん展開されることの回帰
+        let docs = vec![doc_in(
+            "A",
+            "a/",
+            Some("ガイド"),
+            vec![
+                section("alpha", vec![("alpha", 1, vec![0])]),
+                section("beta", vec![("beta", 1, vec![0])]),
+                section("gamma", vec![("gamma", 1, vec![0])]),
+            ],
+        )];
+        let built = build(&docs, &opts()).unwrap();
+        assert_eq!(
+            built.manifest.doc_groups.len(),
+            built.manifest.doc_count as usize
+        );
+        assert_eq!(built.manifest.doc_groups, [0, 0, 0]);
+    }
+
+    #[test]
+    fn グループつきでも_manifest_は決定的() {
+        let make = || {
+            vec![
+                doc_in(
+                    "A",
+                    "a/",
+                    Some("ガイド"),
+                    vec![section("alpha", vec![("alpha", 1, vec![0])])],
+                ),
+                doc_in(
+                    "B",
+                    "b/",
+                    Some("開発"),
+                    vec![section("beta", vec![("beta", 1, vec![0])])],
+                ),
+            ]
+        };
+        let a = build(&make(), &opts()).unwrap();
+        let b = build(&make(), &opts()).unwrap();
+        assert_eq!(
+            serde_json::to_string(&a.manifest).unwrap(),
+            serde_json::to_string(&b.manifest).unwrap()
+        );
+    }
+
+    #[test]
+    fn 古い_manifest_json_も読める() {
+        // doc_groups / groups を持たない JSON（v0.11 以前の dist）が
+        // serde(default) で通ること。`synonyms` / `content_hash` と同じ後方互換
+        let built = build(
+            &[doc_in(
+                "A",
+                "a/",
+                Some("ガイド"),
+                vec![section("alpha", vec![("alpha", 1, vec![0])])],
+            )],
+            &opts(),
+        )
+        .unwrap();
+        let mut value: serde_json::Value = serde_json::to_value(&built.manifest).unwrap();
+        let obj = value.as_object_mut().unwrap();
+        obj.remove("docGroups");
+        obj.remove("groups");
+        let back: Manifest = serde_json::from_value(value).unwrap();
+        assert!(back.doc_groups.is_empty());
+        assert!(back.groups.is_empty());
     }
 }

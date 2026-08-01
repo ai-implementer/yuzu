@@ -222,6 +222,8 @@ pub fn build_search_index_with(
         .map(|(page, sections)| DocumentInput {
             title: page.title.clone(),
             url: page.route.clone(),
+            // ナビ第 1 階層の解決は次のコミットで足す
+            group: None,
             sections: sections
                 .iter()
                 .map(|s| SectionInput {
@@ -248,6 +250,7 @@ pub fn build_search_index_with(
         },
         max_terms_per_shard: params.max_terms_per_shard,
         synonyms: params.synonyms.clone(),
+        groups: Vec::new(),
     };
     let built = build(&docs, &build_opts)?;
 

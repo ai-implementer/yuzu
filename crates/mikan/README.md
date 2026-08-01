@@ -84,6 +84,11 @@ for shard_id in engine.needed_shards("検索") {
     engine.load_shard(shard_id, &fetch_shard(shard_id))?;
 }
 let hits = engine.search("検索", 10); // Vec<Hit>（doc_id と BM25 スコア）
+
+// グループ（結果の絞り込み単位）で絞り込む場合。件数は絞り込み後、
+// group_counts は**絞り込み前**（「押す前に何件あるか」を出すため）
+let opts = mikan::SearchOptions::new(10).with_groups(&[0]);
+let out = engine.search_with_options("検索", &opts);
 ```
 
 ブラウザから使う場合の wasm-bindgen ラッパと、フェッチ・OPFS キャッシュ・wasm 起動を

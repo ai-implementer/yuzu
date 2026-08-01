@@ -43,6 +43,44 @@ pub struct Hit {
     pub score: f32,
 }
 
+/// 検索の指定（[`SearchEngine::search_with_options`]）。
+/// `#[non_exhaustive]` なので、次のファセットを足すときも非破壊で済む
+#[non_exhaustive]
+#[derive(Debug, Clone, Default)]
+pub struct SearchOptions<'a> {
+    /// 返すヒット数の上限
+    pub limit: usize,
+    /// 絞り込むグループ id（OR）。空なら絞り込まない
+    pub groups: &'a [u16],
+}
+
+impl<'a> SearchOptions<'a> {
+    pub fn new(limit: usize) -> Self {
+        Self { limit, groups: &[] }
+    }
+
+    pub fn with_groups(mut self, groups: &'a [u16]) -> Self {
+        self.groups = groups;
+        self
+    }
+}
+
+/// 検索結果一式（件数表示とファセットに必要な情報を 1 パスで返す）
+#[non_exhaustive]
+#[derive(Debug, Clone, Default)]
+pub struct SearchOutcome {
+    /// limit 適用後のヒット
+    pub hits: Vec<Hit>,
+    /// **絞り込み後**の総ヒット数（truncate 前）
+    pub total: usize,
+    /// **絞り込み前**の総ヒット数（「すべて」の件数）
+    pub total_unfiltered: usize,
+    /// 添字 = グループ id、値 = **絞り込み前**のヒット数。
+    /// 絞り込み前で数えるのが要点で、選んでもチップの数字が動かないため
+    /// 「押す前に何件あるか」が分かる
+    pub group_counts: Vec<u32>,
+}
+
 /// クエリを引用フレーズと通常部に分ける。引用符は `"` `＂` `“` `”`
 /// （開き・閉じは区別しない）。閉じ忘れは末尾までを引用部として扱う。
 /// 引用符を含まないクエリは `(そのまま, 空)` になる = 既定挙動は不変
@@ -177,9 +215,40 @@ impl SearchEngine {
 
     /// [`Self::search`] に加えて、truncate 前の総ヒット数を返す（件数表示用）
     pub fn search_with_total(&self, query: &str, limit: usize) -> (Vec<Hit>, usize) {
+        let outcome = self.search_with_options(query, &SearchOptions::new(limit));
+        (outcome.hits, outcome.total)
+    }
+
+    /// グループの表示名（添字 = グループ id）。古い manifest では空
+    pub fn groups(&self) -> &[String] {
+        &self.manifest.groups
+    }
+
+    /// 表示名 → グループ id（CLI の `--section` 解決用）
+    pub fn group_id(&self, name: &str) -> Option<u16> {
+        self.manifest
+            .groups
+            .iter()
+            .position(|g| g == name)
+            .map(|i| i as u16)
+    }
+
+    /// グループ絞り込みとファセット件数に対応した検索。
+    ///
+    /// **フィルタは BM25 スコアリングの後**に `retain` で適用する（フレーズ filter と
+    /// 同じ位置・同じ方式）。前段で doc を落とす設計にしない理由が 2 つある:
+    ///
+    /// - **idf はコーパス全体のまま**でなければならない。グループ内 df に変えると
+    ///   「絞り込みの有無で同じページ群の順位が入れ替わる」直感に反する挙動になる
+    /// - `group_counts` は**絞り込み前**の値である必要があり、前段で落とすと取れない
+    pub fn search_with_options(&self, query: &str, opts: &SearchOptions<'_>) -> SearchOutcome {
+        let empty = SearchOutcome {
+            group_counts: vec![0; self.manifest.groups.len()],
+            ..SearchOutcome::default()
+        };
         let resolved = self.resolve_query(query);
         if resolved.has_unresolvable_phrase {
-            return (Vec::new(), 0); // 語彙に無いフレーズ = 完全一致がどこにも無い
+            return empty; // 語彙に無いフレーズ = 完全一致がどこにも無い
         }
         // フレーズの隣接照合でヒット許可 doc 集合を作る（フレーズなしなら制限なし）
         let mut allowed: Option<HashSet<u32>> = None;
@@ -190,7 +259,7 @@ impl SearchEngine {
                 Some(prev) => prev.intersection(&docs).copied().collect(),
             };
             if next.is_empty() {
-                return (Vec::new(), 0);
+                return empty;
             }
             allowed = Some(next);
         }
@@ -245,6 +314,21 @@ impl SearchEngine {
             }
         }
 
+        // ファセット件数は**絞り込み前**に数える（選択してもチップの数字が動かない）
+        let mut group_counts = vec![0u32; self.manifest.groups.len()];
+        for &doc_id in scores.keys() {
+            let gid = self.group_of(doc_id);
+            if let Some(slot) = group_counts.get_mut(gid as usize) {
+                *slot += 1;
+            }
+        }
+        let total_unfiltered = scores.len();
+
+        // グループ filter（指定が無ければ素通り）
+        if !opts.groups.is_empty() {
+            scores.retain(|doc_id, _| opts.groups.contains(&self.group_of(*doc_id)));
+        }
+
         let mut hits: Vec<Hit> = scores
             .into_iter()
             .map(|(doc_id, score)| Hit { doc_id, score })
@@ -256,8 +340,25 @@ impl SearchEngine {
                 .then(a.doc_id.cmp(&b.doc_id))
         });
         let total = hits.len();
-        hits.truncate(limit);
-        (hits, total)
+        hits.truncate(opts.limit);
+        SearchOutcome {
+            hits,
+            total,
+            total_unfiltered,
+            group_counts,
+        }
+    }
+
+    /// doc のグループ id。`doc_groups` が空・短い（= 古い manifest）なら未分類。
+    /// `doc_lens` の引き方（`get().unwrap_or()`）と同じ流儀で、
+    /// **検索を決して壊さない**ために長さ検証でエラーにはしない
+    /// （長さの整合は yuzu-index の統合テストが縛る）
+    fn group_of(&self, doc_id: u32) -> u16 {
+        self.manifest
+            .doc_groups
+            .get(doc_id as usize)
+            .copied()
+            .unwrap_or(crate::UNGROUPED)
     }
 
     /// クエリをエンジンと同一の正規化・分かち書きで token 列にする（UI の補助 API）
@@ -496,7 +597,7 @@ mod tests {
 
     use crate::manifest::{Bm25Params, Manifest, ShardMeta, TokenizerMeta, TypoParams};
     use crate::shard::{Posting, encode_shard};
-    use crate::{FORMAT_VERSION, SearchEngine, Tokenizer};
+    use crate::{FORMAT_VERSION, SearchEngine, SearchOptions, Tokenizer};
 
     const MODEL: &[u8] = include_bytes!("../assets/model/bccwj-suw_c1.0.model.zst");
 
@@ -509,6 +610,31 @@ mod tests {
         docs: &[&str],
         max_terms_per_shard: u32,
         synonyms: Vec<Vec<String>>,
+    ) -> SearchEngine {
+        build_index_full(docs, max_terms_per_shard, synonyms, Vec::new(), Vec::new())
+    }
+
+    /// doc_id 添字のグループ割り当てつき（絞り込みのテスト用）
+    fn build_index_with_groups(
+        docs: &[&str],
+        groups: Vec<&str>,
+        doc_groups: Vec<u16>,
+    ) -> SearchEngine {
+        build_index_full(
+            docs,
+            16384,
+            Vec::new(),
+            groups.into_iter().map(str::to_string).collect(),
+            doc_groups,
+        )
+    }
+
+    fn build_index_full(
+        docs: &[&str],
+        max_terms_per_shard: u32,
+        synonyms: Vec<Vec<String>>,
+        groups: Vec<String>,
+        doc_groups: Vec<u16>,
     ) -> SearchEngine {
         let tokenizer = Tokenizer::from_zstd_model_bytes(MODEL).unwrap();
 
@@ -578,6 +704,8 @@ mod tests {
             shards: shards_meta,
             synonyms,
             content_hash: String::new(),
+            doc_groups,
+            groups,
         };
 
         let mut engine =
@@ -957,5 +1085,114 @@ mod tests {
             .map(|s| s.text.as_str())
             .collect();
         assert_eq!(marks, ["yuzu build"], "大文字ゆれも影文字列の正規化で吸収");
+    }
+
+    // ── グループ絞り込み（Phase 53）──
+
+    #[test]
+    fn グループ指定で対象外の_doc_が落ちる() {
+        // doc0/doc1 = ガイド、doc2 = リファレンス
+        let engine = build_index_with_groups(
+            &["検索の使い方", "検索の設定", "検索 API リファレンス"],
+            vec!["ガイド", "リファレンス"],
+            vec![0, 0, 1],
+        );
+        let all = engine.search_with_options("検索", &SearchOptions::new(10));
+        assert_eq!(all.total, 3);
+
+        let guide = engine.search_with_options("検索", &SearchOptions::new(10).with_groups(&[0]));
+        assert_eq!(guide.hits.len(), 2);
+        assert!(guide.hits.iter().all(|h| h.doc_id != 2));
+        // total は**絞り込み後**の件数（件数表示が嘘をつかない）
+        assert_eq!(guide.total, 2);
+        // total_unfiltered は絞り込み前
+        assert_eq!(guide.total_unfiltered, 3);
+    }
+
+    #[test]
+    fn ファセット件数は絞り込みの有無で変わらない() {
+        let engine = build_index_with_groups(
+            &["検索の使い方", "検索の設定", "検索 API リファレンス"],
+            vec!["ガイド", "リファレンス"],
+            vec![0, 0, 1],
+        );
+        let all = engine.search_with_options("検索", &SearchOptions::new(10));
+        let guide = engine.search_with_options("検索", &SearchOptions::new(10).with_groups(&[0]));
+        // 絞り込み前で数えているので、選んでもチップの数字が動かない
+        assert_eq!(all.group_counts, vec![2, 1]);
+        assert_eq!(guide.group_counts, vec![2, 1]);
+    }
+
+    #[test]
+    fn 複数グループは_or_になる() {
+        let engine = build_index_with_groups(
+            &["検索の使い方", "検索の設定", "検索 API リファレンス"],
+            vec!["ガイド", "リファレンス", "開発"],
+            vec![0, 2, 1],
+        );
+        let hit = engine.search_with_options("検索", &SearchOptions::new(10).with_groups(&[0, 1]));
+        assert_eq!(hit.total, 2);
+        assert!(hit.hits.iter().all(|h| h.doc_id != 1));
+    }
+
+    #[test]
+    fn スコアはフィルタの有無で変わらない() {
+        // idf をコーパス全体で計算していることの回帰
+        // （グループ内 df に変えると絞り込みで順位が入れ替わる）
+        let engine = build_index_with_groups(
+            &["検索の使い方", "検索の設定", "検索 API リファレンス"],
+            vec!["ガイド", "リファレンス"],
+            vec![0, 0, 1],
+        );
+        let all = engine.search_with_options("検索", &SearchOptions::new(10));
+        let guide = engine.search_with_options("検索", &SearchOptions::new(10).with_groups(&[0]));
+        for hit in &guide.hits {
+            let same = all.hits.iter().find(|h| h.doc_id == hit.doc_id).unwrap();
+            assert_eq!(hit.score, same.score, "doc {} のスコアが動いた", hit.doc_id);
+        }
+    }
+
+    #[test]
+    fn フィルタありでも_limit_を増やすと前回の接頭辞になる() {
+        // 検索 UI の「さらに N 件を表示」が依拠する性質。
+        // 壊れると追加読み込みで結果が二重に並ぶ
+        let engine = build_index_with_groups(
+            &["検索 A", "検索 B", "検索 C", "別の話"],
+            vec!["ガイド"],
+            vec![0, 0, 0, crate::UNGROUPED],
+        );
+        let first = engine.search_with_options("検索", &SearchOptions::new(2).with_groups(&[0]));
+        let more = engine.search_with_options("検索", &SearchOptions::new(10).with_groups(&[0]));
+        assert_eq!(first.hits.len(), 2);
+        assert_eq!(&more.hits[..2], &first.hits[..]);
+    }
+
+    #[test]
+    fn グループ情報の無い_manifest_でも従来どおり動く() {
+        // 古い manifest（doc_groups / groups が空）での縮退
+        let engine = build_index(&["検索の使い方", "検索の設定"], 16384);
+        assert_eq!(engine.groups().len(), 0);
+        let out = engine.search_with_options("検索", &SearchOptions::new(10));
+        assert_eq!(out.total, 2);
+        assert_eq!(out.total_unfiltered, 2);
+        assert!(out.group_counts.is_empty());
+        // 既存 API も不変
+        assert_eq!(engine.search_with_total("検索", 10).1, 2);
+    }
+
+    #[test]
+    fn 範囲外のグループ_id_は_0_件でパニックしない() {
+        let engine = build_index_with_groups(&["検索の使い方"], vec!["ガイド"], vec![0]);
+        let out = engine.search_with_options("検索", &SearchOptions::new(10).with_groups(&[99]));
+        assert_eq!(out.total, 0);
+        assert!(out.hits.is_empty());
+    }
+
+    #[test]
+    fn グループ名から_id_を引ける() {
+        let engine = build_index_with_groups(&["検索"], vec!["ガイド", "リファレンス"], vec![0]);
+        assert_eq!(engine.group_id("リファレンス"), Some(1));
+        assert_eq!(engine.group_id("存在しない"), None);
+        assert_eq!(engine.groups(), ["ガイド", "リファレンス"]);
     }
 }

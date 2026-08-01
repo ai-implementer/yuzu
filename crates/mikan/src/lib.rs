@@ -28,7 +28,7 @@ mod tokenizer;
 pub mod varint;
 
 pub use builder::{BuildOptions, BuiltIndex, DocumentInput, SectionInput, build};
-pub use engine::{Hit, SearchEngine};
+pub use engine::{Hit, SearchEngine, SearchOptions, SearchOutcome};
 pub use error::FormatError;
 pub use excerpt::{ExcerptSegment, make_excerpt};
 pub use manifest::{Bm25Params, Fragment, Manifest, ShardMeta, TokenizerMeta, TypoParams};
@@ -38,7 +38,17 @@ pub use tokenizer::Tokenizer;
 /// インデックスフォーマットのバージョン。互換性を壊す変更で上げる。
 /// v2: doc をページ単位 → セクション（h2/h3）単位に変更。Fragment v2（heading/anchor/text）
 /// v3: postings に出現位置（pos_count 明示＋delta varint 列）を追加（フレーズ検索の土台）
+///
+/// **v3 のまま据え置いている追加**: `synonyms` / `content_hash` / `doc_groups` / `groups` は
+/// `#[serde(default)]` の後方互換フィールドで、インデックスのバイナリ表現（fst・シャード・
+/// postings）を一切変えないため bump に該当しない。**bump すると害がある**: manifest.json は
+/// 毎回フェッチされるのに `search_bg.wasm` は固定 URL で HTTP キャッシュに残るため、
+/// 再デプロイ直後の再訪問者が「新 manifest ＋ 旧 wasm」に入り、
+/// `VersionMismatch` で検索が全停止する
 pub const FORMAT_VERSION: u16 = 3;
+
+/// 未分類の doc を表すグループ id（[`Manifest::doc_groups`] の値）
+pub const UNGROUPED: u16 = u16::MAX;
 
 /// 同梱モデル（`yuzu-index` が有効化する）
 #[cfg(feature = "builtin-model")]

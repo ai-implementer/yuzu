@@ -5,7 +5,7 @@ name = "mikan"
 # ワークスペースで一体・repository は monorepo を指す）。バージョンは workspace と
 # 独立で、変更時にだけ上げて publish する（手順は CLAUDE.md「リリース手順」参照）
 description = "Japanese full-text search index format and BM25 query engine, shared by a native indexer and a wasm client (static files, no I/O)"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

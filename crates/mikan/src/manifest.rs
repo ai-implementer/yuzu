@@ -29,6 +29,18 @@ pub struct Manifest {
     /// （このクレートに sha2 依存を持ち込まないため）。無いと空文字扱い
     #[serde(default)]
     pub content_hash: String,
+    /// doc_id（= 添字）→ グループ id（[`Manifest::groups`] の添字）。
+    /// 未分類は [`crate::UNGROUPED`]。`doc_lens` と同じ添字方式。
+    ///
+    /// ⚠️ ここでいう「グループ」は**結果の絞り込み単位**（yuzu ではナビの第 1 階層）で、
+    /// [`crate::SectionInput`] の「セクション」（h2/h3 = doc 単位）とは別物。
+    /// `synonyms` / `content_hash` と同じく `default` で後方互換にしてあるので、
+    /// 古い manifest では空 = 絞り込みが出ないだけの縮退になる
+    #[serde(default)]
+    pub doc_groups: Vec<u16>,
+    /// グループ id（= 添字）→ 表示名。並び順は書き手が決める（yuzu ではナビ順）
+    #[serde(default)]
+    pub groups: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
