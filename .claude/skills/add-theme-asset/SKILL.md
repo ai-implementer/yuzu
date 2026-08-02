@@ -91,6 +91,11 @@ INSTA_UPDATE=always cargo test -p yuzu-render
 色を直書きしない。新しい CSS 変数をユーザへ公開するなら `docs/content/reference/config.md` の
 `theme.cssVars` の説明も更新する。
 
+画面専用の定義（ダーク配色等）は `@media screen` に置く。印刷対応は**ファイル末尾**の
+`@media print` ブロックへ足す（レスポンシブ MQ はメディアタイプ無指定 = print でも成立するため、
+末尾 = 後勝ちの位置が上書きの前提。Phase 55 のブロックコメント参照）。
+CSS の配信ゲートも JS と同様に ci.yml へ 1 行（例: `grep -q '@media print' dist/_assets/css/theme.css`）。
+
 ## テンプレート（partial）を足す場合
 
 `assets/templates/partials/<name>.jinja` を作って `base.jinja` から `{% include %}`。

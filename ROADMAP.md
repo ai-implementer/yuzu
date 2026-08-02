@@ -50,7 +50,7 @@ Phase は価値と実装コスト・依存関係の順（着手時に個別に�
 > `CACHE_FORMAT_VERSION` は据え置き（既存ページの本文生成ロジックが不変のため。
 > abbr 除外の Glossary 限定化は等価変換で、設定キー追加の無効化は envKey が担う）
 
-### 55 印刷 / PDF 対応 ⬜
+### 55 印刷 / PDF 対応 ✅
 
 `@media print` が **0 件**で、PDF 保存するとサイドバー・TOC・検索ボックス・
 コピーボタンが全部紙に載る。設計書を PDF で配る運用に直接効く。
@@ -63,6 +63,20 @@ Phase は価値と実装コスト・依存関係の順（着手時に個別に�
 - コード・表の横スクロールは紙で切れるので折り返しへ。閉じた `<details>` を開くか、
   タブの非選択パネルを出すかは方針として決める
 - theme.css だけで完結し、スナップショットもキャッシュも動かない
+
+> **決着（2026-08-02）**: ダーク定義（theme.css / syntect.css / cssVarsDark）を
+> `@media screen` で**画面専用化**し、印刷は常にライト（`@media print` 内の変数
+> 再指定・`!important` なし。syntect のハイライトはリテラル色かつ theme.css より
+> 後に読まれるため、この方式でないと詳細度戦争になる = 「theme.css だけで完結」は
+> yuzu-render css.rs に及んだ）。閉じた details は details-target.js の
+> beforeprint で全開・afterprint で復元（CSS では開けない。`::details-content` は
+> Firefox 未対応）。タブは CSS で全パネル縦展開（block 化で flex の order が
+> 無効になり DOM 順 = ラベル→パネルの対が保たれる。`:checked` ラベルの画面
+> ルールはセレクタ併記で潰す）。外部リンクのみ URL 併記。表は `display: table` へ
+> 戻して thead 再掲・行単位の改ページ制御を回復。mermaid クライアント描画の
+> 印刷ライト化は**見送り**（beforeprint と非同期 `mermaid.run()` の競合で
+> 未描画の生ソースが紙に載る改悪リスク。既定の SSR は SVG 内 `<style>` の
+> var() 参照で自動追従済み）。HTML スナップショット・キャッシュは不変
 
 ### 56 ナビと目次の規模対応 ⬜
 

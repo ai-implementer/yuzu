@@ -122,6 +122,11 @@ jobs:
           ! grep -q '\[検索\](' dist/llms.txt
           # ページ単位 .md も出さない
           ! test -f dist/search.md
+          # 印刷 / PDF 対応（Phase 55）: print CSS・ダーク定義の画面専用化・
+          # 印刷前に閉じた details を開く JS が配信されている
+          grep -q '@media print' dist/_assets/css/theme.css
+          grep -q '@media screen' dist/_assets/css/syntect.css
+          grep -q 'beforeprint' dist/_assets/js/details-target.js
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）

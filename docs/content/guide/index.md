@@ -76,4 +76,4 @@ GitHub Pages へ自動デプロイします（リポジトリの Settings \> Pag
 - [全文検索](search.md) — フレーズ検索・同義語・コード検索
 - [LLM 連携](llms.md) — llms.txt とページ Markdown 配信
 - [品質チェック](quality.md) — fmt / lint / check
-- [配信とデプロイ](deploy.md) — baseUrl・GitHub Pages・テーマ上書き
+- [配信とデプロイ](deploy.md) — baseUrl・GitHub Pages・テーマ上書き・印刷 / PDF
