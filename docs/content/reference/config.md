@@ -49,6 +49,9 @@ description: yuzu.jsonc の全設定キー・型・既定値
   },
   "search": {
     "enabled": true,
+    "page": "search", // 検索結果ページの route（空なら生成しない）
+    "pageTitle": "検索",
+    "pageSize": 10,
     "dictionary": "models/custom.model.zst",
     "typoTolerance": { "enabled": true, "maxEdits": 1 },
     "shard": { "maxTermsPerShard": 16384 },
@@ -150,6 +153,9 @@ glob 評価が想定外になるため）。
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
 | `enabled` | bool / `true` | 全文検索（インデックス生成と検索 UI） |
+| `page` | string / `""` | [検索結果ページ](../guide/search.md#検索結果ページ)の route。**空なら生成しない**（既存の `content/search.md` 等と衝突しないための既定） |
+| `pageTitle` | string / `"検索"` | 検索結果ページのタイトル |
+| `pageSize` | number / `10` | 検索結果ページで 1 回に表示する件数（「さらに表示」で追加） |
 | `dictionary` | string / なし | vaporetto 分かち書きモデルの差し替え（プロジェクト相対パス） |
 | `typoTolerance.enabled` | bool / `true` | タイポトレランス |
 | `typoTolerance.maxEdits` | number / `1` | 許容する編集距離 |

@@ -99,17 +99,29 @@ jobs:
           # エンジン側で絞り込めて件数も絞り込み後になる（ブラウザ操作は CI で
           # 検証できないので、同一エンジンを通る CLI で担保する）
           "$GITHUB_WORKSPACE/target/debug/yuzu" search --section 開発 "キャッシュ" | grep -q '/development/'
-          # 絞り込み UI の配線ゲート（機能自体はブラウザ操作なので CI では検証できない）
-          grep -q 'search-filter-chip' dist/_assets/js/search-ui.js
+          # 絞り込み UI の配線ゲート（機能自体はブラウザ操作なので CI では検証できない。
+          # Phase 54 でチップは結果ページ search-page.js へ移動した）
+          grep -q 'search-filter-chip' dist/_assets/js/search-page.js
           grep -q 'composedPath' dist/_assets/js/search-ui.js
           # 診断ルールのリファレンス（Phase 46）が配信されている
           grep -q 'broken-anchor' dist/reference/rules/index.html
           # 出力先・URL の安全化（v0.10.1）で足したルールが原稿に載っている
           grep -q 'route-conflict' dist/reference/rules/index.html
           grep -q 'unsafe-page-path' dist/reference/rules/index.html
-          # 検索の追加読み込み（Phase 49）の JS が埋め込み経由で配信されている
-          # （機能自体はブラウザ操作なので CI では検証できない。配線ゲート）
-          grep -q 'search-more' dist/_assets/js/search-ui.js
+          # 検索の追加読み込み（Phase 49 → Phase 54 で結果ページへ移動）の JS が
+          # 埋め込み経由で配信されている（機能自体はブラウザ操作なので CI では
+          # 検証できない。配線ゲート）
+          grep -q 'search-page-more' dist/_assets/js/search-page.js
+          # 検索結果ページ（Phase 54）: 専用ページが生成され、集約からは除外される
+          test -f dist/search/index.html
+          grep -q 'id="yuzu-search-page"' dist/search/index.html
+          grep -q 'data-page-size' dist/search/index.html
+          # ドロップダウン → 結果ページへの導線（全ページに data-search-page が配られる）
+          grep -q 'data-search-page' dist/index.html
+          # llms.txt に検索結果ページが載らない（guide/search.md は実ページなので残る）
+          ! grep -q '\[検索\](' dist/llms.txt
+          # ページ単位 .md も出さない
+          ! test -f dist/search.md
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
@@ -129,6 +141,8 @@ jobs:
           test -f dist/guide/getting-started/index.html
           test -f dist/_search/manifest.json
           test -f dist/_search/search_bg.wasm
+          # scaffold は検索結果ページ（search.page）を有効にして配る（Phase 54）
+          test -f dist/search/index.html
           # --base-url は設定より優先して配信パスを差し替える（deploy.yml が使う契約）
           "$GITHUB_WORKSPACE/target/debug/yuzu" build --base-url /docs/
           grep -q '/docs/_assets/' dist/index.html
