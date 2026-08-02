@@ -52,6 +52,7 @@ fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
             mermaid: rc.config.markdown.mermaid.enabled,
             // 設定由来の写像は cli と同じ 1 実装を通す（用語集の配線もここで効く）
             glossary: yuzu_render::glossary_options(&rc.config),
+            search_page: yuzu_render::search_page_options(&rc.config),
             ..MarkdownOptions::default()
         },
     )
@@ -438,6 +439,7 @@ fn build_fixture_with(edit: impl FnOnce(&Path)) -> tempfile::TempDir {
         &rc.config.input.ignore,
         &yuzu_core::MarkdownOptions {
             glossary: yuzu_render::glossary_options(&rc.config),
+            search_page: yuzu_render::search_page_options(&rc.config),
             ..yuzu_core::MarkdownOptions::default()
         },
     )
@@ -1148,4 +1150,72 @@ fn 用語集ページが生成されサイドバーと本文に反映される()
     // llms.txt にも通常ページとして載る
     let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
     assert!(llms.contains("用語集"), "{llms}");
+}
+
+#[test]
+fn 検索結果ページが生成され集約からは除外される() {
+    // 共有 fixture には search.page を入れない = 既存スナップショットが動かない
+    // ことを保ったまま、設定を足した版で検証する（用語集と同じ流儀）。
+    // baseUrl をフル URL にして sitemap の除外も同時に見る
+    let dir = build_fixture_with(|root| {
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace(
+                r#""site":"#,
+                r#""search": { "page": "search" },
+  "site":"#,
+            )
+            .replace("\"/docs/\"", "\"https://example.com/docs/\""),
+        )
+        .unwrap();
+    });
+    let dist = dir.path().join("dist");
+
+    // 専用テンプレートで生成される（結果コンテナ・noscript・件数の data 属性）
+    let html = fs::read_to_string(dist.join("search/index.html")).unwrap();
+    assert!(html.contains(r#"id="yuzu-search-page""#), "{html}");
+    assert!(html.contains("<noscript>"), "{html}");
+    assert!(html.contains(r#"data-page-size="10""#), "{html}");
+    assert!(html.contains("js/search-page.js"), "{html}");
+    insta::assert_snapshot!("search_html", html);
+
+    // ページ単位 Markdown は出さない（llms からも除外済みで導線が無い）
+    assert!(!dist.join("search.md").exists());
+    // sitemap に載らない（実ページ 2 件のまま）
+    let sitemap = fs::read_to_string(dist.join("sitemap.xml")).unwrap();
+    assert!(!sitemap.contains("/search/"), "{sitemap}");
+    assert_eq!(sitemap.matches("<url>").count(), 2, "{sitemap}");
+    // llms.txt に載らない
+    let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
+    assert!(!llms.contains("search"), "{llms}");
+    // サイドバーには出ず、全ページの search-ui.js に遷移先だけ配られる
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(
+        !index.contains(r#"href="https://example.com/docs/search/""#),
+        "{index}"
+    );
+    assert!(
+        index.contains(r#"data-search-page="https://example.com/docs/search/""#),
+        "{index}"
+    );
+}
+
+#[test]
+fn 検索無効なら結果ページは生成されない() {
+    let dir = build_fixture_with(|root| {
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace(
+                r#""site":"#,
+                r#""search": { "enabled": false, "page": "search" },
+  "site":"#,
+            ),
+        )
+        .unwrap();
+    });
+    assert!(!dir.path().join("dist/search").exists());
 }

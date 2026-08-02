@@ -1,0 +1,20 @@
+{% extends "base.jinja" %}
+{% block content %}
+<article class="markdown-body">
+{{ page.body | safe }}
+</article>
+<div class="search-page" id="yuzu-search-page"
+     data-search-base="{{ base_url | url }}_search/"
+     data-base="{{ base_url | url }}"
+     data-page-size="{{ search_page_size }}">
+<noscript><p>検索の実行には JavaScript が必要です。ブラウザの JavaScript を有効にするか、サイドバーからページを辿ってください。</p></noscript>
+<form class="search-page-form" role="search" action="">
+<input type="search" id="yuzu-search-page-input" name="q" placeholder="検索キーワード" autocomplete="off" aria-label="検索キーワード">
+</form>
+<div class="search-page-filters" role="group" aria-label="検索結果の絞り込み" hidden></div>
+<div class="search-page-status" role="status"></div>
+<div class="search-page-results"></div>
+<button type="button" class="search-page-more" hidden>さらに表示</button>
+</div>
+<script type="module" src="{{ asset_url | url }}js/search-page.js"></script>
+{% endblock %}

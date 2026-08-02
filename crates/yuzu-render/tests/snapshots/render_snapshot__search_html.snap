@@ -1,0 +1,178 @@
+---
+source: crates/yuzu-render/tests/render_snapshot.rs
+expression: html
+---
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>検索 | Fixture Docs</title>
+
+<link rel="stylesheet" href="https://example.com/docs/_assets/css/theme.css">
+<link rel="stylesheet" href="https://example.com/docs/_assets/css/syntect.css">
+<script>
+// FOUC 回避: CSS 適用前に保存済みテーマ（なければ OS 設定）を反映する
+(function () {
+  var stored = null;
+  try { stored = localStorage.getItem("yuzu-theme"); } catch (e) {}
+  var theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = theme;
+})();
+</script>
+</head>
+<body>
+<a class="skip-link" href="#yuzu-main">本文へ移動</a>
+<header class="site-header">
+<div class="header-left">
+
+<button id="nav-toggle" type="button" aria-label="ナビゲーションを開閉"
+        aria-controls="site-sidebar" aria-expanded="false" hidden>☰</button>
+<a class="site-title" href="https://example.com/docs/">Fixture Docs</a>
+</div>
+<div class="header-tools">
+<div class="search" id="yuzu-search">
+<input type="search" id="yuzu-search-input" placeholder="検索 ( / )" autocomplete="off"
+       role="combobox" aria-expanded="false" aria-controls="yuzu-search-results">
+<div class="search-results" id="yuzu-search-results" role="listbox" hidden></div>
+</div>
+<button id="theme-toggle" type="button" aria-label="ダークモード切替" title="ダークモード切替">◐</button>
+</div>
+</header>
+<div class="layout">
+
+
+<aside class="sidebar" id="site-sidebar">
+<nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
+
+<ul>
+
+<li>
+<a href="https://example.com/docs/">ホーム</a>
+
+</li>
+
+<li>
+<span class="nav-label">guide</span>
+
+<ul>
+
+<li>
+<a href="https://example.com/docs/guide/getting-started/">はじめに</a>
+
+</li>
+
+</ul>
+
+</li>
+
+</ul>
+
+</nav>
+</aside>
+
+<script data-base="https://example.com/docs/">
+(function () {
+  var sidebar = document.getElementById("site-sidebar");
+  if (!sidebar) return;
+  // 同一オリジンに複数の yuzu サイトが並ぶ場合（GitHub Pages のサブパス配下など）に
+  // 衝突しないよう baseUrl で名前空間を切る。タブ内で完結させたいので sessionStorage
+  var base = (document.currentScript && document.currentScript.dataset.base) || "/";
+  var key = "yuzu-sidebar-scroll:" + base;
+
+  // 狭幅では sidebar が position: static / display: none になり独立スクロールしない。
+  // メディアクエリではなく実測で判定する（テーマ CSS を上書きされても追随する）
+  function scrollable() {
+    return sidebar.scrollHeight > sidebar.clientHeight;
+  }
+
+  function save() {
+    if (!scrollable()) return; // 狭幅の 0 で広幅の値を潰さない
+    try {
+      sessionStorage.setItem(key, String(sidebar.scrollTop));
+    } catch (e) {
+      /* プライベートブラウジング等では保存しない */
+    }
+  }
+
+  // 現在ページの項目がはみ出しているときだけ最小限寄せる（scrollspy.js の keepVisible と同じ）。
+  // サイドバーのリンクから来た場合は可視域内なので動かず、復元位置がそのまま残る。
+  // a は display:block、offsetParent は position:sticky な .sidebar（狭幅では外れるので弾く）
+  function keepActiveVisible() {
+    var a = sidebar.querySelector("li.active > a");
+    if (!a || a.offsetParent !== sidebar) return;
+    var margin = 8;
+    var top = a.offsetTop;
+    var bottom = top + a.offsetHeight;
+    if (top < sidebar.scrollTop + margin) {
+      sidebar.scrollTop = top - margin;
+    } else if (bottom > sidebar.scrollTop + sidebar.clientHeight - margin) {
+      sidebar.scrollTop = bottom - sidebar.clientHeight + margin;
+    }
+  }
+
+  if (scrollable()) {
+    var saved = NaN;
+    try {
+      saved = parseInt(sessionStorage.getItem(key), 10);
+    } catch (e) {}
+    if (saved > 0) sidebar.scrollTop = saved;
+    keepActiveVisible();
+  }
+
+  var timer = null;
+  sidebar.addEventListener(
+    "scroll",
+    function () {
+      clearTimeout(timer);
+      timer = setTimeout(save, 200);
+    },
+    { passive: true }
+  );
+  // 遷移直前の確定保存。beforeunload はモバイル Safari で発火が不安定なため使わない。
+  // bfcache 復帰時はブラウザが scrollTop ごと復元するので pageshow では何もしない
+  window.addEventListener("pagehide", save);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") save();
+  });
+})();
+</script>
+<main class="content" id="yuzu-main">
+
+
+
+<article class="markdown-body">
+<h1><a href="#検索" aria-hidden="true" class="anchor" id="検索"></a>検索</h1>
+
+</article>
+<div class="search-page" id="yuzu-search-page"
+     data-search-base="https://example.com/docs/_search/"
+     data-base="https://example.com/docs/"
+     data-page-size="10">
+<noscript><p>検索の実行には JavaScript が必要です。ブラウザの JavaScript を有効にするか、サイドバーからページを辿ってください。</p></noscript>
+<form class="search-page-form" role="search" action="">
+<input type="search" id="yuzu-search-page-input" name="q" placeholder="検索キーワード" autocomplete="off" aria-label="検索キーワード">
+</form>
+<div class="search-page-filters" role="group" aria-label="検索結果の絞り込み" hidden></div>
+<div class="search-page-status" role="status"></div>
+<div class="search-page-results"></div>
+<button type="button" class="search-page-more" hidden>さらに表示</button>
+</div>
+<script type="module" src="https://example.com/docs/_assets/js/search-page.js"></script>
+
+</main>
+
+<aside class="toc" hidden aria-label="このページの目次">
+</aside>
+</div>
+<script src="https://example.com/docs/_assets/js/theme.js"></script>
+<script src="https://example.com/docs/_assets/js/nav.js"></script>
+<script src="https://example.com/docs/_assets/js/scrollspy.js"></script>
+<script src="https://example.com/docs/_assets/js/copy-button.js"></script>
+<script src="https://example.com/docs/_assets/js/page-copy.js"></script>
+<script src="https://example.com/docs/_assets/js/details-target.js"></script>
+<script src="https://example.com/docs/_assets/vendor/mermaid.min.js"></script>
+<script src="https://example.com/docs/_assets/js/mermaid-init.js"></script>
+<script type="module" src="https://example.com/docs/_assets/js/search-ui.js" data-search-base="https://example.com/docs/_search/" data-base="https://example.com/docs/" data-search-page="https://example.com/docs/search/"></script>
+</body>
+</html>

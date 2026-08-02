@@ -25,7 +25,9 @@ struct DirNode<'a> {
 pub(crate) fn build_nav(pages: &[Page]) -> Vec<NavNode> {
     let mut root = DirNode::default();
 
-    for page in pages {
+    // 検索結果ページ等はサイドバーに出さない（pager・パンくずも nav 由来なので
+    // 連動して外れる）。用語集は載せる — 判定は Page::in_nav に集約
+    for page in pages.iter().filter(|p| p.in_nav()) {
         let parts: Vec<String> = rel_to_slash(&page.rel)
             .split('/')
             .map(String::from)

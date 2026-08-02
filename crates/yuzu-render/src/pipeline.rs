@@ -11,7 +11,7 @@ use minijinja::context;
 use rayon::prelude::*;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_core::{BuildCache, CachedBody, MarkdownOptions, OutputTracker, SiteModel};
+use yuzu_core::{BuildCache, CachedBody, GeneratedKind, MarkdownOptions, OutputTracker, SiteModel};
 
 use crate::assets;
 use crate::context::{NavCtx, NavOrder, PageCtx, SiteCtx, build_breadcrumbs};
@@ -73,6 +73,7 @@ pub fn validate_pages(site: &SiteModel, rc: &ResolvedConfig) -> Result<(), Rende
             yuzu_config::CrossrefNumbering::Site
         ),
         glossary: crate::glossary_options(cfg),
+        search_page: crate::search_page_options(cfg),
     };
 
     let route_diags = yuzu_core::validate_routes(&site.pages);
@@ -109,6 +110,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             yuzu_config::CrossrefNumbering::Site
         ),
         glossary: crate::glossary_options(cfg),
+        search_page: crate::search_page_options(cfg),
     };
 
     // ページ URL とエイリアスの妥当性（cli は破壊的な clean より前に呼ぶが、
@@ -139,7 +141,26 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             .expect("shared 未指定時は local_shared を構築済み")
     });
     let template = shared.env.get_template("page.jinja")?;
+    // 検索結果ページ（`search.page`）は専用テンプレートで描く。
+    // 居るときだけ解決する = 機能未使用のプロジェクトはテンプレート追加の影響を受けない
+    let search_template = params
+        .site
+        .pages
+        .iter()
+        .any(|p| p.generated == Some(GeneratedKind::Search))
+        .then(|| shared.env.get_template("search.jinja"))
+        .transpose()?;
     let resolver = UrlResolver::new(&rc.base_url, params.site);
+    // ドロップダウンの「すべての結果を見る」行の遷移先（base.jinja が全ページに配る）。
+    // 未設定なら None = data-search-page 属性ごと出ない（既存出力とバイト同一）
+    let search_page_url = params
+        .site
+        .pages
+        .iter()
+        .find(|p| p.generated == Some(GeneratedKind::Search))
+        .map(|p| resolver.page_url(&p.route));
+    // 結果ページで 1 回に表示する件数。0 は 1 へ丸める（shard 設定と同じ流儀）
+    let search_page_size = cfg.search.page_size.max(1);
     // 前/次リンクの導出元（サイドバー表示順のフラット列）。全ページで共通
     let nav_order = NavOrder::new(&params.site.nav);
     let site_ctx = SiteCtx {
@@ -223,9 +244,17 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 .git
                 .edit_url
                 .as_ref()
-                .filter(|_| !page.generated)
+                .filter(|_| !page.is_generated())
                 .map(|tpl| tpl.replace("{path}", &rel_key));
-            let html = template.render(context! {
+            // 検索結果ページだけ専用テンプレート。コンテキストは共通の 1 個
+            // （search_page_size は search.jinja だけが使い、page.jinja は無視する）
+            let tpl = match page.generated {
+                Some(GeneratedKind::Search) => search_template
+                    .as_ref()
+                    .expect("Search ページが pages に居るなら解決済み"),
+                _ => &template,
+            };
+            let html = tpl.render(context! {
                 site => site_ctx,
                 page => PageCtx::new(page, &body, &resolver, last_updated, edit_url),
                 nav => NavCtx::build(&params.site.nav, &page.route, &resolver),
@@ -239,18 +268,23 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 math_enabled => math_needed,
                 dark_enabled => cfg.theme.dark,
                 search_enabled => cfg.search.enabled,
+                search_page_url => search_page_url.as_deref(),
+                search_page_size => search_page_size,
                 theme_css_vars => theme_css_vars,
             })?;
             let out_rel = page.output_rel_path(); // route + "index.html"（/ 区切り）
             assets::write_output(ctx.outputs, output_dir, &out_rel, html.as_bytes())?;
             // ページ単位 Markdown（原文バイトそのまま）。コピーボタンと llms.txt の
-            // .md リンクの実体。`yuzu fmt` 運用なら正規形と一致する
-            assets::write_output(
-                ctx.outputs,
-                output_dir,
-                &page.md_rel_path(),
-                page.source.as_bytes(),
-            )?;
+            // .md リンクの実体。`yuzu fmt` 運用なら正規形と一致する。
+            // 検索結果ページは出さない（llms からも除外済みで、参照する導線が無い）
+            if page.emits_page_md() {
+                assets::write_output(
+                    ctx.outputs,
+                    output_dir,
+                    &page.md_rel_path(),
+                    page.source.as_bytes(),
+                )?;
+            }
             tracing::debug!(page = %page.rel.display(), out = %out_rel, "ページ出力");
             Ok(())
         })?;
@@ -297,6 +331,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         math_enabled => false,
         dark_enabled => cfg.theme.dark,
         search_enabled => cfg.search.enabled,
+        search_page_url => search_page_url.as_deref(),
         theme_css_vars => theme_css_vars,
     })?;
     assets::write_output(ctx.outputs, output_dir, "404.html", not_found.as_bytes())?;
@@ -317,13 +352,14 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
 
     // sitemap.xml（copy_public より前 = `public/sitemap.xml` を置けばそちらが優先）。
     // `<loc>` は絶対 URL が仕様のため、baseUrl がフル URL のときだけ生成する。
-    // 対象は非 draft の実ページのみ（エイリアス・404・ページ単位 .md は載せない）
+    // 対象は非 draft の実ページ＋用語集のみ（エイリアス・404・ページ単位 .md・
+    // 検索結果ページは載せない — 判定は Page::in_sitemap）
     if resolver.base().contains("://") {
         let mut xml = String::from(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
              <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
         );
-        for page in &params.site.pages {
+        for page in params.site.pages.iter().filter(|p| p.in_sitemap()) {
             let rel_key = page
                 .rel
                 .iter()

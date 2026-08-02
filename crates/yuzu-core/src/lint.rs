@@ -36,7 +36,7 @@ pub(crate) fn lint_page(
     // 合成ページ（用語集）は原稿ではないので文書規約の対象外。
     // 直せる場所が `yuzu.jsonc` の辞書しかないうえ、rel が実在しないファイルを
     // 指すため `--fix` も `--format github` の注釈も成立しない
-    if page.generated {
+    if page.is_generated() {
         return Ok(Vec::new());
     }
     let mut out = Vec::new();
@@ -213,7 +213,7 @@ fn check_katakana_choon(pages: &[Page], opts: &MarkdownOptions, out: &mut Vec<Di
     let is_katakana = |c: char| matches!(c, '\u{30A1}'..='\u{30FA}' | 'ー');
     // 合成ページ（用語集）は原稿ではないので、多数決の母数にも報告先にもしない
     // （[`lint_page`] と同じ理由）
-    for page in pages.iter().filter(|p| !p.generated) {
+    for page in pages.iter().filter(|p| !p.is_generated()) {
         for (text, span) in &markdown::extract_text_spans(&page.source, opts) {
             for (offset, word) in char_class_runs(text, is_katakana) {
                 // ー のみ・実質 1 文字の run は語ではないので除外

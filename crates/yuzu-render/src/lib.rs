@@ -40,8 +40,35 @@ pub fn glossary_options(cfg: &yuzu_config::Config) -> yuzu_core::GlossaryOptions
         page_title: g.page_title.clone(),
     }
 }
+
+/// `search.page` を yuzu-core 側の中立型へ写す（[`glossary_options`] と同じ規律）。
+/// `search.enabled: false` なら空を返す = 検索が無いのに結果ページだけ出ることはない
+pub fn search_page_options(cfg: &yuzu_config::Config) -> yuzu_core::SearchPageOptions {
+    if !cfg.search.enabled {
+        return yuzu_core::SearchPageOptions::default();
+    }
+    yuzu_core::SearchPageOptions {
+        page: cfg.search.page.clone(),
+        page_title: cfg.search.page_title.clone(),
+    }
+}
 pub use llms::{generate_llms_full_txt, generate_llms_txt};
 pub use pipeline::{LiveReloadMode, RenderCtx, RenderParams, render_site, validate_pages};
 pub use shared::RenderShared;
 pub use speccheck::validate_api_specs;
 pub use urls::UrlResolver;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn 検索が無効なら結果ページの設定は空になる() {
+        let mut cfg = yuzu_config::Config::default();
+        cfg.search.page = "search".to_string();
+        assert_eq!(super::search_page_options(&cfg).page, "search");
+        cfg.search.enabled = false;
+        assert!(
+            super::search_page_options(&cfg).page.is_empty(),
+            "検索が無いのに結果ページだけ出てはいけない"
+        );
+    }
+}

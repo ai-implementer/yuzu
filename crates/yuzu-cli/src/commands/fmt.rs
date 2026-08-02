@@ -32,6 +32,7 @@ pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
             yuzu_config::CrossrefNumbering::Site
         ),
         glossary: yuzu_render::glossary_options(&rc.config),
+        search_page: yuzu_render::search_page_options(&rc.config),
     };
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
@@ -39,7 +40,7 @@ pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
     let mut changed = 0usize;
     // 合成ページ（用語集）は原稿ではないので整形対象外。**ガードが無いと
     // `fs::write` が実在しない content/glossary.md を新規作成してしまう**
-    for page in pages.iter().filter(|p| !p.generated) {
+    for page in pages.iter().filter(|p| !p.is_generated()) {
         let formatted = yuzu_core::format_document(page, &opts)?;
         if formatted == page.source {
             continue;
@@ -71,7 +72,7 @@ pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
             // 集計行は原稿の数を出す（合成した用語集ページは整形対象外）
             outln!(
                 "整形の必要はありません（{} ページ）",
-                pages.iter().filter(|p| !p.generated).count()
+                pages.iter().filter(|p| !p.is_generated()).count()
             );
         } else {
             outln!("{changed} ファイルを整形しました");

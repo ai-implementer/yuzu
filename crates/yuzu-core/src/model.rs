@@ -114,13 +114,78 @@ pub struct Page {
     pub crossref_offset: crate::markdown::crossref::Numbering,
     /// Markdown 原文（本文 HTML 化・将来の `yuzu fmt` が再パースに使う）
     pub source: String,
-    /// ビルド時に合成したページ（用語集）。**実ファイルが無い**ので
+    /// ビルド時に合成したページの種別（実ページは None）。**実ファイルが無い**ので
     /// `yuzu fmt` / `yuzu lint --fix` の書き込み対象から外し、「このページを編集」
-    /// リンクも出さない。リンク検査では**リンク先としてだけ**有効にする
-    pub generated: bool,
+    /// リンクも出さない。リンク検査では**リンク先としてだけ**有効にする。
+    /// 集約（nav・検索索引・sitemap・ページ単位 .md）に載せるかは種別ごとに違うため、
+    /// 呼び出し側は kind を直接見ず `Page::in_*` ヘルパを通す
+    pub generated: Option<GeneratedKind>,
+}
+
+/// ビルド時に合成されるページの種別
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeneratedKind {
+    /// 用語集ページ（`markdown.glossary.page`）
+    Glossary,
+    /// 検索結果ページ（`search.page`）
+    Search,
+}
+
+impl GeneratedKind {
+    /// このページの route を決める設定キー（診断文面用の唯一の定義）
+    pub fn config_key(self) -> &'static str {
+        match self {
+            Self::Glossary => "markdown.glossary.page",
+            Self::Search => "search.page",
+        }
+    }
+
+    /// 診断文面での呼び名（「自動生成される◯◯」に続く名詞）
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Glossary => "用語集ページ",
+            Self::Search => "検索結果ページ",
+        }
+    }
+
+    /// コンテンツ集約（nav・検索索引・sitemap・ページ単位 .md）に載せるか。
+    /// 用語集は読み物なので載せる。検索結果ページは中身が実行時に決まる
+    /// 機能ページなので載せない（JS 前提の空ページを集約に混ぜない）
+    fn in_listings(self) -> bool {
+        match self {
+            Self::Glossary => true,
+            Self::Search => false,
+        }
+    }
 }
 
 impl Page {
+    /// 合成ページか（`page.src` が実在しない）。`yuzu fmt` / `lint --fix` の
+    /// 書き込み防止・lint / 診断の除外・`edit_url` 抑止・集計行の分母はこれを見る
+    pub fn is_generated(&self) -> bool {
+        self.generated.is_some()
+    }
+
+    /// サイドバー nav（と、その派生の pager・パンくず）に載せるか
+    pub fn in_nav(&self) -> bool {
+        self.generated.is_none_or(GeneratedKind::in_listings)
+    }
+
+    /// 検索インデックスに載せるか
+    pub fn in_search_index(&self) -> bool {
+        self.generated.is_none_or(GeneratedKind::in_listings)
+    }
+
+    /// sitemap.xml に載せるか
+    pub fn in_sitemap(&self) -> bool {
+        self.generated.is_none_or(GeneratedKind::in_listings)
+    }
+
+    /// ページ単位 Markdown（`md_rel_path()`）を出力するか
+    pub fn emits_page_md(&self) -> bool {
+        self.generated.is_none_or(GeneratedKind::in_listings)
+    }
+
     /// 出力ファイルの相対パス（pretty URL: `route + "index.html"`）
     pub fn output_rel_path(&self) -> String {
         format!("{}index.html", self.route)

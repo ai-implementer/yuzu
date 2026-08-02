@@ -471,8 +471,9 @@ pub(crate) fn render_body_html(
     // （キャプションで置換すると collect_text が HtmlInline を落とし、アンカー ID が
     // extract_meta / 本文 HTML / extract_plain_sections の 3 経路でずれる）。
     // A〜D はいずれも兄弟順を保つので、ここでの再帰順 = 文書順 = 初出の順になる。
-    // 用語集ページ自身は置換しない（説明文の中で自分の用語が光るのは無意味）
-    if !page.generated {
+    // 用語集ページ自身は置換しない（説明文の中で自分の用語が光るのは無意味）。
+    // 検索結果ページ等の他の合成ページは対象のまま（本文がほぼ無いので実質無影響）
+    if page.generated != Some(crate::model::GeneratedKind::Glossary) {
         if let Some(matcher) = glossary::Matcher::new(&opts.glossary) {
             let mut used = std::collections::HashSet::new();
             let mut splits = Vec::new();

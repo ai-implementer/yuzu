@@ -337,6 +337,14 @@ pub struct SearchConfig {
     /// インデントコードブロック（非フェンス）は常に対象外。コード本文は抜粋用
     /// fragment にもそのまま入るため、巨大なコードブロックは配信サイズに影響する
     pub index_code: bool,
+    /// 検索結果ページの route（content 相対・拡張子なし。例 `"search"`）。
+    /// **空なら生成しない**（既定）。既存プロジェクトの `content/search.md` と
+    /// route が衝突してビルド不能になるのを避けるため、明示オプトインにする
+    pub page: String,
+    /// 検索結果ページのタイトル
+    pub page_title: String,
+    /// 検索結果ページで 1 回に表示する件数（「さらに表示」で追加）
+    pub page_size: u32,
 }
 
 impl Default for SearchConfig {
@@ -348,6 +356,10 @@ impl Default for SearchConfig {
             shard: ShardConfig::default(),
             synonyms: Vec::new(),
             index_code: false,
+            page: String::new(),
+            page_title: "検索".to_string(),
+            // `yuzu search --limit` の既定と揃える（実装は独立。CLI 側は cli.rs）
+            page_size: 10,
         }
     }
 }

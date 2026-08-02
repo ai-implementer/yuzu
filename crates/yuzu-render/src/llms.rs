@@ -63,6 +63,7 @@ pub fn generate_llms_full_txt(
             yuzu_config::CrossrefNumbering::Site
         ),
         glossary: crate::glossary_options(&rc.config),
+        search_page: crate::search_page_options(&rc.config),
     };
 
     let mut out = String::new();

@@ -112,7 +112,7 @@
 <script src="{{ asset_url | url }}js/mermaid-init.js"></script>
 {% endif %}{% if math_enabled %}<script src="{{ asset_url | url }}vendor/katex/katex.min.js"></script>
 <script src="{{ asset_url | url }}js/katex-init.js"></script>
-{% endif %}{% if search_enabled %}<script type="module" src="{{ asset_url | url }}js/search-ui.js" data-search-base="{{ base_url | url }}_search/" data-base="{{ base_url | url }}"></script>
+{% endif %}{% if search_enabled %}<script type="module" src="{{ asset_url | url }}js/search-ui.js" data-search-base="{{ base_url | url }}_search/" data-base="{{ base_url | url }}"{% if search_page_url %} data-search-page="{{ search_page_url | url }}"{% endif %}></script>
 {% endif %}{% if live_reload_poll %}<script src="{{ asset_url | url }}js/autorefresh.js" data-base="{{ base_url | url }}"></script>
 {% endif %}{% if live_reload_ws %}<script src="{{ asset_url | url }}js/livereload.js"></script>
 {% endif %}</body>

@@ -45,8 +45,6 @@
   --sidebar-width: 17rem;
   --toc-width: 14rem;
   --header-height: 3.25rem;
-  /* 検索の絞り込みチップ行（1 行固定。JS で高さを測らずに結果箱を押し下げる） */
-  --search-filters-h: 2.25rem;
   --content-max: 62rem; /* 992px。.layout の max-width とセットで調整する */
 }
 
@@ -233,41 +231,8 @@ body {
   border-color: var(--accent);
 }
 
-/* 検索結果の絞り込みチップ（Phase 53）。listbox の**外**（結果箱の直前の兄弟）に
-   JS が挿入するので、結果箱はその高さぶん押し下げる。高さを JS で測らずに済むよう
-   1 行固定にし、区分が多いときは横スクロールさせる */
-.search-filters {
-  position: absolute;
-  top: calc(100% + 0.4rem);
-  right: 0;
-  z-index: 21;
-  display: flex;
-  gap: 0.3rem;
-  align-items: center;
-  width: 26rem;
-  max-width: 85vw;
-  height: var(--search-filters-h);
-  padding: 0 0.5rem;
-  overflow-x: auto;
-  white-space: nowrap;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  box-shadow: var(--shadow);
-}
-
-/* ⚠️ `display: flex` は UA の `[hidden] { display: none }` を上書きしてしまうので、
-   hidden 用の指定を必ず添える（無いと検索前からチップ行の枠だけが出る） */
-.search-filters[hidden] {
-  display: none;
-}
-
-.search-filters:not([hidden]) ~ .search-results {
-  top: calc(100% + 0.4rem + var(--search-filters-h));
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-
+/* 検索結果の絞り込みチップ（Phase 53 → Phase 54 で結果ページへ移動）。
+   ドロップダウンには無く、検索結果ページ（.search-page-filters）だけが使う */
 .search-filter-chip {
   flex: none;
   display: inline-flex;
@@ -380,33 +345,106 @@ body {
   text-align: center;
 }
 
-/* 追加ロード行（ヒットの末尾。role="option" なので選択もできる） */
-.search-more {
+/* 「すべての結果を見る」行（ヒットの末尾。role="option" なので選択もできる） */
+.search-all {
+  display: block;
   padding: 0.5rem 0.8rem;
   font-size: 0.8rem;
   text-align: center;
   color: var(--accent-fg);
+  text-decoration: none;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
 
-.search-more:hover,
-.search-more.selected {
+.search-all:hover,
+.search-all.selected {
   background: var(--bg-hover);
 }
 
-/* 読み込み中・失敗時（クリックしても二重発火しない状態） */
-.search-more[aria-disabled="true"] {
-  color: var(--fg-muted);
-  cursor: default;
-}
-
-/* フレーズ検索の発見用ヒント（ドロップダウン末尾） */
+/* フレーズ検索の発見用ヒント（ドロップダウン・結果ページ共通の末尾行） */
 .search-hint {
   padding: 0.35rem 0.8rem;
   font-size: 0.72rem;
   color: var(--fg-muted);
   border-top: 1px solid var(--border);
+}
+
+/* ---- 検索結果ページ（search.jinja / search-page.js） ----
+   ヒット行（.search-hit 系）とチップ（.search-filter-chip）はドロップダウンと
+   共通で、外枠だけが違う: ドロップダウンの .search-results は absolute の
+   浮動パネル、こちらはページフローに置く */
+
+.search-page-form {
+  margin: 0.5rem 0 1rem;
+}
+
+#yuzu-search-page-input {
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  color: var(--fg);
+}
+
+#yuzu-search-page-input:focus,
+#yuzu-search-page-input:focus-visible {
+  outline: none; /* フォーカスはアクセント色ボーダーで表現（ドロップダウンと同じ） */
+  border-color: var(--accent);
+}
+
+.search-page-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.8rem;
+}
+
+/* ⚠️ `display: flex` は UA の `[hidden] { display: none }` を上書きしてしまうので、
+   hidden 用の指定を必ず添える（無いと検索前から空の行が隙間として残る） */
+.search-page-filters[hidden] {
+  display: none;
+}
+
+.search-page-status {
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+}
+
+.search-page-results {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* 検索前・0 件時は枠だけが残らないようにする */
+.search-page-results:empty {
+  border: none;
+}
+
+.search-page-more {
+  display: block;
+  margin: 0.8rem auto;
+  padding: 0.4rem 1.2rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--accent-fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.search-page-more:hover {
+  background: var(--bg-hover);
+}
+
+/* display: block の hidden 対（上のチップ行と同じ理由） */
+.search-page-more[hidden] {
+  display: none;
 }
 
 #theme-toggle {
@@ -1424,7 +1462,6 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
 .sidebar,
 .toc,
 .search-results,
-.search-filters,
 .markdown-body pre,
 .markdown-body table {
   scrollbar-width: thin;

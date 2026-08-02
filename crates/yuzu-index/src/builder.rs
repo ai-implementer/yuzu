@@ -164,13 +164,17 @@ pub fn build_search_index_with(
     let local_session = IndexSession::default();
     let session = ctx.session.unwrap_or(&local_session);
 
+    // 索引対象のページ集合。合成の検索結果ページ自身は索引しない
+    // （JS 前提の空ページで、ヒットしても読むものが無い）。
+    // 以降の 3 つの反復すべてをこの集合で回す（zip の整合を保つ）
+    let pages: Vec<&yuzu_core::Page> = site.pages.iter().filter(|p| p.in_search_index()).collect();
+
     // ページごとのセクション計算。tokenize がフルビルドの支配的コストなので
     // rayon で並列化する（Phase 33）。キャッシュ判定を先行パスで済ませ、
     // miss があるときだけトークナイザを構築する（全ヒットなら zstd 展開ごと
     // スキップ = 従来どおり。並列ループ前に 1 回だけ作り &Tokenizer を共有）
     // (依存ハッシュ, キャッシュヒット) をページ順に用意する
-    let prepared: Vec<(Option<String>, Option<Vec<CachedSection>>)> = site
-        .pages
+    let prepared: Vec<(Option<String>, Option<Vec<CachedSection>>)> = pages
         .iter()
         .map(|page| {
             let deps = include_deps_hash(
@@ -189,8 +193,7 @@ pub fn build_search_index_with(
         true => Some(session.tokenizer(&model_bytes)?),
         false => None,
     };
-    let sections_per_page: Vec<Vec<CachedSection>> = site
-        .pages
+    let sections_per_page: Vec<Vec<CachedSection>> = pages
         .par_iter()
         .zip(prepared)
         .map(|(page, (deps, hit))| match hit {
@@ -225,8 +228,7 @@ pub fn build_search_index_with(
             .find(|g| g.key == key)
             .map(|g| g.label.clone())
     };
-    let docs: Vec<DocumentInput> = site
-        .pages
+    let docs: Vec<DocumentInput> = pages
         .iter()
         .zip(&sections_per_page)
         .map(|(page, sections)| DocumentInput {
@@ -324,7 +326,7 @@ pub fn build_search_index_with(
     copy_wasm_assets(&search_dir, &write)?;
 
     let stats = IndexStats {
-        pages: site.pages.len(),
+        pages: pages.len(),
         docs: manifest.doc_count as usize,
         terms: manifest.term_count as usize,
         shards: manifest.shards.len(),

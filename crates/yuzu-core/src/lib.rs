@@ -44,7 +44,8 @@ pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
 pub use markdown::fragment::FRAGMENT_LANG;
 pub use markdown::{FenceBlock, RenderedBody, extract_fence_blocks};
 pub use model::{
-    CrossrefLabel, Frontmatter, NavNode, Page, PlainSection, SiteModel, SourceSpan, TocEntry,
+    CrossrefLabel, Frontmatter, GeneratedKind, NavNode, Page, PlainSection, SiteModel, SourceSpan,
+    TocEntry,
 };
 pub use nav::{NavGroup, nav_groups, route_group_key};
 pub use output::{OutputTracker, WriteOutcome};
@@ -68,6 +69,10 @@ pub struct MarkdownOptions {
     pub crossref_site_numbering: bool,
     /// 用語集・略語（`markdown.glossary`）。既定（空辞書）なら何も起きない
     pub glossary: GlossaryOptions,
+    /// 検索結果ページ（`search.page`）。パースには影響しないが、サイトモデル
+    /// 合成（[`build_site_model`] / [`build_source_pages`]）が参照する
+    /// （`crossref_site_numbering` と同じ立ち位置）。既定（route 空）なら何も起きない
+    pub search_page: SearchPageOptions,
 }
 
 impl Default for MarkdownOptions {
@@ -78,6 +83,7 @@ impl Default for MarkdownOptions {
             mermaid: true,
             crossref_site_numbering: false,
             glossary: GlossaryOptions::default(),
+            search_page: SearchPageOptions::default(),
         }
     }
 }
@@ -109,6 +115,19 @@ impl Default for GlossaryOptions {
             page_title: String::new(),
         }
     }
+}
+
+/// 検索結果ページの挙動設定（設定ファイルの `search` セクションから写す）。
+///
+/// [`GlossaryOptions`] と同じ yuzu-config 非依存の中立型。既定は
+/// 「route 空 = ページを作らない」で、`page_title` の既定文字列は
+/// yuzu-config 側の `SearchConfig::default()` が唯一の持ち主
+#[derive(Debug, Clone, Default)]
+pub struct SearchPageOptions {
+    /// 検索結果ページの route 元（`content` 相対・拡張子なし）。空ならページを作らない
+    pub page: String,
+    /// 検索結果ページのタイトル。空ならページ名から補う
+    pub page_title: String,
 }
 
 /// フェンス言語がビルド時に特別レンダリングされるか（＝コードブロックとして表示されない）。
@@ -215,9 +234,14 @@ pub fn build_site_model_cached(
             !page.frontmatter.draft
         });
     }
-    // 用語集ページは nav 構築より前に混ぜる（サイドバー・パンくず・pager・
-    // 通し番号の順序決めがすべて pages を入力にしているため）
+    // 合成ページは nav 構築より前に混ぜる（サイドバー・パンくず・pager・
+    // 通し番号の順序決めがすべて pages を入力にしているため。検索結果ページは
+    // nav には載らないが route 衝突検査に要る）。順序は用語集 → 検索で固定
+    // （routesKey のバイト安定のため）
     if let Some(page) = glossary_page(content_dir, opts)? {
+        pages.push(page);
+    }
+    if let Some(page) = search_result_page(content_dir, opts)? {
         pages.push(page);
     }
     let nav = nav::build_nav(&pages);
@@ -286,11 +310,14 @@ pub fn build_source_pages(
     opts: &MarkdownOptions,
 ) -> Result<Vec<Page>, CoreError> {
     let mut pages = load_pages(content_dir, ignore, opts)?;
-    // 用語集ページはソースが無いので fmt / lint の対象にはならないが、
-    // **リンク検査の有効ターゲット**（`[用語集](../glossary.md#api)`）と
+    // 合成ページ（用語集・検索結果）はソースが無いので fmt / lint の対象には
+    // ならないが、**リンク検査の有効ターゲット**（`[用語集](../glossary.md#api)`）と
     // route 衝突検査には要るのでここでも混ぜる。実際の除外は
-    // `generated` を見る各呼び出し側の責務
+    // `is_generated()` を見る各呼び出し側の責務。順序は build_site_model と同じ
     if let Some(page) = glossary_page(content_dir, opts)? {
+        pages.push(page);
+    }
+    if let Some(page) = search_result_page(content_dir, opts)? {
         pages.push(page);
     }
     Ok(pages)
@@ -368,7 +395,7 @@ fn load_pages_cached(
             labels,
             crossref_offset: Default::default(),
             source,
-            generated: false,
+            generated: None,
         });
     }
     Ok(pages)
@@ -409,7 +436,53 @@ fn glossary_page(content_dir: &Path, opts: &MarkdownOptions) -> Result<Option<Pa
         labels: meta.labels,
         crossref_offset: Default::default(),
         source,
-        generated: true,
+        generated: Some(GeneratedKind::Glossary),
+    }))
+}
+
+/// 検索結果ページ（`search.page`）を合成する。route が空 / 不正なら `None`。
+///
+/// 用語集と同じく `Page` として `pages` に混ぜる = route 衝突検査・linkcheck の
+/// リンク先・routesKey が既存経路のままで効く。一方、中身が実行時（JS）に決まる
+/// 機能ページなので nav・検索索引・sitemap・ページ単位 .md には載せない
+/// （[`Page`] の `in_*` ヘルパが判定）。llms.txt は合成時に `frontmatter.llms` を
+/// 落とすことで既存フィルタに乗せる。
+/// source を fmt 正規形の `# {title}\n` にするのは用語集と同じ理由
+/// （[`markdown::extract_meta`] 経由でタイトル・h1 アンカーが通常経路と揃う）
+fn search_result_page(
+    content_dir: &Path,
+    opts: &MarkdownOptions,
+) -> Result<Option<Page>, CoreError> {
+    let Some(rel) = urlpath::synth_page_rel(&opts.search_page.page) else {
+        return Ok(None);
+    };
+    let heading = match opts.search_page.page_title.trim() {
+        "" => scan::stem_title(&rel),
+        title => title.to_string(),
+    };
+    let source = format!("# {heading}\n");
+    let src = content_dir.join(&rel);
+    let meta = markdown::extract_meta(&source, opts, &src)?;
+    let title = meta
+        .frontmatter
+        .title
+        .clone()
+        .or(meta.first_h1)
+        .unwrap_or(heading);
+    let mut frontmatter = meta.frontmatter;
+    frontmatter.llms = false;
+    let route = scan::route_for_rel(&rel);
+    Ok(Some(Page {
+        src,
+        rel,
+        route,
+        frontmatter,
+        title,
+        toc: meta.toc,
+        labels: meta.labels,
+        crossref_offset: Default::default(),
+        source,
+        generated: Some(GeneratedKind::Search),
     }))
 }
 

@@ -690,7 +690,7 @@ fn glossary_html(source: &str, pairs: &[(&str, &str)]) -> String {
     fs::write(dir.path().join("index.md"), source).unwrap();
     let opts = glossary_opts(pairs);
     let site = build_site_model(dir.path(), &[], &opts).unwrap();
-    let page = site.pages.iter().find(|p| !p.generated).unwrap();
+    let page = site.pages.iter().find(|p| !p.is_generated()).unwrap();
     render_body_html(page, &opts, &MermaidOnlyRenderer, &NoopUrlRewriter, None)
         .unwrap()
         .html

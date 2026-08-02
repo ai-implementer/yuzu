@@ -38,6 +38,26 @@ pub fn rel_to_slash(rel: &Path) -> String {
         .join("/")
 }
 
+/// 合成ページ（用語集・検索結果）の route 元 → content 相対 `.md` パス。
+///
+/// route が空・パスが不正（絶対パス / ドライブレター / `..` / 空セグメント）なら
+/// `None` ＝ページを作らない（設定の書き間違いでビルドを止めず、かつルート外へは
+/// 絶対に書かない）。`..` を弾くのは `content_dir.join(rel)` が外へ出ないため
+pub(crate) fn synth_page_rel(raw: &str) -> Option<std::path::PathBuf> {
+    let raw = raw.trim().trim_matches('/');
+    if raw.is_empty() || raw.starts_with('\\') || raw.contains(':') {
+        return None;
+    }
+    let segments: Vec<&str> = raw.split('/').collect();
+    if segments
+        .iter()
+        .any(|s| s.is_empty() || *s == "." || *s == "..")
+    {
+        return None;
+    }
+    Some(std::path::PathBuf::from(format!("{raw}.md")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

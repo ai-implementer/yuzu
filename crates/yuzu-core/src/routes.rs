@@ -42,23 +42,49 @@ pub fn validate_routes(pages: &[Page]) -> Vec<Diagnostic> {
     for page in pages {
         check_page_path(page, &mut diags);
         match claimed.get(page.route.as_str()) {
-            // 用語集ページ（設定から合成）が絡む衝突は、直す場所も報告先も違う。
+            // 合成ページ（設定から生成）が絡む衝突は、直す場所も報告先も違う。
             // 実在しないファイルを rel にすると `--format github` の注釈が
-            // 付かないので、報告は必ず**実ページ側の rel** で行う
-            Some(first) if page.generated || first.generated => {
-                let real: &Page = if page.generated { first } else { page };
-                let rel = real.rel.clone();
+            // 付かないので、報告は可能な限り**実ページ側の rel** で行う
+            Some(first) if page.is_generated() || first.is_generated() => {
+                let (rel, message) = match (first.generated, page.generated) {
+                    // 両方が合成（`markdown.glossary.page` と `search.page` が同値）。
+                    // 実ページが無いので合成側の rel で報告する（github 注釈は
+                    // 付かないが、直す場所はどちらも設定なので許容）
+                    (Some(a), Some(b)) => (
+                        page.rel.clone(),
+                        format!(
+                            "自動生成される{}と{}の URL /{} が衝突しています。`{}` か `{}` を変えてください",
+                            a.label(),
+                            b.label(),
+                            page.route,
+                            a.config_key(),
+                            b.config_key()
+                        ),
+                    ),
+                    _ => {
+                        let (kind, real): (_, &Page) = match page.generated {
+                            Some(kind) => (kind, first),
+                            None => (first.generated.expect("片方は必ず合成"), page),
+                        };
+                        (
+                            real.rel.clone(),
+                            format!(
+                                "自動生成される{}の URL /{} がページ {} と衝突しています。`{}` かページのファイル名を変えてください",
+                                kind.label(),
+                                page.route,
+                                real.rel.display(),
+                                kind.config_key()
+                            ),
+                        )
+                    }
+                };
                 diags.push(Diagnostic {
                     rule: "route-conflict",
                     severity: Severity::Error,
                     base: DiagBase::Content,
                     rel,
                     span: None,
-                    message: format!(
-                        "自動生成される用語集ページの URL /{} がページ {} と衝突しています。`markdown.glossary.page` かページのファイル名を変えてください",
-                        page.route,
-                        real.rel.display()
-                    ),
+                    message,
                     fix: None,
                 });
             }
@@ -111,15 +137,16 @@ fn check_page_path(page: &Page, out: &mut Vec<Diagnostic>) {
         base: DiagBase::Content,
         rel: page.rel.clone(),
         span: None,
-        message: if page.generated {
-            // 用語集ページは設定から合成されるので、直す場所はファイル名ではない
-            format!(
-                "`markdown.glossary.page` に URL で意味を持つ文字（{list}）が含まれています。yuzu は値をそのまま URL にするため、用語集ページへのリンクが壊れます"
-            )
-        } else {
-            format!(
+        message: match page.generated {
+            // 合成ページは設定から作られるので、直す場所はファイル名ではない
+            Some(kind) => format!(
+                "`{}` に URL で意味を持つ文字（{list}）が含まれています。yuzu は値をそのまま URL にするため、{}へのリンクが壊れます",
+                kind.config_key(),
+                kind.label()
+            ),
+            None => format!(
                 "ファイル名に URL で意味を持つ文字（{list}）が含まれています。yuzu はファイル名をそのまま URL にするため、このページへのリンクが壊れます。ファイル名を変えてください"
-            )
+            ),
         },
         fix: None,
     });
@@ -128,7 +155,7 @@ fn check_page_path(page: &Page, out: &mut Vec<Diagnostic>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Frontmatter;
+    use crate::model::{Frontmatter, GeneratedKind};
     use std::path::PathBuf;
 
     fn page(rel: &str, route: &str) -> Page {
@@ -141,8 +168,15 @@ mod tests {
             toc: Vec::new(),
             labels: Vec::new(),
             crossref_offset: Default::default(),
-            generated: false,
+            generated: None,
             source: "# t\n".to_string(),
+        }
+    }
+
+    fn generated_page(rel: &str, route: &str, kind: GeneratedKind) -> Page {
+        Page {
+            generated: Some(kind),
+            ..page(rel, route)
         }
     }
 
@@ -197,6 +231,82 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    #[test]
+    fn 合成ページとの衝突は実ページ側の_rel_と設定キーで報告する() {
+        // 合成ページ（用語集・検索結果）は実在しないファイルを rel に持つため、
+        // `--format github` の注釈が付くよう報告は実ページ側で行う
+        for (kind, key) in [
+            (GeneratedKind::Glossary, "markdown.glossary.page"),
+            (GeneratedKind::Search, "search.page"),
+        ] {
+            for pages in [
+                // 合成が先着でも後着でも同じ報告になる
+                [
+                    generated_page("glossary.md", "glossary/", kind),
+                    page("glossary.md", "glossary/"),
+                ],
+                [
+                    page("glossary.md", "glossary/"),
+                    generated_page("glossary.md", "glossary/", kind),
+                ],
+            ] {
+                let diags = validate_routes(&pages);
+                assert_eq!(diags.len(), 1, "{kind:?}: {diags:?}");
+                assert_eq!(diags[0].rule, "route-conflict");
+                assert_eq!(diags[0].rel, PathBuf::from("glossary.md"));
+                assert!(
+                    diags[0].message.contains(&format!("`{key}`")),
+                    "{kind:?}: {}",
+                    diags[0].message
+                );
+                assert!(
+                    diags[0].message.contains(kind.label()),
+                    "{kind:?}: {}",
+                    diags[0].message
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn 両方が合成ページの衝突は両方の設定キーを案内する() {
+        // `markdown.glossary.page` と `search.page` に同じ値を設定した場合。
+        // 実ページが無いので rel は合成側になる（直す場所はどちらも設定）
+        let pages = [
+            generated_page("search.md", "search/", GeneratedKind::Glossary),
+            generated_page("search.md", "search/", GeneratedKind::Search),
+        ];
+        let diags = validate_routes(&pages);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].rule, "route-conflict");
+        assert!(
+            diags[0].message.contains("`markdown.glossary.page`")
+                && diags[0].message.contains("`search.page`"),
+            "{}",
+            diags[0].message
+        );
+    }
+
+    #[test]
+    fn 合成ページの_unsafe_page_path_は設定キーを案内する() {
+        for (kind, key) in [
+            (GeneratedKind::Glossary, "markdown.glossary.page"),
+            (GeneratedKind::Search, "search.page"),
+        ] {
+            let diags = validate_routes(&[generated_page("a#b.md", "a#b/", kind)]);
+            let hits: Vec<_> = diags
+                .iter()
+                .filter(|d| d.rule == "unsafe-page-path")
+                .collect();
+            assert_eq!(hits.len(), 1, "{kind:?}: {diags:?}");
+            assert!(
+                hits[0].message.contains(&format!("`{key}`")),
+                "{kind:?}: {}",
+                hits[0].message
+            );
+        }
     }
 
     #[test]

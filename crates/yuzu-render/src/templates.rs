@@ -89,6 +89,7 @@ mod tests {
         let env = build_env(None).unwrap();
         assert!(env.get_template("page.jinja").is_ok());
         assert!(env.get_template("base.jinja").is_ok());
+        assert!(env.get_template("search.jinja").is_ok());
         assert!(env.get_template("no-such.jinja").is_err());
     }
 

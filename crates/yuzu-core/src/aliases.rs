@@ -82,7 +82,7 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
 
     // 合成ページ（用語集）は frontmatter を持たないのでエイリアス元にはならない。
     // ただし上の routes には入れて**衝突先**としては検出する
-    for page in pages.iter().filter(|p| !p.generated) {
+    for page in pages.iter().filter(|p| !p.is_generated()) {
         let fm = markdown::frontmatter_raw(&page.source, opts);
         for raw in &page.frontmatter.aliases {
             let span = fm
@@ -98,8 +98,8 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
             if let Some(hit) = routes.get(route.as_str()) {
                 let target = if hit.rel == page.rel {
                     "このページ自身".to_string()
-                } else if hit.generated {
-                    "自動生成される用語集ページ".to_string()
+                } else if let Some(kind) = hit.generated {
+                    format!("自動生成される{}", kind.label())
                 } else {
                     format!("ページ {} ", hit.rel.display())
                 };
@@ -214,7 +214,7 @@ mod tests {
             toc: Vec::new(),
             labels: Vec::new(),
             crossref_offset: Default::default(),
-            generated: false,
+            generated: None,
             source,
         }
     }

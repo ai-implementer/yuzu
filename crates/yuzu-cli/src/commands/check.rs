@@ -21,6 +21,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
             yuzu_config::CrossrefNumbering::Site
         ),
         glossary: yuzu_render::glossary_options(&rc.config),
+        search_page: yuzu_render::search_page_options(&rc.config),
     };
     let lint_opts = LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,
@@ -40,7 +41,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
         diags.extend(yuzu_core::lint_page(page, &opts, &lint_opts)?);
         // fmt 差分（ファイル単位・位置なし）。合成ページは `yuzu fmt` の
         // 対象外なので差分を報告しても直しようがない
-        if !page.generated && yuzu_core::format_document(page, &opts)? != page.source {
+        if !page.is_generated() && yuzu_core::format_document(page, &opts)? != page.source {
             diags.push(Diagnostic {
                 rule: "fmt",
                 severity: Severity::Error,
@@ -86,7 +87,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
         &diag::Context {
             root: &root,
             content_dir: &rc.content_dir,
-            pages: pages.iter().filter(|p| !p.generated).count(),
+            pages: pages.iter().filter(|p| !p.is_generated()).count(),
         },
     )
 }

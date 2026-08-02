@@ -139,24 +139,13 @@ pub(crate) const ABBR_CLOSE_TAG: &str = "</abbr>";
 
 /// 用語集ページの content 相対パス（`glossary` → `glossary.md`）。
 ///
-/// 辞書が空・route が空・パスが不正（絶対パス / `..` / 空セグメント）なら `None`
-/// ＝ページを作らない。`..` を弾くのは `content_dir.join(rel)` が外へ出ないため
+/// 辞書が空、または route が不正（[`crate::urlpath::synth_page_rel`] 参照）なら
+/// `None` ＝ページを作らない
 pub(crate) fn page_rel(opts: &GlossaryOptions) -> Option<std::path::PathBuf> {
     if opts.terms.is_empty() {
         return None;
     }
-    let raw = opts.page.trim().trim_matches('/');
-    if raw.is_empty() || raw.starts_with('\\') || raw.contains(':') {
-        return None;
-    }
-    let segments: Vec<&str> = raw.split('/').collect();
-    if segments
-        .iter()
-        .any(|s| s.is_empty() || *s == "." || *s == "..")
-    {
-        return None;
-    }
-    Some(std::path::PathBuf::from(format!("{raw}.md")))
+    crate::urlpath::synth_page_rel(&opts.page)
 }
 
 /// 用語集ページの Markdown 原文。

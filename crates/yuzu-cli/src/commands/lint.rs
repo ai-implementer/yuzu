@@ -30,6 +30,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
             yuzu_config::CrossrefNumbering::Site
         ),
         glossary: yuzu_render::glossary_options(&rc.config),
+        search_page: yuzu_render::search_page_options(&rc.config),
     };
     let lint_opts = LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,
@@ -58,7 +59,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
                 yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
             let diags = collect(&pages)?;
             let mut applied_this_round = 0usize;
-            for page in pages.iter().filter(|p| !p.generated) {
+            for page in pages.iter().filter(|p| !p.is_generated()) {
                 let page_diags: Vec<Diagnostic> = diags
                     .iter()
                     .filter(|d| d.rel == page.rel && d.fix.is_some())
@@ -119,7 +120,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
             root: &root,
             content_dir: &rc.content_dir,
             // 集計行は原稿の数を出す（合成した用語集ページは数えない）
-            pages: pages.iter().filter(|p| !p.generated).count(),
+            pages: pages.iter().filter(|p| !p.is_generated()).count(),
         },
     )
 }

@@ -39,7 +39,7 @@ pub(crate) fn check_links(
     // 合成ページ（用語集）は**リンク先としてだけ**有効にする。上の by_rel / by_route
     // には入れて `[用語集](../glossary.md#api)` を解決可能にしつつ、リンク元としては
     // 見ない（辞書の説明文に書かれたリンクを実在しないファイルの診断として出さない）
-    for page in pages.iter().filter(|p| !p.generated) {
+    for page in pages.iter().filter(|p| !p.is_generated()) {
         for link in markdown::extract_link_refs(&page.source, opts) {
             check_one(
                 page,

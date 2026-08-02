@@ -750,3 +750,38 @@ fn グループが変わっても_content_hash_は変わらない() {
     };
     assert_eq!(hash_of("alpha"), hash_of("beta"));
 }
+
+#[test]
+fn 検索結果ページ自身は索引に載らない() {
+    // `search.page` の合成ページは JS 前提の空ページなので、ヒットしても読むものが無い
+    let content = tempfile::tempdir().unwrap();
+    write(
+        content.path(),
+        "index.md",
+        "---\ntitle: ホーム\n---\n# ようこそ\n\n検索できる本文です。\n",
+    );
+    let md_opts = MarkdownOptions {
+        search_page: yuzu_core::SearchPageOptions {
+            page: "search".to_string(),
+            page_title: "検索".to_string(),
+        },
+        ..MarkdownOptions::default()
+    };
+    let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+    assert_eq!(site.pages.len(), 2, "検索結果ページは pages には居る");
+
+    let dist = tempfile::tempdir().unwrap();
+    let stats = build_search_index(&site, &md_opts, &IndexParams::default(), dist.path()).unwrap();
+    assert_eq!(stats.pages, 1, "索引対象は実ページのみ");
+
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(dist.path().join("_search/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest["docCount"], 1);
+    let fragment: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(dist.path().join("_search/fragment/0.json")).unwrap(),
+    )
+    .unwrap();
+    assert_ne!(fragment["url"], "search/");
+}

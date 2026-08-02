@@ -336,6 +336,7 @@ pub(crate) fn build_once(
             yuzu_config::CrossrefNumbering::Site
         ),
         glossary: yuzu_render::glossary_options(&rc.config),
+        search_page: yuzu_render::search_page_options(&rc.config),
     };
     let site = yuzu_core::build_site_model_cached(
         &rc.content_dir,
