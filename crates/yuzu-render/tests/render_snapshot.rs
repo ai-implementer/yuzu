@@ -89,6 +89,8 @@ fn 生成物一式が揃っている() {
     let syntect_css = fs::read_to_string(dist.join("_assets/css/syntect.css")).unwrap();
     assert!(syntect_css.contains("yz-"));
     assert!(syntect_css.contains("html[data-theme=\"dark\"]"));
+    // ダーク配色は画面専用（@media screen）＝印刷は常にライト（Phase 55）
+    assert!(syntect_css.contains("@media screen"));
 
     // テーマアセット・public パススルー・build_id
     assert!(dist.join("_assets/css/theme.css").is_file());
@@ -776,6 +778,8 @@ fn theme_css_vars_が_head_に注入される() {
     assert!(index.contains("--accent: #0a6cff;"), "light の上書きが入る");
     assert!(index.contains("html[data-theme=\"dark\"] {"));
     assert!(index.contains("--accent: #7fb2ff;"), "dark の上書きが入る");
+    // dark 側の上書きは画面専用（印刷では :root のライト値が生きる。Phase 55）
+    assert!(index.contains("@media screen {"), "{index}");
 }
 
 #[test]

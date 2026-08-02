@@ -1,5 +1,6 @@
 /* yuzu デフォルトテーマ
- * カラーは CSS 変数で定義し、html[data-theme="dark"] で上書きする。
+ * カラーは CSS 変数で定義し、html[data-theme="dark"] で上書きする
+ * （ダークは @media screen 内 = 画面専用。印刷は常に :root のライト値）。
  * シンタックスハイライトの配色は syntect.css（ビルド時生成）が担う。 */
 
 :root {
@@ -48,32 +49,36 @@
   --content-max: 62rem; /* 992px。.layout の max-width とセットで調整する */
 }
 
-html[data-theme="dark"] {
-  /* ダーク: ネイビー（ライトの明度構造を保ち、色相を構造ブルーの 213° に揃えて導出） */
-  --bg: #0c1c2f;
-  --bg-outer: #060f1a; /* .layout の外側（左右余白）。本文パネルより濃く */
-  --bg-subtle: #142740;
-  --bg-hover: #1c3452;
-  --bg-code: #0a1726;
-  --code-hl-bg: #16304e; /* コードの行ハイライト（--bg-code より一段明るい面） */
-  --fg: #dce7f5;
-  --fg-muted: #93a9c9;
-  --border: #2b4467;
-  --border-muted: #20304b;
-  --border-strong: #3e5d8c;
-  --accent: #4e8fe0; /* 明ブルー（暗地では明るい側を装飾に立てる） */
-  --accent-fg: #85b6f2;
-  --accent-subtle: #153357;
-  --accent-2: #ff6b47;
-  --accent-2-fg: #ff9973;
-  --accent-2-subtle: #46231a;
-  --link: #66b3e8;
-  /* --alert-note は --accent-fg 参照のため上書き不要（実体 #85b6f2、AA 8.15） */
-  --alert-tip: #3fb950; /* AA 6.76 */
-  --alert-important: #ab7df8; /* AA 5.74 */
-  --alert-warning: #d29922; /* AA 6.80 */
-  --alert-caution: #f85149; /* AA 5.12 */
-  --shadow: 0 0 14px rgba(0, 0, 0, 0.55); /* 暗地ではライト用の淡い影が見えないため濃く */
+/* ダークは画面専用（@media screen）。印刷は常に :root のライト値になり、
+   @media print 側での変数の再指定は不要（Phase 55。詳細度は包んでも不変） */
+@media screen {
+  html[data-theme="dark"] {
+    /* ダーク: ネイビー（ライトの明度構造を保ち、色相を構造ブルーの 213° に揃えて導出） */
+    --bg: #0c1c2f;
+    --bg-outer: #060f1a; /* .layout の外側（左右余白）。本文パネルより濃く */
+    --bg-subtle: #142740;
+    --bg-hover: #1c3452;
+    --bg-code: #0a1726;
+    --code-hl-bg: #16304e; /* コードの行ハイライト（--bg-code より一段明るい面） */
+    --fg: #dce7f5;
+    --fg-muted: #93a9c9;
+    --border: #2b4467;
+    --border-muted: #20304b;
+    --border-strong: #3e5d8c;
+    --accent: #4e8fe0; /* 明ブルー（暗地では明るい側を装飾に立てる） */
+    --accent-fg: #85b6f2;
+    --accent-subtle: #153357;
+    --accent-2: #ff6b47;
+    --accent-2-fg: #ff9973;
+    --accent-2-subtle: #46231a;
+    --link: #66b3e8;
+    /* --alert-note は --accent-fg 参照のため上書き不要（実体 #85b6f2、AA 8.15） */
+    --alert-tip: #3fb950; /* AA 6.76 */
+    --alert-important: #ab7df8; /* AA 5.74 */
+    --alert-warning: #d29922; /* AA 6.80 */
+    --alert-caution: #f85149; /* AA 5.12 */
+    --shadow: 0 0 14px rgba(0, 0, 0, 0.55); /* 暗地ではライト用の淡い影が見えないため濃く */
+  }
 }
 
 * {
@@ -1722,5 +1727,150 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
 
   .pager-next {
     margin-left: 0;
+  }
+}
+
+/* ---- 印刷（Phase 55） ----
+   紙 / PDF 向け。画面専用 UI を隠し、1 カラムへ固定する。
+   注意: 上のレスポンシブ MQ はメディアタイプ無指定（= all）のため
+   A4 縦（≒ 49.6rem）では print でも成立する。既存ブレークポイントに任せず
+   ここで明示的に上書きし、このブロックは**必ずファイル末尾**に置く
+   （同詳細度は後勝ちで効かせる）。ダーク定義は @media screen で
+   画面専用化してあるので、印刷は常にライト値になる */
+@media print {
+  /* 画面専用 UI を隠す（.site-header は検索・テーマ切替・ナビトグルごと消える。
+     パンくず・最終更新（.page-meta-updated）・draft バナーは紙にも残す） */
+  .skip-link,
+  .site-header,
+  .sidebar,
+  .toc,
+  .toc-mobile, /* ≤72rem で display:block になるため明示的に消す */
+  .page-actions, /* page-copy.js が挿入するコピー行 */
+  .copy-button, /* copy-button.js が挿入 */
+  .pager,
+  .page-meta-edit, /* 「このページを編集」。最終更新は残す */
+  .markdown-body .anchor,
+  .markdown-body .footnote-backref,
+  #yuzu-search-page /* 検索結果ページの UI 一式（JS 必須なので紙では無意味） */ {
+    display: none;
+  }
+
+  /* 外周の濃い面は紙では無意味（背景印刷 ON の環境向け。
+     本文側の淡い面 --bg-subtle 等は構造情報として残す） */
+  body {
+    background: none;
+  }
+
+  /* 3 カラム grid → 通常フロー。sticky 前提の最低高もリセット */
+  .layout {
+    display: block;
+    max-width: none;
+    min-height: 0;
+    padding: 0;
+    background: none;
+  }
+
+  .content {
+    max-width: none;
+  }
+
+  /* 表: 横スクロール（display:block + overflow）をやめて標準の表へ戻す。
+     display:table なら改ページ時に thead が各ページへ再掲され、
+     行単位の改ページ制御も効く。overflow-wrap は列の最小幅を細らせて
+     紙幅に収めるため */
+  .markdown-body table {
+    display: table;
+    max-width: 100%;
+    overflow-x: visible;
+  }
+
+  .markdown-body th,
+  .markdown-body td {
+    overflow-wrap: anywhere;
+  }
+
+  .markdown-body tr {
+    break-inside: avoid;
+  }
+
+  /* コード: 横スクロールをやめて折り返す（長いトークンも紙から出さない）。
+     break-inside は付けない（長大コードで 1 ページ弱の空白を作るため） */
+  .markdown-body pre {
+    overflow-x: visible;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* コピーボタン退避で空けていた言語ラベルの右余白を戻す */
+  body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
+    margin-right: 0;
+  }
+
+  /* 数式: スクロール不能なのではみ出しは overflow visible で許容 */
+  .markdown-body .math-display,
+  .markdown-body span[data-math-style="display"] {
+    overflow-x: visible;
+  }
+
+  /* タブ: 全パネルを縦に展開する。display:block で flex の order が無効になり
+     DOM 順（ラベル → パネル）で並ぶ。overflow:hidden は展開内容が切れるので戻す */
+  .markdown-body .tabs {
+    display: block;
+    overflow: visible;
+  }
+
+  .markdown-body .tabs > .tab-panel {
+    display: block;
+  }
+
+  /* ラベルは各パネルの小見出しとして残す。:checked 側の画面ルール
+     （選択タブの面・下線消し）が高詳細度で勝つため、同じセレクタを併記して潰す */
+  .markdown-body .tabs > .tab-label,
+  .markdown-body .tabs > .tab-radio:checked + .tab-label {
+    display: block;
+    font-weight: 600;
+    color: var(--fg);
+    background: var(--bg-subtle);
+    border-top: 1px solid var(--border);
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .markdown-body .tabs > .tab-label:first-of-type {
+    border-top: none; /* .tabs の外枠と二重にしない */
+  }
+
+  /* 改ページ制御: 見出し直下・図・行・Admonition の泣き別れを防ぐ
+     （ページより大きい要素の break-inside: avoid はブラウザが自動解除する） */
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3,
+  .markdown-body h4 {
+    break-after: avoid;
+  }
+
+  .markdown-body figure,
+  .markdown-body .markdown-alert {
+    break-inside: avoid;
+  }
+
+  /* キャプションは対になる図・表から切り離さない（表は前置き・図は後置きの両対応） */
+  .markdown-body .caption {
+    break-before: avoid;
+    break-after: avoid;
+  }
+
+  /* リンク: 紙では本文色（下線が既にリンクの符号）。
+     外部リンクだけ URL を併記する（内部リンクの相対パスはノイズなので併記しない） */
+  .markdown-body a {
+    color: inherit;
+  }
+
+  .markdown-body a[href^="http://"]::after,
+  .markdown-body a[href^="https://"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    color: var(--fg-muted);
+    overflow-wrap: anywhere;
   }
 }

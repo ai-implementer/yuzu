@@ -3,6 +3,10 @@
 //! ライト側の CSS をそのまま出し、ダーク側は各ルールのセレクタに
 //! `html[data-theme="dark"]` を前置してスコープする。
 //! syntect の生成 CSS はフラットなクラスルール列なので、この文字列処理で安全。
+//!
+//! ダーク側はさらに `@media screen` で包む＝**画面専用**（theme.css の
+//! ダーク変数ブロックと同じ規律）。印刷は常にライト配色になり、
+//! `@media print` 側での上書き（詳細度戦争・`!important`）が要らなくなる。
 
 use syntect::highlighting::ThemeSet;
 use syntect::html::css_for_theme_with_class_style;
@@ -26,8 +30,11 @@ pub(crate) fn generate_syntect_css(light: &str, dark: &str) -> Result<String, Re
     let light_css = css_for_theme_with_class_style(get(light)?, CLASS_STYLE)?;
     let dark_css = css_for_theme_with_class_style(get(dark)?, CLASS_STYLE)?;
 
+    // ダークは画面専用。scope_css 自体は触らず外から包む＝出力差分が
+    // 「@media screen { の前置と閉じ } の追加」だけになり、画面側の
+    // リグレッション有無を目視しやすい
     Ok(format!(
-        "/* yuzu build が生成（light: {light} / dark: {dark}）。手で編集しない */\n\n{light_css}\n{}",
+        "/* yuzu build が生成（light: {light} / dark: {dark}）。手で編集しない */\n\n{light_css}\n@media screen {{\n{}}}\n",
         scope_css(&dark_css, DARK_SCOPE)
     ))
 }
@@ -94,7 +101,15 @@ pub(crate) fn generate_theme_var_overrides(
         }
     };
 
-    let css = format!("{}{}", block(":root", vars), block(DARK_SCOPE, dark_vars));
+    // ダーク側は画面専用（syntect.css・theme.css のダーク定義と同じ規律）。
+    // 空のときに空の at-rule を出さない
+    let dark_block = block(DARK_SCOPE, dark_vars);
+    let dark_block = if dark_block.is_empty() {
+        dark_block
+    } else {
+        format!("@media screen {{\n{dark_block}}}\n")
+    };
+    let css = format!("{}{}", block(":root", vars), dark_block);
     (!css.is_empty()).then_some(css)
 }
 
@@ -120,6 +135,12 @@ mod tests {
         let css = generate_syntect_css("InspiredGitHub", "base16-ocean.dark").unwrap();
         assert!(css.contains("yz-"), "接頭辞付きクラス: {}", &css[..200]);
         assert!(css.contains("html[data-theme=\"dark\"]"));
+        // ダークは画面専用（@media screen の内側）＝印刷は常にライト配色
+        assert!(css.contains("@media screen {"));
+        assert!(
+            css.find("@media screen").unwrap() < css.find("html[data-theme=\"dark\"]").unwrap(),
+            "ダークスコープが @media screen の内側にない"
+        );
     }
 
     #[test]
@@ -152,6 +173,20 @@ mod tests {
         assert!(!css.contains("display:none"));
         assert!(css.contains("html[data-theme=\"dark\"] {"));
         assert!(css.contains("  --accent: #7fb2ff;"));
+        // ダーク側の上書きは画面専用（印刷ではライトの :root 値が生きる）
+        assert!(css.contains("@media screen {"));
+    }
+
+    #[test]
+    fn ダーク変数が空なら_media_screen_を出さない() {
+        use std::collections::BTreeMap;
+        let vars = BTreeMap::from([("accent".to_string(), "#0a6cff".to_string())]);
+        let css = generate_theme_var_overrides(&vars, &BTreeMap::new()).unwrap();
+        assert!(css.contains(":root {"));
+        assert!(
+            !css.contains("@media screen"),
+            "空の at-rule を出してはいけない: {css}"
+        );
     }
 
     #[test]
