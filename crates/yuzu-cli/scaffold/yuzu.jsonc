@@ -19,7 +19,8 @@
     // "cssVars": { "accent": "#0a6cff" },
     // "cssVarsDark": { "accent": "#7fb2ff" } // ダークモード時のみの上書き
   },
-  "nav": { "auto": true },
+  // collapse: false でサイドバーを常時全展開（既定は現在のセクションだけ開く）
+  "nav": { "auto": true, "collapse": true },
   "markdown": {
     "gfm": true,
     // "lineNumbers": true でコードブロックの行番号をサイト既定 on にできる

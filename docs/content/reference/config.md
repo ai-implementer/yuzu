@@ -33,7 +33,7 @@ description: yuzu.jsonc の全設定キー・型・既定値
     "cssVars": { "accent": "#0a6cff" },
     "cssVarsDark": { "accent": "#7fb2ff" }
   },
-  "nav": { "auto": true },
+  "nav": { "auto": true, "collapse": true },
   "markdown": {
     "gfm": true,
     "highlight": { "enabled": true, "themeLight": "InspiredGitHub", "themeDark": "base16-ocean.dark", "lineNumbers": false },
@@ -113,12 +113,14 @@ glob 評価が想定外になるため）。
 | `dark` | bool / `true` | ダークモード切替ボタンを出す |
 | `cssVars` | object / `{}` | テーマ CSS 変数の上書き（キーは `--` 省略可） |
 | `cssVarsDark` | object / `{}` | ダークモード時のみの上書き |
+| `toc.levels` | string / `"2-3"` | ページ内 TOC に載せる見出しレベルの範囲（`"2-4"` / `"2"` の形。h1〜h6 = 1〜6） |
 
 ## nav
 
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
-| `auto` | bool / `true` | ディレクトリ階層からサイドバーを自動生成 |
+| `auto` | bool / `true` | ディレクトリ階層からサイドバーを自動生成（現在は自動生成のみ対応。`false` は将来の手動ナビ定義用の予約で、指定しても効果はありません） |
+| `collapse` | bool / `true` | サイドバーで現在ページの祖先セクションだけを開き、他を折りたたむ（クリックでその場展開できます）。`false` で従来の全展開 |
 
 ## markdown
 

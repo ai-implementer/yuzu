@@ -122,6 +122,12 @@ jobs:
           ! grep -q '\[検索\](' dist/llms.txt
           # ページ単位 .md も出さない
           ! test -f dist/search.md
+          # ナビと目次の規模対応（Phase 56）: 現在セクションだけ開いた折りたたみ・
+          # 他セクションは閉じる・TOC の nav 化・scrollspy 基準線の実測化
+          grep -q '<details class="nav-section" open>' dist/guide/writing/index.html
+          grep -q '<details class="nav-section">' dist/guide/writing/index.html
+          grep -q '<nav aria-label="このページの目次">' dist/guide/writing/index.html
+          grep -q 'scrollMarginTop' dist/_assets/js/scrollspy.js
           # 印刷 / PDF 対応（Phase 55）: print CSS・ダーク定義の画面専用化・
           # 印刷前に閉じた details を開く JS が配信されている
           grep -q '@media print' dist/_assets/css/theme.css
