@@ -401,7 +401,7 @@ yuzu lint --fix
 （`broken-link` / `broken-anchor`）・引用先の不備（`include-error`）・
 API 仕様の不備（`spec-error`）・整形差分（`fmt`）を足した統合チェックです。
 
-全ルールの一覧は[リファレンス](https://ai-implementer.github.io/yuzu/reference/rules/)にあります。
+全ルールの一覧は[リファレンス](https://ai.implementer.net/yuzu/reference/rules/)にあります。
 
 CI へは終了コード（0 = 違反なし / 1 = 違反あり / 2 = 実行エラー）で組み込めます。
 GitHub Actions なら `--format github` で**注釈として PR の diff 行に**出せます:

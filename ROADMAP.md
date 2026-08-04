@@ -117,7 +117,7 @@ Phase は価値と実装コスト・依存関係の順（着手時に個別に�
 > docs の文言を「予約・効果なし」へ正直化（削除は既存プロジェクトへ未知キー警告、
 > 配線は false の意味ある挙動が無い）
 
-### 57 dogfooding 改善 ⬜
+### 57 dogfooding 改善 ✅
 
 恒例のバッファ枠（着手時にユーザが選ぶ）。**CSS だけで直せて実害が大きいもの**から並べる:
 
@@ -136,6 +136,15 @@ Phase は価値と実装コスト・依存関係の順（着手時に個別に�
 - **サイト URL の更新** — README / ROADMAP が `ai-implementer.github.io` を指したままで、
   実サイト（`ai.implementer.net`）へ 301 されている
 - 下の「v0.10.1 レビューの持ち越し」の小さいもの
+
+> **決着（2026-08-04）**: 今回の選定は**サイト URL の更新のみ**
+> （README 6 箇所・ROADMAP 2 箇所に加え、調査で scaffold の
+> `getting-started.md` にも 1 箇所見つかり同時に更新 = `yuzu new` した
+> 全プロジェクトに旧 URL が配られていた）。docs.yml は Pages の host から
+> base-url を組むためカスタムドメインへ自動追従済みで変更不要。
+> **残りの候補（SSR 図モバイル・OS ダーク縮退・パーマリンク到達性・
+> head メタ・読了時間・--root / shell 補完・v0.10.1 持ち越し）は
+> 次版へ持ち越し**（上の一覧を次版の策定時にそのまま使う）
 
 > `prefers-reduced-motion` は**現状は不要**（theme.css に `transition` / `animation` /
 > `scroll-behavior: smooth` が 1 件も無く空振りする）。動きを足すときに同時に必要になる。
@@ -226,7 +235,7 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   ビルドのページ並列化（render・index） / dogfooding 改善＝近接ブースト・フレーズヒント・
   ビルド時間表示 / 検索スタックのライブラリ化と OPFS キャッシュ
 - **v0.7**（Phase 36〜38）公開・配布の整備 —
-  [ドキュメントサイト](https://ai-implementer.github.io/yuzu/)を GitHub Pages へ公開 /
+  [ドキュメントサイト](https://ai.implementer.net/yuzu/)を GitHub Pages へ公開 /
   tag push で 4 プラットフォームのバイナリを配布する release.yml /
   [tankan の crates.io 単独公開](https://crates.io/crates/tankan)。
   名前 `yuzu`・`yuzu-core` の取得済み判明により本体の crates.io 公開は将来構想へ再定義
@@ -500,7 +509,7 @@ mikan は crates.io で単独公開している（tankan と同じく独立バ�
 <summary>完了済み: v0.7（Phase 36〜38）の内訳</summary>
 
 - **36 yuzu 自身のドキュメントサイト公開** — dogfooding の総仕上げとして、
-  yuzu 自身のドキュメントを yuzu で書いて GitHub Pages に公開（https://ai-implementer.github.io/yuzu/ ）。
+  yuzu 自身のドキュメントを yuzu で書いて GitHub Pages に公開（https://ai.implementer.net/yuzu/ ）。
   `docs/` をこのリポジトリ自身の yuzu プロジェクトにし（`docs/yuzu.jsonc` ＋ content 16 ページ: トップ＋ガイド 9・リファレンス 3・開発 3。
   現在は 17 ページ）、README をページ階層へ再構成。
   主要機能を実運用で使用: tankan SSR（9 図種ギャラリー＋ワークスペース依存図。

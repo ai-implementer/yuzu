@@ -7,7 +7,7 @@
 Markdown で書いた設計書を、プロダクション品質の静的 HTML ドキュメントサイトに
 変換する **Rust 製のドキュメント生成ツール**。
 
-**ドキュメントサイト**: https://ai-implementer.github.io/yuzu/ — yuzu 自身で
+**ドキュメントサイト**: https://ai.implementer.net/yuzu/ — yuzu 自身で
 ビルドして GitHub Pages へ公開している実例サイト（原稿は [docs/](docs/)、
 デプロイは [.github/workflows/docs.yml](.github/workflows/docs.yml)）。
 
@@ -58,10 +58,10 @@ yuzu check          # lint + リンク切れ + fmt 差分の統合チェック�
 
 | 知りたいこと | 参照先 |
 | --- | --- |
-| インストールから公開まで | [ガイド](https://ai-implementer.github.io/yuzu/guide/) |
-| 記法（Admonition・図表番号・折りたたみ・インクルード） | [執筆の基本](https://ai-implementer.github.io/yuzu/guide/writing/) |
-| 設定キー・CLI・診断ルールの一覧 | [リファレンス](https://ai-implementer.github.io/yuzu/reference/) |
-| 内部設計・凍結した設計判断・ワークスペース構成 | [開発](https://ai-implementer.github.io/yuzu/development/) |
+| インストールから公開まで | [ガイド](https://ai.implementer.net/yuzu/guide/) |
+| 記法（Admonition・図表番号・折りたたみ・インクルード） | [執筆の基本](https://ai.implementer.net/yuzu/guide/writing/) |
+| 設定キー・CLI・診断ルールの一覧 | [リファレンス](https://ai.implementer.net/yuzu/reference/) |
+| 内部設計・凍結した設計判断・ワークスペース構成 | [開発](https://ai.implementer.net/yuzu/development/) |
 | 開発計画とこれまでの内訳 | [ROADMAP.md](ROADMAP.md) |
 
 ## 開発
@@ -74,7 +74,7 @@ cargo fmt --all --check
 ```
 
 クレート構成・依存方向・凍結した設計判断は
-[開発ドキュメント](https://ai-implementer.github.io/yuzu/development/)にまとまっている。
+[開発ドキュメント](https://ai.implementer.net/yuzu/development/)にまとまっている。
 
 ## ライセンス
 
