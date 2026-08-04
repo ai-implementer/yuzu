@@ -1,11 +1,19 @@
 {# 狭幅（右カラム TOC 非表示時）用のページ内目次。JS 不要の details/summary。
-   表示制御は CSS（.toc-mobile は 72rem 以下でのみ表示） #}
-{% if page.toc %}<details class="toc-mobile">
-<summary>目次</summary>
+   表示制御は CSS（.toc-mobile は 72rem 以下でのみ表示）。
+   入れ子と <a> の位置の規律は toc.jinja と同じ #}
+{% macro toc_list(items) %}
 <ul>
-{% for item in page.toc %}
-<li class="toc-level-{{ item.level }}"><a href="#{{ item.id }}">{{ item.text }}</a></li>
+{% for item in items %}
+<li class="toc-level-{{ item.level }}"><a href="#{{ item.id }}">{{ item.text }}</a>
+{% if item.children %}{{ toc_list(item.children) }}
+{% endif %}</li>
 {% endfor %}
 </ul>
+{% endmacro %}
+{% if page.toc %}<details class="toc-mobile">
+<summary>目次</summary>
+<nav aria-label="このページの目次">
+{{ toc_list(page.toc) }}
+</nav>
 </details>
 {% endif %}

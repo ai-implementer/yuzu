@@ -43,6 +43,7 @@ expression: index
 <div class="layout">
 
 
+
 <aside class="sidebar" id="site-sidebar">
 <nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
 
@@ -54,7 +55,8 @@ expression: index
 </li>
 
 <li>
-<span class="nav-label">guide</span>
+<details class="nav-section">
+<summary><a href="/docs/guide/">ガイド</a></summary>
 
 <ul>
 
@@ -65,6 +67,7 @@ expression: index
 
 </ul>
 
+</details>
 </li>
 
 </ul>
@@ -98,9 +101,11 @@ expression: index
 
   // 現在ページの項目がはみ出しているときだけ最小限寄せる（scrollspy.js の keepVisible と同じ）。
   // サイドバーのリンクから来た場合は可視域内なので動かず、復元位置がそのまま残る。
-  // a は display:block、offsetParent は position:sticky な .sidebar（狭幅では外れるので弾く）
+  // a は display:block、offsetParent は position:sticky な .sidebar（狭幅では外れるので弾く）。
+  // active は現在ページ自身にだけ付く。子持ちノードが現在ページのときは
+  // details/summary の配下にリンクが移るため、両方のマークアップを引く
   function keepActiveVisible() {
-    var a = sidebar.querySelector("li.active > a");
+    var a = sidebar.querySelector("li.active > a, li.active > details > summary > a");
     if (!a || a.offsetParent !== sidebar) return;
     var margin = 8;
     var top = a.offsetTop;
@@ -143,6 +148,7 @@ expression: index
 
 
 
+
 <article class="markdown-body" data-md-url="/docs/index.md">
 <h1><a href="#fixture-docs" aria-hidden="true" class="anchor" id="fixture-docs"></a>Fixture Docs</h1>
 <p><a href="/docs/guide/getting-started/">はじめに</a>を読む。</p>
@@ -171,13 +177,14 @@ expression: index
 
 </article>
 <nav class="pager" aria-label="前後のページ">
-<a class="pager-next" rel="next" href="/docs/guide/getting-started/"><span class="pager-dir">次のページ</span><span class="pager-title">はじめに</span></a>
+<a class="pager-next" rel="next" href="/docs/guide/"><span class="pager-dir">次のページ</span><span class="pager-title">ガイド</span></a>
 </nav>
 
 
 </main>
 
-<aside class="toc" hidden aria-label="このページの目次">
+
+<aside class="toc" hidden>
 </aside>
 </div>
 <script src="/docs/_assets/js/theme.js"></script>

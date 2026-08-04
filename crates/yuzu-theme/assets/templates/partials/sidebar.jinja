@@ -1,11 +1,21 @@
-{# ナビツリーを再帰マクロで描画する（ディレクトリ階層＝ナビ階層） #}
+{# ナビツリーを再帰マクロで描画する（ディレクトリ階層＝ナビ階層）。
+   nav_collapse（nav.collapse。既定 true）のとき子持ちノードを <details> にし、
+   現在ページの祖先チェーン（item.open）だけを開く。summary 内のリンクは
+   テキストクリック = 遷移・マーカークリック = 開閉（JS 不要で成立する）。
+   active は現在ページ自身にだけ付く（祖先は open。base.jinja のスクロール復元と
+   theme.css の li.active > a 系セレクタがこの意味に依存する） #}
+{% macro nav_link(item) %}{% if item.url %}<a href="{{ item.url | url }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.title }}</a>{% else %}<span class="nav-label">{{ item.title }}</span>{% endif %}{% endmacro %}
 {% macro nav_list(items) %}
 <ul>
 {% for item in items %}
 <li{% if item.active %} class="active"{% endif %}>
-{% if item.url %}<a href="{{ item.url | url }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.title }}</a>{% else %}<span class="nav-label">{{ item.title }}</span>{% endif %}
+{% if nav_collapse and item.children %}<details class="nav-section"{% if item.open %} open{% endif %}>
+<summary>{{ nav_link(item) }}</summary>
+{{ nav_list(item.children) }}
+</details>
+{% else %}{{ nav_link(item) }}
 {% if item.children %}{{ nav_list(item.children) }}{% endif %}
-</li>
+{% endif %}</li>
 {% endfor %}
 </ul>
 {% endmacro %}

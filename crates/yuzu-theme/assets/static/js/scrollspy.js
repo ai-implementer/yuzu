@@ -1,5 +1,5 @@
 // ページ内 TOC のスクロールスパイ（プログレッシブエンハンスメント）。
-// 「現在のセクション」＝ 基準線（html の scroll-padding-top の位置）を上に越えた最後の見出し。
+// 「現在のセクション」＝ 基準線（アンカー遷移の着地位置）を上に越えた最後の見出し。
 // 見出し位置はキャッシュしない（mermaid のクライアント描画や画像ロードで
 // レイアウト高が変わるため、毎回 getBoundingClientRect で判定する）
 (function () {
@@ -20,6 +20,7 @@
       // id は見出し内の空 <a class="anchor"> に付く（comrak header_ids）ので、
       // 幾何判定は親の h2/h3 で行う（見出し上端はアンカーよりわずかに上に来て判定が安定する）
       entry = byId[id] = {
+        anchor: anchor, // 基準線の実測（scroll-margin-top）に使う
         heading: anchor.closest("h1,h2,h3,h4,h5,h6") || anchor,
         items: [],
       };
@@ -33,11 +34,15 @@
   var current = null; // 現在 active な entry
   var pinned = null; // TOC クリック直後の固定。ユーザー起点のスクロール操作で解除する
 
-  // 基準線: CSS の scroll-padding-top（getComputedStyle は px 解決済みを返す）
-  // ＋サブピクセル誤差の保険。ハッシュ遷移の着地位置と点灯項目がこれで一致する
+  // 基準線: 見出しアンカーの scroll-margin-top（theme.css の現行方式）と
+  // ルートの scroll-padding-top（旧方式。テーマ上書きで戻した場合の互換）の
+  // 大きい方＋サブピクセル誤差の保険。ハッシュ遷移の着地位置と点灯項目が
+  // これで一致する（getComputedStyle は px 解決済みを返す。rAF 内で
+  // 1 回だけ呼ぶのでコストは無視できる）
   function offsetLine() {
-    var v = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
-    return (isNaN(v) ? 0 : v) + 2;
+    var margin = parseFloat(getComputedStyle(entries[0].anchor).scrollMarginTop);
+    var padding = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
+    return Math.max(isNaN(margin) ? 0 : margin, isNaN(padding) ? 0 : padding) + 2;
   }
 
   function pick() {
@@ -60,13 +65,17 @@
 
   // sticky な .toc は overflow-y: auto の独立スクロール領域なので、active 項目を可視域に保つ。
   // scrollIntoView は文書側のスクロールに連鎖しうるため scrollTop を直接調整する
-  //（li.offsetTop は offsetParent = .toc 基準。閉じた details の .toc-mobile には触らない）
+  //（offsetTop は offsetParent = .toc 基準。閉じた details の .toc-mobile には触らない）。
+  // 測定は li ではなく**直下の a**（入れ子 TOC では li がサブツリー全体を含み、
+  // 親セクションの点灯で子リスト全体を収めようとして跳ぶため。テンプレートは
+  // a を li の最初の子に置く契約 = toc.jinja のコメント参照）
   function keepVisible(li) {
-    if (!desktopToc || li.offsetParent !== desktopToc) return;
+    var row = li.firstElementChild || li;
+    if (!desktopToc || row.offsetParent !== desktopToc) return;
     if (desktopToc.scrollHeight <= desktopToc.clientHeight) return;
     var margin = 8;
-    var top = li.offsetTop;
-    var bottom = top + li.offsetHeight;
+    var top = row.offsetTop;
+    var bottom = top + row.offsetHeight;
     if (top < desktopToc.scrollTop + margin) {
       desktopToc.scrollTop = top - margin;
     } else if (bottom > desktopToc.scrollTop + desktopToc.clientHeight - margin) {

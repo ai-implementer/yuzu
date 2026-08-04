@@ -28,6 +28,14 @@ graph TD;
 
 ---
 
+URL: /docs/guide/
+
+# ガイド
+
+ガイドの入口です。
+
+---
+
 URL: /docs/guide/getting-started/
 
 # はじめに
@@ -47,3 +55,7 @@ fn main() {
 ### 詳細
 
 本文。
+
+#### 補足
+
+h4 は既定の TOC（2-3）には載らない。`theme.toc.levels` の検証用。

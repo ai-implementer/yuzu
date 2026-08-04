@@ -42,6 +42,7 @@ expression: html
 <div class="layout">
 
 
+
 <aside class="sidebar" id="site-sidebar">
 <nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
 
@@ -53,7 +54,8 @@ expression: html
 </li>
 
 <li>
-<span class="nav-label">guide</span>
+<details class="nav-section">
+<summary><a href="https://example.com/docs/guide/">ガイド</a></summary>
 
 <ul>
 
@@ -64,6 +66,7 @@ expression: html
 
 </ul>
 
+</details>
 </li>
 
 </ul>
@@ -97,9 +100,11 @@ expression: html
 
   // 現在ページの項目がはみ出しているときだけ最小限寄せる（scrollspy.js の keepVisible と同じ）。
   // サイドバーのリンクから来た場合は可視域内なので動かず、復元位置がそのまま残る。
-  // a は display:block、offsetParent は position:sticky な .sidebar（狭幅では外れるので弾く）
+  // a は display:block、offsetParent は position:sticky な .sidebar（狭幅では外れるので弾く）。
+  // active は現在ページ自身にだけ付く。子持ちノードが現在ページのときは
+  // details/summary の配下にリンクが移るため、両方のマークアップを引く
   function keepActiveVisible() {
-    var a = sidebar.querySelector("li.active > a");
+    var a = sidebar.querySelector("li.active > a, li.active > details > summary > a");
     if (!a || a.offsetParent !== sidebar) return;
     var margin = 8;
     var top = a.offsetTop;
@@ -141,6 +146,7 @@ expression: html
 
 
 
+
 <article class="markdown-body">
 <h1><a href="#検索" aria-hidden="true" class="anchor" id="検索"></a>検索</h1>
 
@@ -162,7 +168,8 @@ expression: html
 
 </main>
 
-<aside class="toc" hidden aria-label="このページの目次">
+
+<aside class="toc" hidden>
 </aside>
 </div>
 <script src="https://example.com/docs/_assets/js/theme.js"></script>

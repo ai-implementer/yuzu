@@ -42,6 +42,7 @@ expression: guide
 <div class="layout">
 
 
+
 <aside class="sidebar" id="site-sidebar">
 <nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
 
@@ -53,7 +54,8 @@ expression: guide
 </li>
 
 <li>
-<span class="nav-label">guide</span>
+<details class="nav-section" open>
+<summary><a href="/docs/guide/">ガイド</a></summary>
 
 <ul>
 
@@ -64,6 +66,7 @@ expression: guide
 
 </ul>
 
+</details>
 </li>
 
 </ul>
@@ -97,9 +100,11 @@ expression: guide
 
   // 現在ページの項目がはみ出しているときだけ最小限寄せる（scrollspy.js の keepVisible と同じ）。
   // サイドバーのリンクから来た場合は可視域内なので動かず、復元位置がそのまま残る。
-  // a は display:block、offsetParent は position:sticky な .sidebar（狭幅では外れるので弾く）
+  // a は display:block、offsetParent は position:sticky な .sidebar（狭幅では外れるので弾く）。
+  // active は現在ページ自身にだけ付く。子持ちノードが現在ページのときは
+  // details/summary の配下にリンクが移るため、両方のマークアップを引く
   function keepActiveVisible() {
-    var a = sidebar.querySelector("li.active > a");
+    var a = sidebar.querySelector("li.active > a, li.active > details > summary > a");
     if (!a || a.offsetParent !== sidebar) return;
     var margin = 8;
     var top = a.offsetTop;
@@ -139,24 +144,37 @@ expression: guide
 </script>
 <main class="content" id="yuzu-main">
 
+
 <details class="toc-mobile">
 <summary>目次</summary>
+<nav aria-label="このページの目次">
+
 <ul>
 
-<li class="toc-level-2"><a href="#インストール">インストール</a></li>
+<li class="toc-level-2"><a href="#インストール">インストール</a>
+</li>
 
-<li class="toc-level-2"><a href="#使い方">使い方</a></li>
+<li class="toc-level-2"><a href="#使い方">使い方</a>
 
-<li class="toc-level-3"><a href="#詳細">詳細</a></li>
+<ul>
+
+<li class="toc-level-3"><a href="#詳細">詳細</a>
+</li>
 
 </ul>
+
+</li>
+
+</ul>
+
+</nav>
 </details>
 
 
 <nav class="breadcrumb" aria-label="現在位置">
 <ol>
 <li><a href="/docs/">ホーム</a></li>
-<li><span class="breadcrumb-label">guide</span></li>
+<li><a href="/docs/guide/">ガイド</a></li>
 <li><span class="breadcrumb-current" aria-current="page">はじめに</span></li>
 </ol>
 </nav>
@@ -172,26 +190,41 @@ expression: guide
 <p><a href="/docs/">ホームへ戻る</a></p>
 <h3><a href="#詳細" aria-hidden="true" class="anchor" id="詳細"></a>詳細</h3>
 <p>本文。</p>
+<h4><a href="#補足" aria-hidden="true" class="anchor" id="補足"></a>補足</h4>
+<p>h4 は既定の TOC（2-3）には載らない。<code>theme.toc.levels</code> の検証用。</p>
 
 </article>
 <nav class="pager" aria-label="前後のページ">
-<a class="pager-prev" rel="prev" href="/docs/"><span class="pager-dir">前のページ</span><span class="pager-title">ホーム</span></a>
+<a class="pager-prev" rel="prev" href="/docs/guide/"><span class="pager-dir">前のページ</span><span class="pager-title">ガイド</span></a>
 </nav>
 
 
 </main>
 
-<aside class="toc" aria-label="このページの目次">
+
+<aside class="toc">
+<nav aria-label="このページの目次">
 <div class="toc-title">目次</div>
+
 <ul>
 
-<li class="toc-level-2"><a href="#インストール">インストール</a></li>
+<li class="toc-level-2"><a href="#インストール">インストール</a>
+</li>
 
-<li class="toc-level-2"><a href="#使い方">使い方</a></li>
+<li class="toc-level-2"><a href="#使い方">使い方</a>
 
-<li class="toc-level-3"><a href="#詳細">詳細</a></li>
+<ul>
+
+<li class="toc-level-3"><a href="#詳細">詳細</a>
+</li>
 
 </ul>
+
+</li>
+
+</ul>
+
+</nav>
 </aside>
 </div>
 <script src="/docs/_assets/js/theme.js"></script>

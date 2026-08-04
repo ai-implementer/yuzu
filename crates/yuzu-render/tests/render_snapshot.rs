@@ -381,6 +381,7 @@ fn base_url_がフル_url_なら_sitemap_xml_を生成する() {
     assert!(sitemap.starts_with("<?xml version=\"1.0\""), "{sitemap}");
     assert!(sitemap.contains("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">"));
     assert!(sitemap.contains("<loc>https://example.com/docs/</loc>"));
+    assert!(sitemap.contains("<loc>https://example.com/docs/guide/</loc>"));
     assert!(sitemap.contains("<loc>https://example.com/docs/guide/getting-started/</loc>"));
     assert!(
         !sitemap.contains("first-steps"),
@@ -388,7 +389,7 @@ fn base_url_がフル_url_なら_sitemap_xml_を生成する() {
     );
     assert_eq!(
         sitemap.matches("<url>").count(),
-        2,
+        3,
         "実ページの数だけ: {sitemap}"
     );
 }
@@ -473,13 +474,24 @@ fn llms_false_のページは両ファイルから除外される() {
 
     let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
     assert!(!llms.contains("getting-started"), "llms.txt:\n{llms}");
-    // リンク 0 件になった guide セクションは見出しごと消える
-    assert!(!llms.contains("## guide"), "llms.txt:\n{llms}");
+    // ガイドセクションには index（ガイド）が残る = 見出しは消えない
+    assert!(llms.contains("## ガイド"), "llms.txt:\n{llms}");
     // 他ページは残る
     assert!(llms.contains("- [ホーム]"));
 
     let full = fs::read_to_string(dist.join("llms-full.txt")).unwrap();
     assert!(!full.contains("こんにちは yuzu"), "本文が除外される");
+
+    // セクション内の全ページを除外すると、リンク 0 件の見出しごと消える
+    let dir = build_fixture_with(|root| {
+        for rel in ["content/guide/getting-started.md", "content/guide/index.md"] {
+            let path = root.join(rel);
+            let src = fs::read_to_string(&path).unwrap();
+            fs::write(&path, src.replacen("---\n", "---\nllms: false\n", 1)).unwrap();
+        }
+    });
+    let llms = fs::read_to_string(dir.path().join("dist/llms.txt")).unwrap();
+    assert!(!llms.contains("## ガイド"), "llms.txt:\n{llms}");
 }
 
 #[test]
@@ -646,16 +658,14 @@ fn 前後ページリンクは_nav_順で全ページを連結する() {
     });
     let dist = dir.path().join("dist");
 
-    // 先頭（ホーム）: prev なし・next = はじめに
+    // 先頭（ホーム）: prev なし・next = ガイド（ディレクトリ index）
     let index = fs::read_to_string(dist.join("index.html")).unwrap();
     assert!(!index.contains("rel=\"prev\""));
-    assert!(
-        index.contains(r#"<a class="pager-next" rel="next" href="/docs/guide/getting-started/">"#)
-    );
+    assert!(index.contains(r#"<a class="pager-next" rel="next" href="/docs/guide/">"#));
 
     // 中間（はじめに）: 両方あり
     let mid = fs::read_to_string(dist.join("guide/getting-started/index.html")).unwrap();
-    assert!(mid.contains(r#"rel="prev" href="/docs/">"#));
+    assert!(mid.contains(r#"rel="prev" href="/docs/guide/">"#));
     assert!(mid.contains(r#"rel="next" href="/docs/guide/advanced/">"#));
 
     // 末尾（応用）: next なし・prev = はじめに
@@ -671,20 +681,15 @@ fn 前後ページリンクは_nav_順で全ページを連結する() {
         llms.find(needle)
             .unwrap_or_else(|| panic!("{needle} が llms.txt にない"))
     };
-    assert!(pos("(/docs/index.md)") < pos("(/docs/guide/getting-started.md)"));
+    assert!(pos("(/docs/index.md)") < pos("(/docs/guide.md)"));
+    assert!(pos("(/docs/guide.md)") < pos("(/docs/guide/getting-started.md)"));
     assert!(pos("(/docs/guide/getting-started.md)") < pos("(/docs/guide/advanced.md)"));
 }
 
 #[test]
 fn パンくずはラベルとリンクを出し分ける() {
-    let dir = build_fixture_with(|root| {
-        // guide/ に index.md を足す → パンくず中間がリンクになる
-        fs::write(
-            root.join("content/guide/index.md"),
-            "---\ntitle: ガイド\norder: 0\n---\n# ガイド\n\n本文\n",
-        )
-        .unwrap();
-    });
+    // fixture の guide/ は index.md 持ち → パンくず中間がリンクになる
+    let dir = build_fixture(LiveReloadMode::None);
     let dist = dir.path().join("dist");
 
     // 深いページ: ホーム(リンク) / ガイド(リンク) / はじめに(現在・リンクなし)
@@ -708,6 +713,126 @@ fn パンくずはラベルとリンクを出し分ける() {
     // トップページには出ない
     let index = fs::read_to_string(dist.join("index.html")).unwrap();
     assert!(!index.contains("class=\"breadcrumb\""));
+}
+
+#[test]
+fn サイドバーは現在セクションだけ開いた_details_になる() {
+    let dir = build_fixture(LiveReloadMode::None);
+    let dist = dir.path().join("dist");
+
+    // guide 配下のページ: guide セクションが open、summary 内はリンク
+    // （テキストクリック = 遷移・マーカークリック = 開閉）
+    let page = fs::read_to_string(dist.join("guide/getting-started/index.html")).unwrap();
+    assert!(
+        page.contains(r#"<details class="nav-section" open>"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<summary><a href="/docs/guide/">ガイド</a></summary>"#),
+        "{page}"
+    );
+
+    // トップページ: guide セクションは閉じる
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(
+        index.contains(r#"<details class="nav-section">"#),
+        "{index}"
+    );
+    assert!(!index.contains(r#"<details class="nav-section" open>"#));
+
+    // ディレクトリ index 自身: open ＋ active は summary 配下のリンク側
+    let guide = fs::read_to_string(dist.join("guide/index.html")).unwrap();
+    assert!(guide.contains(r#"<details class="nav-section" open>"#));
+    assert!(
+        guide.contains(
+            r#"<summary><a href="/docs/guide/" aria-current="page">ガイド</a></summary>"#
+        ),
+        "{guide}"
+    );
+
+    // 404: trail が空なので全セクション閉じ
+    let nf = fs::read_to_string(dist.join("404.html")).unwrap();
+    assert!(
+        !nf.contains(r#"<details class="nav-section" open>"#),
+        "{nf}"
+    );
+}
+
+#[test]
+fn nav_collapse_false_なら従来の全展開になる() {
+    let dir = build_fixture_with(|root| {
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace(
+                r#""site":"#,
+                r#""nav": { "collapse": false },
+  "site":"#,
+            ),
+        )
+        .unwrap();
+    });
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(!index.contains("nav-section"), "{index}");
+    assert!(
+        index.contains(r#"<a href="/docs/guide/">ガイド</a>"#),
+        "{index}"
+    );
+}
+
+#[test]
+fn toc_は入れ子になり_theme_toc_levels_で範囲を変えられる() {
+    // 既定（2-3）: <nav> 内包・h3 は h2 の子・h4 は出ない
+    let dir = build_fixture(LiveReloadMode::None);
+    let page =
+        fs::read_to_string(dir.path().join("dist/guide/getting-started/index.html")).unwrap();
+    assert!(
+        page.contains(r#"<nav aria-label="このページの目次">"#),
+        "{page}"
+    );
+    assert!(
+        page.contains("<a href=\"#使い方\">使い方</a>\n\n<ul>"),
+        "h3 が h2 の入れ子にならない: {page}"
+    );
+    assert!(!page.contains("toc-level-4"), "{page}");
+
+    // levels "2-4": h4 も入れ子で出る
+    let dir = build_fixture_with(|root| {
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace(
+                r#""site":"#,
+                r#""theme": { "toc": { "levels": "2-4" } },
+  "site":"#,
+            ),
+        )
+        .unwrap();
+    });
+    let page =
+        fs::read_to_string(dir.path().join("dist/guide/getting-started/index.html")).unwrap();
+    assert!(page.contains("toc-level-4"), "{page}");
+
+    // 不正な levels は警告して既定へ縮退（ビルドは成功する）
+    let dir = build_fixture_with(|root| {
+        let path = root.join("yuzu.jsonc");
+        let src = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            src.replace(
+                r#""site":"#,
+                r#""theme": { "toc": { "levels": "abc" } },
+  "site":"#,
+            ),
+        )
+        .unwrap();
+    });
+    let page =
+        fs::read_to_string(dir.path().join("dist/guide/getting-started/index.html")).unwrap();
+    assert!(!page.contains("toc-level-4"), "{page}");
+    assert!(page.contains("toc-level-3"), "{page}");
 }
 
 #[test]
@@ -1190,7 +1315,7 @@ fn 検索結果ページが生成され集約からは除外される() {
     // sitemap に載らない（実ページ 2 件のまま）
     let sitemap = fs::read_to_string(dist.join("sitemap.xml")).unwrap();
     assert!(!sitemap.contains("/search/"), "{sitemap}");
-    assert_eq!(sitemap.matches("<url>").count(), 2, "{sitemap}");
+    assert_eq!(sitemap.matches("<url>").count(), 3, "{sitemap}");
     // llms.txt に載らない
     let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
     assert!(!llms.contains("search"), "{llms}");

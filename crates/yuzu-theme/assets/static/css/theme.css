@@ -483,6 +483,13 @@ body {
   min-height: calc(100vh - var(--header-height));
 }
 
+/* TOC が空（hidden）のページでは 3 本目の明示トラック 14rem が空のまま残り
+   本文が左に寄るので、トラックごと畳む（:has 未対応ブラウザは従来どおりの
+   空きに縮退。72rem 以下は別 MQ が 2 カラム定義を持つので干渉しない） */
+.layout:has(> .toc[hidden]) {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+}
+
 .sidebar {
   border-right: 1px solid var(--border);
   padding: 1.5rem 1rem 3rem 0;
@@ -640,10 +647,56 @@ body {
   background: var(--bg-hover);
 }
 
-.sidebar-nav li.active > a {
+/* active は現在ページ自身にだけ付く（祖先は details の open）。
+   子持ちノードが現在ページのときリンクは summary 配下に移るので併記する */
+.sidebar-nav li.active > a,
+.sidebar-nav li.active > details > summary > a {
   color: var(--accent-fg);
   font-weight: 600;
   background: var(--accent-subtle);
+}
+
+/* ---- サイドバーの折りたたみセクション（nav.collapse。既定 on） ---- */
+
+/* summary 内はリンク（またはラベル）＋右端のシェブロン。
+   テキストクリック = 遷移・シェブロン側クリック = 開閉が JS 無しで成立する */
+.sidebar-nav summary {
+  display: flex;
+  align-items: center;
+  list-style: none; /* ブラウザ既定の三角マーカーを消す（Firefox） */
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-nav summary::-webkit-details-marker {
+  display: none; /* 旧 Safari の既定マーカー */
+}
+
+.sidebar-nav summary > a,
+.sidebar-nav summary > .nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-nav summary:hover {
+  background: var(--bg-hover);
+}
+
+/* 開閉シェブロン。transition は付けない（動きを足すときは
+   prefers-reduced-motion 対応が同時に要るため。ROADMAP の方針どおり） */
+.sidebar-nav summary::after {
+  content: "";
+  flex: none;
+  width: 0.4em;
+  height: 0.4em;
+  margin: 0 0.5rem;
+  border-right: 2px solid var(--fg-muted);
+  border-bottom: 2px solid var(--fg-muted);
+  transform: rotate(-45deg); /* 閉: 右向き */
+}
+
+.sidebar-nav details[open] > summary::after {
+  transform: rotate(45deg); /* 開: 下向き */
 }
 
 /* ---- ページ内 TOC ---- */
@@ -674,24 +727,42 @@ body {
   color: var(--accent-fg);
 }
 
-.toc .toc-level-3 {
-  padding-left: calc(1rem - 2px + 0.9rem);
-}
-
 /* ---- スクロールスパイ（scrollspy.js が li に .active を付与） ---- */
 
 /* マーカー用の透明ボーダーを常時確保し、JS 無効時も見た目が変わらないようにする。
-   負マージンで li を .toc の padding ぶん引き出し、active 時に 2px のアクセントバーを
-   罫線（.toc の border-left）の内側に沿わせる（.toc は overflow-y: auto の
-   スクロールコンテナなので、padding box の外＝罫線の上には描画できない） */
-.toc li {
+   バーは li ではなく**直下の a** に置く（入れ子 TOC では li のボーダーが
+   サブツリー全体の高さに伸びて親子の二重線に見えるため）。負マージンで a を
+   .toc の padding ぶん引き出し、active 時に 2px のアクセントバーを罫線
+   （.toc の border-left）の内側に沿わせる（.toc は overflow-y: auto の
+   スクロールコンテナなので、padding box の外＝罫線の上には描画できない）。
+   入れ子 ul は padding を持たない（上の .toc ul が全階層に効く）ので
+   バーの x 位置は全レベルで揃い、字下げは下の深さセレクタで付ける */
+.toc a {
   border-left: 2px solid transparent;
   margin-left: -1rem;
   padding-left: calc(1rem - 2px);
 }
 
-.toc li.active {
+.toc li.active > a {
   border-left-color: var(--accent); /* 装飾は --accent（テキスト色には使わない） */
+}
+
+/* 入れ子の字下げ（クラスではなく深さで付ける = theme.toc.levels がどの範囲でも
+   1 段 0.9rem で揃う。toc-level-{n} クラスはテーマ上書き用に残している） */
+.toc ul ul a {
+  padding-left: calc(1rem - 2px + 0.9rem);
+}
+
+.toc ul ul ul a {
+  padding-left: calc(1rem - 2px + 1.8rem);
+}
+
+.toc ul ul ul ul a {
+  padding-left: calc(1rem - 2px + 2.7rem);
+}
+
+.toc ul ul ul ul ul a {
+  padding-left: calc(1rem - 2px + 3.6rem);
 }
 
 .toc li.active > a,
@@ -1367,8 +1438,25 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
   color: var(--accent-fg);
 }
 
-.toc-mobile .toc-level-3 {
+/* 入れ子の字下げ（深さ基準。desktop TOC と同じ理由でクラスは使わない） */
+.toc-mobile ul ul {
+  margin: 0;
+}
+
+.toc-mobile ul ul a {
   padding-left: 0.9rem;
+}
+
+.toc-mobile ul ul ul a {
+  padding-left: 1.8rem;
+}
+
+.toc-mobile ul ul ul ul a {
+  padding-left: 2.7rem;
+}
+
+.toc-mobile ul ul ul ul ul a {
+  padding-left: 3.6rem;
 }
 
 /* ---- ページナビ（パンくず・前後ページ） ---- */

@@ -106,6 +106,8 @@ pub struct ThemeConfig {
     pub css_vars: BTreeMap<String, String>,
     /// ダークモード時にのみ適用する上書き（`html[data-theme="dark"]` スコープ）
     pub css_vars_dark: BTreeMap<String, String>,
+    /// ページ内 TOC の表示設定
+    pub toc: TocConfig,
 }
 
 impl Default for ThemeConfig {
@@ -115,6 +117,24 @@ impl Default for ThemeConfig {
             dark: true,
             css_vars: BTreeMap::new(),
             css_vars_dark: BTreeMap::new(),
+            toc: TocConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TocConfig {
+    /// ページ内 TOC に表示する見出しレベルの範囲（h1〜h6 = 1〜6）。
+    /// インクルードの `lines=` と同じ記法で `"2-3"` / `"4"` のように書く。
+    /// 不正な値は警告して既定へ縮退する
+    pub levels: String,
+}
+
+impl Default for TocConfig {
+    fn default() -> Self {
+        Self {
+            levels: "2-3".to_string(),
         }
     }
 }
@@ -123,13 +143,19 @@ impl Default for ThemeConfig {
 #[serde(rename_all = "camelCase", default)]
 pub struct NavConfig {
     /// ディレクトリ階層＋frontmatter `title`/`order` からナビを自動生成する。
-    /// v0.1 では自動生成のみ（手動ナビ配列は非対応）
+    /// 現在は自動生成のみ対応で、`false` は将来の手動ナビ定義用の予約（効果なし）
     pub auto: bool,
+    /// サイドバーで現在ページの祖先セクションだけを開き、他を折りたたむ
+    /// （`<details>` によるクリック展開可能な折りたたみ）。false で従来の全展開
+    pub collapse: bool,
 }
 
 impl Default for NavConfig {
     fn default() -> Self {
-        Self { auto: true }
+        Self {
+            auto: true,
+            collapse: true,
+        }
     }
 }
 

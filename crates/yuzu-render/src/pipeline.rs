@@ -14,7 +14,7 @@ use yuzu_config::ResolvedConfig;
 use yuzu_core::{BuildCache, CachedBody, GeneratedKind, MarkdownOptions, OutputTracker, SiteModel};
 
 use crate::assets;
-use crate::context::{NavCtx, NavOrder, PageCtx, SiteCtx, build_breadcrumbs};
+use crate::context::{NavCtx, NavOrder, NavTrails, PageCtx, SiteCtx, build_breadcrumbs};
 use crate::error::RenderError;
 use crate::shared::RenderShared;
 use crate::urls::UrlResolver;
@@ -163,6 +163,17 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let search_page_size = cfg.search.page_size.max(1);
     // 前/次リンクの導出元（サイドバー表示順のフラット列）。全ページで共通
     let nav_order = NavOrder::new(&params.site.nav);
+    // route → 祖先チェーンの前計算（サイドバーの open 判定とパンくずが共有。
+    // ページごとの全ツリー DFS を無くす）
+    let nav_trails = NavTrails::new(&params.site.nav);
+    // ページ内 TOC の表示レベル。不正な値は警告して既定へ縮退する
+    let toc_levels = crate::context::parse_toc_levels(&cfg.theme.toc.levels).unwrap_or_else(|| {
+        tracing::warn!(
+            levels = %cfg.theme.toc.levels,
+            "theme.toc.levels が不正なため既定（2-3）を使います"
+        );
+        crate::context::TOC_LEVELS
+    });
     let site_ctx = SiteCtx {
         title: &cfg.site.title,
         description: cfg.site.description.as_deref(),
@@ -256,10 +267,11 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             };
             let html = tpl.render(context! {
                 site => site_ctx,
-                page => PageCtx::new(page, &body, &resolver, last_updated, edit_url),
-                nav => NavCtx::build(&params.site.nav, &page.route, &resolver),
+                page => PageCtx::new(page, &body, &resolver, last_updated, edit_url, &toc_levels),
+                nav => NavCtx::build(&params.site.nav, nav_trails.trail(&page.route), &resolver),
+                nav_collapse => cfg.nav.collapse,
                 pager => nav_order.pager(&page.route, &resolver),
-                breadcrumbs => build_breadcrumbs(&params.site.nav, &page.route, &resolver),
+                breadcrumbs => build_breadcrumbs(&nav_trails, &page.route, &resolver),
                 base_url => resolver.base(),
                 asset_url => resolver.asset_url(),
                 live_reload_poll => params.live_reload == LiveReloadMode::Poll,
@@ -320,9 +332,10 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             description => Option::<&str>::None,
             toc => Vec::<String>::new(),
         },
-        // route "404.html" はどのページ route（"" か "…/" 終わり）とも一致しない
-        // = サイドバーはハイライトなしで全ツリー表示
-        nav => NavCtx::build(&params.site.nav, "404.html", &resolver),
+        // route "404.html" はどのページ route とも一致しない = trail が空で
+        // サイドバーはハイライトなし・全セクション閉じ（nav.collapse 時）
+        nav => NavCtx::build(&params.site.nav, &[], &resolver),
+        nav_collapse => cfg.nav.collapse,
         base_url => resolver.base(),
         asset_url => resolver.asset_url(),
         live_reload_poll => params.live_reload == LiveReloadMode::Poll,

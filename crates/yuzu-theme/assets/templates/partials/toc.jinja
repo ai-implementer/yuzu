@@ -1,9 +1,18 @@
-{# ページ内 TOC（level 2〜3 に絞ったエントリが渡ってくる） #}
-<aside class="toc"{% if not page.toc %} hidden{% endif %} aria-label="このページの目次">
-{% if page.toc %}<div class="toc-title">目次</div>
+{# ページ内 TOC（theme.toc.levels で絞った見出しが入れ子で渡ってくる）。
+   <a> は必ず <li> の最初の子に置く（scrollspy.js が a.parentElement === li と
+   「li の最初の子 = a」を前提に点灯・追従する） #}
+{% macro toc_list(items) %}
 <ul>
-{% for item in page.toc %}
-<li class="toc-level-{{ item.level }}"><a href="#{{ item.id }}">{{ item.text }}</a></li>
+{% for item in items %}
+<li class="toc-level-{{ item.level }}"><a href="#{{ item.id }}">{{ item.text }}</a>
+{% if item.children %}{{ toc_list(item.children) }}
+{% endif %}</li>
 {% endfor %}
 </ul>
+{% endmacro %}
+<aside class="toc"{% if not page.toc %} hidden{% endif %}>
+{% if page.toc %}<nav aria-label="このページの目次">
+<div class="toc-title">目次</div>
+{{ toc_list(page.toc) }}
+</nav>
 {% endif %}</aside>
