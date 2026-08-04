@@ -3,156 +3,10 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在: v0.12（Phase 54〜57）
+## 現在
 
-軸は「**読む体験の完成**」。v0.11 で書く側の表現（タブ / Markdown 断片 / 用語集 /
-定義リスト）が揃ったので、読み手の側を仕上げる。Phase 53 で検索に絞り込みと
-遷移後の一覧復元を入れたが、後者は「結果を辿る」だけを満たす近似で **URL で共有できない**。
-そこを本命として設計し直すのがこの版の中心になる。
-Phase は価値と実装コスト・依存関係の順（着手時に個別に設計する）。
-
-### 54 全文検索の結果専用ページ ✅
-
-`?q=` を読む専用ページを作り、検索結果を URL で共有できるようにする。
-**wasm・mikan・インデックスフォーマットは一切変えずに済む**
-（`search-client.js` は「DOM・テーマの知識を持たない」と明記された設計で、
-そのまま再利用できる）。コストは別のところにある:
-
-- **着手時に最初に決めること**: Phase 53 の遷移後復元（`RESTORE_KEY`）は
-  「結果ページへ戻れば済む」で役目を失い、絞り込みの sessionStorage 保持は
-  URL の `?section=` と**状態の持ち主が二重になる**
-  （「URL を共有したのに前回の絞り込みが復活する」事故）。
-  ドロップダウンをサジェストへ格下げ / 併存 /「すべての結果を見る」行だけ、の 3 択
-- **`Page.generated: bool` が用語集専用の分岐と癒着している** — `route-conflict` /
-  `unsafe-page-path` の文面が「`markdown.glossary.page` を変えてください」と誤案内になり、
-  lint 除外・`edit_url` 抑止・集計行など **9 箇所**が該当する。
-  `Option<GeneratedKind>` への昇格が事実上必須で、**ここが工数の本体**
-- **テンプレート選択の機構が無い**（`pipeline.rs` が `page.jinja` を直書き）。
-  本文を生 HTML で作るか `search.jinja` を新設するかで、必須アセットテスト・
-  テーマ上書き利用者との互換・スナップショット追随が変わる
-- **既定は無効（route 空）にする** — `content/search.md` を持つ既存プロジェクトが
-  `route-conflict`（Error）で**ビルド不能**になる。用語集には
-  「terms が空なら作らない」という天然の安全弁があったが、検索ページには無い
-- ページ自身が**検索インデックスにも llms.txt にも載る**ので除外が要る。
-  JS 無効だと中身が空のページが公開物に残るので `<noscript>` の案内を置く
-- `?q=` は `urlpath::split_suffix` が `?` 以降を落とすため **linkcheck を素通りする**
-  （本文から `[検索](/search/?q=x)` と書ける）
-- Phase 49 が「設定キーは足さない（検索結果ページと意味が衝突するため）」と保留した
-  表示件数の設定も、ここで決着させる
-
-> **決着（2026-08-02）**: 3 択は**サジェストへ格下げ**を採用（上位 5 件＋
-> 「すべての結果を見る」行。未設定プロジェクトでも無条件に格下げし、
-> `RESTORE_KEY`・絞り込みの sessionStorage 保持は削除 = 状態の持ち主を
-> 結果ページの URL に一本化。scaffold と docs は `search.page` を有効にして配る）。
-> テンプレートは `search.jinja` 新設。表示件数は `search.pageSize`（既定 10、
-> 結果ページのみ）で決着。`Page.generated` の該当は実測 **18 箇所**で、
-> 集約の載せる/載せないは `Page::in_*` ヘルパへ集約した。
-> `CACHE_FORMAT_VERSION` は据え置き（既存ページの本文生成ロジックが不変のため。
-> abbr 除外の Glossary 限定化は等価変換で、設定キー追加の無効化は envKey が担う）
-
-### 55 印刷 / PDF 対応 ✅
-
-`@media print` が **0 件**で、PDF 保存するとサイドバー・TOC・検索ボックス・
-コピーボタンが全部紙に載る。設計書を PDF で配る運用に直接効く。
-
-- **単に隠すだけでは足りない** — A4 縦の印刷幅は約 49.6rem なので、既存の
-  ブレークポイント（72rem / 50rem）が**どちらも成立**する。紙面はモバイルレイアウトに
-  なり、サイドバーが本文の前に印刷される
-- ダークモードのまま印刷すると `--fg` が淡色のまま紙に載って読めない。
-  `@media print` 内で `html[data-theme="dark"]` ごとライト値へ戻す
-- コード・表の横スクロールは紙で切れるので折り返しへ。閉じた `<details>` を開くか、
-  タブの非選択パネルを出すかは方針として決める
-- theme.css だけで完結し、スナップショットもキャッシュも動かない
-
-> **決着（2026-08-02）**: ダーク定義（theme.css / syntect.css / cssVarsDark）を
-> `@media screen` で**画面専用化**し、印刷は常にライト（`@media print` 内の変数
-> 再指定・`!important` なし。syntect のハイライトはリテラル色かつ theme.css より
-> 後に読まれるため、この方式でないと詳細度戦争になる = 「theme.css だけで完結」は
-> yuzu-render css.rs に及んだ）。閉じた details は details-target.js の
-> beforeprint で全開・afterprint で復元（CSS では開けない。`::details-content` は
-> Firefox 未対応）。タブは CSS で全パネル縦展開（block 化で flex の order が
-> 無効になり DOM 順 = ラベル→パネルの対が保たれる。`:checked` ラベルの画面
-> ルールはセレクタ併記で潰す）。外部リンクのみ URL 併記。表は `display: table` へ
-> 戻して thead 再掲・行単位の改ページ制御を回復。mermaid クライアント描画の
-> 印刷ライト化は**見送り**（beforeprint と非同期 `mermaid.run()` の競合で
-> 未描画の生ソースが紙に載る改悪リスク。既定の SSR は SVG 内 `<style>` の
-> var() 参照で自動追従済み）。HTML スナップショット・キャッシュは不変
-
-### 56 ナビと目次の規模対応 ✅
-
-大きなサイトで現在地が分からなくなる。docs（17 ページ）では露見しないが、
-**サイドバーは全ページに全ノードを常時展開**していて、実測で 1 ページあたり 1,330 バイト
-（ページ全体の 3.3%）。同じ密度なら 100 ページで 7.4 KB / ページになる。
-
-- **入口は `NavCtx` の構造変更**。現在は `active` が**完全一致のみ**
-  （`node.route == Some(current_route)`）で祖先に印が付かないため、
-  **「現在セクションだけ展開」をテンプレート側で書く手段が無い**。
-  祖先フラグか深さを持たせるのが前提になる
-- 折りたたみは Phase 50（タブ）と同じく **`<details>` ＋ CSS で JS ゼロ実装できる**見込み
-- `NavCtx::build` と `build_breadcrumbs` は**ページ並列ループの内側**で
-  毎ページ全ツリーを clone ＋ URL 生成している。規模が出ると効いてくる
-- ページ内 TOC は h2/h3 のみ（`TOC_LEVELS = 2..=3`）でフラットな `<ul>`、設定キーも無い。
-  **Phase 52 の用語集ページは用語 1 件 = h2 1 つ**なので、200 語の辞書なら
-  200 項目のフラット TOC になる
-- `.toc` が空でも grid トラック 14rem が残る（実測で該当ページあり = `reference/`）。
-  TOC は `<aside>` で `<nav>` になっていない
-- 狭幅ではサイドバーが本文の上に積まれる。Esc で閉じない・フォーカストラップ無し・
-  開くと本文を丸ごと押し下げる（折りたたみ不在の影響がここで最大化する）
-
-> **決着（2026-08-04）**: サイドバーは **`<details>` 折りたたみのみ**採用
-> （`nav.collapse`、既定 on。現在ページの祖先チェーンだけ open・JS ゼロ・
-> summary 内リンクでテキスト = 遷移 / マーカー = 開閉）。**プルーニングは不採用**
-> — `<details>` はバイトを減らさない（子は DOM に残る）が、削減側は他セクションの
-> 子へワンクリックで到達できなくなる UX を損なう。規模問題の本体は「現在地の迷子」
-> で折りたたみが解決する。`NavCtx` は `open` フラグを追加し **active の意味
-> （完全一致）は不変**（スクロール復元・CSS の `li.active > a` 前提を守る）。
-> 毎ページの全ツリー DFS は `NavTrails`（ループ外 1 回の route → 祖先チェーン
-> 前計算）へ集約（「nav を 1 回 Value 化して trail だけ渡す」案はラベルノードに
-> route が無く表現できないため不採用）。手動で開いた details は遷移で失われる
-> （open は trail のみ = 仕様）。TOC は入れ子化＋`theme.toc.levels`（既定 "2-3"）、
-> `<aside>` 内に `<nav>`、空 TOC は `:has()` でトラックごと畳む。scrollspy の
-> 基準線が `scroll-padding-top` 参照のまま死んでいた既存バグ（実測 66px ずれ）を
-> アンカーの `scroll-margin-top` 実測へ修正。狭幅は Esc / ナビリンク / 外側
-> クリックで閉じる最小改修（ドロワー化はしない）。`nav.auto` は配線も削除もせず
-> docs の文言を「予約・効果なし」へ正直化（削除は既存プロジェクトへ未知キー警告、
-> 配線は false の意味ある挙動が無い）
-
-### 57 dogfooding 改善 ✅
-
-恒例のバッファ枠（着手時にユーザが選ぶ）。**CSS だけで直せて実害が大きいもの**から並べる:
-
-- **SSR 図がモバイルで読めない** — `figure.mermaid-ssr svg` に `overflow-x` が無い
-  （表とコードには有る）。docs の依存関係図は実測で**幅 1571.5px** なので、
-  375px 幅では 24% に縮小され 14px の文字が約 3.3px になる。拡大手段も無い
-- **`theme.dark: false` と JS 無効で OS のダーク設定が無視される** —
-  `@media (prefers-color-scheme: dark)` のフォールバックが無く、
-  ダーク解決が head のインライン script だけに依存している
-- **見出しパーマリンクにキーボードで到達できない** — `.anchor` が
-  `visibility: hidden` ＋ `aria-hidden="true"` で、ホバー以外の手段が無い
-- **ページメタの拡充** — 読了時間・文字数（`PageCtx` は最終更新と編集リンクだけ）
-- **`<head>` のメタ** — OGP・canonical・favicon がいずれも無い（共有時の見え方）
-- **`--root` グローバルオプション / shell 補完** — v0.11 で落選。`--root` は
-  7 コマンドが同じ定型を書いている
-- **サイト URL の更新** — README / ROADMAP が `ai-implementer.github.io` を指したままで、
-  実サイト（`ai.implementer.net`）へ 301 されている
-- 下の「v0.10.1 レビューの持ち越し」の小さいもの
-
-> **決着（2026-08-04）**: 今回の選定は**サイト URL の更新のみ**
-> （README 6 箇所・ROADMAP 2 箇所に加え、調査で scaffold の
-> `getting-started.md` にも 1 箇所見つかり同時に更新 = `yuzu new` した
-> 全プロジェクトに旧 URL が配られていた）。docs.yml は Pages の host から
-> base-url を組むためカスタムドメインへ自動追従済みで変更不要。
-> **残りの候補（SSR 図モバイル・OS ダーク縮退・パーマリンク到達性・
-> head メタ・読了時間・--root / shell 補完・v0.10.1 持ち越し）は
-> 次版へ持ち越し**（上の一覧を次版の策定時にそのまま使う）
-
-> `prefers-reduced-motion` は**現状は不要**（theme.css に `transition` / `animation` /
-> `scroll-behavior: smooth` が 1 件も無く空振りする）。動きを足すときに同時に必要になる。
->
-> なお「クライアント JS ゼロ」は**サイト全体の凍結方針ではない**（凍結表に JS の項目は無い）。
-> 実効的な規律は `add-theme-asset` スキルの「本文の描画は JS に依存させない ＋
-> UI 補助は縮退可能な外部 JS でよい」なので、読む体験の改善で JS を足すこと自体は
-> 方針と衝突しない（本数が 11 から増えることの重さは別途の判断）。
+**v0.12 まで公開済み**。次の版（v0.13）は未策定で、候補は下の
+「[v0.13 以降の候補](#v013-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
 
 ## v0.10.1 レビューの持ち越し
 
@@ -189,6 +43,14 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
 
 ## v0.13 以降の候補
 
+- **dogfooding 候補（Phase 57 からの持ち越し）** — SSR 図のモバイル対応
+  （`figure.mermaid-ssr svg` に overflow-x が無く 375px 幅で文字 3.3px）/
+  `theme.dark: false`・JS 無効時の OS ダーク追従（`prefers-color-scheme` の CSS
+  フォールバック。Phase 55 の「ダークは `@media screen`」との整合設計が要る）/
+  見出しパーマリンクのキーボード到達性（`.anchor` が visibility:hidden ＋
+  aria-hidden）/ ページメタの拡充（読了時間・文字数）/ `<head>` のメタ
+  （OGP・canonical・favicon）/ `--root` グローバルオプションと shell 補完
+  （7 コマンドが同じ定型）
 - **lint の制御性** — inline 抑制と全ルールの enable/disable。**次の版の有力候補**。
   22 ルールのうち設定で切れるのは `lint.rules` の 3 つだけ。着手時に効く調査結果:
   - `route-conflict` / `unsafe-page-path` は `yuzu build` も中断するので
@@ -262,12 +124,67 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   `<abbr>` 化とページ自動生成）/ dogfooding 改善＝約物に隣接した強調・定義リスト・
   検索結果のセクション絞り込み（エンジン側）・ポート衝突の案内と
   `build --watch` のポート指定・キャッシュ保存の原子化
+- **v0.12**（Phase 54〜57）読む体験の完成 — 全文検索の結果専用ページ
+  （`?q=` / `?section=` を URL で共有。ドロップダウンはサジェストへ格下げ）/
+  印刷・PDF 対応（画面 UI 非表示・常にライト配色・折りたたみとタブの全展開・
+  thead 再掲）/ ナビと目次の規模対応（サイドバー折りたたみ・入れ子 TOC・
+  `theme.toc.levels`・scrollspy の基準線修正）/ dogfooding 改善＝サイト URL 更新
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、
 mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
 
 各版の Phase 内訳:
+
+<details>
+<summary>完了済み: v0.12（Phase 54〜57）の内訳</summary>
+
+- **54 全文検索の結果専用ページ** — `?q=` / `?section=` を**状態の唯一の持ち主**とする
+  結果ページを合成 `Page`（`GeneratedKind::Search`）として追加し、検索結果を URL で
+  共有できるようにした。ドロップダウンは**無条件でサジェスト**（上位 5 件＋
+  「すべての結果を見る」）へ格下げし、Phase 53 の遷移後復元（RESTORE_KEY）と
+  絞り込みの sessionStorage 保持は削除（URL と状態の持ち主が二重になる事故の芽を摘む）。
+  `Page.generated` は bool → `Option<GeneratedKind>` へ昇格（該当は実測 **18 箇所**。
+  診断文面の設定キー名は `config_key()` が唯一の定義）し、集約の載せる / 載せないは
+  `Page::in_nav / in_search_index / in_sitemap / emits_page_md` に集約（検索ページは
+  nav・検索索引・llms・sitemap・ページ単位 .md すべてから除外。llms だけは合成時に
+  `frontmatter.llms = false` を立てて既存フィルタに乗せる）。**既定は無効**
+  （`search.page` 空）— `content/search.md` を持つ既存プロジェクトを route-conflict で
+  壊さないため（scaffold と docs は有効にして配布）。wasm・mikan・インデックス
+  フォーマットは不変で、表示件数は `search.pageSize` で決着（Phase 49 の保留分）
+- **55 印刷 / PDF 対応** — ダーク定義（theme.css のダークブロック・syntect.css の
+  ダークスコープ・cssVarsDark 注入）を **`@media screen` で画面専用化**し、印刷は
+  常にライト（syntect のハイライトはリテラル色かつ theme.css より後に読まれるため、
+  print 側からの上書きでは詳細度戦争になる。「theme.css だけで完結」の想定は
+  yuzu-render css.rs に及んだ）。閉じた details は beforeprint 全開 / afterprint 復元
+  （CSS では開けない。開いた分だけ記録して戻す）。タブは CSS のみで全パネル縦展開
+  （ラベルは小見出し化）。表は display:table へ戻して thead のページ再掲と行単位の
+  改ページ制御を回復。外部リンクのみ URL 併記。mermaid クライアント描画の印刷
+  ライト化は**見送り**（beforeprint と非同期 mermaid.run() の競合で未描画の生ソースが
+  紙に載る改悪リスク。既定の SSR は SVG 内 <style> の var() 参照で自動追従済み）
+- **56 ナビと目次の規模対応** — サイドバーは **`<details>` 折りたたみのみ**
+  （`nav.collapse` 既定 on。現在ページの祖先チェーンだけ open・JS ゼロ・summary 内
+  リンクでテキスト = 遷移 / マーカー = 開閉）。プルーニングは不採用 — details は
+  バイトを減らさないが、削減側は他セクションの子へのワンクリック到達を壊す。
+  規模問題の本体は「現在地の迷子」で折りたたみが解決する。`NavCtx` は `open` を追加し
+  **active の意味（完全一致）は不変**、毎ページの全ツリー DFS は `NavTrails`
+  （ループ外 1 回の route → 祖先チェーン前計算）へ集約。TOC は入れ子化＋
+  `theme.toc.levels`（既定 "2-3"）・`<nav>` 化・空 TOC は `:has()` でトラックごと
+  畳む。**scrollspy の基準線が `scroll-padding-top` 参照のまま死んでいた既存バグ**
+  （実測 66px ずれ）をアンカーの `scroll-margin-top` 実測へ修正。狭幅は Esc /
+  ナビリンク / 外側クリックで閉じる最小改修。`nav.auto` は配線も削除もせず
+  「予約・効果なし」へ文言を正直化（削除は既存プロジェクトへ未知キー警告が出る）
+- **57 dogfooding 改善** — 選定は**サイト URL の更新のみ**（README 6・ROADMAP 2 に
+  加え、調査で scaffold の getting-started.md にも 1 箇所発見 = `yuzu new` した全
+  プロジェクトに旧 URL が配られていた）。残候補は「v0.13 以降の候補」へ持ち越し
+
+> 策定時のメモ: `prefers-reduced-motion` は現状不要（theme.css に transition /
+> animation が 0 件で空振りする。動きを足すときに同時に必要になる）。
+> 「クライアント JS ゼロ」はサイト全体の凍結方針ではなく、実効的な規律は
+> add-theme-asset スキルの「本文の描画は JS に依存させない＋ UI 補助は縮退可能な
+> 外部 JS でよい」（v0.12 で外部 JS は 11 → 13 本になった）。
+
+</details>
 
 <details>
 <summary>完了済み: v0.11（Phase 50〜53）の内訳</summary>
