@@ -3,10 +3,96 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在
+## 現在: v0.13（Phase 58〜61）
 
-**v0.12 まで公開済み**。次の版（v0.13）は未策定で、候補は下の
-「[v0.13 以降の候補](#v013-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
+軸は「**lint の制御性**」（前版の策定時から次の有力候補としていたもの）。ルールは
+22 まで増えたが、書き手の側に**意図的な例外を通す手段が無い** — 設定で切れるのは
+`lint.rules` の 3 つだけ（`term-variant` / `directory-too-deep` は設定しない限り
+発火しない opt-in 型）で、inline 抑制は無く、warning でも 1 件出れば exit 1。
+`yuzu check` を CI ゲートに乗せた運用（yuzu 自身の docs.yml がそう）では
+「例外を直すか、ルールを諦めるか」の二択になる。ゆれ表記そのものを説明する文章・
+意図的な少数派表記・既存プロジェクトへの段階導入がすべてここで詰まる。
+候補メモの段階リリース案（ページ単位の抑制 → 行単位 → 全ルールの enable/disable）
+をそのまま Phase に切る。Phase は価値と実装コスト・依存関係の順
+（着手時に個別に設計する）。
+
+3 Phase 共通の土台は**ルール ID のレジストリ**（ID・深刻度・無効化 / 抑制可否の
+唯一の定義）。現状の ID は文字列リテラルとして 3 crate・8 ファイルに散在しており
+（yuzu-core の lint / linkcheck / aliases / routes / include、yuzu-render の
+speccheck、yuzu-cli の check / diag）、抑制記法や設定のルール名検証はレジストリ
+無しには書けない。最初に着手する Phase で置き、docs の `reference/rules.md` の表
+との一致をテストで縛れば `SPEC_LANGS`（speccheck）と同型の規律になる。
+
+### 58 ページ単位の抑制 ⬜
+
+frontmatter（または先頭コメント）でそのページに限りルールを切る。「用語の正誤を
+説明するページ」「あえて少数派表記で書くページ」を CI ゲートと両立させる最小単位。
+
+- **記法は 2 案を着手時に決める**: frontmatter キーは構造化されていて fmt が
+  バイト温存する（安全）が、`Frontmatter` は `CachedMeta` に入るので
+  **`CACHE_FORMAT_VERSION` の bump が要る**（Phase 40 の `aliases` 追加と同じ）。
+  ページ先頭の HTML コメントは Phase 59 と記法を統一できてキャッシュ不変だが、
+  AST 収集の機構を先に作ることになる
+- 二層設計は候補メモのとおり: **収集は yuzu-core（`Page` に抑制情報を持たせる）・
+  適用は cli の `diag::report` 直前**。lint だけでなく check が足す診断
+  （linkcheck・yuzu-render 由来の `spec-error` も）が同じ漏斗を通るので一括で効く
+- **抑制対象の線引きが一番の判断点**: `route-conflict` / `unsafe-page-path` は
+  build も中断する正なので抑制不可のまま固定。`fmt` を抑制可にすると
+  `yuzu fmt --check` と `yuzu check` が食い違う非対称が出る。`config-*` は
+  ページ外なので対象外。error 系（`broken-link` 等）を含めるかは
+  「壊れリンクを例示したい需要 vs 事故の容認」の比較から
+- **未知ルール名は警告にする**（`config-unknown-key` と同じ「黙って効かない」
+  事故クラス）。発火しなかった抑制（unused）を報告するかも決める
+- `yuzu lint --fix` は抑制された出現を修正しない（報告と修正の両方に効かせる）。
+  集計行・`--format json` へ抑制件数を足すかは出力契約の追加として決める
+
+### 59 行単位の抑制 ⬜
+
+`<!-- yuzu-lint-disable-next-line term-variant -->` の形で次の行だけ抑制する
+（記法・語彙は着手時に決める）。
+
+- **行走査ではなく comrak AST（HtmlBlock / HtmlInline）の sourcepos から収集**する。
+  コードブロック内の記法例は Code ノード内の文字列なので誤認しない
+  （docs 自身が `reference/rules.md` に実例を書けるようになる）
+- 「次の行」と診断の突き合わせ規則を決める（複数行 span を持つ診断・同一行の
+  複数ヒット・同一行を対象にする disable-line を足すか）
+- `render.r#unsafe = true` のため**コメントは出力 HTML・配信 .md・llms へ素通し**
+  される（ブラウザ表示は不可視）。仕様と割り切るか、HTML からだけ剥ぐか
+- `yuzu fmt`（format_commonmark）が HTML ブロック / インラインを逐語温存するかを
+  着手時に実測する（崩れるなら Phase 45 の復元処理と同様の fmt 温存が要る）
+
+### 60 全ルールの enable/disable ⬜
+
+プロジェクト方針と合わないルールを設定で切る。既存プロジェクトへ lint を段階導入
+する入口（まず off で入れて少しずつ有効化する）。
+
+- `lint.rules` は camelCase bool 3 つの型付き struct。**ルール ID キーのマップへ
+  一般化すると `config-unknown-key` の既知キー木（`Config::default()` の JSON 化）
+  でタイポを検出できなくなる**ため、レジストリ由来のルール名検証を別途置く。
+  bool を増やす案はその診断が無料のままだが、ID（kebab-case）とキー（camelCase）の
+  二重命名が最大 19 ルールぶん増える
+- **off だけに絞る**（severity の上書きはやらない = 終了コード規約 0 / 1 / 2 と
+  噛み合わない。候補メモで済ませた判断）
+- `route-conflict` / `unsafe-page-path` は無効化不可のまま固定。error 系を切れる
+  ようにするかの線引きは Phase 58 と同じ判断に揃える
+- 既定は全ルール有効のまま（後方互換）。既存 3 キーとの互換・改名も決める
+
+### 61 dogfooding 改善 ⬜
+
+恒例のバッファ枠（着手時にユーザが選ぶ）。この版で足した抑制記法の実運用を先頭に、
+Phase 57 からの持ち越しを再掲する:
+
+- **抑制記法を yuzu 自身の docs で使う** — `reference/rules.md` のゆれ表記の例を
+  コードスパンに逃がさず生のまま書く（Phase 59 の AST 判定の dogfooding）
+- SSR 図のモバイル対応（`figure.mermaid-ssr svg` に overflow-x が無く
+  375px 幅で文字 3.3px）
+- `theme.dark: false`・JS 無効時の OS ダーク追従（`prefers-color-scheme` の CSS
+  フォールバック。Phase 55 の「ダークは `@media screen`」との整合設計が要る）
+- 見出しパーマリンクのキーボード到達性（`.anchor` が visibility:hidden ＋
+  aria-hidden）
+- ページメタの拡充（読了時間・文字数）/ `<head>` のメタ（OGP・canonical・favicon）
+- `--root` グローバルオプションと shell 補完（7 コマンドが同じ定型）
+- 下の「v0.10.1 レビューの持ち越し」の小さいもの
 
 ## v0.10.1 レビューの持ち越し
 
@@ -41,26 +127,8 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   シンボリックリンクを追う。書き込み側（`output::write_under`）を塞いだので
   混入経路は無いはずだが、手で置かれた場合は配信される
 
-## v0.13 以降の候補
+## v0.14 以降の候補
 
-- **dogfooding 候補（Phase 57 からの持ち越し）** — SSR 図のモバイル対応
-  （`figure.mermaid-ssr svg` に overflow-x が無く 375px 幅で文字 3.3px）/
-  `theme.dark: false`・JS 無効時の OS ダーク追従（`prefers-color-scheme` の CSS
-  フォールバック。Phase 55 の「ダークは `@media screen`」との整合設計が要る）/
-  見出しパーマリンクのキーボード到達性（`.anchor` が visibility:hidden ＋
-  aria-hidden）/ ページメタの拡充（読了時間・文字数）/ `<head>` のメタ
-  （OGP・canonical・favicon）/ `--root` グローバルオプションと shell 補完
-  （7 コマンドが同じ定型）
-- **lint の制御性** — inline 抑制と全ルールの enable/disable。**次の版の有力候補**。
-  22 ルールのうち設定で切れるのは `lint.rules` の 3 つだけ。着手時に効く調査結果:
-  - `route-conflict` / `unsafe-page-path` は `yuzu build` も中断するので
-    **無効化不可のまま固定するのが正**
-  - **severity の上書きは終了コード規約（0 / 1 / 2）と噛み合わない**
-    （warning でも 1 になる）。やるなら off だけに絞る
-  - inline 抑制は「記法の収集は yuzu-core・適用は cli の `diag::report` 直前」の二層が素直。
-    **行走査ではなく comrak の AST を通す** — コードブロック内の記法例を抑制と誤認するため
-    （yuzu 自身の docs が `reference/rules.md` に例を書いた瞬間に踏む）
-  - 段階リリースしやすい（ページ単位の抑制 → 行単位 → 全ルールの enable/disable）
 - **i18n** — テーマ UI 文字列の多言語化。実測で jinja 18 ＋ テーマ JS 19 ＋
   apispec 35 ＋ crossref 3 文字列。`site.lang` は `<html lang>` の 2 箇所でしか
   使われていない。判断材料:
@@ -176,7 +244,7 @@ mikan は crates.io で単独公開している（tankan と同じく独立バ�
   「予約・効果なし」へ文言を正直化（削除は既存プロジェクトへ未知キー警告が出る）
 - **57 dogfooding 改善** — 選定は**サイト URL の更新のみ**（README 6・ROADMAP 2 に
   加え、調査で scaffold の getting-started.md にも 1 箇所発見 = `yuzu new` した全
-  プロジェクトに旧 URL が配られていた）。残候補は「v0.13 以降の候補」へ持ち越し
+  プロジェクトに旧 URL が配られていた）。残候補は v0.13 の Phase 61 へ持ち越し
 
 > 策定時のメモ: `prefers-reduced-motion` は現状不要（theme.css に transition /
 > animation が 0 件で空振りする。動きを足すときに同時に必要になる）。
