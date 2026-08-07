@@ -87,6 +87,14 @@ mikan = { path = "crates/mikan" }
 # Mermaid 互換描画（yuzu 非依存の汎用ライブラリ。依存方向は yuzu-render → tankan のみ）
 tankan = { path = "crates/tankan" }
 
+# 配布バイナリのサイズ最適化（LTO ＋ debuginfo 除去。ビルド時間より配布サイズを優先。
+# シンボルテーブルは残す = クラッシュ時のバックトレースに関数名を出すため strip は
+# "symbols" にしない）
+[profile.release]
+strip = "debuginfo"
+lto = true
+codegen-units = 1
+
 # wasm 専用プロファイル（panic="abort" 等をネイティブ release に漏らさない）
 [profile.wasm-release]
 inherits = "release"
