@@ -106,13 +106,14 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
       "fixable": false
     }
   ],
-  "summary": { "errors": 1, "warnings": 0, "pages": 12 }
+  "summary": { "errors": 1, "warnings": 0, "pages": 12, "suppressed": 0 }
 }
 ```
 
 - `path` はプロジェクトルート相対で、区切りは常に `/` です
 - `line` と `column` はファイル単位の診断では `null` になります（キー自体は必ずあります）
 - `fixable` は `yuzu lint --fix` で自動修正できるかを表します
+- `summary.suppressed` は frontmatter の `lintDisable` で抑制した診断の件数です
 - キーは追加されることがありますが、削除・改名はしません
 
 ### github

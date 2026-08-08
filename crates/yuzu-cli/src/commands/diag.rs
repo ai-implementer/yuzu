@@ -56,6 +56,8 @@ pub struct Context<'a> {
     pub content_dir: &'a Path,
     /// 検査したページ数（「問題ありません（N ページ）」と `summary.pages`）
     pub pages: usize,
+    /// frontmatter `lintDisable` で抑制した件数（集計行と `summary.suppressed`）
+    pub suppressed: usize,
 }
 
 /// 診断を出力して終了コードを返す（0 = 違反なし / 1 = 違反あり）。
@@ -78,7 +80,7 @@ pub fn report(
             for line in human_lines(&diags, prefix, Path::new("")) {
                 outln!("{line}");
             }
-            print_summary(&diags, ctx.pages, errors, warnings);
+            print_summary(&diags, ctx, errors, warnings);
         }
         Format::Github => {
             // 環境変数を読むのはここだけ（パス解決関数は引数で受けてテスト可能にする）
@@ -90,11 +92,19 @@ pub fn report(
             }
             // 注釈以外の行は Actions のパーサに無視される。ジョブログで全体の件数を
             // 見る唯一の手段になるので human と同じ集計行を残す
-            print_summary(&diags, ctx.pages, errors, warnings);
+            print_summary(&diags, ctx, errors, warnings);
         }
         Format::Json => outln!(
             "{}",
-            render_json(&diags, prefix, Path::new(""), ctx.pages, errors, warnings)?
+            render_json(
+                &diags,
+                prefix,
+                Path::new(""),
+                ctx.pages,
+                errors,
+                warnings,
+                ctx.suppressed
+            )?
         ),
     }
 
@@ -106,10 +116,18 @@ pub fn report(
     })
 }
 
-/// 「問題ありません」「エラー N 件・警告 M 件」の集計行（human / github 共通）
-fn print_summary(diags: &[Diagnostic], pages: usize, errors: usize, warnings: usize) {
+/// 「問題ありません」「エラー N 件・警告 M 件」の集計行（human / github 共通）。
+/// 抑制（`lintDisable`）が効いたときだけ件数を付記する（0 件なら従来とバイト同一）
+fn print_summary(diags: &[Diagnostic], ctx: &Context, errors: usize, warnings: usize) {
+    let (pages, suppressed) = (ctx.pages, ctx.suppressed);
     if diags.is_empty() {
-        outln!("問題ありません（{pages} ページ）");
+        if suppressed > 0 {
+            outln!("問題ありません（{pages} ページ・抑制 {suppressed} 件）");
+        } else {
+            outln!("問題ありません（{pages} ページ）");
+        }
+    } else if suppressed > 0 {
+        outln!("エラー {errors} 件・警告 {warnings} 件（抑制 {suppressed} 件）");
     } else {
         outln!("エラー {errors} 件・警告 {warnings} 件");
     }
@@ -290,6 +308,8 @@ struct JsonSummary {
     warnings: usize,
     /// 検査したページ数
     pages: usize,
+    /// frontmatter `lintDisable` で抑制した件数（キー追加のみ = 契約準拠）
+    suppressed: usize,
 }
 
 #[derive(Serialize)]
@@ -298,6 +318,7 @@ struct JsonReport<'a> {
     summary: JsonSummary,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_json(
     diags: &[Diagnostic],
     prefix: &Path,
@@ -305,6 +326,7 @@ fn render_json(
     pages: usize,
     errors: usize,
     warnings: usize,
+    suppressed: usize,
 ) -> anyhow::Result<String> {
     let report = JsonReport {
         diagnostics: diags
@@ -323,6 +345,7 @@ fn render_json(
             errors,
             warnings,
             pages,
+            suppressed,
         },
     };
     Ok(serde_json::to_string_pretty(&report)?)
@@ -333,6 +356,25 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
     use yuzu_core::SourceSpan;
+
+    /// config-* ルールのレジストリ照合。yuzu-config は依存グラフの葉で
+    /// `yuzu_core::rules` を参照できないため、両方に依存するここで
+    /// 双方向＋濃度を縛る（speccheck の SPEC_LANGS テストと同型）
+    #[test]
+    fn config_ルールはレジストリと双方向に一致する() {
+        use yuzu_core::rules;
+        for id in yuzu_config::CONFIG_RULES {
+            let rule = rules::find(id).unwrap_or_else(|| panic!("{id} がレジストリに無い"));
+            // 変換（config_diagnostics）は severity を Warning 固定にしている
+            assert_eq!(rule.severity, yuzu_core::Severity::Warning, "{id}");
+            assert!(!rule.suppressible, "{id} はページ外なので抑制不可のはず");
+        }
+        let in_registry = rules::RULES
+            .iter()
+            .filter(|r| r.id.starts_with("config-"))
+            .count();
+        assert_eq!(in_registry, yuzu_config::CONFIG_RULES.len());
+    }
 
     fn span(line: usize, col: usize) -> SourceSpan {
         SourceSpan {
@@ -481,6 +523,7 @@ mod tests {
             16,
             errors,
             warnings,
+            0,
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -492,12 +535,21 @@ mod tests {
         assert_eq!(v["summary"]["errors"], 1);
         assert_eq!(v["summary"]["warnings"], 0);
         assert_eq!(v["summary"]["pages"], 16);
+        assert_eq!(v["summary"]["suppressed"], 0, "抑制ゼロでもキーは必ず出す");
+    }
+
+    #[test]
+    fn json_の_summary_に_suppressed_が入る() {
+        let out = render_json(&[], Path::new("content"), Path::new(""), 3, 0, 0, 2).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["summary"]["suppressed"], 2);
+        assert_eq!(v["summary"]["errors"], 0);
     }
 
     #[test]
     fn json_形式はファイル単位の診断の行と列を_null_にする() {
         let diags = vec![diag("fmt", Severity::Error, "x.md", None, None)];
-        let out = render_json(&diags, Path::new("content"), Path::new(""), 1, 1, 0).unwrap();
+        let out = render_json(&diags, Path::new("content"), Path::new(""), 1, 1, 0, 0).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert!(v["diagnostics"][0]["line"].is_null());
         assert!(v["diagnostics"][0]["column"].is_null());
@@ -521,7 +573,7 @@ mod tests {
                 None,
             ),
         ];
-        let out = render_json(&diags, Path::new("content"), Path::new(""), 2, 0, 2).unwrap();
+        let out = render_json(&diags, Path::new("content"), Path::new(""), 2, 0, 2, 0).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["diagnostics"][0]["fixable"], true);
         assert_eq!(v["diagnostics"][1]["fixable"], false);

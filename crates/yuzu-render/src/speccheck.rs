@@ -76,12 +76,14 @@ fn diag(
     message: String,
     severity: Severity,
 ) -> Diagnostic {
+    // レジストリ（yuzu_core::rules）から ID と severity を対で取る（直書きしない）
+    let rule = match severity {
+        Severity::Error => yuzu_core::rules::SPEC_ERROR,
+        Severity::Warning => yuzu_core::rules::SPEC_WARNING,
+    };
     Diagnostic {
-        rule: match severity {
-            Severity::Error => "spec-error",
-            Severity::Warning => "spec-warning",
-        },
-        severity,
+        rule: rule.id,
+        severity: rule.severity,
         base: yuzu_core::DiagBase::Content,
         rel: page.rel.clone(),
         span: Some(fence.span),
@@ -137,6 +139,14 @@ mod tests {
         for kind in SpecKind::ALL {
             assert!(yuzu_core::SPEC_LANGS.contains(&kind.lang()), "{kind:?}");
         }
+    }
+
+    #[test]
+    fn spec_ルールはレジストリの定義と一致する() {
+        // diag() の fatal → severity の写像がレジストリの定義とずれないことを固定
+        use yuzu_core::rules;
+        assert_eq!(rules::SPEC_ERROR.severity, Severity::Error);
+        assert_eq!(rules::SPEC_WARNING.severity, Severity::Warning);
     }
 
     #[test]

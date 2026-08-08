@@ -21,11 +21,12 @@
 //! `fmt`（yuzu-cli の `commands/check.rs`）を報告する。
 //! 全ルールの一覧は `docs/content/reference/rules.md`
 
-use crate::diagnostics::{DiagBase, Diagnostic, Severity};
+use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::error::CoreError;
 use crate::frontmatter::{KNOWN_KEYS, yaml_body};
 use crate::markdown;
 use crate::model::{Page, SourceSpan, TocEntry};
+use crate::rules;
 use crate::{LintOptions, MarkdownOptions};
 
 pub(crate) fn lint_page(
@@ -98,8 +99,8 @@ fn check_char_classes(
                     .map(|c| char::from_u32(c as u32 - 0xFEE0).unwrap_or(c))
                     .collect();
                 out.push(Diagnostic {
-                    rule: "fullwidth-alphanumeric",
-                    severity: Severity::Warning,
+                    rule: rules::FULLWIDTH_ALPHANUMERIC.id,
+                    severity: rules::FULLWIDTH_ALPHANUMERIC.severity,
                     base: DiagBase::Content,
                     rel: page.rel.clone(),
                     span: Some(run_span(span, offset, run.len())),
@@ -112,8 +113,8 @@ fn check_char_classes(
             for (offset, run) in char_class_runs(text, is_halfwidth_kana) {
                 let suggestion = to_fullwidth_kana(run);
                 out.push(Diagnostic {
-                    rule: "halfwidth-kana",
-                    severity: Severity::Warning,
+                    rule: rules::HALFWIDTH_KANA.id,
+                    severity: rules::HALFWIDTH_KANA.severity,
                     base: DiagBase::Content,
                     rel: page.rel.clone(),
                     span: Some(run_span(span, offset, run.len())),
@@ -264,8 +265,8 @@ fn check_katakana_choon(pages: &[Page], opts: &MarkdownOptions, out: &mut Vec<Di
             }
             for (rel, span) in occs {
                 out.push(Diagnostic {
-                    rule: "katakana-choon",
-                    severity: Severity::Warning,
+                    rule: rules::KATAKANA_CHOON.id,
+                    severity: rules::KATAKANA_CHOON.severity,
                     base: DiagBase::Content,
                     rel: rel.clone(),
                     span: Some(*span),
@@ -306,8 +307,8 @@ fn check_terms(
                         continue;
                     }
                     out.push(Diagnostic {
-                        rule: "term-variant",
-                        severity: Severity::Warning,
+                        rule: rules::TERM_VARIANT.id,
+                        severity: rules::TERM_VARIANT.severity,
                         base: DiagBase::Content,
                         rel: page.rel.clone(),
                         // comrak の列はバイト基準なので、ノード内バイトオフセットを足す
@@ -335,8 +336,8 @@ fn check_headings(toc: &[TocEntry], page: &Page, out: &mut Vec<Diagnostic>) {
     if let Some(first_h1) = h1s.next() {
         for dup in h1s {
             out.push(Diagnostic {
-                rule: "duplicate-h1",
-                severity: Severity::Warning,
+                rule: rules::DUPLICATE_H1.id,
+                severity: rules::DUPLICATE_H1.severity,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(dup.span),
@@ -354,8 +355,8 @@ fn check_headings(toc: &[TocEntry], page: &Page, out: &mut Vec<Diagnostic>) {
         let (prev, next) = (&pair[0], &pair[1]);
         if next.level > prev.level + 1 {
             out.push(Diagnostic {
-                rule: "heading-level-skip",
-                severity: Severity::Warning,
+                rule: rules::HEADING_LEVEL_SKIP.id,
+                severity: rules::HEADING_LEVEL_SKIP.severity,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(next.span),
@@ -377,8 +378,8 @@ fn check_directory_depth(page: &Page, max_depth: u32, out: &mut Vec<Diagnostic>)
     let depth = page.rel.components().count().saturating_sub(1);
     if depth > max_depth as usize {
         out.push(Diagnostic {
-            rule: "directory-too-deep",
-            severity: Severity::Warning,
+            rule: rules::DIRECTORY_TOO_DEEP.id,
+            severity: rules::DIRECTORY_TOO_DEEP.severity,
             base: DiagBase::Content,
             rel: page.rel.clone(),
             span: None,
@@ -398,8 +399,8 @@ fn check_code_meta(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic
 
     let mut push = |span: SourceSpan, message: String| {
         out.push(Diagnostic {
-            rule: "code-block-meta",
-            severity: Severity::Warning,
+            rule: rules::CODE_BLOCK_META.id,
+            severity: rules::CODE_BLOCK_META.severity,
             base: DiagBase::Content,
             rel: page.rel.clone(),
             span: Some(span),
@@ -521,8 +522,8 @@ fn check_duplicate_labels(page: &Page, out: &mut Vec<Diagnostic>) {
     for label in &page.labels {
         if !seen.insert(label.id.as_str()) {
             out.push(Diagnostic {
-                rule: "duplicate-label",
-                severity: Severity::Warning,
+                rule: rules::DUPLICATE_LABEL.id,
+                severity: rules::DUPLICATE_LABEL.severity,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(label.span),
@@ -555,8 +556,8 @@ fn check_frontmatter_keys(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Dia
             continue;
         }
         out.push(Diagnostic {
-            rule: "frontmatter-unknown-key",
-            severity: Severity::Warning,
+            rule: rules::FRONTMATTER_UNKNOWN_KEY.id,
+            severity: rules::FRONTMATTER_UNKNOWN_KEY.severity,
             base: DiagBase::Content,
             rel: page.rel.clone(),
             span: Some(key_span(&raw, &fm_span, key)),
@@ -570,8 +571,9 @@ fn check_frontmatter_keys(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Dia
 }
 
 /// キーの行番号を raw 内の前方一致で探す（見つからなければ frontmatter 全体）。
-/// raw は `---` 区切り行込みなので、行オフセットは fm_span.start_line 起点
-fn key_span(raw: &str, fm_span: &SourceSpan, key: &str) -> SourceSpan {
+/// raw は `---` 区切り行込みなので、行オフセットは fm_span.start_line 起点。
+/// `suppress.rs` の `lintDisable` 検証も同じフォールバックを使う
+pub(crate) fn key_span(raw: &str, fm_span: &SourceSpan, key: &str) -> SourceSpan {
     for (idx, line) in raw.lines().enumerate() {
         if line.trim_start().starts_with(&format!("{key}:")) {
             let line_no = fm_span.start_line + idx;

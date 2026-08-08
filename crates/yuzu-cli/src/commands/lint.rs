@@ -57,7 +57,9 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
         for _ in 0..MAX_FIX_ROUNDS {
             let pages =
                 yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
-            let diags = collect(&pages)?;
+            // 抑制された出現は --fix でも修正しない（報告と修正の非対称を防ぐ）。
+            // invalid / unused の警告は fix を持たないので下のフィルタが素通しする
+            let diags = yuzu_core::apply_suppressions(collect(&pages)?, &pages, &opts).diags;
             let mut applied_this_round = 0usize;
             for page in pages.iter().filter(|p| !p.is_generated()) {
                 let page_diags: Vec<Diagnostic> = diags
@@ -89,6 +91,9 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
     let mut diags = collect(&pages)?;
     diags.extend(diag::config_diagnostics(&rc));
+    // frontmatter `lintDisable` のページ単位抑制（check と同じ漏斗）
+    let yuzu_core::SuppressionOutcome { diags, suppressed } =
+        yuzu_core::apply_suppressions(diags, &pages, &opts);
 
     // --fix の進捗は human 以外では stderr へ逃がす
     // （json は JSON オブジェクト以外を標準出力へ書かない契約のため）
@@ -121,6 +126,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
             content_dir: &rc.content_dir,
             // 集計行は原稿の数を出す（合成した用語集ページは数えない）
             pages: pages.iter().filter(|p| !p.is_generated()).count(),
+            suppressed,
         },
     )
 }

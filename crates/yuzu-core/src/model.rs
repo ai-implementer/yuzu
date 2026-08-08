@@ -23,6 +23,12 @@ pub struct Frontmatter {
     /// 先頭 `/`・末尾スラッシュ省略は正規化で吸収）。ビルド時に各エイリアスへ
     /// リダイレクト HTML を生成する。実ページや他エイリアスとの衝突はエラー
     pub aliases: Vec<String>,
+    /// このページに限り抑制する診断ルール ID（warning ルールのみ有効。
+    /// 一覧は docs の「診断ルール」参照）。未知名・抑制不可名は
+    /// `invalid-lint-suppression`、発火しなかった抑制は `unused-lint-suppression`
+    /// の warning になる
+    #[serde(rename = "lintDisable")]
+    pub lint_disable: Vec<String>,
 }
 
 // llms の既定を true にするため derive ではなく手書き
@@ -36,6 +42,7 @@ impl Default for Frontmatter {
             description: None,
             llms: true,
             aliases: Vec::new(),
+            lint_disable: Vec::new(),
         }
     }
 }

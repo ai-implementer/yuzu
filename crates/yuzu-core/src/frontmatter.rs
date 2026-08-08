@@ -4,8 +4,15 @@ use crate::model::Frontmatter;
 
 /// [`Frontmatter`] が受理するトップレベルキー（lint の未知キー検出用）。
 /// フィールドを増やすときはここにも足す（乖離は下のテストで検知する）
-pub(crate) const KNOWN_KEYS: &[&str] =
-    &["title", "order", "draft", "description", "llms", "aliases"];
+pub(crate) const KNOWN_KEYS: &[&str] = &[
+    "title",
+    "order",
+    "draft",
+    "description",
+    "llms",
+    "aliases",
+    "lintDisable",
+];
 
 /// comrak の front matter extension が切り出した生テキスト
 /// （`---` 区切り行を含む）から YAML 部分を取り出してパースする
@@ -53,6 +60,17 @@ mod tests {
         assert!(fm.llms, "省略時は収録する");
         let fm = parse_frontmatter("---\nllms: false\n---\n").unwrap();
         assert!(!fm.llms);
+    }
+
+    #[test]
+    fn lintdisable_はリストで受理し省略時は空() {
+        let fm = parse_frontmatter("---\nlintDisable:\n  - term-variant\n  - duplicate-h1\n---\n")
+            .unwrap();
+        assert_eq!(fm.lint_disable, ["term-variant", "duplicate-h1"]);
+        let fm = parse_frontmatter("---\nlintDisable: [katakana-choon]\n---\n").unwrap();
+        assert_eq!(fm.lint_disable, ["katakana-choon"], "インライン形式も受理");
+        let fm = parse_frontmatter("---\ntitle: x\n---\n").unwrap();
+        assert!(fm.lint_disable.is_empty());
     }
 
     #[test]

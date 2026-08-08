@@ -11,10 +11,11 @@
 use std::path::Path;
 
 use crate::MarkdownOptions;
-use crate::diagnostics::{DiagBase, Diagnostic, Severity};
+use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::markdown;
 use crate::markdown::fence::{IncludeSpec, parse_fence_info};
 use crate::model::{Page, SourceSpan};
+use crate::rules;
 
 /// プロジェクトルート配下を canonicalize で強制してファイルを読む。
 /// `label` は表示用の呼び名（「参照ファイル」/「仕様ファイル」）で、
@@ -102,8 +103,8 @@ pub fn validate_includes(pages: &[Page], root: &Path, opts: &MarkdownOptions) ->
     for page in pages.iter().filter(|p| !p.is_generated()) {
         for inc in collect_include_specs(&page.source, opts) {
             let diag = |message: String| Diagnostic {
-                rule: "include-error",
-                severity: Severity::Error,
+                rule: rules::INCLUDE_ERROR.id,
+                severity: rules::INCLUDE_ERROR.severity,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(inc.span),
@@ -226,8 +227,8 @@ pub fn validate_spec_refs(pages: &[Page], root: &Path, opts: &MarkdownOptions) -
             // 解決そのものは描画・検査と同じ 1 実装を通す（インラインは Ok で素通り）
             if let Err(e) = resolve_spec_source(&fence.body, |rel| resolve_spec_file(root, rel)) {
                 diags.push(Diagnostic {
-                    rule: "spec-error",
-                    severity: Severity::Error,
+                    rule: rules::SPEC_ERROR.id,
+                    severity: rules::SPEC_ERROR.severity,
                     base: DiagBase::Content,
                     rel: page.rel.clone(),
                     span: Some(fence.span),

@@ -4,7 +4,7 @@
 use std::process::ExitCode;
 
 use anyhow::Context;
-use yuzu_core::{DiagBase, Diagnostic, LintOptions, MarkdownOptions, Severity};
+use yuzu_core::{DiagBase, Diagnostic, LintOptions, MarkdownOptions};
 
 use super::diag;
 
@@ -43,8 +43,8 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
         // 対象外なので差分を報告しても直しようがない
         if !page.is_generated() && yuzu_core::format_document(page, &opts)? != page.source {
             diags.push(Diagnostic {
-                rule: "fmt",
-                severity: Severity::Error,
+                rule: yuzu_core::rules::FMT.id,
+                severity: yuzu_core::rules::FMT.severity,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: None,
@@ -81,6 +81,11 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
         &opts,
     )?);
 
+    // frontmatter `lintDisable` のページ単位抑制。全検査の診断が
+    // この漏斗を通ってから報告される（config-* は ProjectRoot なので素通り）
+    let yuzu_core::SuppressionOutcome { diags, suppressed } =
+        yuzu_core::apply_suppressions(diags, &pages, &opts);
+
     diag::report(
         format,
         diags,
@@ -88,6 +93,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
             root: &root,
             content_dir: &rc.content_dir,
             pages: pages.iter().filter(|p| !p.is_generated()).count(),
+            suppressed,
         },
     )
 }

@@ -56,7 +56,9 @@ use crate::model::{Frontmatter, TocEntry};
 ///   `<abbr title="…">` で包まれるので本文 HTML が変わる
 /// - v19: comrak の `cjk_friendly_emphasis`（日本語の約物に隣接した強調）と
 ///   `description_lists`（`: ` の定義リスト）を有効化。どちらもパースが変わる
-pub const CACHE_FORMAT_VERSION: u32 = 19;
+/// - v20: frontmatter に `lintDisable`（ページ単位の lint 抑制）を追加
+///   （CachedMeta の Frontmatter に載る）
+pub const CACHE_FORMAT_VERSION: u32 = 20;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

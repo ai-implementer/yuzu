@@ -109,7 +109,7 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
         Err(issue) => {
             let (line, col) = key_position(&text, &["input", "dir"]).unwrap_or((1, 1));
             diagnostics.push(ConfigDiagnostic {
-                rule: "config-path-outside-root",
+                rule: RULE_PATH_OUTSIDE_ROOT,
                 key_path: "input.dir".to_string(),
                 line,
                 col,
@@ -252,6 +252,14 @@ pub struct ConfigDiagnostic {
     pub message: String,
 }
 
+/// この crate が発行する全ルール ID。yuzu-config は依存グラフの葉で
+/// yuzu-core のレジストリ（`yuzu_core::rules`）を参照できないため、
+/// ここに一覧を持ち、レジストリとの一致は yuzu-cli 側のテストが縛る
+pub const CONFIG_RULES: &[&str] = &[RULE_UNKNOWN_KEY, RULE_DUPLICATE_KEY, RULE_PATH_OUTSIDE_ROOT];
+const RULE_UNKNOWN_KEY: &str = "config-unknown-key";
+const RULE_DUPLICATE_KEY: &str = "config-duplicate-key";
+const RULE_PATH_OUTSIDE_ROOT: &str = "config-path-outside-root";
+
 /// 自由キーのマップ（配下はユーザ任意の名前なので未知キー検査をしない）
 const FREE_FORM_PATHS: &[&str] = &[
     "theme.cssVars",
@@ -300,7 +308,7 @@ pub(crate) fn config_diagnostics(text: &str) -> Vec<ConfigDiagnostic> {
                     let (line, col) = line_col(text, prop.name.range().start);
                     if !seen.insert(name.to_string()) {
                         out.push(ConfigDiagnostic {
-                            rule: "config-duplicate-key",
+                            rule: RULE_DUPLICATE_KEY,
                             key_path: child.clone(),
                             line,
                             col,
@@ -318,7 +326,7 @@ pub(crate) fn config_diagnostics(text: &str) -> Vec<ConfigDiagnostic> {
                             .map(|m| m.keys().cloned().collect::<Vec<_>>().join("/"))
                             .unwrap_or_default();
                         out.push(ConfigDiagnostic {
-                            rule: "config-unknown-key",
+                            rule: RULE_UNKNOWN_KEY,
                             key_path: child.clone(),
                             line,
                             col,

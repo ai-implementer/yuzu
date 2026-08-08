@@ -37,6 +37,8 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `config-unknown-key` | `yuzu.jsonc` の未知のキー（タイポ） | 不可 | 常時有効 |
 | `config-duplicate-key` | `yuzu.jsonc` のキーの重複（JSONC は後勝ち） | 不可 | 常時有効 |
 | `config-path-outside-root` | `input.dir` がプロジェクトルートの外を指す | 不可 | 常時有効 |
+| `invalid-lint-suppression` | frontmatter `lintDisable` の未知・抑制不可のルール名 | 不可 | 常時有効 |
+| `unused-lint-suppression` | `lintDisable` に書いたのにこのページで発火しなかった抑制 | 不可 | 常時有効 |
 
 `katakana-choon` の「条件付き」は、長音符ゆれを**多数派の表記へ寄せる**ため、
 同数で並んだときは正解を決められず報告だけになる、という意味です。
@@ -93,6 +95,25 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | json | `line` と `column` が `null` |
 | github | 位置指定のない注釈（ファイルの先頭に付きます） |
 
+## ページ単位の抑制（lintDisable）
+
+warning のルールは、frontmatter の `lintDisable` で**そのページに限り**抑制できます
+（詳しくは[品質チェック](../guide/quality.md#ページ単位の抑制lintdisable)を参照）:
+
+```yaml
+---
+lintDisable:
+  - term-variant
+  - katakana-choon
+---
+```
+
+error のルールは抑制できません（壊れたリンクや非決定な出力が生成物に残るのを
+防ぐためのルールです）。`config-*` はページではなく `yuzu.jsonc` を指すため
+対象外です。未知・抑制不可のルール名は `invalid-lint-suppression`、
+書いたのに発火しなかった抑制は `unused-lint-suppression` の warning になります
+（直したのに残った指定を放置させないためです）。
+
 > [!NOTE]
-> 無効化できるのは `lint.rules` の 3 ルールだけです。ほかは常時有効で、
-> 行単位で抑制するコメントにも対応していません。
+> プロジェクト全体でルールを無効化できるのは `lint.rules` の 3 ルールだけです。
+> 行単位で抑制するコメントにはまだ対応していません。

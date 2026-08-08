@@ -10,10 +10,11 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::MarkdownOptions;
-use crate::diagnostics::{DiagBase, Diagnostic, Severity};
+use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::error::CoreError;
 use crate::markdown::{self, LinkRef};
 use crate::model::Page;
+use crate::rules;
 use crate::urlpath::{rel_to_slash, resolve_relative, split_suffix};
 
 /// ビルドが生成する route 以外のパス（ルート絶対リンクの有効ターゲット）
@@ -76,7 +77,7 @@ fn check_one(
                 out,
                 page,
                 link,
-                "broken-anchor",
+                rules::BROKEN_ANCHOR,
                 format!("このページに見出し `#{frag}` がありません"),
             );
         }
@@ -106,7 +107,7 @@ fn check_one(
                 out,
                 page,
                 link,
-                "broken-link",
+                rules::BROKEN_LINK,
                 format!("リンク先 `{url}` が見つかりません"),
             ),
             Some(target) if target.frontmatter.draft => {
@@ -114,7 +115,7 @@ fn check_one(
                     out,
                     page,
                     link,
-                    "broken-link",
+                    rules::BROKEN_LINK,
                     format!("リンク先 `{resolved}` は draft のため公開サイトに含まれません"),
                 );
             }
@@ -125,7 +126,7 @@ fn check_one(
                             out,
                             page,
                             link,
-                            "broken-anchor",
+                            rules::BROKEN_ANCHOR,
                             format!("リンク先 `{resolved}` に見出し `#{frag}` がありません"),
                         );
                     }
@@ -147,7 +148,7 @@ fn check_one(
                 out,
                 page,
                 link,
-                "broken-link",
+                rules::BROKEN_LINK,
                 format!("{kind} `{url}` が content/ に見つかりません"),
             );
         }
@@ -187,7 +188,7 @@ fn check_absolute(
                     out,
                     page,
                     link,
-                    "broken-anchor",
+                    rules::BROKEN_ANCHOR,
                     format!("リンク先 `/{rest}` に見出し `#{frag}` がありません"),
                 );
             }
@@ -198,7 +199,7 @@ fn check_absolute(
         out,
         page,
         link,
-        "broken-link",
+        rules::BROKEN_LINK,
         format!("リンク先 `/{rest}` が見つかりません（public/ にもページ route にもありません）"),
     );
 }
@@ -241,12 +242,12 @@ fn push(
     out: &mut Vec<Diagnostic>,
     page: &Page,
     link: &LinkRef,
-    rule: &'static str,
+    rule: rules::Rule,
     message: String,
 ) {
     out.push(Diagnostic {
-        rule,
-        severity: Severity::Error,
+        rule: rule.id,
+        severity: rule.severity,
         base: DiagBase::Content,
         rel: page.rel.clone(),
         span: Some(link.span),

@@ -8,9 +8,10 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::MarkdownOptions;
-use crate::diagnostics::{DiagBase, Diagnostic, Severity};
+use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::markdown;
 use crate::model::{Page, SourceSpan};
+use crate::rules;
 
 /// エイリアス文字列を route 形式（`old/path/`。ルートは `""`）へ正規化する。
 /// 先頭 `/` と末尾スラッシュの省略は吸収し、サイト外・不正なパスは Err で返す
@@ -91,7 +92,7 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
             let route = match normalize_alias(raw) {
                 Ok(route) => route,
                 Err(message) => {
-                    diags.push(diag(page, span, "alias-invalid", message));
+                    diags.push(diag(page, span, rules::ALIAS_INVALID, message));
                     continue;
                 }
             };
@@ -106,7 +107,7 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
                 diags.push(diag(
                     page,
                     span,
-                    "alias-conflict",
+                    rules::ALIAS_CONFLICT,
                     format!("エイリアス /{route} は{target}の URL と衝突しています"),
                 ));
                 continue;
@@ -116,7 +117,7 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
                     diags.push(diag(
                         page,
                         span,
-                        "alias-conflict",
+                        rules::ALIAS_CONFLICT,
                         format!("エイリアス /{route} が重複しています"),
                     ));
                 }
@@ -124,7 +125,7 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
                     diags.push(diag(
                         page,
                         span,
-                        "alias-conflict",
+                        rules::ALIAS_CONFLICT,
                         format!(
                             "エイリアス /{route} はページ {} のエイリアスと重複しています",
                             first.rel.display()
@@ -171,10 +172,10 @@ fn line_span(fm_span: &SourceSpan, idx: usize, line: &str) -> SourceSpan {
     }
 }
 
-fn diag(page: &Page, span: Option<SourceSpan>, rule: &'static str, message: String) -> Diagnostic {
+fn diag(page: &Page, span: Option<SourceSpan>, rule: rules::Rule, message: String) -> Diagnostic {
     Diagnostic {
-        rule,
-        severity: Severity::Error,
+        rule: rule.id,
+        severity: rule.severity,
         base: DiagBase::Content,
         rel: page.rel.clone(),
         span,
@@ -309,6 +310,6 @@ mod tests {
         let diags = validate(&pages);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "alias-invalid");
-        assert_eq!(diags[0].severity, Severity::Error);
+        assert_eq!(diags[0].severity, crate::Severity::Error);
     }
 }

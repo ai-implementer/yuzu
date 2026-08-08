@@ -13,8 +13,9 @@
 
 use std::collections::HashMap;
 
-use crate::diagnostics::{DiagBase, Diagnostic, Severity};
+use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::model::Page;
+use crate::rules;
 
 /// route が壊れる文字。
 ///
@@ -79,8 +80,8 @@ pub fn validate_routes(pages: &[Page]) -> Vec<Diagnostic> {
                     }
                 };
                 diags.push(Diagnostic {
-                    rule: "route-conflict",
-                    severity: Severity::Error,
+                    rule: rules::ROUTE_CONFLICT.id,
+                    severity: rules::ROUTE_CONFLICT.severity,
                     base: DiagBase::Content,
                     rel,
                     span: None,
@@ -89,8 +90,8 @@ pub fn validate_routes(pages: &[Page]) -> Vec<Diagnostic> {
                 });
             }
             Some(first) => diags.push(Diagnostic {
-                rule: "route-conflict",
-                severity: Severity::Error,
+                rule: rules::ROUTE_CONFLICT.id,
+                severity: rules::ROUTE_CONFLICT.severity,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: None,
@@ -132,8 +133,8 @@ fn check_page_path(page: &Page, out: &mut Vec<Diagnostic>) {
         .collect::<Vec<_>>()
         .join(" ");
     out.push(Diagnostic {
-        rule: "unsafe-page-path",
-        severity: Severity::Error,
+        rule: rules::UNSAFE_PAGE_PATH.id,
+        severity: rules::UNSAFE_PAGE_PATH.severity,
         base: DiagBase::Content,
         rel: page.rel.clone(),
         span: None,
@@ -198,7 +199,7 @@ mod tests {
 
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "route-conflict");
-        assert_eq!(diags[0].severity, Severity::Error);
+        assert_eq!(diags[0].severity, crate::Severity::Error);
         assert_eq!(
             diags[0].rel,
             PathBuf::from("guide.md"),
@@ -321,7 +322,7 @@ mod tests {
                 .filter(|d| d.rule == "unsafe-page-path")
                 .collect();
             assert_eq!(hits.len(), 1, "{rel:?}: {diags:?}");
-            assert_eq!(hits[0].severity, Severity::Error);
+            assert_eq!(hits[0].severity, crate::Severity::Error);
             assert!(hits[0].span.is_none(), "ファイル配置の問題なので span なし");
         }
     }

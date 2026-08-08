@@ -24,7 +24,9 @@ mod model;
 mod nav;
 pub mod output;
 mod routes;
+pub mod rules;
 mod scan;
+mod suppress;
 mod traits;
 pub mod urlpath;
 
@@ -51,6 +53,7 @@ pub use nav::{NavGroup, nav_groups, route_group_key};
 pub use output::{OutputTracker, WriteOutcome};
 pub use routes::validate_routes;
 pub use scan::IgnoreMatcher;
+pub use suppress::{SuppressionOutcome, apply_suppressions};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
 
 /// Markdown パースの挙動設定（設定ファイルの `markdown` セクションから写す）
