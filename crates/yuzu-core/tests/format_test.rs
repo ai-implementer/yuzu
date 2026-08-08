@@ -205,3 +205,99 @@ fn 定義リストと約物強調は_fmt_を往復しても壊れない() {
     );
     assert_eq!(format_str(&once), once, "冪等でない:\n{once}");
 }
+
+#[test]
+fn 抑制コメント直後の空行を落として密着形へ整形する() {
+    // comrak は HtmlBlock の後に必ず空行を挿入するが、抑制コメントは
+    // 対象行との密着形が正規形（restore_yuzu_syntax が空行を落とす）
+    let source = concat!(
+        "# 見出し\n",
+        "\n",
+        "<!-- yuzu-lint-disable-next-line term-variant -->\n",
+        "サーバの説明。\n",
+    );
+    let out = format_str(source);
+    assert!(
+        out.contains("<!-- yuzu-lint-disable-next-line term-variant -->\nサーバの説明。"),
+        "密着形にならない:\n{out}"
+    );
+    // 空行入りで書いても密着形へ正規化される
+    let spaced = concat!(
+        "# 見出し\n",
+        "\n",
+        "<!-- yuzu-lint-disable-next-line term-variant -->\n",
+        "\n",
+        "サーバの説明。\n",
+    );
+    assert_eq!(format_str(spaced), out, "空行入りは密着形へ寄る");
+}
+
+#[test]
+fn 抑制コメントの整形は冪等() {
+    let source = concat!(
+        "# 見出し\n",
+        "\n",
+        "<!-- yuzu-lint-disable-next-line term-variant katakana-choon -->\n",
+        "サーバの説明。\n",
+        "\n",
+        "<!-- yuzu-lint-disable-next-line halfwidth-kana -->\n",
+        "<!-- yuzu-lint-disable-next-line fullwidth-alphanumeric -->\n",
+        "続き。\n",
+    );
+    let once = format_str(source);
+    assert_eq!(format_str(&once), once, "冪等でない:\n{once}");
+    assert!(
+        once.contains(
+            "<!-- yuzu-lint-disable-next-line halfwidth-kana -->\n<!-- yuzu-lint-disable-next-line fullwidth-alphanumeric -->\n続き。"
+        ),
+        "積んだコメントも密着形:\n{once}"
+    );
+}
+
+#[test]
+fn 引用ブロック内の抑制コメントも密着形を保つ() {
+    let source = concat!(
+        "# 見出し\n",
+        "\n",
+        "> <!-- yuzu-lint-disable-next-line term-variant -->\n",
+        "> サーバの説明。\n",
+    );
+    let once = format_str(source);
+    assert!(
+        once.contains("> <!-- yuzu-lint-disable-next-line term-variant -->\n> サーバの説明。"),
+        "引用内で密着形にならない:\n{once}"
+    );
+    assert_eq!(format_str(&once), once, "冪等でない:\n{once}");
+}
+
+#[test]
+fn tight_リスト項目内の抑制コメントを壊さない() {
+    // tight リスト内では comrak は空行を挿入しない（1 改行に縮む）ため、
+    // 復元条件が成立せず何もしないのが正
+    let source = concat!(
+        "# 見出し\n",
+        "\n",
+        "- 項目\n",
+        "  <!-- yuzu-lint-disable-next-line term-variant -->\n",
+        "  サーバの説明。\n",
+    );
+    let once = format_str(source);
+    assert_eq!(format_str(&once), once, "冪等でない:\n{once}");
+}
+
+#[test]
+fn yuzu_lint_以外の_html_コメントは空行付きのまま温存する() {
+    let source = concat!(
+        "# 見出し\n",
+        "\n",
+        "<!-- ただのメモ -->\n",
+        "\n",
+        "本文。\n",
+    );
+    let out = format_str(source);
+    assert!(
+        out.contains("<!-- ただのメモ -->\n\n本文。"),
+        "普通のコメントの空行が消えた:\n{out}"
+    );
+    assert_eq!(format_str(&out), out, "冪等でない:\n{out}");
+}

@@ -13,6 +13,7 @@ pub(crate) mod crossref;
 pub(crate) mod fence;
 pub(crate) mod fragment;
 pub(crate) mod glossary;
+pub(crate) mod suppress_comment;
 pub(crate) mod tabs;
 
 /// 属性・テキストへ埋める文字列の HTML エスケープ。
@@ -174,19 +175,40 @@ pub(crate) fn extract_meta(
 /// タイトルは必ず 1 つ空白を空けて書く（`[!NOTE]-` → `[!NOTE] -`）。どちらも
 /// 解釈は変わらないが原稿の見た目が変わるため、**行末のラベルと Admonition の
 /// マーカーだけ**を対象に元の形へ復元する（他の `#` エスケープは触らない）。
+///
+/// 抑制コメント（`<!-- yuzu-lint-… -->`）の直後には comrak が必ず空行を挿入する
+/// （HtmlBlock 後の blankline）ため、その空行を落として**密着形を正規形**にする。
+/// 照合（suppress.rs）は「空行を飛ばした次の内容行」で行うので、
+/// どちらの形でも抑制の意味は変わらない = 見た目だけの復元
 fn restore_yuzu_syntax(body: String) -> String {
-    if !body.contains("{\\#") && !body.contains("] -") && !body.contains("] +") {
+    if !body.contains("{\\#")
+        && !body.contains("] -")
+        && !body.contains("] +")
+        && !body.contains("yuzu-lint-")
+    {
         return body;
     }
+    let lines: Vec<&str> = body.split_inclusive('\n').collect();
     let mut out = String::with_capacity(body.len());
-    for line in body.split_inclusive('\n') {
-        let (text, newline) = match line.strip_suffix('\n') {
+    let mut i = 0;
+    while i < lines.len() {
+        let (text, newline) = match lines[i].strip_suffix('\n') {
             Some(text) => (text, "\n"),
-            None => (line, ""),
+            None => (lines[i], ""),
         };
-        let restored = restore_line(text);
-        out.push_str(&restored);
+        out.push_str(&restore_line(text));
         out.push_str(newline);
+        // 抑制コメント直後の挿入空行を落とす（次が内容行のときだけ = 文末や
+        // 連続空行は触らない）。tight リスト内は comrak が空行を入れないため
+        // 条件が成立せず、何もしない
+        if suppress_comment::is_suppress_comment_line(text)
+            && i + 2 < lines.len()
+            && suppress_comment::is_content_blank(lines[i + 1])
+            && !suppress_comment::is_content_blank(lines[i + 2])
+        {
+            i += 1;
+        }
+        i += 1;
     }
     out
 }
@@ -590,6 +612,62 @@ pub(crate) fn extract_text_spans(
         let data = node.data.borrow();
         if let NodeValue::Text(text) = &data.value {
             out.push((text.to_string(), span_of(&data.sourcepos)));
+        }
+    }
+    out
+}
+
+/// 抑制コメント 1 件（分類とソース上の位置）
+pub(crate) struct SuppressComment {
+    pub kind: suppress_comment::SuppressCommentKind,
+    /// コメント自身の span（invalid / unused の報告位置）
+    pub span: SourceSpan,
+}
+
+/// 行単位の抑制コメント（`<!-- yuzu-lint-… -->`）を文書順に列挙する（`suppress.rs` 用）。
+///
+/// `comrak_options` を使う（keep_footnotes 版ではない）: 照合相手の診断を作る
+/// [`extract_text_spans`] / [`extract_fence_meta`] と同じ AST 族に揃える。
+/// keep_footnotes が救う「未参照の脚注定義」の中は lint 診断が出ない場所なので、
+/// 抑制コメントを拾っても対象がない。
+///
+/// コードブロック・インラインコード内は comrak が HtmlBlock にしないため
+/// 構造的に対象外（docs に記法例をフェンスで安全に書ける根拠）
+pub(crate) fn extract_suppress_comments(
+    source: &str,
+    opts: &MarkdownOptions,
+) -> Vec<SuppressComment> {
+    use suppress_comment::SuppressCommentKind;
+
+    let arena = Arena::new();
+    let root = parse_document(&arena, source, &comrak_options(opts));
+    let mut out = Vec::new();
+    for node in root.descendants() {
+        let data = node.data.borrow();
+        match &data.value {
+            NodeValue::HtmlBlock(nhb) => {
+                let first_line = nhb.literal.lines().next().unwrap_or("");
+                let Some(kind) = suppress_comment::classify_comment_line(first_line) else {
+                    continue;
+                };
+                let mut span = span_of(&data.sourcepos);
+                // 閉じ忘れは HtmlBlock が文書末尾まで届くので、報告位置を開始行に絞る
+                if kind == SuppressCommentKind::Unclosed {
+                    span.end_line = span.start_line;
+                    span.end_col = (span.start_col + first_line.chars().count()).max(1);
+                }
+                out.push(SuppressComment { kind, span });
+            }
+            // 段落中のインラインコメント: `yuzu-lint-` 接頭なら「単独行でない」誤用
+            NodeValue::HtmlInline(literal)
+                if suppress_comment::classify_comment_line(literal).is_some() =>
+            {
+                out.push(SuppressComment {
+                    kind: SuppressCommentKind::NotStandalone,
+                    span: span_of(&data.sourcepos),
+                });
+            }
+            _ => {}
         }
     }
     out

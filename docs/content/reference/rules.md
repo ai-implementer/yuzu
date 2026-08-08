@@ -114,6 +114,20 @@ error のルールは抑制できません（壊れたリンクや非決定な�
 書いたのに発火しなかった抑制は `unused-lint-suppression` の warning になります
 （直したのに残った指定を放置させないためです）。
 
+## 行単位の抑制（yuzu-lint-disable-next-line）
+
+1 箇所だけ例外を通したいときは、HTML コメントで**次の内容行に限り**抑制できます
+（詳しくは[品質チェック](../guide/quality.md#行単位の抑制yuzu-lint-disable-next-line)を参照）:
+
+```md
+<!-- yuzu-lint-disable-next-line term-variant katakana-choon -->
+この行のゆれ表記は報告されません。
+```
+
+対象は「コメントの後、空行を飛ばした次の内容行」で、ルール名は空白区切りで
+複数指定できます。抑制できるルールの範囲・invalid / unused の警告は
+ページ単位（`lintDisable`）と同じ規律です。行番号を持たないルール
+（`directory-too-deep` など）は行単位では抑制できず、ページ単位を使います。
+
 > [!NOTE]
 > プロジェクト全体でルールを無効化できるのは `lint.rules` の 3 ルールだけです。
-> 行単位で抑制するコメントにはまだ対応していません。
