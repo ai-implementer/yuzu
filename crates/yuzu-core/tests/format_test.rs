@@ -286,7 +286,7 @@ fn tight_リスト項目内の抑制コメントを壊さない() {
         once.contains(
             "- 項目\n  <!-- yuzu-lint-disable-next-line term-variant -->\n  サーバの説明。"
         ),
-        "リスト内の密着形が崩れた:\n{once}"kokokokoko
+        "リスト内の密着形が崩れた:\n{once}"
     );
     assert_eq!(format_str(&once), once, "冪等でない:\n{once}");
 }
