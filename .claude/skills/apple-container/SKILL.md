@@ -1,9 +1,9 @@
 ---
 name: apple-container
-description: apple container（v1.1.0）の CLI リファレンスと運用レシピ（汎用）。コンテナの起動・ビルド・デバッグ、v1.1.0 固有の構文と罠（初回起動・buildkit 常駐・inotify・exec）を扱うときに使う。yuzu の開発コンテナ操作は末尾の「このプロジェクト固有の運用」を参照。
+description: apple container（v1.2.2）の CLI リファレンスと運用レシピ（汎用）。コンテナの起動・ビルド・デバッグ、k8s プラグイン、v1.2 系の構文と罠（初回起動・buildkit 常駐・inotify・exec）を扱うときに使う。yuzu の開発コンテナ操作は末尾の「このプロジェクト固有の運用」を参照。
 ---
 
-# apple container（v1.1.0）リファレンス
+# apple container（v1.2.2）リファレンス
 
 macOS 26 / Apple Silicon 前提（公式: https://github.com/apple/container）。
 このファイルは汎用リファレンスで、**yuzu 固有の内容は末尾の「このプロジェクト固有の運用」にまとめてある**。
@@ -25,6 +25,7 @@ macOS 26 / Apple Silicon 前提（公式: https://github.com/apple/container）�
 | アンインストール | `container system stop` → `brew uninstall container` |
 
 - **初回の `container system start` はカーネル導入プロンプトが出る** → `--enable-kernel-install` で非対話化（`container system kernel set --recommended` でも可）
+- brew のほかに**リリースパッケージ（installer pkg → `/usr/local/bin/container`）導入もある**。その場合のアップグレードは新しい pkg の再インストール（`container --version` でどちらか判別: `/usr/local/bin` なら pkg）
 
 ## CLI グループと 1 文字 alias
 
@@ -35,6 +36,7 @@ macOS 26 / Apple Silicon 前提（公式: https://github.com/apple/container）�
 - **ボリューム** `v`: create / list / inspect / delete / prune
 - **レジストリ** `r`: login / logout / list
 - **マシン** `m`: create / run / list / inspect / set / set-default / logs / stop / delete
+- **Kubernetes** `k8s`（v1.2.1+・実験的）: create / start / delete(rm) / list(ls) / load-image / write-config
 - **システム** `s`: start / stop / status / version / logs / df / dns / kernel / property
 
 ## `container run` 主要オプション
@@ -56,6 +58,8 @@ macOS 26 / Apple Silicon 前提（公式: https://github.com/apple/container）�
 | UNIX ソケット公開 | `--publish-socket <host_path>:<container_path>` |
 | init プロセス | `--init`（シグナル転送・ゾンビ回収）/ `--init-image <image>` |
 | ネスト仮想化 | `--virtualization --kernel /path/to/vmlinux-kvm` |
+| カーネル引数 | `--kernel-arg <arg>`（起動コマンドラインへ追記。v1.2.0+） |
+| パス保護 | `--read-only-path <path>` / `--masked-path <path>`（k8s / docker 互換の読み取り専用化・隠蔽。v1.2.1+・EXPERIMENTAL） |
 
 リソース指定:
 
@@ -90,6 +94,7 @@ container build -t <tag> -f <Dockerfile> <context>
 --build-arg KEY=VAL                # ビルド引数
 --target production                # ステージ指定
 --secret id=token,src=./token.txt  # ビルドシークレット
+--ssh default                      # ビルド時の SSH エージェント転送（v1.2.1+。private git clone 等）
 --output type=tar,dest=./img.tar   # 出力形式（oci / tar / local）
 --pull                             # ベースイメージ再取得
 --no-cache                         # キャッシュ無効
@@ -141,7 +146,7 @@ container kill <id>                # 即時 SIGKILL
 container rm <id>                  # 停止後削除（-f で強制）
 container prune                    # 停止中のコンテナ削除
 container stats                    # 全コンテナを top 風表示（--no-stream で単発）
-container export -o <file> <id>    # FS を tar エクスポート
+container export -o <file> <id>    # FS を tar エクスポート（v1.2.1+ は実行中コンテナでも可）
 ```
 
 ## ネットワーク（macOS 26+）
@@ -202,6 +207,28 @@ m set -n <id> home-mount=ro        # ro / rw / none
 - **独自イメージ**: `/sbin/init` を含む任意の Linux イメージ対応。プロビジョニングは
   イメージ内 `/etc/machine/create-user.sh`（env: `CONTAINER_USER` / `CONTAINER_UID` /
   `CONTAINER_GID` / `CONTAINER_HOME` / `CONTAINER_MACHINE_ID`）
+
+## Kubernetes クラスタ（`container k8s`・v1.2.1+・実験的）
+
+単一ノードのローカル Kubernetes（kindest/node ＋ kubeadm）。コンテナ VM 1 つが
+コントロールプレーンになり、資格情報は `~/.kube/config` へ自動マージされる。
+
+```bash
+container k8s create                              # 既定名 k8s-dev で作成・起動
+container k8s create --name my --cpus 4 --memory 8g
+container k8s create --name temp --rm             # 停止で自動削除
+container k8s start [--name <name>]               # 再起動（IP 変化を kubeconfig へ反映）
+container k8s list / delete [--name <name>]
+container k8s load-image <image> [--platform os/arch]  # ローカルイメージをクラスタの containerd（k8s.io 名前空間）へ
+container k8s write-config [--kubeconfig <path>]  # kubeconfig の再取得・別ファイル出力
+```
+
+- 既定リソース: ホストの 1/4（最低 2 CPU / 2g）。ノードイメージ既定は `docker.io/kindest/node`
+- **v1.2.1 はリリースパッケージ導入だと k8s が動かない**（プラグイン未登録で
+  「Plugins are unavailable」になる。実験的機能のまま **v1.2.2 で修正**）。
+  使うなら v1.2.2 以上に更新すること
+- 実験的機能のためサブコマンド・オプションは変わり得る（この節は v1.2.2 の公式
+  リファレンス準拠。手元 CLI が 1.2.1 のため未実機検証）
 
 ## システム
 
@@ -268,7 +295,7 @@ container --generate-completion-script fish > ~/.config/fish/completions/contain
 - **匿名 volume は `--rm` でも自動削除されない**（docker と挙動が違う）: `container volume ls` で確認し `prune` で掃除
 - **compose 非対応**
 - **VS Code 連携は attach のみ**: `dev.containers.experimentalAppleContainerSupport: true` →「Attach to Running Apple Container」。Reopen in Container は不可（Docker/Podman 前提）。JetBrains の DevContainers も Docker/Podman 前提で不可
-- **SSH エージェント**: `--ssh` のソケットパスは `/var/host-services/ssh-auth.sock`（公式 docs の `/run/…` 記載は誤り）
+- **SSH エージェント**: `--ssh` のソケットパスは `/var/host-services/ssh-auth.sock`（公式 docs の `/run/…` 記載は誤り。v1.2.1 でも実測で `/var/…` のまま・`/run/host-services` は存在しない）
 
 ---
 
@@ -280,7 +307,7 @@ container --generate-completion-script fish > ~/.config/fish/completions/contain
 ## 原則
 
 - **開発コンテナの操作は生 CLI ではなく `scripts/dev-container.sh` を使う**（build / up / shell / down / clean / status）。volume・ポート・リソースの配線が揃っているため
-- `container` CLI はサンドボックス内から実行すると XPC 通信が **Operation not permitted** になる。**サンドボックス外での実行が必要**
+- `container` CLI はサンドボックス内から実行すると XPC 通信が **Operation not permitted** になる。**サンドボックス外での実行が必要**（`container <sub> --help` の**ヘルプ表示すら**プラグイン探索の失敗でルートヘルプに化けるので、ヘルプ確認もサンドボックス外で行う）
 - コンテナ内の CLI 実機確認は `"$CARGO_TARGET_DIR/debug/yuzu"`（`./target/debug/yuzu` は存在しない）
 
 ## 基本操作
