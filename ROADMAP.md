@@ -3,127 +3,10 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在: v0.13（Phase 58〜61）
+## 現在
 
-軸は「**lint の制御性**」（前版の策定時から次の有力候補としていたもの）。ルールは
-22 まで増えたが、書き手の側に**意図的な例外を通す手段が無い** — 設定で切れるのは
-`lint.rules` の 3 つだけ（`term-variant` / `directory-too-deep` は設定しない限り
-発火しない opt-in 型）で、inline 抑制は無く、warning でも 1 件出れば exit 1。
-`yuzu check` を CI ゲートに乗せた運用（yuzu 自身の docs.yml がそう）では
-「例外を直すか、ルールを諦めるか」の二択になる。ゆれ表記そのものを説明する文章・
-意図的な少数派表記・既存プロジェクトへの段階導入がすべてここで詰まる。
-候補メモの段階リリース案（ページ単位の抑制 → 行単位 → 全ルールの enable/disable）
-をそのまま Phase に切る。Phase は価値と実装コスト・依存関係の順
-（着手時に個別に設計する）。
-
-3 Phase 共通の土台は**ルール ID のレジストリ**（ID・深刻度・無効化 / 抑制可否の
-唯一の定義）。現状の ID は文字列リテラルとして 3 crate・8 ファイルに散在しており
-（yuzu-core の lint / linkcheck / aliases / routes / include、yuzu-render の
-speccheck、yuzu-cli の check / diag）、抑制記法や設定のルール名検証はレジストリ
-無しには書けない。最初に着手する Phase で置き、docs の `reference/rules.md` の表
-との一致をテストで縛れば `SPEC_LANGS`（speccheck）と同型の規律になる。
-
-### 58 ページ単位の抑制 ✅
-
-frontmatter（または先頭コメント）でそのページに限りルールを切る。「用語の正誤を
-説明するページ」「あえて少数派表記で書くページ」を CI ゲートと両立させる最小単位。
-
-- **記法は 2 案を着手時に決める**: frontmatter キーは構造化されていて fmt が
-  バイト温存する（安全）が、`Frontmatter` は `CachedMeta` に入るので
-  **`CACHE_FORMAT_VERSION` の bump が要る**（Phase 40 の `aliases` 追加と同じ）。
-  ページ先頭の HTML コメントは Phase 59 と記法を統一できてキャッシュ不変だが、
-  AST 収集の機構を先に作ることになる
-- 二層設計は候補メモのとおり: **収集は yuzu-core（`Page` に抑制情報を持たせる）・
-  適用は cli の `diag::report` 直前**。lint だけでなく check が足す診断
-  （linkcheck・yuzu-render 由来の `spec-error` も）が同じ漏斗を通るので一括で効く
-- **抑制対象の線引きが一番の判断点**: `route-conflict` / `unsafe-page-path` は
-  build も中断する正なので抑制不可のまま固定。`fmt` を抑制可にすると
-  `yuzu fmt --check` と `yuzu check` が食い違う非対称が出る。`config-*` は
-  ページ外なので対象外。error 系（`broken-link` 等）を含めるかは
-  「壊れリンクを例示したい需要 vs 事故の容認」の比較から
-- **未知ルール名は警告にする**（`config-unknown-key` と同じ「黙って効かない」
-  事故クラス）。発火しなかった抑制（unused）を報告するかも決める
-- `yuzu lint --fix` は抑制された出現を修正しない（報告と修正の両方に効かせる）。
-  集計行・`--format json` へ抑制件数を足すかは出力契約の追加として決める
-
-### 59 行単位の抑制 ✅
-
-`<!-- yuzu-lint-disable-next-line term-variant -->` の形で次の行だけ抑制する
-（記法・語彙は着手時に決める）。
-
-- **行走査ではなく comrak AST（HtmlBlock / HtmlInline）の sourcepos から収集**する。
-  コードブロック内の記法例は Code ノード内の文字列なので誤認しない
-  （docs 自身が `reference/rules.md` に実例を書けるようになる）
-- 「次の行」と診断の突き合わせ規則を決める（複数行 span を持つ診断・同一行の
-  複数ヒット・同一行を対象にする disable-line を足すか）
-- `render.r#unsafe = true` のため**コメントは出力 HTML・配信 .md・llms へ素通し**
-  される（ブラウザ表示は不可視）。仕様と割り切るか、HTML からだけ剥ぐか
-- `yuzu fmt`（format_commonmark）が HTML ブロック / インラインを逐語温存するかを
-  着手時に実測する（崩れるなら Phase 45 の復元処理と同様の fmt 温存が要る）
-
-### 60 全ルールの enable/disable ✅
-
-プロジェクト方針と合わないルールを設定で切る。既存プロジェクトへ lint を段階導入
-する入口（まず off で入れて少しずつ有効化する）。
-
-- **採用した形: `lint.rules` を「ルール ID（kebab-case）→ bool」のマップへ一般化**。
-  策定時の「マップ化すると `config-unknown-key` の既知キー木でタイポを検出でき
-  なくなる」という前提は、**Default を「全 disableable ID → true」の非空マップに
-  することで覆った**（既知キー木 = `Config::default()` の JSON 化にルール ID が
-  載り、タイポ・旧キー・error 系 ID は行番号付き warning のまま）。代償の
-  「yuzu-config に ID 一覧を持つ」は `CONFIG_RULES` と同型のテストで縛る
-- **off だけに絞る**（severity の上書きはやらない = 終了コード規約 0 / 1 / 2 と
-  噛み合わない。候補メモで済ませた判断）
-- 無効化可能な集合はレジストリの suppressible と同一（warning 11 個。error・
-  `config-*`・抑制機構自身は不可）。適用は `apply_suppressions` の漏斗に一本化し、
-  spec-warning（yuzu-render 産）にも同じ 1 経路で効く
-- 旧 camelCase 3 キーはエイリアスなしで廃止（`config-unknown-key` が正しい ID へ
-  誘導し、ルールは既定有効のまま = 安全側）。無効化中ルールへのページ・行抑制は
-  unused にしない（再有効化で抑制が生き返る）
-
-### 61 dogfooding 改善 ✅
-
-恒例のバッファ枠。着手時の調査で選定したのは 3 点:
-
-- **抑制記法を yuzu 自身の docs と scaffold で実運用** — ゆれ表記の例をコード
-  スパンに逃がさず生のまま書く。**GFM の表は行単位ブロックのためセルは行コメント
-  で抑制できない**（表の前に置いても対象はヘッダ行のみ。テストで仕様化）。そこで
-  docs の表 5 箇所（rules.md / quality.md）は frontmatter `lintDisable`（Phase 58）、
-  scaffold の箇条書き 3 行は行コメント（Phase 59）と使い分け、両記法の dogfooding
-  にする。リスト項目は「1 行目ラベル文・2 行目コメント・3 行目例」の形が fmt
-  正規形かつ抑制が効く（`- <!-- … -->` 同一行形は fmt が「`- `（末尾スペース）＋
-  字下げ」へ書き換えるので使わない）
-- **SSR 図のモバイル対応** — `figure.mermaid-ssr svg` の `max-width: 100%` が
-  1571px 幅の図を 375px 端末で 0.21 倍（文字 3px）へ縮めていた。overflow-x を
-  足すだけでは svg が先に縮んで無効果のため、**縮小をやめ pre / table と同じ
-  「等倍＋ figure 内横スクロール」へ**（印刷はスクロール不能なので従来どおり
-  紙幅へ縮小）。クライアント描画（mermaid.js の useMaxWidth）は縮小のままで
-  ssr / client に挙動差が残る（既知。直すなら vendor 設定の変更として別途）
-- **ROADMAP の記述整理** — 下の「v0.10.1 レビューの持ち越し」のキャッシュ保存の
-  原子性は Phase 53（v0.11）で実装済みと判明（完了欄と二重記載になっていた）。
-  持ち越し欄を完了注記へ縮約
-
-見送り（v0.14 以降の候補。判断根拠ごと残す）:
-
-- `theme.dark: false`・JS 無効時の OS ダーク追従 — base.jinja が
-  `data-theme="light"` を無条件ハードコードしており CSS フォールバックの前提から
-  崩す必要がある。ダーク定義が 3 箇所（theme.css / syntect 生成 / cssVarsDark
-  生成）に散りフォールバック追加で全部 2 系統化（21K の syntect.css が倍増）、
-  さらに「dark: false でもダークになる」= 設定キーの意味の再定義（3 値化等）を
-  伴う。候補中最重量で単独 Phase 相当
-- 見出しパーマリンクのキーボード到達性 — `<a aria-hidden class="anchor">` は
-  comrak 0.53 のハードコード出力で、完全対応（aria-hidden 除去＋ラベル付与）は
-  yuzu-core の後処理 = 本文 HTML 変更で CACHE bump ＋全スナップショット更新。
-  CSS だけの部分対応は「aria-hidden 内のフォーカス可能要素」という別の違反を生む
-- ページメタの拡充（読了時間・文字数）/ `<head>` メタ — canonical / og:url は
-  sitemap と同じ「baseUrl がフル URL のときだけ」ゲート（pipeline.rs）に乗せれば
-  新キーゼロで実装可能と調査済み（og:image だけ素材不足）。読了時間・文字数は
-  extract_meta で数えて CachedMeta へ載せる = CACHE bump を伴う
-- `--root` グローバルオプションと shell 補完 — 定型は 7 箇所（8 コマンド分）。
-  clap_complete の新規依存＋ 8 つの run() シグネチャ変更に加え、build / dev
-  だけが load_config（上書き適用・リンク検査・write_resolved）を通る非対称を
-  揃えるかの設計判断が要る。着手時は MarkdownOptions 構築の 8 箇所コピーの
-  解消と抱き合わせると割が良い
+**v0.13 まで公開済み**。次の版（v0.14）は未策定で、候補は下の
+「[v0.14 以降の候補](#v014-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
 
 ## v0.10.1 レビューの持ち越し
 
@@ -158,6 +41,26 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
 
 ## v0.14 以降の候補
 
+- **dogfooding 候補（v0.13 Phase 61 からの持ち越し。判断根拠ごと残す）**:
+  - `theme.dark: false`・JS 無効時の OS ダーク追従 — base.jinja が
+    `data-theme="light"` を無条件ハードコードしており CSS フォールバックの前提から
+    崩す必要がある。ダーク定義が 3 箇所（theme.css / syntect 生成 / cssVarsDark
+    生成）に散りフォールバック追加で全部 2 系統化（21K の syntect.css が倍増）、
+    さらに「dark: false でもダークになる」= 設定キーの意味の再定義（3 値化等）を
+    伴う。候補中最重量で単独 Phase 相当
+  - 見出しパーマリンクのキーボード到達性 — `<a aria-hidden class="anchor">` は
+    comrak のハードコード出力で、完全対応（aria-hidden 除去＋ラベル付与）は
+    yuzu-core の後処理 = 本文 HTML 変更で CACHE bump ＋全スナップショット更新。
+    CSS だけの部分対応は「aria-hidden 内のフォーカス可能要素」という別の違反を生む
+  - ページメタの拡充（読了時間・文字数）/ `<head>` メタ — canonical / og:url は
+    sitemap と同じ「baseUrl がフル URL のときだけ」ゲート（pipeline.rs）に乗せれば
+    新キーゼロで実装可能と調査済み（og:image だけ素材不足）。読了時間・文字数は
+    extract_meta で数えて CachedMeta へ載せる = CACHE bump を伴う
+  - `--root` グローバルオプションと shell 補完 — 定型は 7 箇所（8 コマンド分）。
+    clap_complete の新規依存＋ 8 つの run() シグネチャ変更に加え、build / dev
+    だけが load_config（上書き適用・リンク検査・write_resolved）を通る非対称を
+    揃えるかの設計判断が要る。着手時は MarkdownOptions 構築の 8 箇所コピーの
+    解消と抱き合わせると割が良い
 - **i18n** — テーマ UI 文字列の多言語化。実測で jinja 18 ＋ テーマ JS 19 ＋
   apispec 35 ＋ crossref 3 文字列。`site.lang` は `<html lang>` の 2 箇所でしか
   使われていない。判断材料:
@@ -226,12 +129,72 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   印刷・PDF 対応（画面 UI 非表示・常にライト配色・折りたたみとタブの全展開・
   thead 再掲）/ ナビと目次の規模対応（サイドバー折りたたみ・入れ子 TOC・
   `theme.toc.levels`・scrollspy の基準線修正）/ dogfooding 改善＝サイト URL 更新
+- **v0.13**（Phase 58〜61）lint の制御性 — ページ単位の抑制（frontmatter
+  `lintDisable`）/ 行単位の抑制（`<!-- yuzu-lint-disable-next-line -->` コメント）/
+  `lint.rules` の「ルール ID → bool」化による全ルールの enable/disable /
+  dogfooding 改善＝抑制記法を docs・scaffold で実運用・SSR 図のモバイル対応。
+  Phase 外でビルド進捗ログ（処理中ページ・watch の変更ファイル表示）と
+  comrak 整形パニックの防御（該当ページを原文へ縮退）も追加
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、
 mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
 
 各版の Phase 内訳:
+
+<details>
+<summary>完了済み: v0.13（Phase 58〜61）の内訳</summary>
+
+- **58 ページ単位の抑制** — frontmatter `lintDisable` でそのページに限り warning
+  ルールを抑制する（HTML コメント案は不採用 = fmt がバイト温存する構造化キーを
+  選択。`CACHE_FORMAT_VERSION` 19 → 20）。土台として**ルール ID レジストリ**
+  （`yuzu-core/src/rules.rs`。全ルールの ID・深刻度・抑制可否の唯一の定義。docs の
+  ルール表との一致をテストで縛る = `SPEC_LANGS` と同型）と適用層（`suppress.rs`。
+  check / lint / lint --fix が報告直前に通る単一の漏斗）を新設。抑制できるのは
+  warning のみ（error は壊れた出力を防ぐ正・`config-*` はページ外・抑制機構自身の
+  2 ルールも不可）。未知・抑制不可の名前は `invalid-lint-suppression`、発火しなかった
+  抑制は `unused-lint-suppression` の warning（「黙って効かない」を
+  `config-unknown-key` と同じ事故クラスとして扱う）。`--fix` は抑制箇所を書き換えず、
+  集計行と `--format json` に抑制件数を追加
+- **59 行単位の抑制** — `<!-- yuzu-lint-disable-next-line <rule…> -->` が「空行を
+  飛ばした次の内容行」に限り抑制する（disable-line は語彙予約のみ）。収集は行走査
+  ではなく comrak AST（HtmlBlock / HtmlInline）なので、コードブロック内の記法例は
+  構造的に誤認しない（docs が実例をフェンスで安全に書ける根拠）。文字列解釈は
+  `markdown/suppress_comment.rs` に一元化。fmt は対象行との密着形へ正規化
+  （restore_yuzu_syntax 拡張 = comrak が HtmlBlock 後に挿入する空行を落とす）。
+  閉じ忘れ・裸コメント・行途中・未知ディレクティブは invalid 警告で防御。
+  出力 HTML・配信 .md・llms への素通しは仕様と割り切り（検索索引には入れない）。
+  CACHE bump 不要
+- **60 全ルールの enable/disable** — `lint.rules` を「ルール ID（kebab-case）→
+  bool」のマップへ一般化し、`false` でプロジェクト全体無効化。「マップ化すると
+  `config-unknown-key` の既知キー木でタイポ検出不能」という策定時の前提は
+  **Default を「全 disableable ID → true」の非空マップにする**ことで覆した
+  （タイポ・旧 camelCase キー・error 系 ID は行番号付き warning のまま）。
+  無効化できる集合はレジストリの suppressible と同一（`DISABLEABLE_RULES` を
+  yuzu-config に持ち双方向テストで縛る）。適用は `apply_suppressions` の漏斗一本
+  （spec-warning にも同経路で効く。無効化中もルールの計算は走らせ漏斗で落とす =
+  「無効化 N 件」の正確な集計と引き換えの意図的トレード）。旧 camelCase 3 キーは
+  エイリアスなしで廃止（安全側）。severity 上書きは終了コード規約 0 / 1 / 2 と
+  噛み合わないため off のみ
+- **61 dogfooding 改善** — 選定 3 点。(1) **抑制記法の実運用**: GFM の表セルは
+  行コメントで抑制できない（表の前に置いても対象はヘッダ行のみ。テストで仕様化）
+  ため、docs の表 5 箇所は `lintDisable`（Phase 58）・scaffold の箇条書き 3 行は
+  行コメント（Phase 59）と使い分けて両記法を dogfood。リスト項目は「1 行目
+  ラベル文・2 行目コメント・3 行目例」の形が fmt 正規形（`- <!-- … -->` 同一行形は
+  fmt が「`- `（末尾スペース）＋字下げ」へ書き換えるので不採用）。
+  (2) **SSR 図のモバイル対応**: `max-width: 100%` の縮小（1571px 幅の図が 375px
+  端末で文字 3px）をやめ、pre / table と同じ「等倍＋ figure 内横スクロール」へ
+  （svg は block ＋ margin-inline: auto = inline のままだと中央寄せの左端が
+  スクロール範囲外へ切れる。印刷は紙幅へ縮小のまま）。(3) **ROADMAP 整理**:
+  キャッシュ保存の原子性が Phase 53 実装済みと持ち越し欄に二重記載だったのを解消
+- **Phase 外** — ビルド進捗ログ（レンダ / 索引の 1 ページ 1 行・キャッシュヒット
+  印付き・watch の「変更を検知」へ変更ファイル表示。`RUST_LOG` を初文書化）/
+  comrak `format_commonmark` の既知バグ（引用等の入れ子内の順序付きリストが
+  9 → 10 項目で桁が増えると prefix 計算がずれてパニック。0.54 でも未修正）を
+  catch_unwind で防御し、該当ページは警告付きで原文へ縮退（fmt は整形スキップ /
+  llms-full は原文の本文）
+
+</details>
 
 <details>
 <summary>完了済み: v0.12（Phase 54〜57）の内訳</summary>
