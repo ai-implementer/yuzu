@@ -142,6 +142,8 @@ jobs:
           grep -q '@media print' dist/_assets/css/theme.css
           grep -q '@media screen' dist/_assets/css/syntect.css
           grep -q 'beforeprint' dist/_assets/js/details-target.js
+          # SSR 図のモバイル対応（Phase 61）: 縮小せず figure 内で横スクロール
+          grep -A 3 'figure.mermaid-ssr {' dist/_assets/css/theme.css | grep -q 'overflow-x: auto'
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）

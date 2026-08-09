@@ -1361,14 +1361,19 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
   text-align: center;
 }
 
-/* tankan によるビルド時 SVG（backend: "ssr"） */
+/* tankan によるビルド時 SVG（backend: "ssr"）。
+   pre / table と同じ言語で「縮めずスクロール」— max-width で縮めると
+   狭幅端末で文字が読めなくなる（1571px 幅の図が 375px 端末で文字 3px）。
+   中央寄せは text-align ではなく svg の block ＋ margin-inline: auto で行う
+   （inline のままだとコンテナ超過時に中央寄せの左端がスクロール範囲外へ切れる） */
 .markdown-body figure.mermaid-ssr {
   margin: 1rem 0;
-  text-align: center;
+  overflow-x: auto;
 }
 
 .markdown-body figure.mermaid-ssr svg {
-  max-width: 100%;
+  display: block;
+  margin-inline: auto;
   height: auto;
 }
 
@@ -1898,6 +1903,15 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
   .markdown-body .math-display,
   .markdown-body span[data-math-style="display"] {
     overflow-x: visible;
+  }
+
+  /* SSR 図: 紙はスクロール不能なので画面の等倍スクロールをやめ紙幅へ縮小 */
+  .markdown-body figure.mermaid-ssr {
+    overflow-x: visible;
+  }
+
+  .markdown-body figure.mermaid-ssr svg {
+    max-width: 100%;
   }
 
   /* タブ: 全パネルを縦に展開する。display:block で flex の order が無効になり
