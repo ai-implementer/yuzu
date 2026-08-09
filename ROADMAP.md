@@ -81,22 +81,49 @@ frontmatter（または先頭コメント）でそのページに限りルール
   誘導し、ルールは既定有効のまま = 安全側）。無効化中ルールへのページ・行抑制は
   unused にしない（再有効化で抑制が生き返る）
 
-### 61 dogfooding 改善 ⬜
+### 61 dogfooding 改善 ✅
 
-恒例のバッファ枠（着手時にユーザが選ぶ）。この版で足した抑制記法の実運用を先頭に、
-Phase 57 からの持ち越しを再掲する:
+恒例のバッファ枠。着手時の調査で選定したのは 3 点:
 
-- **抑制記法を yuzu 自身の docs で使う** — `reference/rules.md` のゆれ表記の例を
-  コードスパンに逃がさず生のまま書く（Phase 59 の AST 判定の dogfooding）
-- SSR 図のモバイル対応（`figure.mermaid-ssr svg` に overflow-x が無く
-  375px 幅で文字 3.3px）
-- `theme.dark: false`・JS 無効時の OS ダーク追従（`prefers-color-scheme` の CSS
-  フォールバック。Phase 55 の「ダークは `@media screen`」との整合設計が要る）
-- 見出しパーマリンクのキーボード到達性（`.anchor` が visibility:hidden ＋
-  aria-hidden）
-- ページメタの拡充（読了時間・文字数）/ `<head>` のメタ（OGP・canonical・favicon）
-- `--root` グローバルオプションと shell 補完（7 コマンドが同じ定型）
-- 下の「v0.10.1 レビューの持ち越し」の小さいもの
+- **抑制記法を yuzu 自身の docs と scaffold で実運用** — ゆれ表記の例をコード
+  スパンに逃がさず生のまま書く。**GFM の表は行単位ブロックのためセルは行コメント
+  で抑制できない**（表の前に置いても対象はヘッダ行のみ。テストで仕様化）。そこで
+  docs の表 5 箇所（rules.md / quality.md）は frontmatter `lintDisable`（Phase 58）、
+  scaffold の箇条書き 3 行は行コメント（Phase 59）と使い分け、両記法の dogfooding
+  にする。リスト項目は「1 行目ラベル文・2 行目コメント・3 行目例」の形が fmt
+  正規形かつ抑制が効く（`- <!-- … -->` 同一行形は fmt が「`- `（末尾スペース）＋
+  字下げ」へ書き換えるので使わない）
+- **SSR 図のモバイル対応** — `figure.mermaid-ssr svg` の `max-width: 100%` が
+  1571px 幅の図を 375px 端末で 0.21 倍（文字 3px）へ縮めていた。overflow-x を
+  足すだけでは svg が先に縮んで無効果のため、**縮小をやめ pre / table と同じ
+  「等倍＋ figure 内横スクロール」へ**（印刷はスクロール不能なので従来どおり
+  紙幅へ縮小）。クライアント描画（mermaid.js の useMaxWidth）は縮小のままで
+  ssr / client に挙動差が残る（既知。直すなら vendor 設定の変更として別途）
+- **ROADMAP の記述整理** — 下の「v0.10.1 レビューの持ち越し」のキャッシュ保存の
+  原子性は Phase 53（v0.11）で実装済みと判明（完了欄と二重記載になっていた）。
+  持ち越し欄を完了注記へ縮約
+
+見送り（v0.14 以降の候補。判断根拠ごと残す）:
+
+- `theme.dark: false`・JS 無効時の OS ダーク追従 — base.jinja が
+  `data-theme="light"` を無条件ハードコードしており CSS フォールバックの前提から
+  崩す必要がある。ダーク定義が 3 箇所（theme.css / syntect 生成 / cssVarsDark
+  生成）に散りフォールバック追加で全部 2 系統化（21K の syntect.css が倍増）、
+  さらに「dark: false でもダークになる」= 設定キーの意味の再定義（3 値化等）を
+  伴う。候補中最重量で単独 Phase 相当
+- 見出しパーマリンクのキーボード到達性 — `<a aria-hidden class="anchor">` は
+  comrak 0.53 のハードコード出力で、完全対応（aria-hidden 除去＋ラベル付与）は
+  yuzu-core の後処理 = 本文 HTML 変更で CACHE bump ＋全スナップショット更新。
+  CSS だけの部分対応は「aria-hidden 内のフォーカス可能要素」という別の違反を生む
+- ページメタの拡充（読了時間・文字数）/ `<head>` メタ — canonical / og:url は
+  sitemap と同じ「baseUrl がフル URL のときだけ」ゲート（pipeline.rs）に乗せれば
+  新キーゼロで実装可能と調査済み（og:image だけ素材不足）。読了時間・文字数は
+  extract_meta で数えて CachedMeta へ載せる = CACHE bump を伴う
+- `--root` グローバルオプションと shell 補完 — 定型は 7 箇所（8 コマンド分）。
+  clap_complete の新規依存＋ 8 つの run() シグネチャ変更に加え、build / dev
+  だけが load_config（上書き適用・リンク検査・write_resolved）を通る非対称を
+  揃えるかの設計判断が要る。着手時は MarkdownOptions 構築の 8 箇所コピーの
+  解消と抱き合わせると割が良い
 
 ## v0.10.1 レビューの持ち越し
 
@@ -111,11 +138,9 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   **Phase 相当の規模**。テンプレート段階では解決できない（パスの一部の `#` と
   URL 構文の `#` を区別できず、`| url` フィルタに足すと `page.edit_url` の
   クエリを壊す）
-- **キャッシュ保存の原子性** — `cache.rs` の save は「ページ → global.json」の順で
-  書くため global.json が事実上のコミットレコードになり、危険な向き（新メタデータ
-  ＋旧ページキャッシュ）は**構造上発生しない**。中断時は envKey 不一致で全捨て＝
-  フルビルドへ縮退するので、実害は計算のやり直しだけ。直すなら global.json だけ
-  tmp ＋ rename が安価
+- **キャッシュ保存の原子性** — Phase 53（v0.11）で実装済み（`write_atomic_under`
+  が global.json のみ tmp → rename = 当時の見積もりどおり安価な側だけ。詳細は
+  v0.11 の内訳を参照）
 - **`syntect.css` の無条件出力** — `markdown.highlight.enabled: false` でも
   `base.jinja` が無条件に `<link>` するため、空の CSS を書き出して 404 を避けている。
   テンプレート側を条件分岐にするとテーマを上書きしている利用者と非互換になるので、

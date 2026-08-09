@@ -76,11 +76,11 @@ pub fn resolve_output_rel(root: &Path, rel: &str) -> std::io::Result<PathBuf> {
 /// プロジェクトへ至る経路がリンクなのは正常なため）。
 /// まだ存在しない要素は検査対象が無いので `Ok`（これから実体を作る）。
 ///
-/// root 自身を含めるのは、公開 API（`build_search_index` / [`save_matifest`] 等）が
+/// root 自身を含めるのは、公開 API（`build_search_index` / [`save_manifest`] 等）が
 /// 呼び出し側の検証なしに基点を受け取れてしまうため。基点がリンクなら、
 /// その下をいくら検査しても書き込みは全部リンク先の中に入る。
 ///
-/// [`save_matifest`]: save_manifest
+/// [`save_manifest`]: save_manifest
 pub fn ensure_no_symlink_under(root: &Path, target: &Path) -> std::io::Result<()> {
     let invalid = |message: String| std::io::Error::new(std::io::ErrorKind::InvalidInput, message);
 

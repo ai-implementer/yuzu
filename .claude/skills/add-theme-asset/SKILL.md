@@ -1,6 +1,6 @@
 ---
 name: add-theme-asset
-description: デフォルトテーマへ JS / CSS / テンプレートを追加する配線レシピ（base.jinja・rust-embed の必須アセットテスト・insta スナップショット 3 件・CI ゲート）。外部 JS とインライン script の使い分けの判断基準を含む。テーマに新しいアセットを足すときに使う。
+description: デフォルトテーマへ JS / CSS / テンプレートを追加する配線レシピ（base.jinja・rust-embed の必須アセットテスト・insta スナップショット 4 件・CI ゲート）。外部 JS とインライン script の使い分けの判断基準を含む。テーマに新しいアセットを足すときに使う。
 ---
 
 # テーマ資産の追加レシピ
@@ -36,15 +36,17 @@ description: デフォルトテーマへ JS / CSS / テンプレートを追加�
 JS 無効でも表示が壊れないこと。既存の書き方（IIFE・`var`・`try/catch` で storage を握り潰す）に合わせる。
 
 storage を使うならキーは `yuzu-*`。同一オリジンに複数サイトが載る場合に備え、
-サイト単位の状態は `data-base="{{ base_url | safe }}"` で baseUrl を渡して名前空間を切る。
+サイト単位の状態は `data-base="{{ base_url | url }}"` で baseUrl を渡して名前空間を切る。
 
 ### 2. `base.jinja` へ 1 行
 
 ```jinja
-<script src="{{ asset_url | safe }}js/<name>.js"></script>
+<script src="{{ asset_url | url }}js/<name>.js"></script>
 ```
 
-- **`| safe` は必須**（minijinja がデフォルトで属性中の `/` をエスケープするため）
+- **URL 値には `| url` フィルタ必須**（minijinja がデフォルトで属性中の `/` を
+  エスケープするため。`| safe` はエスケープを丸ごと外すので URL 値には使わない —
+  CLAUDE.md の「URL 値へ `| safe` を使わない」参照）
 - 条件付きにするなら `{% if %}` で囲み、Rust 側のフラグを `yuzu-render/src/pipeline.rs` で渡す。
   base.jinja は `{% endif %}` を次行頭に詰める書き方で改行を制御しているので、その流儀に合わせる
 
@@ -57,7 +59,7 @@ storage を使うならキーは `yuzu-*`。同一オリジンに複数サイト
 > 「debug では動くのに release が古い埋め込みを使い回して template not found」になる。
 > （`build.rs` の `rerun-if-changed=assets` はディレクトリ監視なので、ファイル追加自体は追随する）
 
-### 4. insta スナップショット 3 件
+### 4. insta スナップショット 4 件
 
 body 末尾の script タグ列はスナップショットに逐語で入っているので必ず動く。
 
@@ -65,8 +67,8 @@ body 末尾の script タグ列はスナップショットに逐語で入って�
 INSTA_UPDATE=always cargo test -p yuzu-render
 ```
 
-対象は `render_snapshot__index_html.snap` / `__guide_html.snap` / `__not_found_html.snap`
-（llms 系は HTML を含まないので無関係）。フィクスチャの baseUrl は `/docs/` なので、
+対象は `render_snapshot__index_html.snap` / `__guide_html.snap` / `__not_found_html.snap` /
+`__search_html.snap`（Phase 54 で追加。llms 系は HTML を含まないので無関係）。フィクスチャの baseUrl は `/docs/` なので、
 `data-base` を渡している場合は `data-base="/docs/"` が焼き付き、**baseUrl 追随のテストを兼ねる**。
 
 ### 5. ci.yml へ配信ゲートを 1 行
