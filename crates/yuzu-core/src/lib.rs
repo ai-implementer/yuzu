@@ -505,9 +505,19 @@ pub fn extract_plain_sections(
 }
 
 /// ページ本文を正規化 Markdown として出力する（frontmatter は含めない）。
-/// llms-full.txt の基盤（全文が要る場合は [`format_document`] を使う）
+/// llms-full.txt の基盤（全文が要る場合は [`format_document`] を使う）。
+/// comrak の整形がパニックするページ（既知バグ）は原文の本文へ縮退する
 pub fn normalize_markdown(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
-    markdown::normalize_markdown(&page.source, opts)
+    match markdown::catch_formatter_panic(|| markdown::normalize_markdown(&page.source, opts)) {
+        Some(result) => result,
+        None => {
+            tracing::warn!(
+                page = %page.rel.display(),
+                "comrak の整形がパニックしたため原文の Markdown へ縮退します（既知バグ: 引用等の入れ子内で順序付きリストが 10 項目以上）"
+            );
+            Ok(markdown::strip_frontmatter(&page.source, opts))
+        }
+    }
 }
 
 /// ページ全文（frontmatter 込み）を整形した Markdown を返す（`yuzu fmt` 用）。
@@ -515,8 +525,19 @@ pub fn normalize_markdown(page: &Page, opts: &MarkdownOptions) -> Result<String,
 /// - 本文は [`normalize_markdown`] と同じ正規形（見出し ATX 化・箇条書き `-` 統一等）
 /// - frontmatter は YAML を再シリアライズせずバイト温存で再結合する
 /// - 冪等: `format_document` の出力を再整形しても変化しない
+/// - comrak の整形がパニックするページ（既知バグ）は原文のまま返す
+///   （= 整形スキップ。fmt は書き込まず、check も差分として扱わない）
 pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
-    markdown::format_document(&page.source, opts)
+    match markdown::catch_formatter_panic(|| markdown::format_document(&page.source, opts)) {
+        Some(result) => result,
+        None => {
+            tracing::warn!(
+                page = %page.rel.display(),
+                "comrak の整形がパニックしたためこのページの整形をスキップします（既知バグ: 引用等の入れ子内で順序付きリストが 10 項目以上）"
+            );
+            Ok(page.source.to_string())
+        }
+    }
 }
 
 /// 文書規約の診断（`yuzu lint` / `yuzu check` 用）。

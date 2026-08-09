@@ -286,9 +286,23 @@ fn tight_リスト項目内の抑制コメントを壊さない() {
         once.contains(
             "- 項目\n  <!-- yuzu-lint-disable-next-line term-variant -->\n  サーバの説明。"
         ),
-        "リスト内の密着形が崩れた:\n{once}"
+        "リスト内の密着形が崩れた:\n{once}"kokokokoko
     );
     assert_eq!(format_str(&once), once, "冪等でない:\n{once}");
+}
+
+#[test]
+fn 引用内の順序付きリストの桁上がりでもパニックせず原文のまま返す() {
+    // comrak 0.53/0.54 の既知バグ: 入れ子内の順序付きリストが 9 → 10 項目で
+    // 桁が増えると prefix 計算がずれて format_commonmark がパニックする。
+    // yuzu 側で捕捉し、該当ページは整形スキップ（原文のまま = fmt 差分なし）
+    let src = concat!(
+        "---\ntitle: t\n---\n\n# t\n\n",
+        "> 1. a\n> 2. b\n> 3. c\n> 4. d\n> 5. e\n",
+        "> 6. f\n> 7. g\n> 8. h\n> 9. i\n> 10. j\n",
+    );
+    let out = format_str(src);
+    assert_eq!(out, src, "原文のまま（整形スキップ）");
 }
 
 #[test]

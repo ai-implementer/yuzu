@@ -121,3 +121,18 @@ fn 数式は_llms_向け正規形でも温存される() {
         "out:\n{out}"
     );
 }
+
+#[test]
+fn 引用内の順序付きリストの桁上がりでもパニックせず本文へ縮退する() {
+    // comrak 0.53/0.54 の既知バグ（format_test.rs の同名テスト参照）。
+    // normalize は「frontmatter を含めない」契約だけ守って原文の本文を返す
+    let src = concat!(
+        "---\ntitle: t\n---\n\n# t\n\n",
+        "> 1. a\n> 2. b\n> 3. c\n> 4. d\n> 5. e\n",
+        "> 6. f\n> 7. g\n> 8. h\n> 9. i\n> 10. j\n",
+    );
+    let out = normalize_str(src);
+    assert!(!out.contains("title: t"), "frontmatter を含めない:\n{out}");
+    assert!(out.starts_with("# t"), "本文は原文のまま:\n{out}");
+    assert!(out.contains("> 10. j"), "リストも原文のまま:\n{out}");
+}

@@ -691,6 +691,39 @@ pub(crate) fn frontmatter_raw(
     }
 }
 
+/// comrak の整形（`format_commonmark`）呼び出しをパニックから守る。
+///
+/// comrak 0.53（0.54 でも未修正）には「引用・リスト等の入れ子内の順序付き
+/// リストが 9 → 10 項目で桁が増えると、項目 exit 時のマーカー幅を**次の番号**で
+/// 計算して prefix を 1 バイト多く削る」バグがあり、`cm.rs::write_prefix` の
+/// `prefix.len() - 2` が usize アンダーフローでパニックする。
+/// 整形器のバグでビルド全体が落ちないよう捕捉して None を返す
+/// （呼び出し側が原文へ縮退する）。上流修正後も防御として残す
+pub(crate) fn catch_formatter_panic<T>(f: impl FnOnce() -> T) -> Option<T> {
+    // 既定の panic フックはバックトレースを stderr へ吐いて紛らわしいので、
+    // 捕捉中だけ黙らせる。fmt / llms 正規化は直列区間なので、他スレッドの
+    // 本物のパニック表示を巻き込む実害は無い
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(prev);
+    result.ok()
+}
+
+/// 原文から frontmatter（区切り行込み）を取り除いた本文を返す。
+/// 整形が失敗したページの縮退出力用（normalize の「frontmatter を含めない」
+/// 契約だけは守る）
+pub(crate) fn strip_frontmatter(source: &str, opts: &MarkdownOptions) -> String {
+    match frontmatter_raw(source, opts) {
+        Some((raw, _)) => source
+            .strip_prefix(raw.as_str())
+            .unwrap_or(source)
+            .trim_start_matches('\n')
+            .to_string(),
+        None => source.to_string(),
+    }
+}
+
 /// 全文を整形した Markdown を返す（`yuzu fmt` 用）。
 ///
 /// 本文は [`normalize_markdown`] と同じ `format_commonmark` の正規形。
