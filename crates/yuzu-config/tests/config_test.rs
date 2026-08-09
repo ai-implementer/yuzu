@@ -364,3 +364,79 @@ fn 正規化前は重ならない_input_dir_でも拒否される() {
     let err = load(dir.path()).expect_err("原稿を飲み込む出力先は拒否する");
     assert!(err.to_string().contains("原稿"), "{err}");
 }
+
+#[test]
+fn lint_rules_の部分マップを読み込める() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "lint": { "rules": { "katakana-choon": false } } }"#,
+    )
+    .unwrap();
+    let rc = load(dir.path()).unwrap();
+    assert_eq!(rc.config.lint.rules.get("katakana-choon"), Some(&false));
+    // 部分マップは既定を丸ごと置き換える（他 ID は不在 = 有効の規約）
+    assert_eq!(rc.config.lint.rules.len(), 1);
+    assert!(rc.diagnostics.is_empty(), "{:?}", rc.diagnostics);
+}
+
+#[test]
+fn lint_rules_未指定なら既定の全ルール有効マップになる() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("yuzu.jsonc"), "{}").unwrap();
+    let rc = load(dir.path()).unwrap();
+    let keys: Vec<&str> = rc.config.lint.rules.keys().map(String::as_str).collect();
+    assert_eq!(keys, yuzu_config::DISABLEABLE_RULES, "既定キーは一覧と一致");
+    assert!(rc.config.lint.rules.values().all(|&enabled| enabled));
+}
+
+#[test]
+fn lint_rules_の_true_指定は_no_op_として受理する() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "lint": { "rules": { "term-variant": true } } }"#,
+    )
+    .unwrap();
+    let rc = load(dir.path()).unwrap();
+    assert_eq!(rc.config.lint.rules.get("term-variant"), Some(&true));
+    assert!(rc.diagnostics.is_empty(), "{:?}", rc.diagnostics);
+}
+
+#[test]
+fn lint_rules_の値が_bool_以外ならスキーマエラーになる() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "lint": { "rules": { "term-variant": "off" } } }"#,
+    )
+    .unwrap();
+    assert!(
+        load(dir.path()).is_err(),
+        "位置なしの exit 2（既存の全キー共通挙動）"
+    );
+}
+
+#[test]
+fn 旧_camelcase_キーは_config_unknown_key_になる() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("yuzu.jsonc"),
+        r#"{ "lint": { "rules": { "katakanaChoon": false } } }"#,
+    )
+    .unwrap();
+    let rc = load(dir.path()).unwrap();
+    let hit = rc
+        .diagnostics
+        .iter()
+        .find(|d| d.rule == "config-unknown-key")
+        .expect("旧キーは未知キー警告になる");
+    assert_eq!(hit.key_path, "lint.rules.katakanaChoon");
+    assert!(
+        hit.message.contains("katakana-choon"),
+        "正しい kebab-case ID が兄弟一覧に出る: {}",
+        hit.message
+    );
+    // 旧キーはマップに残るが suppressible な ID ではないので効かず、既定の有効のまま
+    // （安全側 = ルールが黙って消えることはない）
+}

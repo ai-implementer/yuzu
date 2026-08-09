@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use serde::Serialize;
-use yuzu_core::{DiagBase, Diagnostic, Severity};
+use yuzu_core::{DiagBase, Diagnostic, LintOptions, Severity};
 
 use crate::out::outln;
 
@@ -36,6 +36,17 @@ pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
         .collect()
 }
 
+/// `yuzu.jsonc` の lint 設定を core の [`LintOptions`] へ写す（`lint` / `check` 共通。
+/// 変換を 1 箇所に置き、片方のコマンドだけ配線されて有効ルールが食い違うのを防ぐ）
+pub fn lint_options(rc: &yuzu_config::ResolvedConfig) -> LintOptions {
+    LintOptions {
+        max_directory_depth: rc.config.lint.max_directory_depth,
+        terms: rc.config.lint.terms.clone(),
+        // ルール ID → bool を無解釈で写す（「不在 = 有効」の解釈は core の漏斗が持つ）
+        rules: rc.config.lint.rules.clone(),
+    }
+}
+
 /// 診断の出力形式（`--format`）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
 pub enum Format {
@@ -58,6 +69,8 @@ pub struct Context<'a> {
     pub pages: usize,
     /// frontmatter `lintDisable` で抑制した件数（集計行と `summary.suppressed`）
     pub suppressed: usize,
+    /// `lint.rules` の全体無効化で落とした件数（集計行と `summary.disabled`）
+    pub disabled: usize,
 }
 
 /// 診断を出力して終了コードを返す（0 = 違反なし / 1 = 違反あり）。
@@ -100,10 +113,13 @@ pub fn report(
                 &diags,
                 prefix,
                 Path::new(""),
-                ctx.pages,
-                errors,
-                warnings,
-                ctx.suppressed
+                JsonSummary {
+                    errors,
+                    warnings,
+                    pages: ctx.pages,
+                    suppressed: ctx.suppressed,
+                    disabled: ctx.disabled,
+                },
             )?
         ),
     }
@@ -117,19 +133,28 @@ pub fn report(
 }
 
 /// 「問題ありません」「エラー N 件・警告 M 件」の集計行（human / github 共通）。
-/// 抑制（`lintDisable`）が効いたときだけ件数を付記する（0 件なら従来とバイト同一）
+/// 抑制（`lintDisable`）と全体無効化（`lint.rules`）は効いたときだけ件数を付記する
+/// （どちらも 0 件なら従来とバイト同一）
 fn print_summary(diags: &[Diagnostic], ctx: &Context, errors: usize, warnings: usize) {
-    let (pages, suppressed) = (ctx.pages, ctx.suppressed);
+    let pages = ctx.pages;
+    let mut notes = Vec::new();
+    if ctx.suppressed > 0 {
+        notes.push(format!("抑制 {} 件", ctx.suppressed));
+    }
+    if ctx.disabled > 0 {
+        notes.push(format!("無効化 {} 件", ctx.disabled));
+    }
+    let note = notes.join("・");
     if diags.is_empty() {
-        if suppressed > 0 {
-            outln!("問題ありません（{pages} ページ・抑制 {suppressed} 件）");
-        } else {
+        if note.is_empty() {
             outln!("問題ありません（{pages} ページ）");
+        } else {
+            outln!("問題ありません（{pages} ページ・{note}）");
         }
-    } else if suppressed > 0 {
-        outln!("エラー {errors} 件・警告 {warnings} 件（抑制 {suppressed} 件）");
-    } else {
+    } else if note.is_empty() {
         outln!("エラー {errors} 件・警告 {warnings} 件");
+    } else {
+        outln!("エラー {errors} 件・警告 {warnings} 件（{note}）");
     }
 }
 
@@ -310,6 +335,8 @@ struct JsonSummary {
     pages: usize,
     /// frontmatter `lintDisable` で抑制した件数（キー追加のみ = 契約準拠）
     suppressed: usize,
+    /// `lint.rules` の全体無効化で落とした件数（キー追加のみ = 契約準拠）
+    disabled: usize,
 }
 
 #[derive(Serialize)]
@@ -318,15 +345,11 @@ struct JsonReport<'a> {
     summary: JsonSummary,
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render_json(
     diags: &[Diagnostic],
     prefix: &Path,
     root_prefix: &Path,
-    pages: usize,
-    errors: usize,
-    warnings: usize,
-    suppressed: usize,
+    summary: JsonSummary,
 ) -> anyhow::Result<String> {
     let report = JsonReport {
         diagnostics: diags
@@ -341,12 +364,7 @@ fn render_json(
                 fixable: d.fix.is_some(),
             })
             .collect(),
-        summary: JsonSummary {
-            errors,
-            warnings,
-            pages,
-            suppressed,
-        },
+        summary,
     };
     Ok(serde_json::to_string_pretty(&report)?)
 }
@@ -374,6 +392,18 @@ mod tests {
             .filter(|r| r.id.starts_with("config-"))
             .count();
         assert_eq!(in_registry, yuzu_config::CONFIG_RULES.len());
+    }
+
+    /// 全カウンタ 0 の集計。個別の値は `JsonSummary { errors: 1, ..summary(3) }` の
+    /// 形で名前付きに上書きする（位置引数の取り違えをなくす）
+    fn summary(pages: usize) -> JsonSummary {
+        JsonSummary {
+            errors: 0,
+            warnings: 0,
+            pages,
+            suppressed: 0,
+            disabled: 0,
+        }
     }
 
     fn span(line: usize, col: usize) -> SourceSpan {
@@ -520,10 +550,11 @@ mod tests {
             &diags,
             Path::new("content"),
             Path::new(""),
-            16,
-            errors,
-            warnings,
-            0,
+            JsonSummary {
+                errors,
+                warnings,
+                ..summary(16)
+            },
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -536,20 +567,77 @@ mod tests {
         assert_eq!(v["summary"]["warnings"], 0);
         assert_eq!(v["summary"]["pages"], 16);
         assert_eq!(v["summary"]["suppressed"], 0, "抑制ゼロでもキーは必ず出す");
+        assert_eq!(v["summary"]["disabled"], 0, "無効化ゼロでもキーは必ず出す");
     }
 
     #[test]
     fn json_の_summary_に_suppressed_が入る() {
-        let out = render_json(&[], Path::new("content"), Path::new(""), 3, 0, 0, 2).unwrap();
+        let out = render_json(
+            &[],
+            Path::new("content"),
+            Path::new(""),
+            JsonSummary {
+                suppressed: 2,
+                ..summary(3)
+            },
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["summary"]["suppressed"], 2);
         assert_eq!(v["summary"]["errors"], 0);
     }
 
     #[test]
+    fn json_の_summary_に_disabled_が入る() {
+        let out = render_json(
+            &[],
+            Path::new("content"),
+            Path::new(""),
+            JsonSummary {
+                disabled: 5,
+                ..summary(3)
+            },
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["summary"]["disabled"], 5);
+        assert_eq!(v["summary"]["suppressed"], 0);
+    }
+
+    /// lint.rules で無効化できる ID の一覧はレジストリの suppressible 集合と一致する
+    /// （yuzu-config は葉でレジストリを参照できないため、両方に依存するここで縛る。
+    /// CONFIG_RULES のテストと同型）
+    #[test]
+    fn 無効化できるルール一覧はレジストリの抑制可能集合と双方向に一致する() {
+        use yuzu_core::rules;
+        for id in yuzu_config::DISABLEABLE_RULES {
+            let rule = rules::find(id).unwrap_or_else(|| panic!("{id} がレジストリに無い"));
+            assert!(
+                rule.suppressible,
+                "{id} は抑制不可なのに lint.rules で無効化可になっている"
+            );
+        }
+        let suppressible = rules::RULES.iter().filter(|r| r.suppressible).count();
+        assert_eq!(
+            suppressible,
+            yuzu_config::DISABLEABLE_RULES.len(),
+            "濃度一致 = 双方向"
+        );
+    }
+
+    #[test]
     fn json_形式はファイル単位の診断の行と列を_null_にする() {
         let diags = vec![diag("fmt", Severity::Error, "x.md", None, None)];
-        let out = render_json(&diags, Path::new("content"), Path::new(""), 1, 1, 0, 0).unwrap();
+        let out = render_json(
+            &diags,
+            Path::new("content"),
+            Path::new(""),
+            JsonSummary {
+                errors: 1,
+                ..summary(1)
+            },
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert!(v["diagnostics"][0]["line"].is_null());
         assert!(v["diagnostics"][0]["column"].is_null());
@@ -573,7 +661,16 @@ mod tests {
                 None,
             ),
         ];
-        let out = render_json(&diags, Path::new("content"), Path::new(""), 2, 0, 2, 0).unwrap();
+        let out = render_json(
+            &diags,
+            Path::new("content"),
+            Path::new(""),
+            JsonSummary {
+                warnings: 2,
+                ..summary(2)
+            },
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["diagnostics"][0]["fixable"], true);
         assert_eq!(v["diagnostics"][1]["fixable"], false);

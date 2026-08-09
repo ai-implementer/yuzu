@@ -51,23 +51,22 @@ pub(crate) fn lint_page(
     if !lint.terms.is_empty() {
         check_terms(page, opts, &lint.terms, &mut out);
     }
-    if lint.rules.fullwidth_alphanumeric || lint.rules.halfwidth_kana {
-        check_char_classes(page, opts, &lint.rules, &mut out);
-    }
+    // 組み込みルールの無効化（lint.rules）はここでは見ない。チェックは常に走り、
+    // apply_suppressions の漏斗が報告直前に落とす（spec-warning 等の
+    // 他 crate 産の診断と同じ 1 経路で無効化を効かせるため）
+    check_char_classes(page, opts, &mut out);
     out.sort_by_key(|d| d.span.map_or((0, 0), |s| (s.start_line, s.start_col)));
     Ok(out)
 }
 
-/// プロジェクト横断ルール（ページ間の整合）。lint_page の後に呼ぶ
+/// プロジェクト横断ルール（ページ間の整合）。lint_page の後に呼ぶ。
+/// 無効化（lint.rules）は漏斗側で効くため設定は受けない
 pub(crate) fn lint_project(
     pages: &[Page],
     opts: &MarkdownOptions,
-    lint: &LintOptions,
 ) -> Result<Vec<Diagnostic>, CoreError> {
     let mut out = Vec::new();
-    if lint.rules.katakana_choon {
-        check_katakana_choon(pages, opts, &mut out);
-    }
+    check_katakana_choon(pages, opts, &mut out);
     out.sort_by(|a, b| {
         let key = |d: &Diagnostic| {
             (
@@ -81,47 +80,38 @@ pub(crate) fn lint_project(
 }
 
 /// fullwidth-alphanumeric / halfwidth-kana: 文字クラスの連続 run を 1 診断にまとめる
-fn check_char_classes(
-    page: &Page,
-    opts: &MarkdownOptions,
-    rules: &crate::LintRules,
-    out: &mut Vec<Diagnostic>,
-) {
+fn check_char_classes(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic>) {
     let is_fullwidth_alnum = |c: char| matches!(c, '\u{FF10}'..='\u{FF19}' | '\u{FF21}'..='\u{FF3A}' | '\u{FF41}'..='\u{FF5A}');
     let is_halfwidth_kana = |c: char| matches!(c, '\u{FF61}'..='\u{FF9F}');
 
     for (text, span) in &markdown::extract_text_spans(&page.source, opts) {
-        if rules.fullwidth_alphanumeric {
-            for (offset, run) in char_class_runs(text, is_fullwidth_alnum) {
-                // 全角英数字 → 半角はコード点 −0xFEE0 の単純対応
-                let suggestion: String = run
-                    .chars()
-                    .map(|c| char::from_u32(c as u32 - 0xFEE0).unwrap_or(c))
-                    .collect();
-                out.push(Diagnostic {
-                    rule: rules::FULLWIDTH_ALPHANUMERIC.id,
-                    severity: rules::FULLWIDTH_ALPHANUMERIC.severity,
-                    base: DiagBase::Content,
-                    rel: page.rel.clone(),
-                    span: Some(run_span(span, offset, run.len())),
-                    message: format!("全角英数字「{run}」は半角「{suggestion}」を推奨します"),
-                    fix: Some(suggestion),
-                });
-            }
+        for (offset, run) in char_class_runs(text, is_fullwidth_alnum) {
+            // 全角英数字 → 半角はコード点 −0xFEE0 の単純対応
+            let suggestion: String = run
+                .chars()
+                .map(|c| char::from_u32(c as u32 - 0xFEE0).unwrap_or(c))
+                .collect();
+            out.push(Diagnostic {
+                rule: rules::FULLWIDTH_ALPHANUMERIC.id,
+                severity: rules::FULLWIDTH_ALPHANUMERIC.severity,
+                base: DiagBase::Content,
+                rel: page.rel.clone(),
+                span: Some(run_span(span, offset, run.len())),
+                message: format!("全角英数字「{run}」は半角「{suggestion}」を推奨します"),
+                fix: Some(suggestion),
+            });
         }
-        if rules.halfwidth_kana {
-            for (offset, run) in char_class_runs(text, is_halfwidth_kana) {
-                let suggestion = to_fullwidth_kana(run);
-                out.push(Diagnostic {
-                    rule: rules::HALFWIDTH_KANA.id,
-                    severity: rules::HALFWIDTH_KANA.severity,
-                    base: DiagBase::Content,
-                    rel: page.rel.clone(),
-                    span: Some(run_span(span, offset, run.len())),
-                    message: format!("半角カナ「{run}」は全角「{suggestion}」を推奨します"),
-                    fix: Some(suggestion),
-                });
-            }
+        for (offset, run) in char_class_runs(text, is_halfwidth_kana) {
+            let suggestion = to_fullwidth_kana(run);
+            out.push(Diagnostic {
+                rule: rules::HALFWIDTH_KANA.id,
+                severity: rules::HALFWIDTH_KANA.severity,
+                base: DiagBase::Content,
+                rel: page.rel.clone(),
+                span: Some(run_span(span, offset, run.len())),
+                message: format!("半角カナ「{run}」は全角「{suggestion}」を推奨します"),
+                fix: Some(suggestion),
+            });
         }
     }
 }
@@ -951,24 +941,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn 組み込みルールは無効化できる() {
-        let opts = LintOptions {
-            rules: crate::LintRules {
-                fullwidth_alphanumeric: false,
-                halfwidth_kana: false,
-                katakana_choon: false,
-            },
-            ..LintOptions::default()
-        };
-        let diags = super::lint_page(
-            &page_from("# t\n\nＷｅｂ と ﾃﾞｰﾀ。\n"),
-            &MarkdownOptions::default(),
-            &opts,
-        )
-        .unwrap();
-        assert!(diags.is_empty(), "{diags:?}");
-    }
+    // 組み込みルールの無効化（lint.rules）は lint_page では効かない
+    // （apply_suppressions の漏斗で落とす）。テストは suppress.rs 側にある
 
     /// 複数ページからプロジェクトを組んで lint_project を回す
     fn lint_project_of(pages_src: &[(&str, &str)]) -> Vec<crate::Diagnostic> {
@@ -979,7 +953,7 @@ mod tests {
             fs::write(&path, source).unwrap();
         }
         let pages = build_source_pages(dir.path(), &[], &MarkdownOptions::default()).unwrap();
-        super::lint_project(&pages, &MarkdownOptions::default(), &LintOptions::default()).unwrap()
+        super::lint_project(&pages, &MarkdownOptions::default()).unwrap()
     }
 
     #[test]

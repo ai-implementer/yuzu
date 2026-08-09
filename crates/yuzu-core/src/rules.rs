@@ -119,6 +119,12 @@ pub fn find(id: &str) -> Option<&'static Rule> {
     RULES.iter().find(|r| r.id == id)
 }
 
+/// ID が抑制可能なルールか（未知 ID は false）。
+/// `lintDisable` / 行コメント / `lint.rules` の suppressible ガードが共有する
+pub fn is_suppressible(id: &str) -> bool {
+    find(id).is_some_and(|r| r.suppressible)
+}
+
 /// 抑制可能なルール ID の一覧（`lintDisable` の診断文面用）
 pub fn suppressible_ids() -> impl Iterator<Item = &'static str> {
     RULES.iter().filter(|r| r.suppressible).map(|r| r.id)
@@ -191,6 +197,46 @@ mod tests {
         assert!(
             checked >= 22,
             "表の行が {checked} 行しか見つからない（形式が変わった？）"
+        );
+    }
+
+    #[test]
+    fn docs_の表の設定列はレジストリの抑制可否と一致する() {
+        // lint の表（4 列）の「設定」列だけを見る（check の表は 2 列なので対象外）。
+        // ID 列の存在照合は別テストが縛るので、ここは列ラベルの追随だけを縛る
+        let doc = rules_md();
+        let mut checked = 0usize;
+        for line in doc.lines() {
+            let Some(rest) = line.strip_prefix("| `") else {
+                continue;
+            };
+            let Some((id, _)) = rest.split_once('`') else {
+                continue;
+            };
+            let Some(rule) = find(id) else {
+                continue;
+            };
+            let cols: Vec<&str> = line.split('|').map(str::trim).collect();
+            if cols.len() != 6 {
+                continue; // 4 列の表の行ではない
+            }
+            let config_col = cols[4];
+            if rule.suppressible {
+                assert!(
+                    config_col.contains("無効化可"),
+                    "`{id}` は無効化可なのに設定列が「{config_col}」"
+                );
+            } else {
+                assert!(
+                    config_col.contains("常時有効") && !config_col.contains("無効化可"),
+                    "`{id}` は常時有効のはずなのに設定列が「{config_col}」"
+                );
+            }
+            checked += 1;
+        }
+        assert!(
+            checked >= 15,
+            "設定列を検査した行が {checked} 行しかない（表の形式が変わった？）"
         );
     }
 }

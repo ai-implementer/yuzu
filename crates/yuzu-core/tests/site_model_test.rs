@@ -751,9 +751,5 @@ fn 用語集ページは_lint_の対象外() {
             .unwrap()
             .is_empty()
     );
-    assert!(
-        yuzu_core::lint_project(&pages, &opts, &lint_opts)
-            .unwrap()
-            .is_empty()
-    );
+    assert!(yuzu_core::lint_project(&pages, &opts).unwrap().is_empty());
 }

@@ -61,21 +61,25 @@ frontmatter（または先頭コメント）でそのページに限りルール
 - `yuzu fmt`（format_commonmark）が HTML ブロック / インラインを逐語温存するかを
   着手時に実測する（崩れるなら Phase 45 の復元処理と同様の fmt 温存が要る）
 
-### 60 全ルールの enable/disable ⬜
+### 60 全ルールの enable/disable ✅
 
 プロジェクト方針と合わないルールを設定で切る。既存プロジェクトへ lint を段階導入
 する入口（まず off で入れて少しずつ有効化する）。
 
-- `lint.rules` は camelCase bool 3 つの型付き struct。**ルール ID キーのマップへ
-  一般化すると `config-unknown-key` の既知キー木（`Config::default()` の JSON 化）
-  でタイポを検出できなくなる**ため、レジストリ由来のルール名検証を別途置く。
-  bool を増やす案はその診断が無料のままだが、ID（kebab-case）とキー（camelCase）の
-  二重命名が最大 19 ルールぶん増える
+- **採用した形: `lint.rules` を「ルール ID（kebab-case）→ bool」のマップへ一般化**。
+  策定時の「マップ化すると `config-unknown-key` の既知キー木でタイポを検出でき
+  なくなる」という前提は、**Default を「全 disableable ID → true」の非空マップに
+  することで覆った**（既知キー木 = `Config::default()` の JSON 化にルール ID が
+  載り、タイポ・旧キー・error 系 ID は行番号付き warning のまま）。代償の
+  「yuzu-config に ID 一覧を持つ」は `CONFIG_RULES` と同型のテストで縛る
 - **off だけに絞る**（severity の上書きはやらない = 終了コード規約 0 / 1 / 2 と
   噛み合わない。候補メモで済ませた判断）
-- `route-conflict` / `unsafe-page-path` は無効化不可のまま固定。error 系を切れる
-  ようにするかの線引きは Phase 58 と同じ判断に揃える
-- 既定は全ルール有効のまま（後方互換）。既存 3 キーとの互換・改名も決める
+- 無効化可能な集合はレジストリの suppressible と同一（warning 11 個。error・
+  `config-*`・抑制機構自身は不可）。適用は `apply_suppressions` の漏斗に一本化し、
+  spec-warning（yuzu-render 産）にも同じ 1 経路で効く
+- 旧 camelCase 3 キーはエイリアスなしで廃止（`config-unknown-key` が正しい ID へ
+  誘導し、ルールは既定有効のまま = 安全側）。無効化中ルールへのページ・行抑制は
+  unused にしない（再有効化で抑制が生き返る）
 
 ### 61 dogfooding 改善 ⬜
 

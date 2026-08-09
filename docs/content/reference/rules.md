@@ -19,21 +19,23 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 ## yuzu lint のルール
 
-深刻度はすべて warning です。設定列は 3 種類あります — 値で有効・無効を切り替えるもの、
-設定しないと発火しないもの、常時有効なものです。
+深刻度はすべて warning です。「無効化可」のルールは
+[`lint.rules`](#プロジェクト全体の無効化lintrules) の `false` で
+プロジェクト全体を無効化できます（`config-*` と抑制機構自身の 2 ルールは対象外）。
+`lint.terms` / `lint.maxDirectoryDepth` を使うルールは、設定しない限り発火しません。
 
 | ルール | 検出内容 | `--fix` | 設定 |
 | --- | --- | --- | --- |
-| `fullwidth-alphanumeric` | 本文中の全角英数字（`Ｗｅｂ１２３`） | 可 | `lint.rules.fullwidthAlphanumeric`（既定 `true`） |
-| `halfwidth-kana` | 本文中の半角カナ（`ﾃﾞｰﾀ`） | 可 | `lint.rules.halfwidthKana`（既定 `true`） |
-| `katakana-choon` | 長音符ゆれの混在（`サーバ` と `サーバー`） | 条件付き | `lint.rules.katakanaChoon`（既定 `true`） |
-| `term-variant` | 辞書に登録したゆれ表記の出現 | 可 | `lint.terms`（未設定なら発火しない） |
-| `duplicate-h1` | 本文の h1 が 2 個以上 | 不可 | 常時有効 |
-| `heading-level-skip` | 見出しレベルの飛び（h2 の次に h4） | 不可 | 常時有効 |
-| `directory-too-deep` | `content` 配下のディレクトリが深すぎる | 不可 | `lint.maxDirectoryDepth`（未設定なら発火しない） |
-| `code-block-meta` | フェンス情報文字列の書き間違い・範囲外の行ハイライト | 不可 | 常時有効 |
-| `duplicate-label` | 図表ラベル（`{#fig:x}`）の同一ページ内での重複 | 不可 | 常時有効 |
-| `frontmatter-unknown-key` | frontmatter の未知のトップレベルキー | 不可 | 常時有効 |
+| `fullwidth-alphanumeric` | 本文中の全角英数字（`Ｗｅｂ１２３`） | 可 | 無効化可 |
+| `halfwidth-kana` | 本文中の半角カナ（`ﾃﾞｰﾀ`） | 可 | 無効化可 |
+| `katakana-choon` | 長音符ゆれの混在（`サーバ` と `サーバー`） | 条件付き | 無効化可 |
+| `term-variant` | 辞書に登録したゆれ表記の出現 | 可 | `lint.terms`・無効化可 |
+| `duplicate-h1` | 本文の h1 が 2 個以上 | 不可 | 無効化可 |
+| `heading-level-skip` | 見出しレベルの飛び（h2 の次に h4） | 不可 | 無効化可 |
+| `directory-too-deep` | `content` 配下のディレクトリが深すぎる | 不可 | `lint.maxDirectoryDepth`・無効化可 |
+| `code-block-meta` | フェンス情報文字列の書き間違い・範囲外の行ハイライト | 不可 | 無効化可 |
+| `duplicate-label` | 図表ラベル（`{#fig:x}`）の同一ページ内での重複 | 不可 | 無効化可 |
+| `frontmatter-unknown-key` | frontmatter の未知のトップレベルキー | 不可 | 無効化可 |
 | `config-unknown-key` | `yuzu.jsonc` の未知のキー（タイポ） | 不可 | 常時有効 |
 | `config-duplicate-key` | `yuzu.jsonc` のキーの重複（JSONC は後勝ち） | 不可 | 常時有効 |
 | `config-path-outside-root` | `input.dir` がプロジェクトルートの外を指す | 不可 | 常時有効 |
@@ -43,7 +45,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 `katakana-choon` の「条件付き」は、長音符ゆれを**多数派の表記へ寄せる**ため、
 同数で並んだときは正解を決められず報告だけになる、という意味です。
 
-`config-` で始まる 2 つだけは、ページではなく `yuzu.jsonc` を指します
+`config-` で始まるルールは、ページではなく `yuzu.jsonc` を指します
 （パスはプロジェクトルート相対で出ます）。設定のタイポは無言で無視されて
 「設定したのに効かない」事故になりやすいため、`yuzu lint` / `check` で
 気づけるようにしてあります。
@@ -71,7 +73,8 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `fmt` | 整形差分がある（`yuzu fmt` で修正、`yuzu fmt --diff` で内容を確認できます） |
 
 `spec-error` だけは警告版の `spec-warning` もあります（参照ファイル数の上限超過など、
-書き間違いではなく描画が注記へ縮退するだけのもの）。
+書き間違いではなく描画が注記へ縮退するだけのもの）。warning なので
+`lintDisable` の抑制と `lint.rules` の無効化の対象です。
 
 `route-conflict` と `unsafe-page-path` は `yuzu build` も中断します。どちらも
 「生成物のどこかに壊れたリンクや非決定な出力が残る」問題で、書き出してしまうと
@@ -129,5 +132,22 @@ error のルールは抑制できません（壊れたリンクや非決定な�
 ページ単位（`lintDisable`）と同じ規律です。行番号を持たないルール
 （`directory-too-deep` など）は行単位では抑制できず、ページ単位を使います。
 
-> [!NOTE]
-> プロジェクト全体でルールを無効化できるのは `lint.rules` の 3 ルールだけです。
+## プロジェクト全体の無効化（lint.rules）
+
+方針と合わないルールは、`yuzu.jsonc` の `lint.rules` に「ルール ID → `false`」を
+書くと**プロジェクト全体で**無効化できます（対象は `lintDisable` で抑制できる
+範囲と同じ warning のルールだけです）:
+
+```jsonc
+"lint": {
+  "rules": { "katakana-choon": false, "term-variant": false }
+}
+```
+
+- 書かない ID は有効のままです（`true` は書いても書かなくても同じ）
+- ルール ID のタイポ・error 系の ID・旧形式のキー（`katakanaChoon` 等）は
+  `config-unknown-key` の警告になり、ルールは有効のまま残ります（安全側）
+- 無効化中のルールをページ（`lintDisable`）・行コメントで抑制していても
+  `unused-lint-suppression` にはなりません。ルールを再有効化すると
+  抑制はそのまま生き返ります
+- 集計行には「（無効化 N 件）」、`--format json` には `summary.disabled` が出ます

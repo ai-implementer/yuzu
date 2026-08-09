@@ -309,7 +309,7 @@ impl Default for MathConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LintConfig {
     /// content 配下で許容するディレクトリ階層の最大深さ
@@ -318,30 +318,50 @@ pub struct LintConfig {
     /// 用語統一の辞書（正しい表記 → ゆれ表記のリスト）。
     /// 例: `"terms": { "サーバー": ["サーバ"], "ユーザー": ["ユーザ"] }`
     pub terms: BTreeMap<String, Vec<String>>,
-    /// 組み込みの表記ゆれルール（既定はすべて有効。ルール単位で無効化できる）
-    pub rules: LintRulesConfig,
+    /// ルール ID → 有効フラグ。`false` でプロジェクト全体無効化
+    /// （例: `"rules": { "katakana-choon": false }`。`true` は no-op として受理）。
+    /// **ユーザの部分マップは既定を丸ごと置き換える**ため、参照側は
+    /// 「マップに無い ID = 有効」と解釈する（解釈は yuzu-core の漏斗が持つ）
+    pub rules: BTreeMap<String, bool>,
 }
 
-/// 組み込み表記ゆれルールの有効/無効
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct LintRulesConfig {
-    /// 全角英数字（Ｗｅｂ１２３）を検出する
-    pub fullwidth_alphanumeric: bool,
-    /// 半角カナ（ｶﾀｶﾅ）を検出する
-    pub halfwidth_kana: bool,
-    /// 長音符ゆれの混在（サーバ/サーバー）をプロジェクト横断で検出する
-    pub katakana_choon: bool,
-}
-
-impl Default for LintRulesConfig {
+// rules の既定を「全 disableable ID → true」の非空マップにするため手書き
+// （MathConfig と同じ前例。非空にする理由は DISABLEABLE_RULES の doc 参照）
+impl Default for LintConfig {
     fn default() -> Self {
         Self {
-            fullwidth_alphanumeric: true,
-            halfwidth_kana: true,
-            katakana_choon: true,
+            max_directory_depth: None,
+            terms: BTreeMap::new(),
+            rules: default_lint_rules(),
         }
     }
+}
+
+/// `lint.rules` で無効化できるルール ID（= レジストリの suppressible 集合と同一）。
+/// yuzu-config は依存グラフの葉で `yuzu_core::rules` を参照できないため一覧をここに
+/// 持ち、一致は yuzu-cli 側のテストが縛る（`CONFIG_RULES` と同じ規律）。
+/// `Config::default()` の JSON 化（既知キー木）にこの ID が全部載ることで、
+/// タイポ・旧キー・無効化不可の ID は行番号付き `config-unknown-key`
+/// （正しい ID の兄弟一覧入り）になる
+pub const DISABLEABLE_RULES: &[&str] = &[
+    "code-block-meta",
+    "directory-too-deep",
+    "duplicate-h1",
+    "duplicate-label",
+    "frontmatter-unknown-key",
+    "fullwidth-alphanumeric",
+    "halfwidth-kana",
+    "heading-level-skip",
+    "katakana-choon",
+    "spec-warning",
+    "term-variant",
+];
+
+fn default_lint_rules() -> BTreeMap<String, bool> {
+    DISABLEABLE_RULES
+        .iter()
+        .map(|id| ((*id).to_string(), true))
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -45,7 +45,7 @@ description: yuzu.jsonc の全設定キー・型・既定値
   "lint": {
     "maxDirectoryDepth": 1,
     "terms": { "サーバ": ["サーバー"] },
-    "rules": { "fullwidthAlphanumeric": true, "halfwidthKana": true, "katakanaChoon": true }
+    "rules": { "katakana-choon": true } // false でプロジェクト全体を無効化（error・config-*・抑制機構自身は不可）
   },
   "search": {
     "enabled": true,
@@ -146,9 +146,7 @@ glob 評価が想定外になるため）。
 | --- | --- | --- |
 | `maxDirectoryDepth` | number / なし | `content` 配下のディレクトリ深さ制限（直下 = 0。未設定は無制限） |
 | `terms` | object / `{}` | 用語統一の辞書（正しい表記 → ゆれ表記の配列） |
-| `rules.fullwidthAlphanumeric` | bool / `true` | 全角英数字の検出 |
-| `rules.halfwidthKana` | bool / `true` | 半角カナの検出 |
-| `rules.katakanaChoon` | bool / `true` | 長音符ゆれ混在の検出 |
+| `rules` | object / 全ルール有効 | ルール ID → bool のマップ。`false` でプロジェクト全体無効化（対象は warning のルールのみ。書かない ID は有効。一覧は[診断ルール](rules.md)） |
 
 ## search
 

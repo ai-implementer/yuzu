@@ -4,7 +4,7 @@
 use std::process::ExitCode;
 
 use anyhow::Context;
-use yuzu_core::{DiagBase, Diagnostic, LintOptions, MarkdownOptions};
+use yuzu_core::{DiagBase, Diagnostic, MarkdownOptions};
 
 use super::diag;
 
@@ -23,15 +23,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
         glossary: yuzu_render::glossary_options(&rc.config),
         search_page: yuzu_render::search_page_options(&rc.config),
     };
-    let lint_opts = LintOptions {
-        max_directory_depth: rc.config.lint.max_directory_depth,
-        terms: rc.config.lint.terms.clone(),
-        rules: yuzu_core::LintRules {
-            fullwidth_alphanumeric: rc.config.lint.rules.fullwidth_alphanumeric,
-            halfwidth_kana: rc.config.lint.rules.halfwidth_kana,
-            katakana_choon: rc.config.lint.rules.katakana_choon,
-        },
-    };
+    let lint_opts = diag::lint_options(&rc);
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
 
@@ -57,7 +49,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
         }
     }
     // プロジェクト横断ルール（長音符ゆれの混在等）
-    diags.extend(yuzu_core::lint_project(&pages, &opts, &lint_opts)?);
+    diags.extend(yuzu_core::lint_project(&pages, &opts)?);
     // エイリアス（frontmatter aliases）の形式・衝突。
     // draft 込みの全ソースで検証する（公開前に矛盾を検出する）
     diags.extend(yuzu_core::validate_aliases(&pages, &opts));
@@ -83,8 +75,11 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
 
     // frontmatter `lintDisable` のページ単位抑制。全検査の診断が
     // この漏斗を通ってから報告される（config-* は ProjectRoot なので素通り）
-    let yuzu_core::SuppressionOutcome { diags, suppressed } =
-        yuzu_core::apply_suppressions(diags, &pages, &opts);
+    let yuzu_core::SuppressionOutcome {
+        diags,
+        suppressed,
+        disabled,
+    } = yuzu_core::apply_suppressions(diags, &pages, &opts, &lint_opts);
 
     diag::report(
         format,
@@ -94,6 +89,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
             content_dir: &rc.content_dir,
             pages: pages.iter().filter(|p| !p.is_generated()).count(),
             suppressed,
+            disabled,
         },
     )
 }

@@ -18,28 +18,45 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
-use crate::MarkdownOptions;
 use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::markdown::{self, suppress_comment, suppress_comment::SuppressCommentKind};
 use crate::model::{Page, SourceSpan};
 use crate::rules;
+use crate::{LintOptions, MarkdownOptions};
 
 /// [`apply_suppressions`] の結果
 pub struct SuppressionOutcome {
     /// 抑制適用後の診断（`invalid-lint-suppression` / `unused-lint-suppression` を含む）
     pub diags: Vec<Diagnostic>,
-    /// 抑制で落とした件数（集計行・`--format json` の表示用）
+    /// 抑制（`lintDisable` / 行コメント）で落とした件数（集計行・`--format json` 用）。
+    /// `disabled` とは別勘定（docs の契約「suppressed = lintDisable で抑制した件数」を守る）
     pub suppressed: usize,
+    /// プロジェクト全体の無効化（`lint.rules`）で落とした件数
+    pub disabled: usize,
 }
 
-/// frontmatter `lintDisable` を診断へ適用する。
-/// 呼び出しは cli の報告直前（check / lint）と `lint --fix` のループ内。
-/// `--fix` 側もこれを通すことで「報告されないのに書き換える」非対称を防ぐ
+/// 抑制（frontmatter `lintDisable` / 行コメント）と全体無効化（`lint.rules`）を
+/// 診断へ適用する。呼び出しは cli の報告直前（check / lint）と `lint --fix` の
+/// ループ内。`--fix` 側もこれを通すことで「報告されないのに書き換える」非対称を防ぐ
 pub fn apply_suppressions(
     diags: Vec<Diagnostic>,
     pages: &[Page],
     opts: &MarkdownOptions,
+    lint: &LintOptions,
 ) -> SuppressionOutcome {
+    // プロジェクト全体の無効化（lint.rules）の判定。ユーザの部分マップは既定を
+    // 丸ごと置き換えるため「マップに無い ID = 有効」の解釈をここだけが持つ。
+    // suppressible ガードが防御の要 — error 名に false を書いても落とさない
+    // （設定側では config-unknown-key が既知キー木経由で警告する）。
+    // 判定は実行中不変なので、診断ごとに再計算せず先に集合へ畳む
+    let disabled_rules: BTreeSet<&str> = lint
+        .rules
+        .iter()
+        .filter(|&(id, &enabled)| !enabled && rules::is_suppressible(id))
+        .map(|(id, _)| id.as_str())
+        .collect();
+    let rule_disabled = |rule: &str| disabled_rules.contains(rule);
+
     // rel → 抑制ルール集合（重複エントリはここで畳む。合成ページは
     // frontmatter を持たないので lint_disable は常に空 = 自然に対象外）
     let by_page: HashMap<&Path, BTreeSet<&str>> = pages
@@ -72,9 +89,17 @@ pub fn apply_suppressions(
     // 1 診断は 1 回しか落ちないので suppressed の二重加算はない
     let mut kept = Vec::with_capacity(diags.len());
     let mut suppressed = 0usize;
+    let mut disabled = 0usize;
     let mut used: BTreeSet<(&Path, &'static str)> = BTreeSet::new();
     let mut used_line: HashMap<&Path, BTreeSet<(usize, &'static str)>> = HashMap::new();
     for d in diags {
+        // パス 0: プロジェクト全体の無効化。抑制の照合（used / suppressed）より
+        // 前に落とす = 無効化中ルールを狙う lintDisable / 行コメントは used に
+        // ならない（unused 免除はパス 2a / 2b 側で行う）
+        if rule_disabled(d.rule) {
+            disabled += 1;
+            continue;
+        }
         if d.base == DiagBase::Content {
             // 1a: 行単位。span を持つ診断だけが対象（span: None の
             // directory-too-deep 等はページ単位でのみ抑制できる）
@@ -86,7 +111,7 @@ pub fn apply_suppressions(
                 let hit = pc.line.iter().position(|ls| {
                     ls.target_line == Some(span.start_line)
                         && ls.rules.iter().any(|r| r == d.rule)
-                        && rules::find(d.rule).is_some_and(|ru| ru.suppressible)
+                        && rules::is_suppressible(d.rule)
                 });
                 if let Some(idx) = hit {
                     used_line.entry(rel).or_default().insert((idx, d.rule));
@@ -96,7 +121,7 @@ pub fn apply_suppressions(
             }
             // 1b: ページ単位（frontmatter lintDisable）
             if let Some((rel, set)) = by_page.get_key_value(d.rel.as_path()) {
-                if set.contains(d.rule) && rules::find(d.rule).is_some_and(|r| r.suppressible) {
+                if set.contains(d.rule) && rules::is_suppressible(d.rule) {
                     used.insert((rel, d.rule));
                     suppressed += 1;
                     continue;
@@ -131,6 +156,11 @@ pub fn apply_suppressions(
                         (rules::INVALID_LINT_SUPPRESSION, reason)
                     }
                     None => {
+                        // 全体無効化中は発火しようがないので unused 免除
+                        // （段階導入で警告の嵐にしない・再有効化で抑制が生き返る）
+                        if rule_disabled(name) {
+                            continue;
+                        }
                         let is_used = page_used
                             .is_some_and(|u| u.iter().any(|(i, r)| *i == idx && *r == name));
                         if is_used {
@@ -170,6 +200,9 @@ pub fn apply_suppressions(
                     let id = rules::find(entry)
                         .expect("invalid でない名前は必ず引ける")
                         .id;
+                    if rule_disabled(id) {
+                        continue; // 全体無効化中は unused 免除（パス 2a と同じ理由）
+                    }
                     if used.contains(&(page.rel.as_path(), id)) {
                         continue; // 正しく効いた抑制
                     }
@@ -194,6 +227,7 @@ pub fn apply_suppressions(
     SuppressionOutcome {
         diags: kept,
         suppressed,
+        disabled,
     }
 }
 
@@ -365,18 +399,32 @@ mod tests {
         build_source_pages(dir.path(), &[], &MarkdownOptions::default()).unwrap()
     }
 
-    /// lint_page ＋ lint_project を回して抑制を適用する
-    fn lint_suppressed(pages_src: &[(&str, &str)]) -> (Vec<Diagnostic>, usize) {
+    /// lint_page ＋ lint_project を回して抑制・全体無効化を適用する
+    fn lint_suppressed_with(
+        pages_src: &[(&str, &str)],
+        lint_opts: &LintOptions,
+    ) -> super::SuppressionOutcome {
         let opts = MarkdownOptions::default();
-        let lint_opts = LintOptions::default();
         let pages = pages_of(pages_src);
         let mut diags = Vec::new();
         for page in &pages {
-            diags.extend(crate::lint_page(page, &opts, &lint_opts).unwrap());
+            diags.extend(crate::lint_page(page, &opts, lint_opts).unwrap());
         }
-        diags.extend(crate::lint_project(&pages, &opts, &lint_opts).unwrap());
-        let outcome = apply_suppressions(diags, &pages, &opts);
+        diags.extend(crate::lint_project(&pages, &opts).unwrap());
+        apply_suppressions(diags, &pages, &opts, lint_opts)
+    }
+
+    fn lint_suppressed(pages_src: &[(&str, &str)]) -> (Vec<Diagnostic>, usize) {
+        let outcome = lint_suppressed_with(pages_src, &LintOptions::default());
         (outcome.diags, outcome.suppressed)
+    }
+
+    /// 指定ルールを `false` にした LintOptions（`lint.rules` の全体無効化）
+    fn rules_off(ids: &[&str]) -> LintOptions {
+        LintOptions {
+            rules: ids.iter().map(|id| (id.to_string(), false)).collect(),
+            ..LintOptions::default()
+        }
     }
 
     #[test]
@@ -496,7 +544,7 @@ mod tests {
             message: "未知のキー".to_string(),
             fix: None,
         };
-        let outcome = apply_suppressions(vec![config_diag], &pages, &opts);
+        let outcome = apply_suppressions(vec![config_diag], &pages, &opts, &LintOptions::default());
         assert_eq!(outcome.suppressed, 0);
         assert!(
             outcome.diags.iter().any(|d| d.rule == "config-unknown-key"),
@@ -788,7 +836,7 @@ mod tests {
             message: "深すぎる".to_string(),
             fix: None,
         };
-        let outcome = apply_suppressions(vec![diag], &pages, &opts);
+        let outcome = apply_suppressions(vec![diag], &pages, &opts, &LintOptions::default());
         assert_eq!(outcome.suppressed, 0);
         assert!(
             outcome.diags.iter().any(|d| d.rule == "directory-too-deep"),
@@ -826,5 +874,158 @@ mod tests {
             .filter(|d| d.rule == "unused-lint-suppression")
             .collect();
         assert_eq!(unused.len(), 1, "{diags:?}");
+    }
+
+    // --- プロジェクト全体の無効化（lint.rules）---
+
+    #[test]
+    fn 無効化したルールは全ページで消える() {
+        let outcome = lint_suppressed_with(
+            &[("a.md", "# A\n\nＷｅｂ。\n"), ("b.md", "# B\n\nＸ１。\n")],
+            &rules_off(&["fullwidth-alphanumeric"]),
+        );
+        assert!(
+            outcome
+                .diags
+                .iter()
+                .all(|d| d.rule != "fullwidth-alphanumeric"),
+            "{:?}",
+            outcome.diags
+        );
+        assert_eq!(outcome.disabled, 2);
+        assert_eq!(outcome.suppressed, 0, "抑制とは別勘定");
+    }
+
+    #[test]
+    fn 無効化は他のルールに影響しない() {
+        let outcome = lint_suppressed_with(
+            &[("index.md", "# t\n\nＷｅｂ と ﾃﾞｰﾀ。\n")],
+            &rules_off(&["fullwidth-alphanumeric"]),
+        );
+        assert!(
+            outcome.diags.iter().any(|d| d.rule == "halfwidth-kana"),
+            "{:?}",
+            outcome.diags
+        );
+        assert_eq!(outcome.disabled, 1);
+    }
+
+    #[test]
+    fn katakana_choon_を無効化すると横断診断も消える() {
+        let outcome = lint_suppressed_with(
+            &[
+                ("a.md", "# A\n\nサーバーを起動。サーバーを停止。\n"),
+                ("b.md", "# B\n\nサーバの設定。\n"),
+            ],
+            &rules_off(&["katakana-choon"]),
+        );
+        assert!(
+            outcome.diags.iter().all(|d| d.rule != "katakana-choon"),
+            "{:?}",
+            outcome.diags
+        );
+        assert_eq!(outcome.disabled, 1);
+    }
+
+    #[test]
+    fn spec_warning_も無効化で落ちる() {
+        let opts = MarkdownOptions::default();
+        let pages = pages_of(&[("index.md", "# t\n")]);
+        // spec-warning は yuzu-render 産だが漏斗は同じ（手組みで再現）
+        let diag = Diagnostic {
+            rule: crate::rules::SPEC_WARNING.id,
+            severity: crate::rules::SPEC_WARNING.severity,
+            base: crate::DiagBase::Content,
+            rel: "index.md".into(),
+            span: None,
+            message: "参照ファイル数の上限".to_string(),
+            fix: None,
+        };
+        let outcome = apply_suppressions(vec![diag], &pages, &opts, &rules_off(&["spec-warning"]));
+        assert!(outcome.diags.is_empty(), "{:?}", outcome.diags);
+        assert_eq!(outcome.disabled, 1);
+    }
+
+    #[test]
+    fn error_診断は無効化指定があっても落ちない() {
+        let opts = MarkdownOptions::default();
+        let pages = pages_of(&[("index.md", "# t\n")]);
+        let diag = Diagnostic {
+            rule: crate::rules::BROKEN_LINK.id,
+            severity: crate::rules::BROKEN_LINK.severity,
+            base: crate::DiagBase::Content,
+            rel: "index.md".into(),
+            span: None,
+            message: "リンク切れ".to_string(),
+            fix: None,
+        };
+        let outcome = apply_suppressions(vec![diag], &pages, &opts, &rules_off(&["broken-link"]));
+        assert!(
+            outcome.diags.iter().any(|d| d.rule == "broken-link"),
+            "suppressible ガードが防御する: {:?}",
+            outcome.diags
+        );
+        assert_eq!(outcome.disabled, 0);
+    }
+
+    #[test]
+    fn 無効化中のルールへのページ抑制は_unused_にならない() {
+        let outcome = lint_suppressed_with(
+            &[(
+                "index.md",
+                "---\nlintDisable: [fullwidth-alphanumeric]\n---\n\n# t\n\nＷｅｂ。\n",
+            )],
+            &rules_off(&["fullwidth-alphanumeric"]),
+        );
+        assert!(
+            outcome
+                .diags
+                .iter()
+                .all(|d| d.rule != "unused-lint-suppression" && d.rule != "fullwidth-alphanumeric"),
+            "{:?}",
+            outcome.diags
+        );
+        assert_eq!(outcome.disabled, 1);
+        assert_eq!(
+            outcome.suppressed, 0,
+            "無効化が先に落とすので抑制は使われない"
+        );
+    }
+
+    #[test]
+    fn 無効化中のルールへの行コメント抑制も_unused_にならない() {
+        let outcome = lint_suppressed_with(
+            &[(
+                "index.md",
+                "# t\n\n<!-- yuzu-lint-disable-next-line fullwidth-alphanumeric -->\nＷｅｂ。\n",
+            )],
+            &rules_off(&["fullwidth-alphanumeric"]),
+        );
+        assert!(
+            outcome
+                .diags
+                .iter()
+                .all(|d| d.rule != "unused-lint-suppression"),
+            "{:?}",
+            outcome.diags
+        );
+        assert_eq!(outcome.disabled, 1);
+    }
+
+    #[test]
+    fn 無効化中でも未知名や_error_名の抑制は_invalid_のまま() {
+        let outcome = lint_suppressed_with(
+            &[(
+                "index.md",
+                "---\nlintDisable: [no-such-rule, broken-link]\n---\n\n# t\n",
+            )],
+            &rules_off(&["fullwidth-alphanumeric"]),
+        );
+        let invalid: Vec<_> = outcome
+            .diags
+            .iter()
+            .filter(|d| d.rule == "invalid-lint-suppression")
+            .collect();
+        assert_eq!(invalid.len(), 2, "免除は unused だけ: {:?}", outcome.diags);
     }
 }

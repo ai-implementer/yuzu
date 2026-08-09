@@ -9,7 +9,7 @@
 use std::process::ExitCode;
 
 use anyhow::Context;
-use yuzu_core::{Diagnostic, LintOptions, MarkdownOptions, Page};
+use yuzu_core::{Diagnostic, MarkdownOptions, Page};
 
 use super::diag;
 use crate::out::outln;
@@ -32,22 +32,14 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
         glossary: yuzu_render::glossary_options(&rc.config),
         search_page: yuzu_render::search_page_options(&rc.config),
     };
-    let lint_opts = LintOptions {
-        max_directory_depth: rc.config.lint.max_directory_depth,
-        terms: rc.config.lint.terms.clone(),
-        rules: yuzu_core::LintRules {
-            fullwidth_alphanumeric: rc.config.lint.rules.fullwidth_alphanumeric,
-            halfwidth_kana: rc.config.lint.rules.halfwidth_kana,
-            katakana_choon: rc.config.lint.rules.katakana_choon,
-        },
-    };
+    let lint_opts = diag::lint_options(&rc);
     let collect = |pages: &[Page]| -> anyhow::Result<Vec<Diagnostic>> {
         let mut diags = Vec::new();
         for page in pages {
             diags.extend(yuzu_core::lint_page(page, &opts, &lint_opts)?);
         }
         // プロジェクト横断ルール（長音符ゆれの混在等）を合流させる
-        diags.extend(yuzu_core::lint_project(pages, &opts, &lint_opts)?);
+        diags.extend(yuzu_core::lint_project(pages, &opts)?);
         Ok(diags)
     };
 
@@ -59,7 +51,8 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
                 yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
             // 抑制された出現は --fix でも修正しない（報告と修正の非対称を防ぐ）。
             // invalid / unused の警告は fix を持たないので下のフィルタが素通しする
-            let diags = yuzu_core::apply_suppressions(collect(&pages)?, &pages, &opts).diags;
+            let diags =
+                yuzu_core::apply_suppressions(collect(&pages)?, &pages, &opts, &lint_opts).diags;
             let mut applied_this_round = 0usize;
             for page in pages.iter().filter(|p| !p.is_generated()) {
                 let page_diags: Vec<Diagnostic> = diags
@@ -92,8 +85,11 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
     let mut diags = collect(&pages)?;
     diags.extend(diag::config_diagnostics(&rc));
     // frontmatter `lintDisable` のページ単位抑制（check と同じ漏斗）
-    let yuzu_core::SuppressionOutcome { diags, suppressed } =
-        yuzu_core::apply_suppressions(diags, &pages, &opts);
+    let yuzu_core::SuppressionOutcome {
+        diags,
+        suppressed,
+        disabled,
+    } = yuzu_core::apply_suppressions(diags, &pages, &opts, &lint_opts);
 
     // --fix の進捗は human 以外では stderr へ逃がす
     // （json は JSON オブジェクト以外を標準出力へ書かない契約のため）
@@ -127,6 +123,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
             // 集計行は原稿の数を出す（合成した用語集ページは数えない）
             pages: pages.iter().filter(|p| !p.is_generated()).count(),
             suppressed,
+            disabled,
         },
     )
 }

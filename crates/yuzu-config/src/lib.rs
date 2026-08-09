@@ -16,10 +16,10 @@ pub use resolve::{
     CONFIG_RULES, ConfigDiagnostic, ResolvedConfig, load, normalize_base_url, write_resolved,
 };
 pub use schema::{
-    BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DevConfig, GitConfig, GlossaryConfig,
-    HighlightConfig, InputConfig, LintConfig, LintRulesConfig, LlmsConfig, MarkdownConfig,
-    MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig, SearchConfig, ShardConfig,
-    SiteConfig, ThemeConfig, TypoToleranceConfig,
+    BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DevConfig,
+    GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,
+    MarkdownConfig, MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig,
+    SearchConfig, ShardConfig, SiteConfig, ThemeConfig, TypoToleranceConfig,
 };
 
 /// 設定ファイル名（プロジェクトルートのマーカーを兼ねる）

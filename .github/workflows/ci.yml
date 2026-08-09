@@ -114,6 +114,9 @@ jobs:
           # 行単位の lint 抑制（Phase 59）が原稿に載っている
           grep -q 'yuzu-lint-disable-next-line' dist/reference/rules/index.html
           grep -q 'yuzu-lint-disable-next-line' dist/guide/quality/index.html
+          # 全ルールの enable/disable（Phase 60）が原稿に載っている
+          grep -q 'プロジェクト全体の無効化' dist/reference/rules/index.html
+          grep -q 'プロジェクト全体の無効化' dist/guide/quality/index.html
           # 検索の追加読み込み（Phase 49 → Phase 54 で結果ページへ移動）の JS が
           # 埋め込み経由で配信されている（機能自体はブラウザ操作なので CI では
           # 検証できない。配線ゲート）
