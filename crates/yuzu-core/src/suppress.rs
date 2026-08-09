@@ -854,6 +854,47 @@ mod tests {
     }
 
     #[test]
+    fn リスト項目内の行コメントは次の内容行だけ抑制する() {
+        // scaffold の getting-started.md が使う形（項目 1 行目はラベル文・
+        // コメントは 2 行目・例は 3 行目）。この形は fmt の正規形でもある
+        let (diags, suppressed) = lint_suppressed(&[(
+            "index.md",
+            "# t\n\n- 例:\n  <!-- yuzu-lint-disable-next-line fullwidth-alphanumeric -->\n  Ｗｅｂ。\n- Ｘ１。\n",
+        )]);
+        assert_eq!(suppressed, 1, "{diags:?}");
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule == "fullwidth-alphanumeric")
+            .collect();
+        assert_eq!(hits.len(), 1, "2 項目目の分だけ残る: {diags:?}");
+        assert_eq!(hits[0].span.unwrap().start_line, 6);
+        assert!(
+            diags.iter().all(|d| d.rule != "unused-lint-suppression"),
+            "{diags:?}"
+        );
+    }
+
+    #[test]
+    fn 表のセルの違反は表の前の行コメントで抑制できない() {
+        // GFM の表は行単位ブロックのため、表の前に置いたコメントの対象は
+        // ヘッダ行 1 行だけ = セルの違反には届かず unused になる。
+        // 表で例を書くページはページ単位（lintDisable）を使うのが正
+        let (diags, suppressed) = lint_suppressed(&[(
+            "index.md",
+            "# t\n\n<!-- yuzu-lint-disable-next-line halfwidth-kana -->\n\n| 列 | 例 |\n| --- | --- |\n| a | ﾃﾞｰﾀ |\n",
+        )]);
+        assert_eq!(suppressed, 0);
+        assert!(
+            diags.iter().any(|d| d.rule == "halfwidth-kana"),
+            "セルの違反は残る: {diags:?}"
+        );
+        assert!(
+            diags.iter().any(|d| d.rule == "unused-lint-suppression"),
+            "表の前のコメントは unused になる: {diags:?}"
+        );
+    }
+
+    #[test]
     fn 引用ブロック内の行コメントも効く() {
         let (diags, suppressed) = lint_suppressed(&[(
             "index.md",

@@ -380,10 +380,21 @@ yuzu lint
 辞書がなくても、**組み込みルール**が機械的なゆれを既定で検出します
 （`lint.rules` に「ルール ID → `false`」を書くとプロジェクト全体で無効化できます）:
 
-- 全角英数字（`fullwidth-alphanumeric`）: `Ｗｅｂ１２３` → `Web123` を提案
-- 半角カナ（`halfwidth-kana`）: `ﾃﾞｰﾀ` → `データ` を提案
-- 長音符ゆれの混在（`katakana-choon`）: プロジェクト内に `サーバ` と `サーバー` が
-  混在していたら少数派の側に警告（コードブロック・URL は対象外）
+- 全角英数字（`fullwidth-alphanumeric`）:
+  <!-- yuzu-lint-disable-next-line fullwidth-alphanumeric -->
+  Ｗｅｂ１２３ → `Web123` を提案
+- 半角カナ（`halfwidth-kana`）:
+  <!-- yuzu-lint-disable-next-line halfwidth-kana -->
+  ﾃﾞｰﾀ → `データ` を提案
+- 長音符ゆれの混在（`katakana-choon`）:
+  <!-- yuzu-lint-disable-next-line katakana-choon -->
+  プロジェクト内に「サーバ」と「サーバー」が混在していたら少数派の側に警告
+  （コードブロック・URL は対象外）
+
+上の例がそのまま警告にならないのは、各例の直前にある
+`<!-- yuzu-lint-disable-next-line ルール名 -->` コメントが**次の内容行に限り**
+ルールを抑制しているからです（この原稿自体が抑制記法の実例です）。ページ全体で
+抑制したいときは frontmatter の `lintDisable` を使います。
 
 検出された表記ゆれは `--fix` でまとめて自動修正できます
 （コードブロックは触らず、差分のないファイルには書き込みません。

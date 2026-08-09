@@ -2,6 +2,11 @@
 title: 診断ルール
 order: 3
 description: yuzu lint / yuzu check が報告する全ルールの一覧
+lintDisable:
+  - fullwidth-alphanumeric
+  - halfwidth-kana
+  - katakana-choon
+  - term-variant
 ---
 
 # 診断ルール
@@ -26,9 +31,9 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 | ルール | 検出内容 | `--fix` | 設定 |
 | --- | --- | --- | --- |
-| `fullwidth-alphanumeric` | 本文中の全角英数字（`Ｗｅｂ１２３`） | 可 | 無効化可 |
-| `halfwidth-kana` | 本文中の半角カナ（`ﾃﾞｰﾀ`） | 可 | 無効化可 |
-| `katakana-choon` | 長音符ゆれの混在（`サーバ` と `サーバー`） | 条件付き | 無効化可 |
+| `fullwidth-alphanumeric` | 本文中の全角英数字（Ｗｅｂ１２３） | 可 | 無効化可 |
+| `halfwidth-kana` | 本文中の半角カナ（ﾃﾞｰﾀ） | 可 | 無効化可 |
+| `katakana-choon` | 長音符ゆれの混在（「サーバ」と「サーバー」） | 条件付き | 無効化可 |
 | `term-variant` | 辞書に登録したゆれ表記の出現 | 可 | `lint.terms`・無効化可 |
 | `duplicate-h1` | 本文の h1 が 2 個以上 | 不可 | 無効化可 |
 | `heading-level-skip` | 見出しレベルの飛び（h2 の次に h4） | 不可 | 無効化可 |
@@ -116,6 +121,10 @@ error のルールは抑制できません（壊れたリンクや非決定な�
 対象外です。未知・抑制不可のルール名は `invalid-lint-suppression`、
 書いたのに発火しなかった抑制は `unused-lint-suppression` の warning になります
 （直したのに残った指定を放置させないためです）。
+
+なお、このページ自身も冒頭のルール表でゆれ表記の例を生のまま載せるために、
+frontmatter の `lintDisable` で該当する 4 ルールを抑制しています
+（このページの原文 Markdown が実例です）。
 
 ## 行単位の抑制（yuzu-lint-disable-next-line）
 

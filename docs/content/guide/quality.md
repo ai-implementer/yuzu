@@ -3,6 +3,9 @@ title: 品質チェック
 order: 7
 description: yuzu fmt / lint / check で文書の品質を CI で保つ
 aliases: ["guide/lint/"]
+lintDisable:
+  - fullwidth-alphanumeric
+  - halfwidth-kana
 ---
 
 # 品質チェック
@@ -65,8 +68,8 @@ yuzu lint --fix  # 表記ゆれ系の変換候補を自動適用
 
 | ルール | 検出対象 | 例 |
 | --- | --- | --- |
-| `fullwidth-alphanumeric` | 全角英数字 | `Ｗｅｂ１２３` → `Web123` を提案 |
-| `halfwidth-kana` | 半角カナ | `ﾃﾞｰﾀ` → `データ` を提案 |
+| `fullwidth-alphanumeric` | 全角英数字 | Ｗｅｂ１２３ → `Web123` を提案 |
+| `halfwidth-kana` | 半角カナ | ﾃﾞｰﾀ → `データ` を提案 |
 | `katakana-choon` | 長音符ゆれの混在 | プロジェクト内の多数派へ寄せる警告 |
 
 `--fix` は変換候補をまとめて適用します（コードブロックは触らず、冪等で、
@@ -103,6 +106,10 @@ lintDisable:
   「効いているつもり」の指定が溜まります）
 - 抑制された出現は `yuzu lint --fix` でも書き換えません。集計行には
   「（抑制 N 件）」と件数が出ます
+
+なお、このページ自身も上の「組み込みルール」の表で例を生のまま載せるために、
+frontmatter の `lintDisable` を使っています（原文 Markdown の frontmatter が
+そのまま実例です）。
 
 ### 行単位の抑制（yuzu-lint-disable-next-line）
 
