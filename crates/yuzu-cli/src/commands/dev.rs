@@ -43,8 +43,9 @@ pub fn run(
     let notifier_for_watch = notifier.clone();
     // session と設定はクロージャへ move してセッション全体で再利用する
     let mut watcher = build::WatchBuild::new(rc.clone(), overrides, mode, drafts, session);
-    let _watch_handle = yuzu_server::watch(&paths, ignore, build::DEBOUNCE, move || {
-        tracing::info!("変更を検知 → 再ビルド");
+    let root = rc.root.clone();
+    let _watch_handle = yuzu_server::watch(&paths, ignore, build::DEBOUNCE, move |changed| {
+        tracing::info!(changed = %build::format_changed(&root, changed), "変更を検知 → 再ビルド");
         match watcher.rebuild() {
             // 通知は必ず再ビルド成功後（失敗時に通知すると壊れた dist を読ませる）
             Ok(()) => {

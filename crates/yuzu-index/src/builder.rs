@@ -186,6 +186,9 @@ pub fn build_search_index_with(
             let hit = ctx
                 .cache
                 .and_then(|c| c.search(&page.rel, &page.source, deps.as_deref()));
+            if hit.is_some() {
+                tracing::info!(page = %page.rel.display(), "索引（キャッシュ）");
+            }
             (deps, hit)
         })
         .collect();
@@ -199,6 +202,9 @@ pub fn build_search_index_with(
         .map(|(page, (deps, hit))| match hit {
             Some(sections) => Ok(sections),
             None => {
+                // 進捗の 1 ページ 1 行。tokenize がフルビルドの支配的コストなので
+                // ここで出すとペース感が正しく見える（並列内なので行順は非決定）
+                tracing::info!(page = %page.rel.display(), "索引");
                 let tokenizer = tokenizer.expect("miss があればトークナイザ構築済み");
                 let computed = compute_sections(
                     page,

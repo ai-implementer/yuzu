@@ -194,11 +194,17 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         .pages
         .par_iter()
         .try_for_each(|page| -> Result<(), RenderError> {
-            // 本文 HTML はキャッシュヒットなら comrak パースごとスキップする
+            // 本文 HTML はキャッシュヒットなら comrak パースごとスキップする。
+            // 進捗の 1 ページ 1 行はここで出す（並列ループ内なので行順は非決定。
+            // 成果物のバイト同一性には関与しない）
             let (body, mermaid_fallback) =
                 match ctx.cache.and_then(|c| c.body(&page.rel, &page.source)) {
-                    Some(cached) => (cached.html, cached.mermaid_fallback),
+                    Some(cached) => {
+                        tracing::info!(page = %page.rel.display(), "レンダ（キャッシュ）");
+                        (cached.html, cached.mermaid_fallback)
+                    }
                     None => {
+                        tracing::info!(page = %page.rel.display(), "レンダ");
                         let renderer = shared.highlighter.page_renderer();
                         let rendered = yuzu_core::render_body_html(
                             page,

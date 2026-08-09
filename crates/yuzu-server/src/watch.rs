@@ -8,6 +8,7 @@
 //! 除外は [`WatchIgnore`] で明示的に渡す（隠しディレクトリ配下は
 //! `.git` / `.yuzu` を含めて常に無視する）。
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -71,21 +72,30 @@ impl WatchIgnore {
 
 /// `paths` を再帰監視し、変更が落ち着いたら `on_change` を呼ぶ。
 /// `ignore` に当たる変更では呼ばない（出力ディレクトリの自己検知を防ぐ）。
-/// コールバックは監視スレッド上で実行される
+/// コールバックは監視スレッド上で実行され、除外を除いた変更パス
+/// （重複除去・ソート済み）を受け取る
 pub fn watch(
     paths: &[PathBuf],
     ignore: WatchIgnore,
     debounce: Duration,
-    mut on_change: impl FnMut() + Send + 'static,
+    mut on_change: impl FnMut(&[PathBuf]) + Send + 'static,
 ) -> Result<WatchHandle, ServerError> {
     for dir in &ignore.dirs {
         tracing::debug!("監視除外: {}", dir.display());
     }
     let mut debouncer = new_debouncer(debounce, move |result: DebounceEventResult| match result {
         Ok(events) => {
-            // 1 つでも対象内の変更があれば再ビルド（全部が除外対象なら何もしない）
-            if events.iter().any(|e| !ignore.is_ignored(&e.path)) {
-                on_change();
+            // 対象内の変更パスを決定的順序で集める（全部が除外対象なら何もしない。
+            // BTreeSet = debounce が同一パスの連続保存をまとめたときの重複除去）
+            let changed: Vec<PathBuf> = events
+                .iter()
+                .filter(|e| !ignore.is_ignored(&e.path))
+                .map(|e| e.path.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            if !changed.is_empty() {
+                on_change(&changed);
             }
         }
         Err(e) => tracing::warn!("ファイル監視エラー: {e}"),

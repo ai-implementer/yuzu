@@ -44,6 +44,23 @@ pub(crate) fn watch_ignore(rc: &ResolvedConfig) -> anyhow::Result<yuzu_server::W
     )
 }
 
+/// 変更パスの一覧をログ用に整形する（build --watch / dev 共通）。
+/// プロジェクトルート相対へ落とし、git checkout 等の一括変更で 1 行が
+/// 暴れないよう先頭 5 件＋「他 N 件」で切り詰める。
+/// ルート外（シンボリックリンク先など）は相対化できないので絶対パスのまま出す
+pub(crate) fn format_changed(root: &std::path::Path, changed: &[PathBuf]) -> String {
+    const MAX: usize = 5;
+    let mut names: Vec<String> = changed
+        .iter()
+        .take(MAX)
+        .map(|p| p.strip_prefix(root).unwrap_or(p).display().to_string())
+        .collect();
+    if changed.len() > MAX {
+        names.push(format!("他 {} 件", changed.len() - MAX));
+    }
+    names.join(", ")
+}
+
 /// CLI フラグによる設定の上書き（`--base-url` / `--host`）。
 /// watch 中に `yuzu.jsonc` を読み直してもフラグ優先の契約を保つため保持する
 #[derive(Clone, Default)]
@@ -117,8 +134,9 @@ pub fn run(
     // session と設定はクロージャへ move してセッション全体で再利用する
     //（キャッシュ・テンプレート Env・ハイライタ・トークナイザ）
     let mut watcher = WatchBuild::new(rc.clone(), overrides, mode, drafts, session);
-    let _watch_handle = yuzu_server::watch(&paths, ignore, DEBOUNCE, move || {
-        tracing::info!("変更を検知 → 再ビルド");
+    let root = rc.root.clone();
+    let _watch_handle = yuzu_server::watch(&paths, ignore, DEBOUNCE, move |changed| {
+        tracing::info!(changed = %format_changed(&root, changed), "変更を検知 → 再ビルド");
         if let Err(e) = watcher.rebuild() {
             // 執筆中の一時的な構文エラー等でプロセスは落とさない
             tracing::error!("再ビルドに失敗しました: {e:#}");
@@ -543,6 +561,24 @@ mod tests {
             config,
             diagnostics: Vec::new(),
         }
+    }
+
+    #[test]
+    fn 変更パスの整形はルート相対で先頭5件に切り詰める() {
+        let root = Path::new("/proj");
+        let paths: Vec<PathBuf> = (1..=7)
+            .map(|i| PathBuf::from(format!("/proj/content/{i}.md")))
+            .collect();
+        assert_eq!(
+            format_changed(root, &paths),
+            "content/1.md, content/2.md, content/3.md, content/4.md, content/5.md, 他 2 件"
+        );
+        assert_eq!(format_changed(root, &paths[..1]), "content/1.md");
+        // ルート外（シンボリックリンク先など）は絶対パスのまま
+        assert_eq!(
+            format_changed(root, &[PathBuf::from("/outside/x.md")]),
+            "/outside/x.md"
+        );
     }
 
     #[test]
