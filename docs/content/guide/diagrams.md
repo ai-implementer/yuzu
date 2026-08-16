@@ -1,7 +1,7 @@
 ---
 title: 図（Mermaid / SSR）
 order: 3
-description: Mermaid 互換記法の図。9 図種は tankan がビルド時に SVG 化する
+description: Mermaid 互換記法の図。10 図種は tankan がビルド時に SVG 化する
 ---
 
 # 図（Mermaid / SSR）
@@ -15,7 +15,7 @@ description: Mermaid 互換記法の図。9 図種は tankan がビルド時に 
 
 このサイトは `"ssr"` で運用しており、以下の図はすべてビルド時に生成された
 SVG です。SSR 対応は **sequence・flowchart・class・state・ER・gantt・pie・
-mindmap・timeline の 9 図種**。未対応の図種は自動でクライアント描画に
+mindmap・timeline・packet の 10 図種**。未対応の図種は自動でクライアント描画に
 フォールバックし、フォールバックが発生したページだけ mermaid.js が
 読み込まれます。
 
@@ -28,7 +28,7 @@ mindmap・timeline の 9 図種**。未対応の図種は自動でクライア�
 ```mermaid
 flowchart TD
     A[Markdown を書く] --> B{図の種類は?}
-    B -->|対応 9 図種| C[tankan がビルド時に SVG 化]:::ssr
+    B -->|対応 10 図種| C[tankan がビルド時に SVG 化]:::ssr
     B -->|それ以外| D[mermaid.js でクライアント描画]
     classDef ssr fill:#d5e7fe,stroke:#014ba5
 ```
@@ -137,6 +137,35 @@ timeline
         5月 : プロトタイプ
     section 公開
         6月 : v1.0 リリース
+```
+
+## packet
+
+ネットワークプロトコルのヘッダーなど、ビット列のフィールド構造を描けます。
+frontmatter の `config.packet`（`bitsPerRow` など）にも対応しています。
+
+```mermaid
+---
+title: "TCP Packet"
+---
+packet
+0-15: "Source Port"
+16-31: "Destination Port"
+32-63: "Sequence Number"
+64-95: "Acknowledgment Number"
+96-99: "Data Offset"
+100-105: "Reserved"
+106: "URG"
+107: "ACK"
+108: "PSH"
+109: "RST"
+110: "SYN"
+111: "FIN"
+112-127: "Window"
+128-143: "Checksum"
+144-159: "Urgent Pointer"
+160-191: "(Options and Padding)"
+192-255: "Data (variable length)"
 ```
 
 ## フォールバックの挙動

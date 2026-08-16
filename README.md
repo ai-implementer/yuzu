@@ -16,8 +16,8 @@ Markdown で書いた設計書を、プロダクション品質の静的 HTML �
 - **書くことに集中できる**: `content/**/*.md` を置くだけでナビ・目次・前後ページ
   リンク・パンくずが付く。`yuzu dev` は保存から約 1 秒で自動リロード
 - **設計書のための表現力**: シンタックスハイライト・数式（KaTeX）・Mermaid 互換の図
-  （sequence / flowchart / class / state / ER / gantt / pie / mindmap / timeline の
-  9 図種をビルド時に SVG 化）・OpenAPI / JSON Schema の静的レンダリング
+  （sequence / flowchart / class / state / ER / gantt / pie / mindmap / timeline /
+  packet の 10 図種をビルド時に SVG 化）・OpenAPI / JSON Schema の静的レンダリング
 - **実ソースの埋め込み**: コードブロックに `file="src/api.rs" lines=10-25` と書くと
   実ファイルを取り込む（設計書とコードの乖離を防ぐ）
 - **日本語のための検索**: 分かち書き＋BM25 の全文検索が静的ホスティングだけで動く。

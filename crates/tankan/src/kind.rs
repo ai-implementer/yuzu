@@ -15,6 +15,7 @@ pub enum DiagramKind {
     Journey,
     Mindmap,
     Timeline,
+    Packet,
     Quadrant,
     C4,
     Unknown,
@@ -34,6 +35,7 @@ impl DiagramKind {
                 | Self::Pie
                 | Self::Mindmap
                 | Self::Timeline
+                | Self::Packet
         )
     }
 }
@@ -107,6 +109,7 @@ fn kind_of_header(line: &str) -> DiagramKind {
         "journey" => DiagramKind::Journey,
         "mindmap" => DiagramKind::Mindmap,
         "timeline" => DiagramKind::Timeline,
+        "packet" | "packet-beta" => DiagramKind::Packet,
         "quadrantChart" => DiagramKind::Quadrant,
         k if k.starts_with("C4") => DiagramKind::C4,
         _ => DiagramKind::Unknown,
@@ -131,6 +134,8 @@ mod tests {
         assert_eq!(detect("erDiagram\nA ||--o{ B : has"), DiagramKind::Er);
         assert_eq!(detect("gantt\ntitle x"), DiagramKind::Gantt);
         assert_eq!(detect("pie\n\"a\": 1"), DiagramKind::Pie);
+        assert_eq!(detect("packet\n0-15: \"Port\""), DiagramKind::Packet);
+        assert_eq!(detect("packet-beta\n0-15: \"Port\""), DiagramKind::Packet);
         assert_eq!(detect("C4Context\n"), DiagramKind::C4);
         assert_eq!(detect("なにこれ\n"), DiagramKind::Unknown);
         assert_eq!(detect(""), DiagramKind::Unknown);
@@ -167,6 +172,7 @@ mod tests {
         assert!(DiagramKind::Pie.is_supported());
         assert!(DiagramKind::Mindmap.is_supported());
         assert!(DiagramKind::Timeline.is_supported());
+        assert!(DiagramKind::Packet.is_supported());
         assert!(!DiagramKind::Journey.is_supported());
         assert!(!DiagramKind::Unknown.is_supported());
     }

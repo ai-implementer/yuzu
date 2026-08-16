@@ -35,6 +35,7 @@ cargo add tankan
 | gantt | ✅（`dateFormat YYYY-MM-DD`・section・done/active/crit/milestone・after 依存・開始省略・excludes（weekends/曜日/日付 = 働き日消化＋網掛け）・weekend・axisFormat・tickInterval。時分単位・until 等はフォールバック。**today 線は描かない**＝時刻非依存。`todayMarker off` のみ受理） |
 | mindmap | ✅（インデント階層・中央ルートから左右へ振り分ける tidy tree・ノード形状 7 種（四角/角丸/円/バン/雲/六角形/既定）・ブランチごとのパレット色・幅ベースの自動折返し。`:::class` / `::icon` 行は受理） |
 | timeline | ✅（`title`・section 帯・時期ごとのイベント縦積み（`: 継続行` の複数イベント可）・等間隔カラム・自動折返し） |
+| packet | ✅（`packet` / 旧 `packet-beta`・範囲 `0-15` / 単一ビット / 相対 `+N`・frontmatter title・行跨ぎフィールドの分割・ビット番号表示・frontmatter の `config.packet`（bitsPerRow / bitWidth / rowHeight / showBits / paddingX / paddingY。インライン形式 `config: {...}` は無視して既定値）） |
 | その他 | フォールバック |
 
 レイアウトは自作の **Sugiyama 法サブセット**（閉路除去 → longest-path 層割当 →

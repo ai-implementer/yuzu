@@ -136,7 +136,7 @@ a^2 + b^2 = c^2
 ` ```mermaid ` ブロックで図が描けます。既定は同梱 mermaid.js によるクライアント描画です。
 
 `yuzu.jsonc` で `"backend": "ssr"` にすると、**sequence・flowchart・class・
-state・ER・gantt・pie・mindmap・timeline の 9 図種はビルド時に SVG 化**されます
+state・ER・gantt・pie・mindmap・timeline・packet の 10 図種はビルド時に SVG 化**されます
 （JS 不要・ダークモードに即追従）。未対応の図種は自動でクライアント描画にフォールバックし、
 フォールバックが発生したページだけ mermaid.js が読み込まれます
 （クライアント描画もダークモード切替に追従して再描画されます）。
@@ -148,7 +148,7 @@ flowchart・state・ER・class 図は `classDef` / `:::` / `style` などの
 ```mermaid
 flowchart TD
     A[Markdown を書く] --> B{図の種類は?}
-    B -->|対応 9 図種| C[tankan がビルド時に SVG 化]:::ssr
+    B -->|対応 10 図種| C[tankan がビルド時に SVG 化]:::ssr
     B -->|それ以外| D[mermaid.js でクライアント描画]
     classDef ssr fill:#d5e7fe,stroke:#014ba5
 ```
