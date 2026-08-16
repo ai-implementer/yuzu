@@ -11,8 +11,12 @@ CI（.github/workflows/ci.yml）と同等＋実機 e2e。上から順に実行�
 
 ```bash
 cargo fmt --all --check
+cargo machete   # 未使用依存の検出（要 cargo install cargo-machete。CI にもある）
 cargo clippy --workspace --all-targets -- -D warnings
 ```
+
+- machete の false positive は該当 crate の Cargo.toml に
+  `[package.metadata.cargo-machete] ignored = ["<crate>"]` を書いて抑制する。
 
 ## 2. テスト
 

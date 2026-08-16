@@ -83,5 +83,6 @@ Web 調査込みで確定済みの技術選定です（差し替えない前提�
 
 ## さらに読む
 
+- [kabosu の設計](kabosu.md) — 依存ゼロの TOML 設定ライブラリと yuzu-config の責務分離
 - [検索の内部設計](internals-search.md) — トークナイザ整合・位置情報インデックス・OPFS
 - [インクリメンタルビルドの内部設計](internals-build.md) — 3 層キャッシュキーと決定性

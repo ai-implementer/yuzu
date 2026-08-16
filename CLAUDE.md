@@ -19,7 +19,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
-CI（.github/workflows/ci.yml。ジョブは `check` 1 つ）は fmt → clippy → test → build →
+CI（.github/workflows/ci.yml。ジョブは `check` 1 つ）は fmt → machete（未使用依存）→ clippy → test → build →
 `cargo package --locked -p tankan -p mikan`（crates.io メタデータの回帰検出）→ wasm32 チェック
 → docs サイト検証（docs/ での check・build・grep ゲート・SSR フォールバック検出）→ e2e の順に実行する。
 `.devcontainer/**` の変更時だけ container.yml が別途走る:
