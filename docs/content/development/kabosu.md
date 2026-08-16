@@ -140,4 +140,3 @@ to_string<T>(&T) -> Result<String, EncodeError>
 - Rust 1.85 と現在の stable の CI
 - `no_std + alloc` ビルド
 - `cargo package` 後の依存ゼロ検査
-
