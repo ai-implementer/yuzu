@@ -71,7 +71,7 @@ GitHub Pages へ自動デプロイします（リポジトリの Settings \> Pag
 
 - [執筆の基本](writing.md) — ページ・ナビ・frontmatter・Admonition・画像
 - [コードと数式](code-and-math.md) — ハイライトと KaTeX
-- [図（Mermaid / SSR）](diagrams.md) — ビルド時 SVG 化される 9 図種
+- [図（Mermaid / SSR）](diagrams.md) — ビルド時 SVG 化される 10 図種
 - [API 仕様の描画](api-spec.md) — OpenAPI / JSON Schema
 - [全文検索](search.md) — フレーズ検索・同義語・コード検索
 - [LLM 連携](llms.md) — llms.txt とページ Markdown 配信

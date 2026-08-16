@@ -132,7 +132,7 @@ glob 評価が想定外になるため）。
 | `highlight.themeDark` | string / `"base16-ocean.dark"` | ダークモードの配色 |
 | `highlight.lineNumbers` | bool / `false` | コードブロックの行番号表示のサイト既定（ブロック単位の `showLineNumbers` / `noLineNumbers` が優先。[詳細](../guide/code-and-math.md)） |
 | `mermaid.enabled` | bool / `true` | ` ```mermaid ` ブロックの描画 |
-| `mermaid.backend` | `"client"` \| `"ssr"` / `"client"` | [SSR にすると 9 図種をビルド時 SVG 化](../guide/diagrams.md) |
+| `mermaid.backend` | `"client"` \| `"ssr"` / `"client"` | [SSR にすると 10 図種をビルド時 SVG 化](../guide/diagrams.md) |
 | `math.enabled` | bool / `true` | 数式（同梱 KaTeX でクライアント描画） |
 | `crossref.numbering` | `"page"` \| `"site"` / `"page"` | [図表番号](../guide/writing.md#図表番号と相互参照)の採番単位（ページ内連番 / サイト全体の通し番号） |
 | `glossary.terms` | object / `{}` | [用語集](../guide/writing.md#用語集と略語)の辞書（略語 → 説明文）。空なら機能ごと無効 |

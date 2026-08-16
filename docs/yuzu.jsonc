@@ -15,7 +15,7 @@
   "markdown": {
     "gfm": true,
     "highlight": { "enabled": true },
-    // tankan による SSR（対応 9 図種をビルド時に SVG 化）を実運用で使う
+    // tankan による SSR（対応 10 図種をビルド時に SVG 化）を実運用で使う
     "mermaid": { "enabled": true, "backend": "ssr" },
     "math": { "enabled": true },
     // 略語の初出を <abbr> 化し、用語集ページ（/glossary/）を自動生成する

@@ -21,6 +21,7 @@ mod gantt;
 mod kind;
 mod mindmap;
 mod options;
+mod packet;
 mod pie;
 mod sequence;
 mod state;
@@ -50,6 +51,7 @@ pub fn render_svg(source: &str, options: &Options) -> Result<String, Error> {
         DiagramKind::Pie => pie::render(source, options),
         DiagramKind::Mindmap => mindmap::render(source, options),
         DiagramKind::Timeline => timeline::render(source, options),
+        DiagramKind::Packet => packet::render(source, options),
         kind => Err(Error::UnsupportedDiagram { kind }),
     }
 }

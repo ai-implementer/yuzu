@@ -22,7 +22,7 @@ yuzu は SSG です。原稿には「SSG」と書くだけで、`yuzu.jsonc` の
 | ソースの埋め込み | `file=` で実ファイルの中身をビルド時に取り込む | [下](#コードブロック) |
 | Markdown 断片の再利用 | ` ```include ` で共通の注意書きを取り込む | [下](#コードブロック) |
 | タブ / コードグループ | 連続フェンスの `tab=` で切り替え表示（JS ゼロ） | [下](#コードブロック) |
-| Mermaid 図 | クライアント描画（既定）/ `backend: "ssr"` で 9 図種をビルド時 SVG 化 | [下](#図mermaid) |
+| Mermaid 図 | クライアント描画（既定）/ `backend: "ssr"` で 10 図種をビルド時 SVG 化 | [下](#図mermaid) |
 | 図表番号と相互参照 | `Figure:` の行で自動採番、空リンクに番号を補完 | [下](#図mermaid) |
 | 折りたたみ | `> [!TIP]-` で `<details>` になる | [はじめに](guide/getting-started.md) |
 | API 仕様の描画 | OpenAPI / JSON Schema をビルド時に HTML 化 | [はじめに](guide/getting-started.md) |
