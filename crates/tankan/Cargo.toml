@@ -5,7 +5,7 @@ name = "tankan"
 # バージョンは workspace と独立で、tankan の変更時にだけ上げて publish する
 # （手順は CLAUDE.md「リリース手順」参照）
 description = "Mermaid-compatible diagram text to SVG renderer in pure Rust (no I/O, wasm-ready)"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
