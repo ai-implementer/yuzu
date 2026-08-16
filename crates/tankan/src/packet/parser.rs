@@ -32,6 +32,8 @@ pub(crate) fn parse(source: &str) -> Result<PacketDiagram, Error> {
     // frontmatter の config.packet 用の状態（インデントはスペース数で追う）
     let mut in_config = false;
     let mut packet_indent: Option<usize> = None;
+    // config キーを最後に適用した行（キー単体は正しくても組み合わせが不正な場合の報告用）
+    let mut config_key_line = 1;
 
     for (idx, raw) in source.lines().enumerate() {
         let line_no = idx + 1;
@@ -75,6 +77,7 @@ pub(crate) fn parse(source: &str) -> Result<PacketDiagram, Error> {
             if packet_indent.is_some() {
                 if let Some((key, value)) = line.split_once(':') {
                     apply_config(&mut diagram, key.trim(), value.trim(), line_no)?;
+                    config_key_line = line_no;
                 }
             }
             continue;
@@ -161,6 +164,17 @@ pub(crate) fn parse(source: &str) -> Result<PacketDiagram, Error> {
         });
     }
 
+    // キー単体は正しくても組み合わせで壊れる設定を弾く
+    // （最小ブロック = 1 ビット幅の rect が負幅にならないこと）
+    if diagram.config.padding_x >= diagram.config.bit_width {
+        return Err(Error::Parse {
+            line: config_key_line,
+            message: format!(
+                "frontmatter の packet 設定が不正です: paddingX（{}）は bitWidth（{}）より小さくする必要があります",
+                diagram.config.padding_x, diagram.config.bit_width
+            ),
+        });
+    }
     if !seen_header {
         return Err(Error::Parse {
             line: 1,
@@ -384,6 +398,30 @@ mod tests {
         .unwrap();
         assert_eq!(d.config.bit_width, 24.0);
         assert_eq!(d.config.bits_per_row, 32, "他は既定値のまま");
+    }
+
+    #[test]
+    fn config_の_padding_x_が_bit_width_以上はエラー() {
+        // 単一ビットのブロック幅が bitWidth - paddingX で負になる組み合わせ
+        let e = parse(
+            "---\nconfig:\n  packet:\n    bitWidth: 1\n    paddingX: 2\n---\npacket\n0: \"x\"\n",
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("paddingX"), "{e}");
+        // 等しい場合も幅 0 になるのでエラー
+        assert!(
+            parse(
+                "---\nconfig:\n  packet:\n    bitWidth: 8\n    paddingX: 8\n---\npacket\n0: \"x\"\n"
+            )
+            .is_err()
+        );
+        // 小さければ受理（キーの指定順にも依存しない）
+        assert!(
+            parse(
+                "---\nconfig:\n  packet:\n    paddingX: 2\n    bitWidth: 8\n---\npacket\n0: \"x\"\n"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
