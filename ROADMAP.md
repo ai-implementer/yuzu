@@ -3,18 +3,70 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在
+## 現在: v0.14（Phase 62〜。Phase 64 以降は未策定）
 
-**v0.13 まで公開済み**。v0.14 は「設定ファイルの TOML 化」に着手済み —
-依存ゼロ・no_std の TOML ライブラリ **kabosu**（設計は
-[docs/content/development/kabosu.md](docs/content/development/kabosu.md)）を追加し、
-設定を `yuzu.jsonc`（JSONC）から `yuzu.toml`（snake_case キー）へ全面移行した。
-**非互換**: JSONC の互換読み込み・変換コマンドは作らない / 未知キー・型違い・
-重複キーは設定エラー（exit 2）で止まる（`config-unknown-key` /
-`config-duplicate-key` ルールは廃止、`config-path-outside-root` だけ残る）/
-`.yuzu/settings.json` は廃止 / envKey が変わるので移行後の初回ビルドはフルビルド。
-Phase 番号と内訳は ROADMAP 整理時に付ける。ほかの候補は下の
-「[v0.14 以降の候補](#v014-以降の候補)」にある。
+**v0.13 まで公開済み**。v0.14 の軸は「**設定基盤の刷新 = TOML 化**」。設定は
+serde ＋ JSONC で読んでいたが、serde の derive では位置付きの診断が組めず、
+未知キーの検出は「`Config::default()` を JSON 化した既知キー木を別経路で走査する」
+二重実装（Phase 47 / 60）で補っていた。列位置は取れず、重複キーは後勝ちで黙って
+上書きされ、`lint.rules` のタイポ検出も既知キー木の非空 Default という間接的な
+仕掛けに頼っていた。設定ファイルを TOML にし、パーサを**依存ゼロの自作ライブラリ
+kabosu** として切り出すことで、span 付き診断・未知キーの方針（Warn / Deny /
+Ignore）・正規化出力（envKey 用）を 1 実装で持つ。設計は
+[docs/content/development/kabosu.md](docs/content/development/kabosu.md)
+（2026-08-16 確定）で、Phase 62 / 63 はその設計書の「v0.1 の対応範囲」と
+「yuzu への統合」をそのまま切ったもの。
+
+### 62 kabosu v0.1 ✅
+
+依存ゼロ・純 Rust・`no_std + alloc`・Sans I/O・`#![forbid(unsafe_code)]` の
+TOML ライブラリを `crates/kabosu` に新設（yuzu 非依存。crates.io へは 0.1.0 を
+公開予定で、まだ未公開）。
+
+- 対応範囲は TOML 1.0 のサブセット（bare / quoted / dotted key・標準テーブル・
+  単行 basic / literal string・10 進整数・boolean・ネスト配列・コメント）。
+  float / date-time / 進数整数 / 複数行文字列 / inline table / array of tables は
+  一般構文エラーにせず**位置付きの `Unsupported`** として返す（設定ファイル用途では
+  「書き換え先を案内できる」ことが要点）
+- キー・値・コメントすべてがバイト範囲の span を持ち、`KeyPath` は文字列へ
+  平坦化しない。表示用の行列は利用側が算出し、ライブラリ自身はログを出さない
+- **手書き decode / encode**（derive マクロなし）。`TableDecoder` が必須 / 任意 /
+  既定値 / ネスト / 未知キー 3 方針を担い、型変換の診断は全件蓄積する
+  （エラーが 1 件でもあれば値を返さない）。`Encode` の正規化出力は同じ値から常に
+  同じバイト列（ハッシュ用途）
+- 検証ゲート: 単体・corpus（valid / invalid / unsupported）・round-trip・正規化
+  snapshot・`toml` crate との差分テスト・fuzz 3 ターゲット（parse / roundtrip /
+  decode。手動 workflow `fuzz.yml`）・CI の `msrv` ジョブ（Rust 1.85）・
+  `thumbv7em-none-eabi` の no_std check・`cargo package` 後の依存ゼロ検査
+
+### 63 yuzu-config の統合 ✅
+
+設定を `yuzu.jsonc` から `yuzu.toml`（snake_case キー）へ全面移行し、yuzu-config の
+通常依存を kabosu だけにした（jsonc-parser は workspace からも消え、
+serde / serde_json / thiserror / tracing も yuzu-config からは外れた）。
+
+- **非互換を意図的に取る**: JSONC の互換読み込み・フォールバック・変換コマンドは
+  作らない（2 形式の解釈を並走させない）。未知キーは **Deny** = 位置と「その階層の
+  対応キー一覧」付きの設定エラー（exit 2）で、型不一致・選択肢外の値・`lint.rules` の
+  未知 ID と一緒に**全件蓄積**して 1 回で出す。重複キーは TOML の構文エラー
+  （先の定義の位置付き）。これで `config-unknown-key` / `config-duplicate-key`
+  ルールは役目を終えて廃止（`config-path-outside-root` だけ残る）
+- `codec.rs` の `table_codec!` で「キー名 => フィールド」を 1 行ずつ定義し、
+  Decode / Encode を同時に生成する（集合がズレない。キーを足すときはここにも足す）。
+  列挙値と `lint.rules` の ID 検証は独自診断で、文言は日本語
+- `.yuzu/settings.json` は代替なしで廃止。envKey は `Config::to_toml()`
+  （kabosu の正規化出力）に替えた = 移行後の初回ビルドは全ページ再計算
+- yuzu-config はログを出さない。探索・読み込み・警告表示は yuzu-cli の
+  `commands::load_project` に一本化（従来は 7 コマンドが 3 行ずつ複製していた）
+- 追随: scaffold の注釈付き `yuzu.toml`・docs 13 ページ（`reference/config.md` は
+  TOML で全面書き換え）・`docs/yuzu.toml`（インクルード引用は 25〜45 行目）・
+  ci.yml の e2e（未知キーと旧 camelCase キーが exit 2 で止まること・ルート外
+  `input.dir` の警告が JSON 出力を汚さないこと）。kabosu 側は統合で必要になった
+  `DiagnosticCode::UnknownKey { known_keys }` と `Option<T>` の `Encode` を足した
+
+Phase 64 以降は未策定。kabosu 0.1.0 の publish は yuzu のリリースとは非同期で、
+publish 前に fuzz を回す規律は CLAUDE.md にある。候補は下の
+「[v0.14 以降の候補](#v014-以降の候補)」から選ぶ。
 
 ## v0.10.1 レビューの持ち越し
 
@@ -52,7 +104,7 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
 - **dogfooding 候補（v0.13 Phase 61 からの持ち越し。判断根拠ごと残す）**:
   - `theme.dark: false`・JS 無効時の OS ダーク追従 — base.jinja が
     `data-theme="light"` を無条件ハードコードしており CSS フォールバックの前提から
-    崩す必要がある。ダーク定義が 3 箇所（theme.css / syntect 生成 / cssVarsDark
+    崩す必要がある。ダーク定義が 3 箇所（theme.css / syntect 生成 / css_vars_dark
     生成）に散りフォールバック追加で全部 2 系統化（21K の syntect.css が倍増）、
     さらに「dark: false でもダークになる」= 設定キーの意味の再定義（3 値化等）を
     伴う。候補中最重量で単独 Phase 相当
@@ -64,10 +116,11 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
     sitemap と同じ「baseUrl がフル URL のときだけ」ゲート（pipeline.rs）に乗せれば
     新キーゼロで実装可能と調査済み（og:image だけ素材不足）。読了時間・文字数は
     extract_meta で数えて CachedMeta へ載せる = CACHE bump を伴う
-  - `--root` グローバルオプションと shell 補完 — 定型は 7 箇所（8 コマンド分）。
-    clap_complete の新規依存＋ 8 つの run() シグネチャ変更に加え、build / dev
-    だけが load_config（上書き適用・リンク検査・write_resolved）を通る非対称を
-    揃えるかの設計判断が要る。着手時は MarkdownOptions 構築の 8 箇所コピーの
+  - `--root` グローバルオプションと shell 補完 — 探索・読み込みは Phase 63 で
+    `commands::load_project` に一本化済み（`--root` はここ 1 箇所に足せば全コマンドに
+    効く）。残るのは clap_complete の新規依存＋ 8 つの run() シグネチャ変更と、
+    build / dev だけが load_config（上書き適用・`.yuzu` のリンク検査）を通る
+    非対称を揃えるかの設計判断。着手時は MarkdownOptions 構築の 8 箇所コピーの
     解消と抱き合わせると割が良い
 - **i18n** — テーマ UI 文字列の多言語化。実測で jinja 18 ＋ テーマ JS 19 ＋
   apispec 35 ＋ crossref 3 文字列。`site.lang` は `<html lang>` の 2 箇所でしか
@@ -76,7 +129,7 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
     日本語固有**なので、UI だけ多言語化しても半端になる
   - テーマ上書き（`theme/templates/`）で文言は今でも変えられるが、粒度がファイル単位で
     アップストリームから fork するため代替にならない（`search-ui.js` は 470 行）
-  - 最小案は `theme.strings` の部分上書き辞書（`theme.cssVars` / `glossary.terms` と同型）。
+  - 最小案は `theme.strings` の部分上書き辞書（`theme.css_vars` / `glossary.terms` と同型）。
     既定を日本語のまま据え置けばスナップショットは動かない
   - apispec の文言は**描画のエラーボックスと `yuzu check` の診断で共有**しているので、
     翻訳すると `--format json` の出力も言語で変わる（CLI を含めるかの線引きが要る）
