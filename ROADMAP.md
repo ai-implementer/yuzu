@@ -3,70 +3,12 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在: v0.14（Phase 62〜。Phase 64 以降は未策定）
+## 現在
 
-**v0.13 まで公開済み**。v0.14 の軸は「**設定基盤の刷新 = TOML 化**」。設定は
-serde ＋ JSONC で読んでいたが、serde の derive では位置付きの診断が組めず、
-未知キーの検出は「`Config::default()` を JSON 化した既知キー木を別経路で走査する」
-二重実装（Phase 47 / 60）で補っていた。列位置は取れず、重複キーは後勝ちで黙って
-上書きされ、`lint.rules` のタイポ検出も既知キー木の非空 Default という間接的な
-仕掛けに頼っていた。設定ファイルを TOML にし、パーサを**依存ゼロの自作ライブラリ
-kabosu** として切り出すことで、span 付き診断・未知キーの方針（Warn / Deny /
-Ignore）・正規化出力（envKey 用）を 1 実装で持つ。設計は
-[docs/content/development/kabosu.md](docs/content/development/kabosu.md)
-（2026-08-16 確定）で、Phase 62 / 63 はその設計書の「v0.1 の対応範囲」と
-「yuzu への統合」をそのまま切ったもの。
-
-### 62 kabosu v0.1 ✅
-
-依存ゼロ・純 Rust・`no_std + alloc`・Sans I/O・`#![forbid(unsafe_code)]` の
-TOML ライブラリを `crates/kabosu` に新設（yuzu 非依存。crates.io へは 0.1.0 を
-公開予定で、まだ未公開）。
-
-- 対応範囲は TOML 1.0 のサブセット（bare / quoted / dotted key・標準テーブル・
-  単行 basic / literal string・10 進整数・boolean・ネスト配列・コメント）。
-  float / date-time / 進数整数 / 複数行文字列 / inline table / array of tables は
-  一般構文エラーにせず**位置付きの `Unsupported`** として返す（設定ファイル用途では
-  「書き換え先を案内できる」ことが要点）
-- キー・値・コメントすべてがバイト範囲の span を持ち、`KeyPath` は文字列へ
-  平坦化しない。表示用の行列は利用側が算出し、ライブラリ自身はログを出さない
-- **手書き decode / encode**（derive マクロなし）。`TableDecoder` が必須 / 任意 /
-  既定値 / ネスト / 未知キー 3 方針を担い、型変換の診断は全件蓄積する
-  （エラーが 1 件でもあれば値を返さない）。`Encode` の正規化出力は同じ値から常に
-  同じバイト列（ハッシュ用途）
-- 検証ゲート: 単体・corpus（valid / invalid / unsupported）・round-trip・正規化
-  snapshot・`toml` crate との差分テスト・fuzz 3 ターゲット（parse / roundtrip /
-  decode。手動 workflow `fuzz.yml`）・CI の `msrv` ジョブ（Rust 1.85）・
-  `thumbv7em-none-eabi` の no_std check・`cargo package` 後の依存ゼロ検査
-
-### 63 yuzu-config の統合 ✅
-
-設定を `yuzu.jsonc` から `yuzu.toml`（snake_case キー）へ全面移行し、yuzu-config の
-通常依存を kabosu だけにした（jsonc-parser は workspace からも消え、
-serde / serde_json / thiserror / tracing も yuzu-config からは外れた）。
-
-- **非互換を意図的に取る**: JSONC の互換読み込み・フォールバック・変換コマンドは
-  作らない（2 形式の解釈を並走させない）。未知キーは **Deny** = 位置と「その階層の
-  対応キー一覧」付きの設定エラー（exit 2）で、型不一致・選択肢外の値・`lint.rules` の
-  未知 ID と一緒に**全件蓄積**して 1 回で出す。重複キーは TOML の構文エラー
-  （先の定義の位置付き）。これで `config-unknown-key` / `config-duplicate-key`
-  ルールは役目を終えて廃止（`config-path-outside-root` だけ残る）
-- `codec.rs` の `table_codec!` で「キー名 => フィールド」を 1 行ずつ定義し、
-  Decode / Encode を同時に生成する（集合がズレない。キーを足すときはここにも足す）。
-  列挙値と `lint.rules` の ID 検証は独自診断で、文言は日本語
-- `.yuzu/settings.json` は代替なしで廃止。envKey は `Config::to_toml()`
-  （kabosu の正規化出力）に替えた = 移行後の初回ビルドは全ページ再計算
-- yuzu-config はログを出さない。探索・読み込み・警告表示は yuzu-cli の
-  `commands::load_project` に一本化（従来は 7 コマンドが 3 行ずつ複製していた）
-- 追随: scaffold の注釈付き `yuzu.toml`・docs 13 ページ（`reference/config.md` は
-  TOML で全面書き換え）・`docs/yuzu.toml`（インクルード引用は 25〜45 行目）・
-  ci.yml の e2e（未知キーと旧 camelCase キーが exit 2 で止まること・ルート外
-  `input.dir` の警告が JSON 出力を汚さないこと）。kabosu 側は統合で必要になった
-  `DiagnosticCode::UnknownKey { known_keys }` と `Option<T>` の `Encode` を足した
-
-Phase 64 以降は未策定。kabosu 0.1.0 の publish は yuzu のリリースとは非同期で、
-publish 前に fuzz を回す規律は CLAUDE.md にある。候補は下の
-「[v0.14 以降の候補](#v014-以降の候補)」から選ぶ。
+**v0.14 まで公開済み**。次の版（v0.15）は未策定で、候補は下の
+「[v0.15 以降の候補](#v015-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
+kabosu 0.1.0 の crates.io publish は yuzu のリリースとは非同期で未実施
+（publish 前に fuzz を回す規律は CLAUDE.md にある）。
 
 ## v0.10.1 レビューの持ち越し
 
@@ -99,7 +41,7 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   シンボリックリンクを追う。書き込み側（`output::write_under`）を塞いだので
   混入経路は無いはずだが、手で置かれた場合は配信される
 
-## v0.14 以降の候補
+## v0.15 以降の候補
 
 - **dogfooding 候補（v0.13 Phase 61 からの持ち越し。判断根拠ごと残す）**:
   - `theme.dark: false`・JS 無効時の OS ダーク追従 — base.jinja が
@@ -196,12 +138,69 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   dogfooding 改善＝抑制記法を docs・scaffold で実運用・SSR 図のモバイル対応。
   Phase 外でビルド進捗ログ（処理中ページ・watch の変更ファイル表示）と
   comrak 整形パニックの防御（該当ページを原文へ縮退）も追加
+- **v0.14**（Phase 62〜63）設定基盤の刷新 = TOML 化 — 依存ゼロ・`no_std + alloc` の
+  TOML ライブラリ **kabosu** を新設（設計は
+  [docs/content/development/kabosu.md](docs/content/development/kabosu.md)。
+  crates.io 公開予定）/ 設定を `yuzu.jsonc`（JSONC）から `yuzu.toml`（snake_case
+  キー）へ全面移行。**非互換**: JSONC の互換読み込み・変換コマンドは無し・
+  未知キー / 型違い / 重複キーは設定エラー（exit 2）で停止・`config-unknown-key` /
+  `config-duplicate-key` ルールは廃止・`.yuzu/settings.json` は廃止・envKey が
+  変わるため移行後の初回ビルドはフルビルド
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、
 mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
 
 各版の Phase 内訳:
+
+<details>
+<summary>完了済み: v0.14（Phase 62〜63）の内訳</summary>
+
+軸は「**設定基盤の刷新 = TOML 化**」。設定は serde ＋ JSONC で読んでいたが、
+serde の derive では位置付きの診断が組めず、未知キーの検出は
+「`Config::default()` を JSON 化した既知キー木を別経路で走査する」二重実装
+（Phase 47 / 60）で補っていた。列位置は取れず、重複キーは後勝ちで黙って上書きされ、
+`lint.rules` のタイポ検出も既知キー木の非空 Default という間接的な仕掛けに
+頼っていた。設定ファイルを TOML にし、パーサを依存ゼロの自作ライブラリ kabosu
+として切り出すことで、span 付き診断・未知キーの方針（Warn / Deny / Ignore）・
+正規化出力（envKey 用）を 1 実装で持つ。Phase 62 / 63 は設計書
+（2026-08-16 確定）の「v0.1 の対応範囲」と「yuzu への統合」をそのまま切ったもの。
+
+- **62 kabosu v0.1** — 依存ゼロ・純 Rust・`no_std + alloc`・Sans I/O・
+  `#![forbid(unsafe_code)]` の TOML ライブラリを `crates/kabosu` に新設（yuzu 非依存）。
+  対応範囲は TOML 1.0 のサブセット（bare / quoted / dotted key・標準テーブル・
+  単行 basic / literal string・10 進整数・boolean・ネスト配列・コメント）で、
+  float / date-time / 進数整数 / 複数行文字列 / inline table / array of tables は
+  一般構文エラーにせず**位置付きの `Unsupported`** として返す（設定ファイル用途では
+  「書き換え先を案内できる」ことが要点。ただし `Unsupported` は参照実装 = `toml`
+  crate が受理する妥当なリテラルに限り、`1e` / `0xGG` / `1979-02-29` のような
+  不正リテラルは `InvalidLiteral`）。キー・値・コメントすべてがバイト範囲の span を
+  持ち、`KeyPath` は文字列へ平坦化しない。**手書き decode / encode**（derive なし）で、
+  `TableDecoder` が必須 / 任意 / 既定値 / ネスト / 未知キー 3 方針を担い、型変換の
+  診断は全件蓄積（エラーが 1 件でもあれば値を返さず、上限で省略された分も
+  `has_errors` に数える）。正規化出力は同じ値から常に同じバイト列。検証ゲートは
+  単体・corpus（valid / invalid / unsupported）・round-trip・正規化 snapshot・
+  `toml` crate との差分テスト・fuzz 3 ターゲット（手動 workflow `fuzz.yml`）・
+  CI の `msrv` ジョブ（Rust 1.85）・`thumbv7em-none-eabi` の no_std check・
+  `cargo package` 後の依存ゼロ検査
+- **63 yuzu-config の統合** — 設定を `yuzu.jsonc` から `yuzu.toml`（snake_case
+  キー）へ全面移行し、yuzu-config の通常依存を kabosu だけにした（jsonc-parser は
+  workspace からも消え、serde / serde_json / thiserror / tracing も yuzu-config から
+  外れた）。**非互換を意図的に取る**: JSONC の互換読み込み・フォールバック・変換
+  コマンドは作らない（2 形式の解釈を並走させない）。未知キーは Deny = 位置と
+  「その階層の対応キー一覧」付きの設定エラー（exit 2）で、型不一致・選択肢外の値・
+  `lint.rules` の未知 ID と一緒に全件蓄積して 1 回で出す。重複キーは TOML の構文
+  エラー（先の定義の位置付き）。これで `config-unknown-key` / `config-duplicate-key`
+  ルールは役目を終えて廃止（`config-path-outside-root` だけ残る）。`codec.rs` の
+  `table_codec!` で「キー名 => フィールド」を 1 行ずつ定義し Decode / Encode を同時に
+  生成する（集合がズレない。キーを足すときはここにも足す）。`.yuzu/settings.json` は
+  代替なしで廃止し、envKey は `Config::to_toml()`（正規化出力）に替えた = 移行後の
+  初回ビルドは全ページ再計算。yuzu-config はログを出さず、探索・読み込み・警告表示は
+  yuzu-cli の `commands::load_project` に一本化。追随: scaffold の注釈付き
+  `yuzu.toml`・docs 13 ページ（`reference/config.md` は TOML で全面書き換え）・
+  `docs/yuzu.toml`（インクルード引用は 25〜45 行目）・ci.yml の e2e
+
+</details>
 
 <details>
 <summary>完了済み: v0.13（Phase 58〜61）の内訳</summary>
