@@ -178,13 +178,13 @@ fn 危険な文字を含むファイル名はビルドを中断する() {
 #[test]
 fn 設定由来の_url_に危険な文字があってもエスケープされる() {
     let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
             src.replace(
-                r#""lang": "ja""#,
-                r#""lang": "ja", "logo": "/images/a\"b.svg""#,
+                r#"lang = "ja""#,
+                concat!("lang = \"ja\"\n", r#"logo = "/images/a\"b.svg""#),
             ),
         )
         .unwrap();
@@ -211,13 +211,13 @@ fn 出力先がシンボリックリンクならビルドを中断する() {
         fs::create_dir_all(&outside).unwrap();
         std::os::unix::fs::symlink(&outside, dir.path().join("dist")).unwrap();
 
-        let path = dir.path().join("yuzu.jsonc");
+        let path = dir.path().join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
             src.replace(
-                r#""build": { "baseUrl": "/docs/" }"#,
-                &format!(r#""build": {{ "baseUrl": "/docs/" }}, "output": {{ "clean": {clean} }}"#),
+                "base_url = \"/docs/\"",
+                &format!("base_url = \"/docs/\"\n\n[output]\nclean = {clean}"),
             ),
         )
         .unwrap();
@@ -296,14 +296,13 @@ fn エイリアス衝突はビルドを中断する() {
 fn ハイライト無効でも_file_引用が本文に出る() {
     let dir = build_fixture_with(|root| {
         fs::write(root.join("snippet.rs"), "fn 引用対象() {}\n").unwrap();
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
             src.replace(
-                r#""build": { "baseUrl": "/docs/" }"#,
-                r#""build": { "baseUrl": "/docs/" },
-  "markdown": { "highlight": { "enabled": false } }"#,
+                "base_url = \"/docs/\"",
+                "base_url = \"/docs/\"\n\n[markdown.highlight]\nenabled = false",
             ),
         )
         .unwrap();
@@ -369,7 +368,7 @@ fn route_衝突はビルドを中断する() {
 #[test]
 fn base_url_がフル_url_なら_sitemap_xml_を生成する() {
     let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
@@ -505,9 +504,8 @@ fn site_logo_の有無でヘッダーの_img_が切り替わる() {
     // 設定あり: baseUrl（/docs/）が前置された src と has-logo クラス、装飾扱いの alt=""
     let dir = build_fixture_with(|root| {
         fs::write(
-            root.join("yuzu.jsonc"),
-            r#"{ "site": { "title": "Fixture Docs", "logo": "/images/logo.svg" },
-                 "build": { "baseUrl": "/docs/" } }"#,
+            root.join("yuzu.toml"),
+            "[site]\ntitle = \"Fixture Docs\"\nlogo = \"/images/logo.svg\"\n\n[build]\nbase_url = \"/docs/\"\n",
         )
         .unwrap();
     });
@@ -527,8 +525,8 @@ fn llms_無効化と_full_無効化() {
     // enabled: false → 両ファイルとも出ない
     let dir = build_fixture_with(|root| {
         fs::write(
-            root.join("yuzu.jsonc"),
-            r#"{ "site": { "title": "Fixture Docs" }, "llms": { "enabled": false } }"#,
+            root.join("yuzu.toml"),
+            "[site]\ntitle = \"Fixture Docs\"\n\n[llms]\nenabled = false\n",
         )
         .unwrap();
     });
@@ -538,8 +536,8 @@ fn llms_無効化と_full_無効化() {
     // full: false → llms.txt のみ
     let dir = build_fixture_with(|root| {
         fs::write(
-            root.join("yuzu.jsonc"),
-            r#"{ "site": { "title": "Fixture Docs" }, "llms": { "full": false } }"#,
+            root.join("yuzu.toml"),
+            "[site]\ntitle = \"Fixture Docs\"\n\n[llms]\nfull = false\n",
         )
         .unwrap();
     });
@@ -552,9 +550,8 @@ fn mermaid_ssr_はページ単位で_mermaid_js_の要否が決まる() {
     let dir = build_fixture_with(|root| {
         // backend を ssr に。sequence のみのページと flowchart ページを追加
         fs::write(
-            root.join("yuzu.jsonc"),
-            r#"{ "site": { "title": "Fixture Docs" },
-                 "markdown": { "mermaid": { "backend": "ssr" } } }"#,
+            root.join("yuzu.toml"),
+            "[site]\ntitle = \"Fixture Docs\"\n\n[markdown.mermaid]\nbackend = \"ssr\"\n",
         )
         .unwrap();
         fs::write(
@@ -629,9 +626,8 @@ fn math_はページ単位で_katex_の要否が決まる() {
     // math.enabled=false なら $ はテキストのまま・KaTeX も読み込まない
     let dir = build_fixture_with(|root| {
         fs::write(
-            root.join("yuzu.jsonc"),
-            r#"{ "site": { "title": "Fixture Docs" },
-                 "markdown": { "math": { "enabled": false } } }"#,
+            root.join("yuzu.toml"),
+            "[site]\ntitle = \"Fixture Docs\"\n\n[markdown.math]\nenabled = false\n",
         )
         .unwrap();
         fs::write(
@@ -761,15 +757,11 @@ fn サイドバーは現在セクションだけ開いた_details_になる() {
 #[test]
 fn nav_collapse_false_なら従来の全展開になる() {
     let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
-            src.replace(
-                r#""site":"#,
-                r#""nav": { "collapse": false },
-  "site":"#,
-            ),
+            src.replace("[site]", "[nav]\ncollapse = false\n\n[site]"),
         )
         .unwrap();
     });
@@ -799,15 +791,11 @@ fn toc_は入れ子になり_theme_toc_levels_で範囲を変えられる() {
 
     // levels "2-4": h4 も入れ子で出る
     let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
-            src.replace(
-                r#""site":"#,
-                r#""theme": { "toc": { "levels": "2-4" } },
-  "site":"#,
-            ),
+            src.replace("[site]", "[theme.toc]\nlevels = \"2-4\"\n\n[site]"),
         )
         .unwrap();
     });
@@ -817,15 +805,11 @@ fn toc_は入れ子になり_theme_toc_levels_で範囲を変えられる() {
 
     // 不正な levels は警告して既定へ縮退（ビルドは成功する）
     let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
-            src.replace(
-                r#""site":"#,
-                r#""theme": { "toc": { "levels": "abc" } },
-  "site":"#,
-            ),
+            src.replace("[site]", "[theme.toc]\nlevels = \"abc\"\n\n[site]"),
         )
         .unwrap();
     });
@@ -849,8 +833,8 @@ fn search_有効なら検索_ui_が入り_無効なら出ない() {
     let dir = tempfile::tempdir().unwrap();
     copy_tree(&fixture, dir.path());
     fs::write(
-        dir.path().join("yuzu.jsonc"),
-        r#"{ "site": { "title": "Fixture Docs" }, "search": { "enabled": false } }"#,
+        dir.path().join("yuzu.toml"),
+        "[site]\ntitle = \"Fixture Docs\"\n\n[search]\nenabled = false\n",
     )
     .unwrap();
     let rc = yuzu_config::load(dir.path()).unwrap();
@@ -887,14 +871,12 @@ fn base_url_がリンクとアセットに反映される() {
 #[test]
 fn theme_css_vars_が_head_に注入される() {
     let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
-            src.replacen(
-                '{',
-                r##"{ "theme": { "cssVars": { "accent": "#0a6cff" }, "cssVarsDark": { "accent": "#7fb2ff" } },"##,
-                1,
+            format!(
+                "[theme.css_vars]\naccent = \"#0a6cff\"\n\n[theme.css_vars_dark]\naccent = \"#7fb2ff\"\n\n{src}"
             ),
         )
         .unwrap();
@@ -1006,9 +988,8 @@ fn git_メタは日付マップと_edit_url_設定から出る() {
     let dir = tempfile::tempdir().unwrap();
     copy_tree(&fixture, dir.path());
     fs::write(
-        dir.path().join("yuzu.jsonc"),
-        r#"{ "site": { "title": "Fixture Docs" }, "build": { "baseUrl": "/docs/" },
-             "git": { "lastUpdated": true, "editUrl": "https://example.com/edit/main/content/{path}" } }"#,
+        dir.path().join("yuzu.toml"),
+        "[site]\ntitle = \"Fixture Docs\"\n\n[build]\nbase_url = \"/docs/\"\n\n[git]\nlast_updated = true\nedit_url = \"https://example.com/edit/main/content/{path}\"\n",
     )
     .unwrap();
 
@@ -1233,14 +1214,13 @@ fn 用語集ページが生成されサイドバーと本文に反映される()
     // 共有 fixture（build_fixture）には glossary を入れない = 既存
     // スナップショット 5 件が動かないことを保ったまま、設定を足した版で検証する
     let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
             src.replace(
-                r#""site":"#,
-                r#""markdown": { "glossary": { "terms": { "SSG": "Static Site Generator" } }, "crossref": {} },
-  "site":"#,
+                "[site]",
+                "[markdown.glossary.terms]\nSSG = \"Static Site Generator\"\n\n[markdown.crossref]\n\n[site]",
             ),
         )
         .unwrap();
@@ -1287,16 +1267,12 @@ fn 検索結果ページが生成され集約からは除外される() {
     // ことを保ったまま、設定を足した版で検証する（用語集と同じ流儀）。
     // baseUrl をフル URL にして sitemap の除外も同時に見る
     let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
-            src.replace(
-                r#""site":"#,
-                r#""search": { "page": "search" },
-  "site":"#,
-            )
-            .replace("\"/docs/\"", "\"https://example.com/docs/\""),
+            src.replace("[site]", "[search]\npage = \"search\"\n\n[site]")
+                .replace("\"/docs/\"", "\"https://example.com/docs/\""),
         )
         .unwrap();
     });
@@ -1334,14 +1310,13 @@ fn 検索結果ページが生成され集約からは除外される() {
 #[test]
 fn 検索無効なら結果ページは生成されない() {
     let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.jsonc");
+        let path = root.join("yuzu.toml");
         let src = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
             src.replace(
-                r#""site":"#,
-                r#""search": { "enabled": false, "page": "search" },
-  "site":"#,
+                "[site]",
+                "[search]\nenabled = false\npage = \"search\"\n\n[site]",
             ),
         )
         .unwrap();

@@ -1,7 +1,7 @@
 ---
 title: 配信とデプロイ
 order: 8
-description: baseUrl・GitHub Pages・404 ページ・テーマ上書き・印刷 / PDF・git 連携メタ
+description: base_url・GitHub Pages・404 ページ・テーマ上書き・印刷 / PDF・git 連携メタ
 ---
 
 # 配信とデプロイ
@@ -9,14 +9,15 @@ description: baseUrl・GitHub Pages・404 ページ・テーマ上書き・印�
 `yuzu build` の出力（`dist/`）は純粋な静的サイトです。Web サーバや CDN に
 そのまま置けます。
 
-## サブパス配信（baseUrl）
+## サブパス配信（`base_url`）
 
 サイトをサブパス（`https://example.com/docs/` や GitHub Pages の
 `https://<user>.github.io/<リポジトリ名>/`）で配信する場合は、
-リンク・アセット参照の解決先を `baseUrl` で指定します:
+リンク・アセット参照の解決先を `base_url` で指定します:
 
-```jsonc
-"site": { "baseUrl": "/docs/" }
+```toml
+[site]
+base_url = "/docs/"
 ```
 
 CI から注入する場合はコマンドラインの `--base-url` が設定より優先されます:
@@ -59,11 +60,12 @@ GitHub Pages への自動デプロイが動きます。必要な操作はリポ�
 
 色だけ変えたい場合は、設定の CSS 変数上書きが手軽です:
 
-```jsonc
-"theme": {
-  "cssVars": { "accent": "#0a6cff" },
-  "cssVarsDark": { "accent": "#7fb2ff" } // ダークモード時のみの上書き
-}
+```toml
+[theme.css_vars]
+accent = "#0a6cff"
+
+[theme.css_vars_dark] # ダークモード時のみの上書き
+accent = "#7fb2ff"
 ```
 
 ## 印刷と PDF
@@ -94,25 +96,24 @@ GitHub Pages への自動デプロイが動きます。必要な操作はリポ�
 「このページを編集」リンクが出ます（このサイトでも有効です。
 ページ下部を見てください）:
 
-```jsonc
-"git": {
-  "lastUpdated": true, // 最終コミット日（git が無い環境では自動で非表示）
-  "editUrl": "https://github.com/me/docs/edit/main/content/{path}" // {path} は content 相対パス
-}
+```toml
+[git]
+last_updated = true # 最終コミット日（git が無い環境では自動で非表示）
+edit_url = "https://github.com/me/docs/edit/main/content/{path}" # {path} は content 相対パス
 ```
 
 git が無い環境・未コミットのページでは、日付を出さずに自動で縮退します。
 
 > [!TIP]
-> GitHub Actions で `lastUpdated` を使う場合は、checkout を
+> GitHub Actions で `last_updated` を使う場合は、checkout を
 > `fetch-depth: 0` にしてください。浅いクローンでは全ページの最終コミット日が
 > 直近のコミットに揃ってしまいます。
 
 ## sitemap.xml
 
-`baseUrl` が**フル URL**（`https://…/`）のとき、全ページを列挙した
+`base_url` が**フル URL**（`https://…/`）のとき、全ページを列挙した
 `sitemap.xml` を自動生成します（sitemap の `<loc>` は絶対 URL が仕様の
-ため。パスだけの baseUrl では生成しません）。`git.lastUpdated` が有効なら
+ため。パスだけの `base_url` では生成しません）。`git.last_updated` が有効なら
 各ページに `<lastmod>` も付きます。リダイレクトページ（aliases）は
 載りません。`public/sitemap.xml` を置けばそちらが優先されます。
 

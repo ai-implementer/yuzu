@@ -1,0 +1,98 @@
+# yuzu の設定ファイル（TOML）。すべてのキーは省略可能で、省略すると既定値になります。
+# 全キーの一覧と既定値: https://ai.implementer.net/yuzu/reference/config/
+# キーのタイポ・型違いは行番号付きのエラーで止まります（黙って無視しません）。
+
+[site]
+title = "My Docs"
+description = "yuzu で生成するドキュメントサイト"
+lang = "ja"
+# ヘッダーのタイトル横に出すロゴ画像（未指定なら 🍊）。public/ 配下がそのまま配信されます
+# logo = "/images/yuzu-logo.svg"
+# サブパスで配信する場合は base_url を設定します（例: 社内リバプロ配下）
+# base_url = "/docs/"
+
+[input]
+dir = "content"
+
+[output]
+dir = "dist"
+clean = true
+
+[theme]
+name = "default"
+dark = true # ダークモード切替ボタンを出す
+# テーマ CSS 変数の上書き（変数名は theme.css の :root を参照）
+# [theme.css_vars]
+# accent = "#0a6cff"
+# ダークモード時のみの上書き
+# [theme.css_vars_dark]
+# accent = "#7fb2ff"
+
+# collapse = false でサイドバーを常時全展開（既定は現在のセクションだけ開く）
+[nav]
+auto = true
+collapse = true
+
+[markdown]
+gfm = true
+
+[markdown.highlight]
+enabled = true
+# line_numbers = true でコードブロックの行番号をサイト既定 on にできる
+# （ブロック単位の showLineNumbers / noLineNumbers が優先）
+
+[markdown.mermaid]
+enabled = true
+# backend = "ssr" # 対応図種（sequence/flowchart/class/state/er/gantt/pie/mindmap/timeline/packet）をビルド時に SVG 化（tankan）。既定は "client"
+
+[markdown.math]
+enabled = true # $...$ / $$...$$ / ```math を同梱 KaTeX で描画（数式のあるページだけ読み込む）
+
+[markdown.crossref]
+# 図表番号（Figure: / Table: / Listing: のキャプション行）の採番単位。
+# "page" = ページ内連番（既定）/ "site" = サイドバー表示順の通し番号
+numbering = "page"
+
+[markdown.glossary]
+page = "glossary" # 用語集ページの URL（"" にすると生成しません）
+page_title = "用語集"
+abbr = true # false にすると用語集ページだけを作り、本文は書いたままにします
+
+# 略語 → 説明文の辞書。本文の Markdown は一切変えずに、
+# 各ページの初出だけが <abbr title="説明"> になります（ホバーで説明が出ます）
+[markdown.glossary.terms]
+SSG = "Static Site Generator。Markdown などの原稿から静的な HTML サイトを生成する仕組み"
+
+# [lint]
+# max_directory_depth = 1 # content 配下のディレクトリ階層を制限（直下 = 0。未設定なら無制限）
+#
+# 用語統一の辞書（正しい表記 → ゆれ表記）。lint / check が表記ゆれを報告します
+# [lint.terms]
+# "サーバー" = ["サーバ"]
+#
+# ルール ID → bool。false でプロジェクト全体を無効化（既定は全ルール有効。
+# ID は診断の warning[...] の中身。error と抑制機構自身は不可）
+# [lint.rules]
+# katakana-choon = true
+
+[search]
+# 検索結果ページ（/search/?q= で共有できる全結果の一覧）。空にすると生成しない
+page = "search"
+# page_title = "検索" # 検索結果ページのタイトル
+# page_size = 10 # 結果ページで 1 回に表示する件数（「さらに表示」で追加）
+# synonyms = [["ログイン", "サインイン"]] # 同義語グループ。lint.terms と合成され、ゆれ表記の検索が正表記にヒット
+# index_code = false # フェンスコードブロックを検索対象に含める（関数名・設定キーで引ける。既定 off）
+
+# [git]
+# last_updated = true # ページフッターに最終コミット日（git が無い環境では自動で非表示）
+# edit_url = "https://github.com/me/docs/edit/main/content/{path}" # 「このページを編集」リンク
+
+# [build]
+# # yuzu dev / build --watch の監視から除外する glob（プロジェクトルート相対。
+# # 指定すると既定値 ["**/target", "**/node_modules"] を置き換えます）
+# watch_ignore = ["**/target", "**/node_modules", "**/vendor"]
+
+[dev]
+port = 5173
+# live_reload = true # yuzu dev の WS ライブリロード（false で注入なし）
+# open = false # yuzu dev 起動時にブラウザを開く

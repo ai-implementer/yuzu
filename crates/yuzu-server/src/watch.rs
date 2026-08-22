@@ -25,7 +25,7 @@ pub struct WatchHandle {
 /// 監視除外の規則。
 ///
 /// ディレクトリ前置（出力ディレクトリ等）と隠しディレクトリは server 内の固定規則。
-/// glob（`build.watchIgnore`）のような追加規則は述語で受け取る — glob の解釈は
+/// glob（`build.watch_ignore`）のような追加規則は述語で受け取る — glob の解釈は
 /// yuzu-core にあり、依存方向 `cli → server` を守って server は yuzu-core を
 /// 知らないため。
 ///

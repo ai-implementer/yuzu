@@ -1,0 +1,13 @@
+integers = [1, 2, 3]
+colors = ["red", "yellow", "green"]
+nested_arrays_of_ints = [[1, 2], [3, 4, 5]]
+nested_mixed_array = [[1, 2], ["a", "b", "c"]]
+# 異なる型の混在も TOML 1.0 では許される
+numbers = [1, 2, "three"]
+
+# 複数行・末尾カンマ・要素間コメント
+hosts = [
+  "alpha",
+  "omega", # 行末コメント
+]
+empty = []

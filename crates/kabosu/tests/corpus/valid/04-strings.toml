@@ -1,0 +1,7 @@
+str1 = "I'm a string. \"You can quote me\". Name\tJos\u00E9\nLocation\tSF."
+unicode_long = "\U0001F34A"
+empty = ""
+literal_winpath = 'C:\Users\nodejs\templates'
+literal_quoted = 'Tom "Dubs" Preston-Werner'
+literal_regex = '<\i\c*\s*>'
+japanese = "日本語の文字列と絵文字 🍊"

@@ -30,8 +30,8 @@ clap = { version = "4.6", features = ["derive"] }
 # insta（dev 依存）が既に同じバージョンを引いているため Cargo.lock は増えない。
 # 既定 feature の text（TextDiff）だけあれば足りる（inline / bytes / serde は不要）
 similar = { version = "2.7", default-features = false, features = ["text"] }
-# JSONC（凍結: serde + JSONC）。文字列リテラル内の "//" を壊さない構文パーサ
-jsonc-parser = { version = "0.32", features = ["serde"] }
+# 設定（yuzu.toml）は自作の kabosu で読む（下の内部 crate 参照）。serde はキャッシュ・
+# 検索索引・診断の JSON 出力・frontmatter の YAML 用で、設定には使わない
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10"
@@ -70,12 +70,15 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"]
 open = "5.3"
 insta = { version = "1.48", features = ["filters"] }
 tempfile = "3"
+# kabosu の差分テスト専用の dev 依存（kabosu と参照実装の解釈一致を検証する）。
+# Cargo.lock には toml_parser / toml_writer / toml_datetime / serde_spanned / winnow が新規に増える
+toml = "0.9"
 # WS 統合テスト用（axum 0.8 の内部依存と同版に合わせる）
 tokio-tungstenite = "0.29"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 # 内部 crate（依存方向の凍結: cli → {server, render, index, core, config} /
-# render, index → core / 検索スタック: mikan-wasm → mikan・yuzu-index → mikan）
+# render, index → core / config → kabosu / 検索スタック: mikan-wasm → mikan・yuzu-index → mikan）
 yuzu-core = { path = "crates/yuzu-core" }
 yuzu-render = { path = "crates/yuzu-render" }
 yuzu-config = { path = "crates/yuzu-config" }
@@ -86,6 +89,8 @@ yuzu-index = { path = "crates/yuzu-index" }
 mikan = { path = "crates/mikan" }
 # Mermaid 互換描画（yuzu 非依存の汎用ライブラリ。依存方向は yuzu-render → tankan のみ）
 tankan = { path = "crates/tankan" }
+# TOML 設定ライブラリ（yuzu 非依存・依存ゼロ・no_std+alloc。crates.io で公開）
+kabosu = { path = "crates/kabosu" }
 
 # 配布バイナリのサイズ最適化（LTO ＋ debuginfo 除去。ビルド時間より配布サイズを優先。
 # シンボルテーブルは残す = クラッシュ時のバックトレースに関数名を出すため strip は

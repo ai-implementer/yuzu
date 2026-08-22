@@ -37,7 +37,7 @@ description: yuzu の全コマンド・主要フラグ・終了コード規約
 | フラグ | 説明 |
 | --- | --- |
 | `--watch` | 監視ビルド＋配信＋ポーリング式オートリフレッシュ（WebSocket が使えない環境向け） |
-| `--base-url <URL>` | baseUrl を上書き（`site` / `build` の設定より優先。CI からの注入用） |
+| `--base-url <URL>` | `base_url` を上書き（`site` / `build` の設定より優先。CI からの注入用） |
 | `--force` | インクリメンタルキャッシュ（`.yuzu/cache/`）を破棄してフルビルド |
 | `--drafts` | `draft: true` のページも含めてビルド（下書きバナー付き） |
 | `--port <番号>` | `--watch` のときの配信ポート（既定は設定の `dev.port`）。`yuzu dev` と並走させるとき |

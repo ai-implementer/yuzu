@@ -30,7 +30,7 @@ description: 日本語全文検索。フレーズ検索・タイポトレラン�
 
 - `?q=` がクエリ、`?section=` が絞り込みです。**URL を共有すれば相手にも
   同じ結果が再現**されます（例: [`/search/?q=検索`](/search/?q=検索)）
-- 一度に出る件数は `search.pageSize`（既定 10）で、残りは「さらに表示」で
+- 一度に出る件数は `search.page_size`（既定 10）で、残りは「さらに表示」で
   今の結果に**追記**されます
 - 結果が複数のセクション（サイドバーの第 1 階層）にまたがるときは
   **区分のチップ**が出て、押すとそのセクションだけに絞り込めます。
@@ -77,20 +77,20 @@ yuzu search --section ガイド "検索"
 `ダイアグラム` で検索すると、`サーバ` や `図` と書かれたページが
 ヒットします:
 
-```jsonc
-"lint": {
-  "terms": { "サーバ": ["サーバー"], "ユーザ": ["ユーザー"] }
-},
-"search": {
-  "synonyms": [["図", "ダイアグラム"], ["設定", "コンフィグ"]]
-}
+```toml
+[lint.terms]
+"サーバ" = ["サーバー"]
+"ユーザ" = ["ユーザー"]
+
+[search]
+synonyms = [["図", "ダイアグラム"], ["設定", "コンフィグ"]]
 ```
 
-## コードブロックの検索（indexCode）
+## コードブロックの検索（`index_code`）
 
-`search.indexCode: true` にすると**フェンスコードブロックの中身も検索対象**に
+`search.index_code = true` にすると**フェンスコードブロックの中身も検索対象**に
 なり、関数名や設定キーで設計書を引けます（既定は off）。このサイトでは
-有効にしているので、たとえば `maxTermsPerShard` のような設定キーでも
+有効にしているので、たとえば `max_terms_per_shard` のような設定キーでも
 このドキュメントを検索できます。
 
 mermaid / openapi / jsonschema / math のような特別レンダリングされる
@@ -117,5 +117,5 @@ yuzu search '"ライブリロード"'   # フレーズ検索も同じ構文
 > [!NOTE]
 > 検索 UI の動作確認は `yuzu preview` / `yuzu dev` 経由で行ってください。
 > `file://` で開くと fetch が動かず、OPFS もセキュアコンテキスト
-> （https か localhost）を要求します。`search.enabled: false` で
+> （https か localhost）を要求します。`search.enabled = false` で
 > 機能ごと無効化できます。

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::{CONFIG_FILE_NAME, ConfigError};
 
-/// `start` から上方向に `yuzu.jsonc` を探索し、見つかったディレクトリ
+/// `start` から上方向に `yuzu.toml` を探索し、見つかったディレクトリ
 /// （＝プロジェクトルート）を返す。
 pub fn find_project_root(start: &Path) -> Result<PathBuf, ConfigError> {
     let mut dir = Some(start);

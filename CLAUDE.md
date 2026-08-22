@@ -19,8 +19,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
-CI（.github/workflows/ci.yml。ジョブは `check` 1 つ）は fmt → machete（未使用依存）→ clippy → test → build →
-`cargo package --locked -p tankan -p mikan`（crates.io メタデータの回帰検出）→ wasm32 チェック
+CI（.github/workflows/ci.yml。ジョブは `check` と、kabosu を Rust 1.85 で check する `msrv` の 2 つ）の `check` は fmt → machete（未使用依存）→ clippy → test → build →
+`cargo package --locked -p tankan -p mikan -p kabosu`（crates.io メタデータの回帰検出。kabosu は依存ゼロ検査も）→ wasm32 チェック → kabosu の no_std チェック（thumbv7em-none-eabi）
 → docs サイト検証（docs/ での check・build・grep ゲート・SSR フォールバック検出）→ e2e の順に実行する。
 `.devcontainer/**` の変更時だけ container.yml が別途走る:
 
@@ -47,24 +47,25 @@ cargo build -p yuzu-cli
 yuzu-cli → {yuzu-server, yuzu-render, yuzu-index, yuzu-core, yuzu-config}
 yuzu-render → yuzu-core, yuzu-config, yuzu-theme, tankan
 yuzu-index → yuzu-core, mikan       mikan-wasm → mikan
+yuzu-config → kabosu（通常依存はこれだけ）
 （mikan は native/wasm 共通の本体。mikan-wasm はその wasm ラッパで、
 トークナイザ・フォーマット・抜粋生成を 1 実装で共有する）
-tankan・mikan・mikan-wasm は他の yuzu crate 非依存の汎用ライブラリ
-（tankan・mikan は crates.io で公開。検索スタックの書き側集約は
+tankan・mikan・mikan-wasm・kabosu は他の yuzu crate 非依存の汎用ライブラリ
+（tankan・mikan は crates.io で公開済み、kabosu は公開予定。検索スタックの書き側集約は
 mikan::build、読み側クエリエンジンは SearchEngine にあり、
 yuzu-index はページ抽出とファイル I/O だけの薄い呼び出し側）
 mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に改名）
 ```
 
 - **yuzu-core**: comrak パース → Document/サイトモデル（nav・TOC・slug・sourcepos・lint・リンク検査）。パーサは内部に隠蔽し、公開 API は comrak 非依存。`markdown/mod.rs` が **comrak を触る唯一の場所**で、配下に `fence.rs`（フェンス情報文字列 = title / 行ハイライト / 行番号 / `file=` / `lines=`）・`crossref.rs`（キャプション行の採番と参照補完）・`collapse.rs`（`[!NOTE]-` → `<details>`）。ほかに `include.rs`（インクルードの読み込みと行切り出し。canonicalize でルート配下強制）・`aliases.rs`（エイリアスの正規化と検証）
-- **yuzu-render**: サイトモデル → HTML（minijinja テンプレート、syntect ハイライト、Mermaid 変換、数式は comrak math 出力を同梱 KaTeX がクライアント描画、baseUrl 解決）
-- **yuzu-config**: `yuzu.jsonc` を cwd から上方向に探索してプロジェクトルートを確定 → 解決済み設定を `.yuzu/settings.json` に書き出す
+- **yuzu-render**: サイトモデル → HTML（minijinja テンプレート、syntect ハイライト、Mermaid 変換、数式は comrak math 出力を同梱 KaTeX がクライアント描画、base_url 解決）
+- **yuzu-config**: `yuzu.toml` を cwd から上方向に探索してプロジェクトルートを確定し、kabosu で読んで既定値をマージする。`schema.rs` が構造体と既定値、`codec.rs` が kabosu の Decode / Encode（`table_codec!` で「キー名 => フィールド」を 1 行ずつ。**キーを足したらここにも足す** = 忘れると未知キーとして設定エラーになる）、`resolve.rs` が読み込み・パス検証・日本語のエラー文言。未知キー・型不一致は位置付きの設定エラー（exit 2）、重複キーは構文エラー。通常依存は kabosu だけ（serde / jsonc-parser / thiserror / tracing は使わない。ログは cli の `commands::load_project` が出す）
 - **yuzu-theme**: デフォルトテーマを rust-embed でバイナリ埋め込み。プロジェクトの `theme/` に同じ相対パスのファイルを置くとファイル単位で上書き
 - **tankan**: Mermaid 互換 SSR（sequence / flowchart / class / state / ER / gantt / pie / mindmap / timeline / packet → SVG）。render_svg が Err を返すと yuzu 側が自動でクライアント描画にフォールバックするので未対応でも壊れない。ただし**図種を足すと「従来フォールバックしていたページが SSR 成功へ変わる」＝本文 HTML が変わる**ため、tankan 内（`kind.rs::is_supported` / `lib.rs` の mod ＋ match / corpus）だけでなく yuzu 側の `CACHE_FORMAT_VERSION` とスナップショットも追随が要る（`tankan-add-diagram` スキル参照）
 
 ### 凍結した設計判断（docs `development/index.md`「凍結した設計判断」参照。差し替えないこと）
 
-comrak（Markdown）/ minijinja（テンプレート）/ syntect + two-face（ハイライト、CSS クラス出力）/ clap derive / serde + JSONC / rust-embed / axum + notify + WebSocket（dev サーバ）/ rayon（ページ並列化。出力はスレッド数に依らずバイト同一）。comrak・syntect・two-face は onig（C 依存）を引かないよう **必ず `default-features = false`**（Cargo.toml のコメント参照）。
+comrak（Markdown）/ minijinja（テンプレート）/ syntect + two-face（ハイライト、CSS クラス出力）/ clap derive / TOML 設定は自作の kabosu（依存ゼロ。v0.14 で serde + JSONC から移行。JSONC の互換読み込みは作らない）/ rust-embed / axum + notify + WebSocket（dev サーバ）/ rayon（ページ並列化。出力はスレッド数に依らずバイト同一）。comrak・syntect・two-face は onig（C 依存）を引かないよう **必ず `default-features = false`**（Cargo.toml のコメント参照）。
 
 ### 検索の最重要制約
 
@@ -111,7 +112,7 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 
 ### 汎用ライブラリの crates.io 公開（yuzu のリリースと非同期）
 
-**tankan**（Mermaid SSR）と **mikan**（検索エンジン。旧 yuzu-index-format）を crates.io へ公開している（monorepo のまま。バージョンは workspace と独立で、各 `Cargo.toml` の `version` を明示指定＝現状どちらも 0.2.0）。変更が溜まったら: version を上げる → `cargo build`（Cargo.lock 追随）→ CI green → `cargo publish --dry-run -p <crate>` → `cargo publish -p <crate>`（要 `cargo login`。公開は取り消し不可・yank のみ可能）。ci.yml の `cargo package --locked -p tankan -p mikan` がメタデータ・同梱内容の回帰を PR で検出する。
+**tankan**（Mermaid SSR）・**mikan**（検索エンジン。旧 yuzu-index-format）は crates.io へ公開済み、**kabosu**（TOML。依存ゼロ・no_std+alloc）は 0.1.0 を公開予定で**まだ未公開**（monorepo のまま。バージョンは workspace と独立で、各 `Cargo.toml` の `version` を明示指定＝現状 tankan / mikan は 0.2.0、kabosu は 0.1.0）。変更が溜まったら: version を上げる → `cargo build`（Cargo.lock 追随）→ CI green → `cargo publish --dry-run -p <crate>` → `cargo publish -p <crate>`（要 `cargo login`。公開は取り消し不可・yank のみ可能）。**kabosu の publish 前には fuzz を必ず一度回す**（`.github/workflows/fuzz.yml` の手動実行、または手元で `cd crates/kabosu && cargo +nightly fuzz run <parse|roundtrip|decode>`）。ci.yml の `cargo package --locked -p tankan -p mikan -p kabosu` がメタデータ・同梱内容の回帰を PR で検出する。
 
 **mikan-wasm**（旧 yuzu-search-wasm）は公開しない（`publish = false`。`cargo add` する Rust ライブラリではなく wasm 成果物を作るビルド用 crate）。yuzu 本体側の crate も公開しない（`publish = false`。名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため。将来 本体を公開する構想は ROADMAP.md 参照）。
 
@@ -121,8 +122,8 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 - `yuzu build` / `dev` は常時インクリメンタル（`.yuzu/cache/`）。キャッシュ起因の不具合を疑うときは `--force`（または `.yuzu/cache/` 削除。いつでも安全）。**キャッシュ内容の意味が変わる変更**（本文 HTML の生成ロジック・検索 tf の重み等）では `yuzu-core/src/cache.rs` の `CACHE_FORMAT_VERSION` を上げる
 - yuzu-server の serve テストは TCP バインドするため、サンドボックス内では PermissionDenied で落ちる（コード起因ではない）
 - **comrak の AST を構造変更するときは「走査で集めて後段で適用」する**。`descendants()` のイテレート中に木を変えると *tree modified during iteration* でパニックする。段落 → `HtmlBlock` 化は**子を先に detach しないと** `InvalidChildType` でパニックする（HtmlBlock は子を持てない）。URL 書き換えのような**値の変更だけ**は走査中で安全
-- **`dev` / `build --watch` はプロジェクトルート全体を監視する**（インクルード `file=` の参照先が content 外にもあるため）。**出力ディレクトリの除外は必須** = 外すと「再ビルド → 変更検知 → 再ビルド」の無限ループになる。隠しディレクトリと `build.watchIgnore` の glob も除外する（`yuzu-server/src/watch.rs` の `WatchIgnore`。glob 判定は yuzu-core の `IgnoreMatcher` を**述語で**渡す = server は yuzu-core を知らない）。**除外はイベントのフィルタで監視登録は減らない**（notify にパス単位の除外が無い）
-- **watch 中の `yuzu.jsonc` 変更は取り込むが、監視・配信の前提になる設定は起動時固定**（`build.rs` の `WatchBuild` / `pin_restart_only`）。`output.dir` を差し替えると新しい出力先が監視除外から外れて無限ループになるため、`output.dir` / `baseUrl` / `dev.host` / `dev.port` / `dev.liveReload` / `build.watchIgnore` は警告だけ出して起動時の値を使う。**サーバや監視スレッドへ起動時に渡す設定を増やしたらこの関数にも足す**
+- **`dev` / `build --watch` はプロジェクトルート全体を監視する**（インクルード `file=` の参照先が content 外にもあるため）。**出力ディレクトリの除外は必須** = 外すと「再ビルド → 変更検知 → 再ビルド」の無限ループになる。隠しディレクトリと `build.watch_ignore` の glob も除外する（`yuzu-server/src/watch.rs` の `WatchIgnore`。glob 判定は yuzu-core の `IgnoreMatcher` を**述語で**渡す = server は yuzu-core を知らない）。**除外はイベントのフィルタで監視登録は減らない**（notify にパス単位の除外が無い）
+- **watch 中の `yuzu.toml` 変更は取り込むが、監視・配信の前提になる設定は起動時固定**（`build.rs` の `WatchBuild` / `pin_restart_only`）。`output.dir` を差し替えると新しい出力先が監視除外から外れて無限ループになるため、`output.dir` / `base_url` / `dev.host` / `dev.port` / `dev.live_reload` / `build.watch_ignore` は警告だけ出して起動時の値を使う。**サーバや監視スレッドへ起動時に渡す設定を増やしたらこの関数にも足す**
 - **検索 tf のキャッシュはページ source ハッシュ＋インクルード参照先の内容ハッシュで判定する**（`PageCacheEntry::search_deps_sha256`。参照先だけの編集で検索結果が古いまま残る不具合の修正）。**参照先ハッシュを `source_sha256` へ畳み込んではいけない** = `BuildCache::store` がエントリを丸ごと作り直し、meta / body / llms まで巻き添えで毎ビルド全ミスになる
 - **検索インデックスのフォーマット追加は `serde(default)` で足し、`FORMAT_VERSION` を安易に上げない**。`manifest.json` は毎回フェッチされるのに `search_bg.wasm` は `_search/` の固定 URL で HTTP キャッシュに残るため、**再デプロイ直後の再訪問者が「新 manifest ＋ 旧 wasm」に入る**。bump するとそこで `VersionMismatch` になり検索が全停止する（据え置けば新機能が出ないだけの縮退で済む）。同じ理由で **wasm の既存メソッドのシグネチャは変えず新メソッドを足す** — 引数を足すと旧 wasm が黙って無視して「効いていないのに効いたつもりの結果」を返す
 - **テーマ JS の「外側クリックで閉じる」判定に `ev.target.closest()` を使わない**。イベントリスナーの実行ごとにマイクロタスクが処理されるため、**ハンドラ内の再描画で押した要素が DOM から外れた後に document へバブリングする**ことがあり、外れた要素の `closest` は必ず null になって誤判定する。`ev.composedPath()` で判定する（絞り込みチップと「さらに N 件を表示」の両方が踏んだ）
@@ -137,8 +138,8 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 - fmt/lint/check は **draft ページも対象**（build_source_pages）。build_site_model は従来どおり draft を除外する。nav を作らないので `crossref.numbering: "site"` でも診断時のラベル番号はページ内番号のまま
 - `yuzu fmt` の不変条件: 本文は format_commonmark の正規形・**frontmatter は生テキストをバイト温存**・冪等・差分なしなら書き込まない（mtime 温存）
 - **fmt の独自記法温存は fmt 経路限定**。format_commonmark は `{#fig:x}` を `{\#fig:x}` へ、`[!NOTE]-` を `[!NOTE] -` へ変えるので `restore_yuzu_syntax` が書いた形に戻すが、これを呼ぶのは `format_document` だけ。`normalize_markdown`（llms-full.txt）は復元しないため、**llms-full.txt にエスケープ形が出るのは仕様**（バグと誤認して直さない）
-- `docs/` はこのリポジトリ自身のドキュメントサイト（yuzu プロジェクト。`docs/yuzu.jsonc` がルート）。main push で `.github/workflows/docs.yml` が GitHub Pages へデプロイし、ci.yml でも check・build・SSR フォールバック検出を検証する。原稿は `yuzu fmt` の正規形・表記は長音符なし（`lint.terms` 準拠）で書く
-- **ci.yml の docs ゲートは docs の原稿と結合している**（新機能ごとに `grep` を 1 行足す運用）。特に `docs/yuzu.jsonc` の 15-21 行目はインクルードの `lines=` で引用されているので、この範囲を動かすと原稿の中身と CI が同時に壊れる
+- `docs/` はこのリポジトリ自身のドキュメントサイト（yuzu プロジェクト。`docs/yuzu.toml` がルート）。main push で `.github/workflows/docs.yml` が GitHub Pages へデプロイし、ci.yml でも check・build・SSR フォールバック検出を検証する。原稿は `yuzu fmt` の正規形・表記は長音符なし（`lint.terms` 準拠）で書く
+- **ci.yml の docs ゲートは docs の原稿と結合している**（新機能ごとに `grep` を 1 行足す運用）。特に `docs/yuzu.toml` の 25-45 行目（`[markdown]` ブロック）はインクルードの `lines=` で引用されているので、この範囲を動かすと原稿の中身と CI が同時に壊れる（`verify` スキルに直す箇所の一覧あり）
 - **`yuzu-index` は rust-embed（`assets/search/`）を使うのに build.rs が無い**。既存ファイルの更新は追跡されるので vendor スクリプトの通常運用では問題ないが、**新規ファイルを足すと release が古い埋め込みを使う**恐れがある（上記 yuzu-theme と同じ罠。足すときは build.rs を付ける）
 - `docs/design/` は git 管理外のローカル設計ノート。公開物（コード・README・コミット）から参照しない
 - 開発コンテナ内（`.devcontainer/`）は `CARGO_TARGET_DIR=/cargo-target` のため、CLI 実機確認は `"$CARGO_TARGET_DIR/debug/yuzu"` を使う（`./target/debug/yuzu` は**存在しない**）。環境定義は `.devcontainer/Dockerfile` が唯一で、devcontainer.json とラッパーの不変条件は `.devcontainer/README.md` の表を参照

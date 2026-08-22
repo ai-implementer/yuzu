@@ -768,7 +768,7 @@ pub(crate) fn format_document(source: &str, opts: &MarkdownOptions) -> Result<St
 /// - 収集: `Text` / インライン `Code`（API 名検索のため含める）。
 ///   `SoftBreak` / `LineBreak` は空白、ブロック要素の末尾で改行 1 つ
 /// - 除外: frontmatter・生 HTML。**フェンスコードブロック**は既定で除外だが
-///   `index_code = true`（`search.indexCode`）のとき本文を含める。ただし
+///   `index_code = true`（`search.index_code`）のとき本文を含める。ただし
 ///   インデントコードブロック（非フェンス）と、特別レンダリングされる言語
 ///   （[`crate::is_special_render_lang`]。無効化されてプレーン表示なら索引対象）は除外
 ///

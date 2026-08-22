@@ -65,7 +65,7 @@ aliases: ["guide/lint/"] # 以前この URL だった
 ```
 
 - パスはサイト内の route 形式で書きます（先頭 `/` と末尾スラッシュの省略は可）。
-  `baseUrl` 設定にも自動で追随します
+  `base_url` 設定にも自動で追随します
 - エイリアスが実ページや他のエイリアスと衝突すると、ビルドは中断し
   `yuzu check` がエラーとして報告します
 - エイリアスを外すと、旧リダイレクトは次のビルドで自動掃除されます
@@ -170,7 +170,7 @@ GitHub 互換の `> [!NOTE]` 形式で注意書きが書けます（5 種類）�
   慣例は `snippets/`。`content/` 内に置くとそれ自体がページになるので、
   避けるか `input.ignore` で除外してください）
 - 展開された内容は通常の本文と同じに扱われます: リンクの解決・コードの
-  ハイライト・注記の描画・**検索の索引**（`search.indexCode` と無関係）
+  ハイライト・注記の描画・**検索の索引**（`search.index_code` と無関係）
 - **断片は散文専用**です。見出し・図表キャプション行・脚注・frontmatter・
   `file=` 付きフェンス（インクルードの入れ子）は `yuzu check` が
   `include-error` で報告します
@@ -215,18 +215,13 @@ Figure: 依存関係の図 {#fig:deps}
 ## 用語集と略語
 
 設計書は略語が多く、初出の説明を毎ページ書くか読み手の記憶に頼ることになりがちです。
-`yuzu.jsonc` に**辞書だけ**を置くと、本文の Markdown を 1 バイトも変えずに、
+`yuzu.toml` に**辞書だけ**を置くと、本文の Markdown を 1 バイトも変えずに、
 各ページの初出が `<abbr title="説明">` になり、**用語集ページが自動生成**されます:
 
-```jsonc
-"markdown": {
-  "glossary": {
-    "terms": {
-      "SSR": "Server-Side Rendering。ビルド時にサーバ側で HTML を組み立てること",
-      "TOC": "Table of Contents。ページ内の目次"
-    }
-  }
-}
+```toml
+[markdown.glossary.terms]
+SSR = "Server-Side Rendering。ビルド時にサーバ側で HTML を組み立てること"
+TOC = "Table of Contents。ページ内の目次"
 ```
 
 原稿は普通に「SSR」と書くだけです（記法はありません）。素の Markdown ビューアで
@@ -252,9 +247,9 @@ Figure: 依存関係の図 {#fig:deps}
 用語ごとに見出しがあるため、本文から `[SSR の説明](../glossary.md#ssr)` のように
 アンカー付きでリンクでき、`yuzu check` のリンク検査も通ります。
 
-- `"page": ""` にするとページを作らず、`<abbr>` 化だけを使えます
+- `page = ""` にするとページを作らず、`<abbr>` 化だけを使えます
 - `"abbr": false` にすると逆に、本文は書いたままでページだけを作れます
-- `"page": "reference/glossary"` のように書けば、サイドバーの該当セクション配下に
+- `page = "reference/glossary"` のように書けば、サイドバーの該当セクション配下に
   入ります
 - ページは設定から作られるので `yuzu fmt` / `yuzu lint` の対象外です。
   実ページと URL が衝突したときは `yuzu check` が `route-conflict` で報告します

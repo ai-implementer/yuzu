@@ -18,4 +18,4 @@
 
 > 辞書なし SUW（短単位）モデル。UniDic 入りモデル（約 6MB、BSD-3-Clause）より
 > 精度は下がるが、クライアント配布サイズを優先して採用（設計ノートの方針どおり）。
-> `yuzu.jsonc` の `search.dictionary` に `.model.zst` のパスを指定すれば差し替え可能。
+> `yuzu.toml` の `search.dictionary` に `.model.zst` のパスを指定すれば差し替え可能。

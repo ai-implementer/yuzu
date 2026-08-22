@@ -1,0 +1,72 @@
+# yuzu 自身のドキュメントサイト。
+# このリポジトリの yuzu でビルドし、GitHub Pages へ公開する
+# （.github/workflows/docs.yml。base_url は CI が --base-url で注入する）。
+
+[site]
+title = "yuzu"
+description = "Markdown の設計書を静的 HTML ドキュメントサイトへ変換する Rust 製ツール"
+lang = "ja"
+logo = "/images/yuzu-logo.svg"
+
+[input]
+dir = "content"
+
+[output]
+dir = "dist"
+clean = true
+
+[theme]
+name = "default"
+dark = true
+
+[nav]
+auto = true
+
+[markdown]
+gfm = true
+
+[markdown.highlight]
+enabled = true
+
+# tankan による SSR（対応 10 図種をビルド時に SVG 化）を実運用で使う
+[markdown.mermaid]
+enabled = true
+backend = "ssr"
+
+[markdown.math]
+enabled = true
+
+# 略語の初出を <abbr> 化し、用語集ページ（/glossary/）を自動生成する
+[markdown.glossary.terms]
+SSG = "Static Site Generator。原稿から静的な HTML サイトを生成する仕組み"
+SSR = "Server-Side Rendering。ここではビルド時に図を SVG へ変換すること"
+GFM = "GitHub Flavored Markdown。表・打ち消し線・タスクリスト等の拡張"
+TOC = "Table of Contents。ページ内の目次"
+MSRV = "Minimum Supported Rust Version。サポートする最小の Rust 版"
+
+[lint]
+# content 直下のセクション 1 階層まで（ガイド/リファレンス/開発）
+max_directory_depth = 1
+
+# このリポジトリの表記規約: 長音符なしに統一（CLAUDE.md と同じ）
+[lint.terms]
+"サーバ" = ["サーバー"]
+"ユーザ" = ["ユーザー"]
+
+[search]
+# 検索結果ページ（/search/?q= で共有できる全結果の一覧）
+page = "search"
+# 設定キー・コマンド名で検索できるように、コードブロックも索引する
+index_code = true
+# 同義語グループ（lint.terms と合成してクエリ拡張に使われる）
+synonyms = [
+  ["図", "ダイアグラム"],
+  ["設定", "コンフィグ"],
+]
+
+[git]
+last_updated = true
+edit_url = "https://github.com/ai-implementer/yuzu/edit/main/docs/content/{path}"
+
+[dev]
+port = 5173

@@ -80,9 +80,9 @@ pub(crate) struct PageCtx<'a> {
     pub md_url: String,
     /// draft ページか（`--drafts` プレビュー時のバナー表示用。通常ビルドでは常に false）
     pub draft: bool,
-    /// 最終コミット日（YYYY-MM-DD。git.lastUpdated 有効かつ追跡済みのときのみ）
+    /// 最終コミット日（YYYY-MM-DD。git.last_updated 有効かつ追跡済みのときのみ）
     pub last_updated: Option<String>,
-    /// 「このページを編集」リンク（git.editUrl の {path} 置換済み）
+    /// 「このページを編集」リンク（git.edit_url の {path} 置換済み）
     pub edit_url: Option<String>,
     pub toc: Vec<TocCtx<'a>>,
 }

@@ -79,7 +79,7 @@ expression: guide
   var sidebar = document.getElementById("site-sidebar");
   if (!sidebar) return;
   // 同一オリジンに複数の yuzu サイトが並ぶ場合（GitHub Pages のサブパス配下など）に
-  // 衝突しないよう baseUrl で名前空間を切る。タブ内で完結させたいので sessionStorage
+  // 衝突しないよう base_url で名前空間を切る。タブ内で完結させたいので sessionStorage
   var base = (document.currentScript && document.currentScript.dataset.base) || "/";
   var key = "yuzu-sidebar-scroll:" + base;
 

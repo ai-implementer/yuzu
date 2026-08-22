@@ -12,8 +12,8 @@ pub enum Severity {
 }
 
 /// [`Diagnostic::rel`] の基点。ほとんどの診断は content 配下のページを指すが、
-/// `yuzu.jsonc` のように content の外にあるファイルも報告できるようにする
-/// （`rel` に `../yuzu.jsonc` を入れると出力パスに `..` が混じり、
+/// `yuzu.toml` のように content の外にあるファイルも報告できるようにする
+/// （`rel` に `../yuzu.toml` を入れると出力パスに `..` が混じり、
 /// GitHub の注釈がリポジトリのファイルへ紐づかなくなる）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DiagBase {

@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # git.lastUpdated がページごとの最終コミット日を拾うため全履歴を取得する
+          # git.last_updated がページごとの最終コミット日を拾うため全履歴を取得する
           # （浅いクローンだと全ページが直近コミットの日付になる）
           fetch-depth: 0
       # SHA ピンでは ref 名からツールチェインを推定できないため toolchain の明示が必須

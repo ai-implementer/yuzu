@@ -24,7 +24,7 @@ const resultsBox = document.getElementById("yuzu-search-results");
 if (input && resultsBox) setup();
 
 function setup() {
-  // SEARCH_BASE は baseUrl 設定でページごとに変わるビルド時テンプレート値なので、
+  // SEARCH_BASE は base_url 設定でページごとに変わるビルド時テンプレート値なので、
   // 静的 import ではなく動的 import で解決する（wasm グルーの読み込みと同じ理由）
   let clientPromise = null;
   let timer = null;

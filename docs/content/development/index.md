@@ -15,7 +15,8 @@ crate を分けています。
     ├─ tankan       # Mermaid 互換描画（テキスト → SVG。yuzu 非依存・crates.io 公開）
     ├─ yuzu-core    # comrak パース → Document/サイトモデル（nav・TOC・slug・sourcepos）
     ├─ yuzu-render  # サイトモデル → HTML（minijinja・syntect・mermaid 変換・base path 解決）
-    ├─ yuzu-config  # yuzu.jsonc（JSONC）の探索・スキーマ・解決
+    ├─ yuzu-config  # yuzu.toml の探索・スキーマ・解決（パーサは kabosu）
+    ├─ kabosu       # TOML パーサ・エンコーダ（依存ゼロ・no_std。yuzu 非依存・crates.io 公開予定）
     ├─ yuzu-theme   # デフォルトテーマ（rust-embed: テンプレ + CSS + JS + mermaid.js）
     ├─ yuzu-cli     # CLI（bin: yuzu）
     ├─ yuzu-server  # preview/watch 用最小静的サーバ + notify 監視
@@ -35,6 +36,7 @@ flowchart TD
     CLI --> IDX[yuzu-index]
     CLI --> CORE[yuzu-core]
     CLI --> CFG[yuzu-config]
+    CFG --> KAB[kabosu]
     REN --> CORE
     REN --> THEME[yuzu-theme]
     REN --> TAN[tankan]
@@ -42,17 +44,18 @@ flowchart TD
     IDX --> FMT[mikan]
     WASM[mikan-wasm] --> FMT
     classDef generic fill:#fff3d6,stroke:#8a6d1a
-    class TAN,FMT,WASM generic
+    class TAN,FMT,WASM,KAB generic
 ```
 
 Figure: crate 間の依存方向（色付きは yuzu 非依存の汎用ライブラリ） {#fig:deps}
 
-色を付けた **tankan・mikan・mikan-wasm** は yuzu の他の
+色を付けた **tankan・mikan・mikan-wasm・kabosu** は yuzu の他の
 crate に依存しない汎用ライブラリです。tankan（Mermaid SSR）と mikan（検索エンジン。
 旧 yuzu-index-format）は [crates.io で公開](https://crates.io/crates/mikan)しており
 （開発はこの monorepo で一体のまま）、書き側集約は `mikan::build`、読み側クエリエンジンは
 `SearchEngine` にあり、yuzu-index はページ抽出とファイル I/O だけを担う
-薄い呼び出し側です）。
+薄い呼び出し側です）。kabosu（TOML）は yuzu-config の唯一の通常依存で、
+設計は [kabosu の設計](kabosu.md)を参照してください。
 
 ## 凍結した設計判断
 
@@ -64,7 +67,7 @@ Web 調査込みで確定済みの技術選定です（差し替えない前提�
 | テンプレート | minijinja | ランタイム解釈 ＝ 将来 dev でテンプレのホットリロードが可能 |
 | ハイライト | syntect ＋ two-face | pure-Rust（onig 非依存）。CSS クラス出力でビルド時実行。two-face（bat のアセット由来）が TypeScript / TSX / TOML / Dockerfile 等を補完する |
 | CLI | clap（derive） | 終了コード規約は 0 / 1 / 2 |
-| 設定 | serde ＋ JSONC | `yuzu.jsonc` → 解決形 `.yuzu/settings.json`。上方向探索でルート確定 |
+| 設定 | TOML（kabosu） | `yuzu.toml` を自作の依存ゼロパーサ kabosu で読む（手書き decode・span 付き診断・未知キーは設定エラー）。上方向探索でルート確定。v0.14 で serde ＋ JSONC から移行 |
 | テーマ同梱 | rust-embed | バイナリ埋め込み＋ `theme/` でファイル単位の上書き |
 | Mermaid | 既定はクライアント描画 | `markdown.mermaid.backend: "ssr"` で自作 SSR（tankan）に切り替える。未対応の図種は自動でクライアント描画へフォールバックする |
 | dev サーバ | axum ＋ notify ＋ WebSocket | `/__livereload` への push でリロード |

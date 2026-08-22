@@ -575,11 +575,11 @@ mod tests {
     #[test]
     fn remove_dir_all_under_はルート自身を拒否する() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("yuzu.jsonc"), b"{}").unwrap();
+        fs::write(dir.path().join("yuzu.toml"), b"").unwrap();
 
         let err = remove_dir_all_under(dir.path(), dir.path()).unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-        assert!(dir.path().join("yuzu.jsonc").exists());
+        assert!(dir.path().join("yuzu.toml").exists());
     }
 
     /// canonicalize はリンクを追うため、ルート**内**へ向いたリンクは

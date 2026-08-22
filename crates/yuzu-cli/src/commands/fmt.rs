@@ -20,9 +20,7 @@ use crate::out::outln;
 pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
     // --diff は「差分を見せる = 書き換えない」（gofmt -d 流）
     let dry_run = check || diff;
-    let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
-    let root = yuzu_config::find_project_root(&cwd)?;
-    let rc = yuzu_config::load(&root)?;
+    let (root, rc) = super::load_project()?;
     let opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
         math: rc.config.markdown.math.enabled,

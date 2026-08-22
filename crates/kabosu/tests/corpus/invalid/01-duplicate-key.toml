@@ -1,0 +1,3 @@
+# 同一テーブル内の重複キーはエラー
+name = "Tom"
+name = "Pradyun"

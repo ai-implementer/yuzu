@@ -29,7 +29,7 @@ cd my-docs
 `yuzu new` は次の構成を生成します:
 
     my-docs/
-    ├─ yuzu.jsonc                    # 設定（JSONC: コメント・トレーリングカンマ可）
+    ├─ yuzu.toml                     # 設定（TOML。すべてのキーが省略可能）
     ├─ content/                      # Markdown 原稿（ディレクトリ階層 = ナビ階層）
     │  ├─ index.md
     │  └─ guide/getting-started.md
@@ -76,4 +76,4 @@ GitHub Pages へ自動デプロイします（リポジトリの Settings \> Pag
 - [全文検索](search.md) — フレーズ検索・同義語・コード検索
 - [LLM 連携](llms.md) — llms.txt とページ Markdown 配信
 - [品質チェック](quality.md) — fmt / lint / check
-- [配信とデプロイ](deploy.md) — baseUrl・GitHub Pages・テーマ上書き・印刷 / PDF
+- [配信とデプロイ](deploy.md) — `base_url`・GitHub Pages・テーマ上書き・印刷 / PDF

@@ -44,7 +44,7 @@ pub struct IndexParams {
     /// 同義語グループ（lint.terms ＋ search.synonyms を cli が合成）。
     /// manifest に焼き込まれ、クエリ拡張に使われる
     pub synonyms: Vec<Vec<String>>,
-    /// フェンスコードブロックの本文を検索対象に含めるか（`search.indexCode`）
+    /// フェンスコードブロックの本文を検索対象に含めるか（`search.index_code`）
     pub index_code: bool,
     /// コンテンツインクルード（`file=`）解決の基準ディレクトリ（プロジェクトルート）。
     /// None なら展開しない（引用ブロックは索引されない）

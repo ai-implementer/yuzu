@@ -13,7 +13,8 @@ use yuzu_core::{DiagBase, Diagnostic, LintOptions, Severity};
 
 use crate::out::outln;
 
-/// `yuzu.jsonc` の診断（重複キー・未知キー）を [`Diagnostic`] へ写す。
+/// `yuzu.toml` の警告（`input.dir` がルート外など。未知キー・型不一致は
+/// 診断ではなく読み込みエラー）を [`Diagnostic`] へ写す。
 /// yuzu-config は yuzu-core に依存しないため、変換はここで行う
 pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
     rc.diagnostics
@@ -21,9 +22,9 @@ pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
         .map(|d| Diagnostic {
             rule: d.rule,
             severity: Severity::Warning,
-            // yuzu.jsonc は content の外にあるのでプロジェクトルート基点
+            // yuzu.toml は content の外にあるのでプロジェクトルート基点
             base: DiagBase::ProjectRoot,
-            rel: std::path::PathBuf::from("yuzu.jsonc"),
+            rel: std::path::PathBuf::from(yuzu_config::CONFIG_FILE_NAME),
             span: Some(yuzu_core::SourceSpan {
                 start_line: d.line,
                 start_col: d.col,
@@ -36,7 +37,7 @@ pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// `yuzu.jsonc` の lint 設定を core の [`LintOptions`] へ写す（`lint` / `check` 共通。
+/// `yuzu.toml` の lint 設定を core の [`LintOptions`] へ写す（`lint` / `check` 共通。
 /// 変換を 1 箇所に置き、片方のコマンドだけ配線されて有効ルールが食い違うのを防ぐ）
 pub fn lint_options(rc: &yuzu_config::ResolvedConfig) -> LintOptions {
     LintOptions {
@@ -181,7 +182,7 @@ fn sort_diagnostics(diags: &mut [Diagnostic]) {
     });
 }
 
-/// 診断の `rel` に前置する基点を選ぶ。`yuzu.jsonc` のような content 外の
+/// 診断の `rel` に前置する基点を選ぶ。`yuzu.toml` のような content 外の
 /// ファイルは `..` を使わずプロジェクトルート基点で組み立てる
 fn base_prefix<'a>(d: &Diagnostic, content: &'a Path, root: &'a Path) -> &'a Path {
     match d.base {

@@ -1,0 +1,6 @@
+# テーブルの再定義はエラー
+[fruit]
+apple = "red"
+
+[fruit]
+orange = "orange"

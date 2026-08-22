@@ -36,7 +36,7 @@ description: デフォルトテーマへ JS / CSS / テンプレートを追加�
 JS 無効でも表示が壊れないこと。既存の書き方（IIFE・`var`・`try/catch` で storage を握り潰す）に合わせる。
 
 storage を使うならキーは `yuzu-*`。同一オリジンに複数サイトが載る場合に備え、
-サイト単位の状態は `data-base="{{ base_url | url }}"` で baseUrl を渡して名前空間を切る。
+サイト単位の状態は `data-base="{{ base_url | url }}"` で base_url を渡して名前空間を切る。
 
 ### 2. `base.jinja` へ 1 行
 
@@ -68,8 +68,8 @@ INSTA_UPDATE=always cargo test -p yuzu-render
 ```
 
 対象は `render_snapshot__index_html.snap` / `__guide_html.snap` / `__not_found_html.snap` /
-`__search_html.snap`（Phase 54 で追加。llms 系は HTML を含まないので無関係）。フィクスチャの baseUrl は `/docs/` なので、
-`data-base` を渡している場合は `data-base="/docs/"` が焼き付き、**baseUrl 追随のテストを兼ねる**。
+`__search_html.snap`（Phase 54 で追加。llms 系は HTML を含まないので無関係）。フィクスチャの base_url は `/docs/` なので、
+`data-base` を渡している場合は `data-base="/docs/"` が焼き付き、**base_url 追随のテストを兼ねる**。
 
 ### 5. ci.yml へ配信ゲートを 1 行
 
@@ -91,7 +91,7 @@ INSTA_UPDATE=always cargo test -p yuzu-render
 
 `assets/static/css/theme.css` に追記。テーマ追従は CSS 変数（`--bg` / `--fg` / `--accent` 等）を使い、
 色を直書きしない。新しい CSS 変数をユーザへ公開するなら `docs/content/reference/config.md` の
-`theme.cssVars` の説明も更新する。
+`theme.css_vars` の説明も更新する。
 
 画面専用の定義（ダーク配色等）は `@media screen` に置く。印刷対応は**ファイル末尾**の
 `@media print` ブロックへ足す（レスポンシブ MQ はメディアタイプ無指定 = print でも成立するため、

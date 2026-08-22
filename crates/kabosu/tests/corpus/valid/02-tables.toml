@@ -1,0 +1,19 @@
+[table]
+key = "value"
+
+[table.subtable]
+key = "another value"
+
+# ヘッダ経路の中間（x.y）は暗黙に作られる
+[x.y.z]
+w = 1
+
+# 暗黙に作られた中間テーブルは後から定義できる
+[x]
+defined = true
+
+[dotted]
+name.first = "Tom"
+name.last = "Preston-Werner"
+point.x = 1
+point.y = 2

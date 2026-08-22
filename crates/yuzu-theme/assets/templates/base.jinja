@@ -8,7 +8,7 @@
 {% endif %}{# URL 系の値はこちらで生成した安全な文字列なので safe を通す（/ の実体参照化を避ける） #}
 <link rel="stylesheet" href="{{ asset_url | url }}css/theme.css">
 <link rel="stylesheet" href="{{ asset_url | url }}css/syntect.css">
-{% if theme_css_vars %}{# yuzu.jsonc theme.cssVars 由来（値は render 側で検証済み） #}<style>
+{% if theme_css_vars %}{# yuzu.toml theme.css_vars 由来（値は render 側で検証済み） #}<style>
 {{ theme_css_vars | safe }}</style>
 {% endif %}{% if math_enabled %}<link rel="stylesheet" href="{{ asset_url | url }}vendor/katex/katex.min.css">
 {% endif %}{% if dark_enabled %}<script>
@@ -35,7 +35,7 @@
   var sidebar = document.getElementById("site-sidebar");
   if (!sidebar) return;
   // 同一オリジンに複数の yuzu サイトが並ぶ場合（GitHub Pages のサブパス配下など）に
-  // 衝突しないよう baseUrl で名前空間を切る。タブ内で完結させたいので sessionStorage
+  // 衝突しないよう base_url で名前空間を切る。タブ内で完結させたいので sessionStorage
   var base = (document.currentScript && document.currentScript.dataset.base) || "/";
   var key = "yuzu-sidebar-scroll:" + base;
 

@@ -22,7 +22,7 @@ use crate::urls::UrlResolver;
 /// ページに注入するライブリロード方式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LiveReloadMode {
-    /// 注入なし（通常ビルド / `dev.liveReload: false`）
+    /// 注入なし（通常ビルド / `dev.live_reload: false`）
     #[default]
     None,
     /// build_id ポーリング（`build --watch`）
@@ -180,7 +180,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         lang: &cfg.site.lang,
         logo_url: cfg.site.logo.as_deref().map(|p| resolver.public_url(p)),
     };
-    // theme.cssVars / cssVarsDark → head に注入する CSS 変数上書き（全ページ共通）
+    // theme.css_vars / css_vars_dark → head に注入する CSS 変数上書き（全ページ共通）
     let theme_css_vars =
         crate::css::generate_theme_var_overrides(&cfg.theme.css_vars, &cfg.theme.css_vars_dark);
 

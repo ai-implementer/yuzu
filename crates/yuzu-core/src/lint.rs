@@ -9,7 +9,7 @@
 //!   ` ```include ` の file= 漏れと無視される表示メタ
 //!   （描画は寛容に無視するため、気づける場所は lint だけ）
 //! - `directory-too-deep` — content 配下のディレクトリ階層が深すぎる
-//!   （`lint.maxDirectoryDepth` 設定時のみ）
+//!   （`lint.max_directory_depth` 設定時のみ）
 //! - `term-variant` — 用語ゆれ（`lint.terms` の辞書設定時のみ。正表記への統一を促す）
 //! - `fullwidth-alphanumeric` — 全角英数字（組み込み。既定有効）
 //! - `halfwidth-kana` — 半角カナ（組み込み。既定有効）
@@ -35,7 +35,7 @@ pub(crate) fn lint_page(
     lint: &LintOptions,
 ) -> Result<Vec<Diagnostic>, CoreError> {
     // 合成ページ（用語集）は原稿ではないので文書規約の対象外。
-    // 直せる場所が `yuzu.jsonc` の辞書しかないうえ、rel が実在しないファイルを
+    // 直せる場所が `yuzu.toml` の辞書しかないうえ、rel が実在しないファイルを
     // 指すため `--fix` も `--format github` の注釈も成立しない
     if page.is_generated() {
         return Ok(Vec::new());

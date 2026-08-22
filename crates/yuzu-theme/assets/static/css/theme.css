@@ -566,7 +566,7 @@ body {
   color: var(--accent-fg);
 }
 
-/* ページメタ（最終更新日・編集リンク。git.lastUpdated / git.editUrl 有効時のみ） */
+/* ページメタ（最終更新日・編集リンク。git.last_updated / git.edit_url 有効時のみ） */
 .page-meta {
   display: flex;
   justify-content: space-between;
@@ -1249,7 +1249,7 @@ body {
   padding: 0 1rem;
 }
 
-/* 行番号（```rust showLineNumbers / markdown.highlight.lineNumbers）。
+/* 行番号（```rust showLineNumbers / markdown.highlight.line_numbers）。
    CSS カウンタの ::before なので選択・コピーには混入しない */
 .markdown-body pre.line-numbers code {
   counter-reset: line;

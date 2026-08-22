@@ -47,7 +47,7 @@ const byOrder = (a: Page, b: Page) => (a.order ?? Infinity) - (b.order ?? Infini
 - `title="..."` — ファイル名などのキャプションをブロック上部に表示します
 - `{2,4-6}` — 指定した行を強調します（1 始まり。番号とレンジのカンマ区切り）
 - `showLineNumbers` / `noLineNumbers` — 行番号表示をブロック単位で切り替えます
-  （サイト既定は設定の `markdown.highlight.lineNumbers`。既定 false）
+  （サイト既定は設定の `markdown.highlight.line_numbers`。既定 false）
 
 下は 3 つすべてを使った実例です:
 
@@ -77,19 +77,19 @@ fn main() {
 コードブロックにします。設計書にコードを転記して古くなる問題を防げます:
 
 ````markdown
-```jsonc file="yuzu.jsonc" lines=15-31
+```toml file="yuzu.toml" lines=25-45
 ````
 
 - パスは**プロジェクトルート相対**です（ルート外への参照は拒否されます）
-- `lines=15-31`（範囲）/ `lines=7`（単一行）で切り出せます。省略時はファイル全体
+- `lines=25-45`（範囲）/ `lines=7`（単一行）で切り出せます。省略時はファイル全体
 - `title` を省略すると `パス:行範囲` が自動でキャプションになります
 - 言語を省略した場合は拡張子から推定します
 - 行ハイライト `{2}` は**切り出した後の相対行**を指します
 
-下は、このサイト自身の `yuzu.jsonc` から Markdown 設定の部分を引用した例です
+下は、このサイト自身の `yuzu.toml` から Markdown 設定の部分を引用した例です
 （設定を変更すれば、このページの表示も次のビルドで自動的に変わります）:
 
-```jsonc file="yuzu.jsonc" lines=15-31
+```toml file="yuzu.toml" lines=25-45
 ```
 
 参照先を編集すると、`yuzu dev` はプロジェクトルートを監視しているので
@@ -98,7 +98,7 @@ fn main() {
 エラーボックスを表示して他のページの生成は続けます。
 
 > [!NOTE]
-> 埋め込んだ内容は `search.indexCode` が有効なら検索インデックスに載ります
+> 埋め込んだ内容は `search.index_code` が有効なら検索インデックスに載ります
 > （表示されているものは検索できる、を保つため）。一方 llms.txt は原文の
 > ままです（`yuzu fmt` の正規形と一致する不変条件を保つため）。
 

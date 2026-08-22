@@ -1,8 +1,12 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use serde::Serialize;
+use kabosu::{
+    DecodeOptions, DiagnosticCode, Document, ParseError, ParseErrorKind, UnknownKeys,
+    UnsupportedFeature, ValueKind,
+};
 
+use crate::error::ConfigIssue;
 use crate::{CONFIG_FILE_NAME, Config, ConfigError};
 
 /// ユーザテーマディレクトリ名（プロジェクトルート直下）
@@ -12,11 +16,11 @@ const PUBLIC_DIR_NAME: &str = "public";
 /// ツール管理ディレクトリ名
 const YUZU_DIR_NAME: &str = ".yuzu";
 
-/// デフォルトをマージし、パスと baseUrl を解決した設定
+/// デフォルトをマージし、パスと base_url を解決した設定
 #[derive(Debug, Clone)]
 pub struct ResolvedConfig {
     pub config: Config,
-    /// プロジェクトルート（`yuzu.jsonc` のあるディレクトリ）
+    /// プロジェクトルート（`yuzu.toml` のあるディレクトリ）
     pub root: PathBuf,
     pub content_dir: PathBuf,
     pub output_dir: PathBuf,
@@ -24,41 +28,24 @@ pub struct ResolvedConfig {
     pub theme_dir: Option<PathBuf>,
     /// `public/` が存在する場合のみ Some
     pub public_dir: Option<PathBuf>,
-    /// `build.baseUrl` ?? `site.baseUrl` ?? "/" を正規化したもの。
+    /// `build.base_url` ?? `site.base_url` ?? "/" を正規化したもの。
     /// パス形は常に先頭・末尾スラッシュ付き（`/` または `/docs/`）
     pub base_url: String,
-    /// 設定ファイル自体の診断（重複キー・未知キー）。
-    /// `yuzu lint` / `check` が診断として報告し、他コマンドは load 時の警告で済ませる
+    /// 設定ファイル自体の警告（読み込みは成功するが注意が要るもの）。
+    /// `yuzu lint` / `check` が診断として報告し、他コマンドは読み込み時の警告で済ませる
+    /// （yuzu-config はログを出さないので、表示は呼び出し側の責務）
     pub diagnostics: Vec<ConfigDiagnostic>,
 }
 
-/// プロジェクトルートの `yuzu.jsonc` を読み込み、解決済み設定を返す
+/// プロジェクトルートの `yuzu.toml` を読み込み、解決済み設定を返す
 pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
     let path = root.join(CONFIG_FILE_NAME);
     let text = fs::read_to_string(&path).map_err(|source| ConfigError::Io {
         path: path.clone(),
         source,
     })?;
-
-    // 構文エラー（JSONC）とスキーマ不一致を別エラーで報告するため、
-    // いったん serde_json::Value を経由する
-    let value: serde_json::Value =
-        jsonc_parser::parse_to_serde_value(&text, &jsonc_parser::ParseOptions::default()).map_err(
-            |e| ConfigError::Jsonc {
-                path: path.clone(),
-                message: e.to_string(),
-            },
-        )?;
-
-    let config: Config = serde_json::from_value(value).map_err(|source| ConfigError::Schema {
-        path: path.clone(),
-        source,
-    })?;
-
-    // 重複キーは後勝ちで黙って上書きされ、未知キー（タイポ）は無言で無視される。
-    // どちらも「設定したのに効かない」事故になりやすい（実運用で複数回発生）。
-    // `yuzu lint` / `check` は診断として報告し、それ以外のコマンドはここの警告で気づかせる
-    let mut diagnostics = config_diagnostics(&text);
+    let (config, doc) = parse_config(&text, &path)?;
+    let mut diagnostics = Vec::new();
 
     // 出力ディレクトリの境界検証。`Path::join` は絶対パス引数で左辺を捨て `..` も
     // 潰さないため、無検証だと output.clean の remove_dir_all がルート外・ルート自身へ
@@ -74,9 +61,9 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
     // 入力側のディレクトリを output.clean の再帰削除から守る。
     //
     // ⚠️ 比較は 3 点そろって初めて正しい。どれか 1 つでも欠けるとすり抜ける:
-    //   1. **字句正規化してから比較する** — `input.dir: "a/../dist/content"` は
+    //   1. **字句正規化してから比較する** — `input.dir = "a/../dist/content"` は
     //      `root.join()` したままだと `dist` の前方一致にならない
-    //   2. **双方向で判定する** — 片方向だけだと `output.dir: "content/sub"`
+    //   2. **双方向で判定する** — 片方向だけだと `output.dir = "content/sub"`
     //      （保護対象の子）を取りこぼす
     //   3. **input.dir 以外も対象にする** — public / theme も原本であって生成物ではない
     for (label, guard) in [
@@ -107,7 +94,7 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
     let content_dir = match resolve_dir_setting(root, &config.input.dir) {
         Ok(dir) => dir,
         Err(issue) => {
-            let (line, col) = key_position(&text, &["input", "dir"]).unwrap_or((1, 1));
+            let (line, col) = key_position(&doc, &["input", "dir"]).unwrap_or((1, 1));
             diagnostics.push(ConfigDiagnostic {
                 rule: RULE_PATH_OUTSIDE_ROOT,
                 key_path: "input.dir".to_string(),
@@ -122,10 +109,6 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
             root.join(&config.input.dir)
         }
     };
-
-    for d in &diagnostics {
-        tracing::warn!("yuzu.jsonc:{}:{}: {}", d.line, d.col, d.message);
-    }
 
     let base_url = normalize_base_url(
         config
@@ -149,6 +132,159 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
         config,
         diagnostics,
     })
+}
+
+/// `yuzu.toml` の本文を [`Config`] へ変換する（`load` の I/O を伴わない部分）。
+///
+/// - 構文エラーは最初の 1 件で `Syntax`（重複キー・未対応構文もここ）
+/// - 型不一致・未知キー（Deny）・不正値は全件蓄積して `Invalid`
+///
+/// `path` はエラー表示用。返す `Document` は span → 行列の変換に使う
+pub(crate) fn parse_config(text: &str, path: &Path) -> Result<(Config, Document), ConfigError> {
+    let doc = Document::parse(text).map_err(|e| {
+        let (line, col) = line_col(text, e.span().start);
+        ConfigError::Syntax {
+            path: path.to_path_buf(),
+            line,
+            col,
+            message: syntax_message(text, &e),
+        }
+    })?;
+
+    // 未知キーは設定エラーにする（kabosu.md「yuzu への統合」）。タイポ・旧形式の
+    // camelCase キーが黙って無視されて「設定したのに効かない」事故を防ぐ
+    let mut options = DecodeOptions::default();
+    options.unknown_keys = UnknownKeys::Deny;
+    let report = kabosu::decode::<Config>(&doc, options);
+    if report.has_errors() {
+        return Err(ConfigError::Invalid {
+            path: path.to_path_buf(),
+            issues: report
+                .diagnostics()
+                .iter()
+                .map(|d| issue_of(&doc, d))
+                .collect(),
+        });
+    }
+    // Deny では警告が残らない（省略通知も Error に伴ってしか出ない）ので、
+    // エラーなし = 値あり
+    let (value, _) = report.into_parts();
+    let config = value.expect("エラーなしなら decode の値がある");
+    Ok((config, doc))
+}
+
+/// kabosu の診断（英語・構造化）を日本語の位置付き 1 件へ写す
+fn issue_of(doc: &Document, d: &kabosu::Diagnostic) -> ConfigIssue {
+    let (line, col) = line_col(doc.source(), d.span().start);
+    let key_path = d.key_path().to_string();
+    let message = match d.code() {
+        DiagnosticCode::TypeMismatch { expected, found } => format!(
+            "`{key_path}` の型が違います（期待: {}、実際: {}）",
+            kind_name(*expected),
+            kind_name(*found)
+        ),
+        DiagnosticCode::IntegerOutOfRange => {
+            format!("`{key_path}` の整数が範囲外です（{}）", d.message())
+        }
+        DiagnosticCode::MissingKey => format!("`{key_path}` は必須です"),
+        DiagnosticCode::UnknownKey { known_keys } => format!(
+            "未知のキー `{key_path}` があります（この階層の対応キー: {}）",
+            known_keys.join(", ")
+        ),
+        DiagnosticCode::TooManyDiagnostics { omitted } => {
+            format!("ほか {omitted} 件の問題を省略しました")
+        }
+        // 独自診断（codec.rs）は日本語で組み立て済み。将来の種別もそのまま出す
+        _ => d.message().to_string(),
+    };
+    ConfigIssue {
+        key_path,
+        line,
+        col,
+        message,
+    }
+}
+
+/// 値種別の日本語名（型不一致の文言用）
+fn kind_name(kind: ValueKind) -> &'static str {
+    match kind {
+        ValueKind::String => "文字列",
+        ValueKind::Integer => "整数",
+        ValueKind::Boolean => "真偽値",
+        ValueKind::Array => "配列",
+        ValueKind::Table => "テーブル",
+        _ => "値",
+    }
+}
+
+/// 構文エラーの日本語文言
+fn syntax_message(text: &str, e: &ParseError) -> String {
+    let previous = e
+        .previous_span()
+        .map(|s| {
+            let (line, col) = line_col(text, s.start);
+            format!("（先の定義: {line}:{col}）")
+        })
+        .unwrap_or_default();
+    match e.kind() {
+        ParseErrorKind::DuplicateKey => {
+            format!("キーが重複しています{previous}。TOML では同じキーを 2 回書けません")
+        }
+        ParseErrorKind::TableConflict => {
+            format!("テーブルの定義が既存のキーまたはテーブルと衝突しています{previous}")
+        }
+        ParseErrorKind::Unsupported(feature) => unsupported_message(*feature),
+        ParseErrorKind::UnterminatedString => "文字列が閉じていません".to_string(),
+        ParseErrorKind::InvalidEscape => {
+            "不正なエスケープシーケンスです（`\\` を含む値は `'...'` の literal string で書けます）"
+                .to_string()
+        }
+        ParseErrorKind::InvalidUnicodeEscape => {
+            "`\\u` / `\\U` エスケープが Unicode スカラー値ではありません".to_string()
+        }
+        ParseErrorKind::ControlCharInString => "文字列に制御文字は書けません".to_string(),
+        ParseErrorKind::ExpectedKey => "キーが必要です".to_string(),
+        ParseErrorKind::ExpectedValue => "値が必要です".to_string(),
+        ParseErrorKind::ExpectedEquals => "キーの後に `=` が必要です".to_string(),
+        ParseErrorKind::ExpectedNewline => {
+            "値の後に改行が必要です（1 行に書けるキーは 1 つ）".to_string()
+        }
+        ParseErrorKind::UnclosedArray => "配列が閉じていません（`]` がありません）".to_string(),
+        ParseErrorKind::UnclosedTableHeader => {
+            "テーブルヘッダが閉じていません（`]` がありません）".to_string()
+        }
+        ParseErrorKind::EmptyKey => "空のキーは書けません".to_string(),
+        ParseErrorKind::IntegerOutOfRange => "整数が i64 の範囲を超えています".to_string(),
+        ParseErrorKind::InvalidInteger => "整数リテラルが不正です".to_string(),
+        ParseErrorKind::InvalidLiteral => {
+            "値のリテラルが不正です（整数・小数・日時のどれとしても読めません）".to_string()
+        }
+        ParseErrorKind::DepthExceeded => "ネストが深すぎます（上限 128）".to_string(),
+        _ => e.to_string(),
+    }
+}
+
+/// kabosu v0.1 で未対応の構文。yuzu の設定で必要になる書き換え先を案内する
+fn unsupported_message(feature: UnsupportedFeature) -> String {
+    let (name, hint) = match feature {
+        UnsupportedFeature::InlineTable => (
+            "インラインテーブル（`{ ... }`）",
+            "`[lint.terms]` のようなテーブルヘッダで書いてください",
+        ),
+        UnsupportedFeature::MultilineString => (
+            "複数行文字列（`\"\"\"` / `'''`）",
+            "1 行の文字列で書いてください",
+        ),
+        UnsupportedFeature::ArrayOfTables => (
+            "テーブルの配列（`[[...]]`）",
+            "yuzu の設定にテーブルの配列を取るキーはありません",
+        ),
+        UnsupportedFeature::Float => ("小数（float）", "yuzu の設定に小数を取るキーはありません"),
+        UnsupportedFeature::DateTime => ("日付・時刻リテラル", "文字列として引用してください"),
+        UnsupportedFeature::RadixInteger => ("16 / 8 / 2 進整数", "10 進で書いてください"),
+        _ => ("この構文", "別の書き方にしてください"),
+    };
+    format!("{name}は {CONFIG_FILE_NAME} では使えません（kabosu v0.1 の未対応構文）。{hint}")
 }
 
 /// ディレクトリ設定の値がプロジェクトルート配下でない理由
@@ -210,40 +346,30 @@ fn lexically_normalize(path: &Path) -> PathBuf {
     out
 }
 
-/// `yuzu.jsonc` 内のキー（`["input", "dir"]` 形式）の 1 始まり (行, 列)。
-/// 構文エラー・キー不在なら None（呼び出し側が既定値へフォールバックする）
-fn key_position(text: &str, path: &[&str]) -> Option<(usize, usize)> {
-    use jsonc_parser::ast::Value;
-    use jsonc_parser::common::Ranged;
-
-    let parsed = jsonc_parser::parse_to_ast(
-        text,
-        &Default::default(),
-        &jsonc_parser::ParseOptions::default(),
-    )
-    .ok()?;
-    let mut current = parsed.value.as_ref()?;
-    let mut offset = None;
-    for name in path {
-        let Value::Object(obj) = current else {
-            return None;
-        };
-        let prop = obj.properties.iter().find(|p| p.name.as_str() == *name)?;
-        offset = Some(prop.name.range().start);
-        current = &prop.value;
+/// パース済み `yuzu.toml` のキー（`["input", "dir"]` 形式）の 1 始まり (行, 列)。
+/// キー不在なら None（呼び出し側が既定値へフォールバックする）
+fn key_position(doc: &Document, path: &[&str]) -> Option<(usize, usize)> {
+    let mut table = doc.root();
+    let mut span = None;
+    for (i, name) in path.iter().enumerate() {
+        let entry = table.get(name)?;
+        span = Some(entry.key_span());
+        if i + 1 < path.len() {
+            table = entry.node().as_table()?;
+        }
     }
-    Some(line_col(text, offset?))
+    Some(line_col(doc.source(), span?.start))
 }
 
-/// `yuzu.jsonc` に対する診断 1 件。
+/// `yuzu.toml` に対する警告 1 件。
 ///
 /// yuzu-config は yuzu-core に依存しない（凍結した依存グラフでは葉）ため、
 /// `yuzu_core::Diagnostic` ではなく中立な値型で返し、cli 側で変換する
 #[derive(Debug, Clone)]
 pub struct ConfigDiagnostic {
-    /// ルール ID（`config-unknown-key` / `config-duplicate-key`）
+    /// ルール ID（`config-path-outside-root`）
     pub rule: &'static str,
-    /// キーのパス（`markdown.crossref.numbering` 形式）
+    /// キーのパス（`input.dir` 形式）
     pub key_path: String,
     /// 1 始まりの行
     pub line: usize,
@@ -254,21 +380,12 @@ pub struct ConfigDiagnostic {
 
 /// この crate が発行する全ルール ID。yuzu-config は依存グラフの葉で
 /// yuzu-core のレジストリ（`yuzu_core::rules`）を参照できないため、
-/// ここに一覧を持ち、レジストリとの一致は yuzu-cli 側のテストが縛る
-pub const CONFIG_RULES: &[&str] = &[RULE_UNKNOWN_KEY, RULE_DUPLICATE_KEY, RULE_PATH_OUTSIDE_ROOT];
-const RULE_UNKNOWN_KEY: &str = "config-unknown-key";
-const RULE_DUPLICATE_KEY: &str = "config-duplicate-key";
+/// ここに一覧を持ち、レジストリとの一致は yuzu-cli 側のテストが縛る。
+/// 未知キー・重複キーは診断ではなく設定エラー（読み込み失敗）なのでここには無い
+pub const CONFIG_RULES: &[&str] = &[RULE_PATH_OUTSIDE_ROOT];
 const RULE_PATH_OUTSIDE_ROOT: &str = "config-path-outside-root";
 
-/// 自由キーのマップ（配下はユーザ任意の名前なので未知キー検査をしない）
-const FREE_FORM_PATHS: &[&str] = &[
-    "theme.cssVars",
-    "theme.cssVarsDark",
-    "lint.terms",
-    "markdown.glossary.terms",
-];
-
-/// バイトオフセットを 1 始まりの (行, 列) へ変換する
+/// バイトオフセットを 1 始まりの (行, 列) へ変換する（列はバイト基準）
 fn line_col(text: &str, offset: usize) -> (usize, usize) {
     let head = &text[..offset.min(text.len())];
     let line = head.matches('\n').count() + 1;
@@ -276,137 +393,7 @@ fn line_col(text: &str, offset: usize) -> (usize, usize) {
     (line, col)
 }
 
-/// 既知キーの木。`Config::default()` を JSON 化して実行時に得るので、
-/// 手書きの定数と構造体がズレる事故が起きない（frontmatter の KNOWN_KEYS と違う点）
-fn known_key_tree() -> serde_json::Value {
-    serde_json::to_value(Config::default()).unwrap_or(serde_json::Value::Null)
-}
-
-/// `yuzu.jsonc` を走査して重複キー・未知キーを診断する。
-/// 構文エラー時は空（本体パースが別途エラーを報告する）
-pub(crate) fn config_diagnostics(text: &str) -> Vec<ConfigDiagnostic> {
-    use jsonc_parser::ast::Value;
-    use jsonc_parser::common::Ranged;
-
-    fn walk(
-        value: &Value,
-        path: &str,
-        known: Option<&serde_json::Value>,
-        text: &str,
-        out: &mut Vec<ConfigDiagnostic>,
-    ) {
-        match value {
-            Value::Object(obj) => {
-                let mut seen = std::collections::HashSet::new();
-                for prop in &obj.properties {
-                    let name = prop.name.as_str();
-                    let child = if path.is_empty() {
-                        name.to_string()
-                    } else {
-                        format!("{path}.{name}")
-                    };
-                    let (line, col) = line_col(text, prop.name.range().start);
-                    if !seen.insert(name.to_string()) {
-                        out.push(ConfigDiagnostic {
-                            rule: RULE_DUPLICATE_KEY,
-                            key_path: child.clone(),
-                            line,
-                            col,
-                            message: format!(
-                                "キー `{child}` が重複しています（JSONC は後勝ちのため、先に書いた方は無視されます）"
-                            ),
-                        });
-                    }
-                    // 既知キーの木を同時に降下する。木が非オブジェクトになったら
-                    // そこから先は値なので検査しない（enum 値や配列の中身など）
-                    let child_known = known.and_then(|k| k.get(&*name));
-                    if known.is_some_and(serde_json::Value::is_object) && child_known.is_none() {
-                        let siblings = known
-                            .and_then(|k| k.as_object())
-                            .map(|m| m.keys().cloned().collect::<Vec<_>>().join("/"))
-                            .unwrap_or_default();
-                        out.push(ConfigDiagnostic {
-                            rule: RULE_UNKNOWN_KEY,
-                            key_path: child.clone(),
-                            line,
-                            col,
-                            message: format!(
-                                "未知のキー `{child}` があります（この階層の対応キー: {siblings}）"
-                            ),
-                        });
-                        continue; // 未知キーの配下は検査しない（誤検知が連鎖する）
-                    }
-                    if FREE_FORM_PATHS.contains(&child.as_str()) {
-                        continue; // 配下はユーザ任意の名前
-                    }
-                    walk(&prop.value, &child, child_known, text, out);
-                }
-            }
-            Value::Array(arr) => {
-                for (i, v) in arr.elements.iter().enumerate() {
-                    // 配列要素は既知キーの木を持たない（中身は値）
-                    walk(v, &format!("{path}[{i}]"), None, text, out);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let Ok(result) = jsonc_parser::parse_to_ast(
-        text,
-        &jsonc_parser::CollectOptions::default(),
-        &jsonc_parser::ParseOptions::default(),
-    ) else {
-        return Vec::new();
-    };
-    let known = known_key_tree();
-    let mut out = Vec::new();
-    if let Some(root) = &result.value {
-        walk(root, "", Some(&known), text, &mut out);
-    }
-    out.sort_by_key(|d| (d.line, d.col));
-    out
-}
-
-/// 解決済み設定を `.yuzu/settings.json` に書き出す
-pub fn write_resolved(rc: &ResolvedConfig) -> Result<PathBuf, ConfigError> {
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Settings<'a> {
-        config: &'a Config,
-        root: &'a Path,
-        content_dir: &'a Path,
-        output_dir: &'a Path,
-        theme_dir: Option<&'a Path>,
-        public_dir: Option<&'a Path>,
-        base_url: &'a str,
-    }
-
-    let dir = rc.root.join(YUZU_DIR_NAME);
-    fs::create_dir_all(&dir).map_err(|source| ConfigError::Io {
-        path: dir.clone(),
-        source,
-    })?;
-
-    let path = dir.join("settings.json");
-    let settings = Settings {
-        config: &rc.config,
-        root: &rc.root,
-        content_dir: &rc.content_dir,
-        output_dir: &rc.output_dir,
-        theme_dir: rc.theme_dir.as_deref(),
-        public_dir: rc.public_dir.as_deref(),
-        base_url: &rc.base_url,
-    };
-    let json = serde_json::to_string_pretty(&settings).expect("設定は常に JSON 化できる");
-    fs::write(&path, json + "\n").map_err(|source| ConfigError::Io {
-        path: path.clone(),
-        source,
-    })?;
-    Ok(path)
-}
-
-/// baseUrl を「常に先頭・末尾スラッシュ付き」の形へ正規化する。
+/// base_url を「常に先頭・末尾スラッシュ付き」の形へ正規化する。
 /// フル URL（`https://…`）は末尾スラッシュのみ保証する。
 /// CLI の `--base-url` 上書き（CI から configure-pages の base_path を渡す用途）でも使う
 pub fn normalize_base_url(raw: &str) -> String {
@@ -430,105 +417,149 @@ pub fn normalize_base_url(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_diagnostics, normalize_base_url};
+    use std::path::Path;
 
-    /// (ルール, キーパス, 行) の並び
-    fn found(text: &str) -> Vec<(&'static str, String, usize)> {
-        config_diagnostics(text)
-            .into_iter()
-            .map(|d| (d.rule, d.key_path, d.line))
-            .collect()
+    use super::{normalize_base_url, parse_config};
+    use crate::{Config, ConfigError};
+
+    fn parse(text: &str) -> Result<Config, ConfigError> {
+        parse_config(text, Path::new("yuzu.toml")).map(|(config, _)| config)
+    }
+
+    /// `Invalid` の (キーパス, 行, 列) の並び
+    fn issues(text: &str) -> Vec<(String, usize, usize)> {
+        match parse(text) {
+            Err(ConfigError::Invalid { issues, .. }) => issues
+                .into_iter()
+                .map(|i| (i.key_path, i.line, i.col))
+                .collect(),
+            other => panic!("Invalid を期待: {other:?}"),
+        }
     }
 
     #[test]
-    fn 重複キーをパス付きで検出する() {
-        let text = r#"{
-          // コメントや入れ子があっても検出できる
-          "dev": { "port": 5173 },
-          "site": { "title": "a", "title": "b" },
-          "dev": { "host": "0.0.0.0" }
-        }"#;
-        let dups: Vec<_> = found(text)
-            .into_iter()
-            .filter(|(rule, ..)| *rule == "config-duplicate-key")
-            .map(|(_, path, _)| path)
-            .collect();
-        assert_eq!(dups, ["site.title", "dev"]);
+    fn 重複キーは構文エラーで先の定義の位置が付く() {
+        let text = "[site]\ntitle = \"a\"\ntitle = \"b\"\n";
+        match parse(text) {
+            Err(ConfigError::Syntax {
+                line, col, message, ..
+            }) => {
+                assert_eq!((line, col), (3, 1));
+                assert!(message.contains("先の定義: 2:1"), "{message}");
+            }
+            other => panic!("Syntax を期待: {other:?}"),
+        }
     }
 
     #[test]
-    fn 重複キーには行と列が付く() {
-        let text = "{\n  \"site\": { \"title\": \"a\" },\n  \"site\": { \"title\": \"b\" }\n}";
-        let diags = config_diagnostics(text);
-        assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].line, 3);
-        assert_eq!(diags[0].col, 3);
+    fn 問題がなければ読める() {
+        let config = parse("[site]\ntitle = \"a\"\n").unwrap();
+        assert_eq!(config.site.title, "a");
+        assert!(parse("").is_ok(), "空ファイルは全キー既定");
     }
 
     #[test]
-    fn 問題がなければ空() {
-        assert!(config_diagnostics(r#"{ "site": { "title": "a" } }"#).is_empty());
+    fn 未知のトップレベルキーは対応キー一覧付きのエラーになる() {
+        let text = "[markdwon]\ngfm = true\n";
+        assert_eq!(issues(text), vec![("markdwon".to_string(), 1, 2)]);
+        let Err(e) = parse(text) else { unreachable!() };
+        let msg = e.to_string();
+        assert!(msg.contains("未知のキー `markdwon`"), "{msg}");
         assert!(
-            config_diagnostics("{ broken").is_empty(),
-            "構文エラーは対象外（本体パースが報告する）"
+            msg.contains("markdown"),
+            "対応キーに正しい綴りが出る: {msg}"
         );
     }
 
     #[test]
-    fn 未知のトップレベルキーを検出する() {
-        let diags = found(r#"{ "markdwon": { "gfm": true } }"#);
-        assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].0, "config-unknown-key");
-        assert_eq!(diags[0].1, "markdwon");
-    }
-
-    #[test]
     fn 入れ子の未知キーも検出する() {
-        let diags = found(r#"{ "markdown": { "crossreff": { "numbering": "site" } } }"#);
-        assert_eq!(diags.len(), 1, "{diags:?}");
-        assert_eq!(diags[0].1, "markdown.crossreff");
+        let text = "[markdown.crossreff]\nnumbering = \"site\"\n";
+        assert_eq!(
+            issues(text),
+            vec![("markdown.crossreff".to_string(), 1, 11)]
+        );
     }
 
     #[test]
     fn 未知キーの配下は検査しない() {
         // 親が未知なら子も当然未知だが、報告は親の 1 件だけにする
-        let diags = found(r#"{ "typo": { "a": 1, "b": { "c": 2 } } }"#);
-        assert_eq!(diags.len(), 1, "{diags:?}");
+        let text = "[typo]\na = 1\n[typo.b]\nc = 2\n";
+        assert_eq!(issues(text).len(), 1, "{:?}", issues(text));
     }
 
     #[test]
     fn 自由キーのマップは未知キー扱いしない() {
-        // cssVars / cssVarsDark / lint.terms はユーザ任意の名前
-        assert!(
-            config_diagnostics(r##"{ "theme": { "cssVars": { "--accent": "#0a6cff" } } }"##)
-                .is_empty()
-        );
-        assert!(
-            config_diagnostics(r#"{ "lint": { "terms": { "サーバ": ["サーバー"] } } }"#).is_empty()
-        );
-        // 用語集の辞書も同じ（登録し忘れるとユーザの略語が全部 config-unknown-key になる）
-        let text = r#"{ "markdown": { "glossary": { "terms": { "SSG": "静的サイト生成" } } } }"#;
-        assert!(config_diagnostics(text).is_empty(), "{:?}", found(text));
+        // css_vars / css_vars_dark / lint.terms はユーザ任意の名前
+        assert!(parse("[theme.css_vars]\n\"--accent\" = \"#0a6cff\"\n").is_ok());
+        assert!(parse("[lint.terms]\n\"サーバ\" = [\"サーバー\"]\n").is_ok());
+        // 用語集の辞書も同じ（登録し忘れるとユーザの略語が全部エラーになる）
+        assert!(parse("[markdown.glossary.terms]\nSSG = \"静的サイト生成\"\n").is_ok());
         // 一方で glossary 自身のキーのタイポは拾う
-        let typo = r#"{ "markdown": { "glossary": { "pageTitel": "用語集" } } }"#;
+        let typo = "[markdown.glossary]\npage_titel = \"用語集\"\n";
         assert_eq!(
-            found(typo)
-                .iter()
-                .map(|(rule, key, _)| (*rule, key.as_str()))
-                .collect::<Vec<_>>(),
-            vec![("config-unknown-key", "markdown.glossary.pageTitel")]
+            issues(typo),
+            vec![("markdown.glossary.page_titel".to_string(), 2, 1)]
         );
     }
 
     #[test]
-    fn 既知キーは値の型によらず通る() {
-        // enum 値・配列・null の中身へは降りない
-        let text = r#"{
-          "markdown": { "mermaid": { "backend": "ssr" } },
-          "input": { "ignore": ["**/_drafts/**"] },
-          "site": { "description": null }
-        }"#;
-        assert!(config_diagnostics(text).is_empty(), "{:?}", found(text));
+    fn 既知キーは値の型が合えば通る() {
+        let text = "[markdown.mermaid]\nbackend = \"ssr\"\n[input]\nignore = [\"**/_drafts/**\"]\n[search]\nsynonyms = [[\"a\", \"b\"]]\n";
+        let config = parse(text).unwrap();
+        assert_eq!(config.markdown.mermaid.backend, crate::MermaidBackend::Ssr);
+        assert_eq!(config.search.synonyms, vec![vec!["a", "b"]]);
+    }
+
+    #[test]
+    fn 型不一致は日本語の文言で位置が付く() {
+        let text = "[dev]\nport = \"5173\"\n";
+        assert_eq!(issues(text), vec![("dev.port".to_string(), 2, 8)]);
+        let Err(e) = parse(text) else { unreachable!() };
+        let msg = e.to_string();
+        assert!(msg.contains("期待: 整数、実際: 文字列"), "{msg}");
+    }
+
+    #[test]
+    fn 整数の範囲外はエラー() {
+        let text = "[dev]\nport = 70000\n";
+        assert_eq!(issues(text).len(), 1);
+        let Err(e) = parse(text) else { unreachable!() };
+        assert!(e.to_string().contains("範囲外"), "{e}");
+    }
+
+    #[test]
+    fn 列挙値の不正な値は選択肢付きのエラー() {
+        let text = "[markdown.mermaid]\nbackend = \"server\"\n";
+        assert_eq!(
+            issues(text),
+            vec![("markdown.mermaid.backend".to_string(), 2, 11)]
+        );
+        let Err(e) = parse(text) else { unreachable!() };
+        let msg = e.to_string();
+        assert!(msg.contains("`client` / `ssr`"), "{msg}");
+    }
+
+    #[test]
+    fn 複数の問題は_1_回で全件報告される() {
+        let text = "[site]\ntitel = \"a\"\n[dev]\nport = \"x\"\nopen = 1\n";
+        let found = issues(text);
+        assert_eq!(found.len(), 3, "{found:?}");
+        // 位置順（主 span の開始位置）で並ぶ
+        let lines: Vec<_> = found.iter().map(|(_, l, _)| *l).collect();
+        assert_eq!(lines, vec![2, 4, 5]);
+    }
+
+    #[test]
+    fn 未対応構文は書き換え先のヒント付きの構文エラー() {
+        let text = "[lint]\nterms = { \"サーバ\" = [\"サーバー\"] }\n";
+        match parse(text) {
+            Err(ConfigError::Syntax { line, message, .. }) => {
+                assert_eq!(line, 2);
+                assert!(message.contains("インラインテーブル"), "{message}");
+                assert!(message.contains("[lint.terms]"), "{message}");
+            }
+            other => panic!("Syntax を期待: {other:?}"),
+        }
     }
 
     #[test]

@@ -61,9 +61,8 @@ pub const CODE_BLOCK_META: Rule = warning("code-block-meta");
 pub const DUPLICATE_LABEL: Rule = warning("duplicate-label");
 pub const FRONTMATTER_UNKNOWN_KEY: Rule = warning("frontmatter-unknown-key");
 
-// --- yuzu.jsonc のルール（warning。ページ外なので lintDisable の対象外） ---
-pub const CONFIG_UNKNOWN_KEY: Rule = warning_unsuppressible("config-unknown-key");
-pub const CONFIG_DUPLICATE_KEY: Rule = warning_unsuppressible("config-duplicate-key");
+// --- yuzu.toml のルール（warning。ページ外なので lintDisable の対象外）。
+// 未知キー・型不一致・重複キーは診断ではなく読み込みエラー（exit 2）なのでここには無い ---
 pub const CONFIG_PATH_OUTSIDE_ROOT: Rule = warning_unsuppressible("config-path-outside-root");
 
 // --- yuzu check が追加するルール（error） ---
@@ -97,8 +96,6 @@ pub const RULES: &[Rule] = &[
     CODE_BLOCK_META,
     DUPLICATE_LABEL,
     FRONTMATTER_UNKNOWN_KEY,
-    CONFIG_UNKNOWN_KEY,
-    CONFIG_DUPLICATE_KEY,
     CONFIG_PATH_OUTSIDE_ROOT,
     BROKEN_LINK,
     BROKEN_ANCHOR,
@@ -235,7 +232,7 @@ mod tests {
             checked += 1;
         }
         assert!(
-            checked >= 15,
+            checked >= 13,
             "設定列を検査した行が {checked} 行しかない（表の形式が変わった？）"
         );
     }

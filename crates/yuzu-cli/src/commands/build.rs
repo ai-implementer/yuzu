@@ -23,13 +23,13 @@ pub(crate) const DEBOUNCE: Duration = Duration::from_millis(300);
 /// **出力ディレクトリの除外は必須**（含めると再ビルド → 変更検知の無限ループ）。
 /// `.yuzu` / `.git` 等の隠しディレクトリは yuzu_server 側で常に無視される。
 ///
-/// これに加えて `build.watchIgnore` の glob をプロジェクトルート相対で評価する
+/// これに加えて `build.watch_ignore` の glob をプロジェクトルート相対で評価する
 /// （既定は `target/` と `node_modules/`。ビルド生成物の大量イベントで
 /// 再ビルドが暴発するのを防ぐ）。glob の解釈は `input.ignore` と同じ
 /// yuzu-core の [`IgnoreMatcher`] を通す
 pub(crate) fn watch_ignore(rc: &ResolvedConfig) -> anyhow::Result<yuzu_server::WatchIgnore> {
     let matcher = IgnoreMatcher::new(&rc.config.build.watch_ignore)
-        .context("build.watchIgnore のパターンが不正です")?;
+        .context("build.watch_ignore のパターンが不正です")?;
     let root = rc.root.clone();
     Ok(
         yuzu_server::WatchIgnore::new(vec![rc.output_dir.clone(), rc.root.join(".yuzu")])
@@ -62,7 +62,7 @@ pub(crate) fn format_changed(root: &std::path::Path, changed: &[PathBuf]) -> Str
 }
 
 /// CLI フラグによる設定の上書き（`--base-url` / `--host`）。
-/// watch 中に `yuzu.jsonc` を読み直してもフラグ優先の契約を保つため保持する
+/// watch 中に `yuzu.toml` を読み直してもフラグ優先の契約を保つため保持する
 #[derive(Clone, Default)]
 pub(crate) struct Overrides {
     /// `--base-url`（build）。site/build の設定より優先
@@ -82,24 +82,18 @@ impl Overrides {
     }
 }
 
-/// プロジェクトルートを探して設定を読み、CLI 上書きを当ててから
-/// `.yuzu/settings.json` へ書き出す（build / dev 共通の入口）
+/// プロジェクトルートを探して設定を読み、CLI 上書きを当てる（build / dev 共通の入口）
 pub(crate) fn load_config(overrides: &Overrides) -> anyhow::Result<ResolvedConfig> {
-    let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
-    let root = yuzu_config::find_project_root(&cwd)?;
-    let mut rc = yuzu_config::load(&root)?;
-    // 上書きは write_resolved より前に当てる（.yuzu/settings.json にも反映する）
+    let (_, mut rc) = crate::commands::load_project()?;
     overrides.apply(&mut rc);
-    // ツール管理ディレクトリの経路も検証する。ここは settings.json の書き出しと
-    // `BuildSession::new` のキャッシュ破棄（--force）の**両方より前**なので、
-    // `.yuzu` 系の書き込み・削除を 1 箇所で覆える
-    // （yuzu-config は yuzu-core に依存しないので、settings.json の検証も cli の責務）
-    for rel in [".yuzu", ".yuzu/settings.json", ".yuzu/cache"] {
+    // ツール管理ディレクトリの経路も検証する。ここは `BuildSession::new` の
+    // キャッシュ書き込み・破棄（--force）より前なので、`.yuzu` 系の書き込み・削除を
+    // 1 箇所で覆える（yuzu-config は yuzu-core に依存しないので検証は cli の責務）
+    for rel in [".yuzu", ".yuzu/cache"] {
         let path = rc.root.join(rel);
         yuzu_core::output::ensure_no_symlink_under(&rc.root, &path)
             .with_context(|| format!("{} を使えません", path.display()))?;
     }
-    yuzu_config::write_resolved(&rc)?;
     Ok(rc)
 }
 
@@ -151,7 +145,7 @@ pub fn run(
 
 /// 監視ビルド 1 本ぶんの状態（`build --watch` / `dev` 共通）。
 ///
-/// **設定の持ち主はここ**。`yuzu.jsonc` も監視対象なので、起動時の設定で
+/// **設定の持ち主はここ**。`yuzu.toml` も監視対象なので、起動時の設定で
 /// 固定すると「保存 → 再ビルドもライブリロードも走るのに設定だけ効かない」
 /// という気づきにくい状態になる（Phase 42 の副作用）
 pub(crate) struct WatchBuild {
@@ -160,7 +154,7 @@ pub(crate) struct WatchBuild {
     overrides: Overrides,
     live_reload: LiveReloadMode,
     drafts: bool,
-    /// 最後に読み込んだ `yuzu.jsonc` の生テキスト。
+    /// 最後に読み込んだ `yuzu.toml` の生テキスト。
     /// 差分があるときだけ読み直す（無変更なら再ビルド 1 回あたり
     /// 小さいファイルの読み込み 1 回で済み、セッション再構築も起きない）
     config_text: String,
@@ -193,8 +187,8 @@ impl WatchBuild {
         build_once(&self.rc, self.live_reload, &mut self.session, self.drafts)
     }
 
-    /// `yuzu.jsonc` の変更を取り込む。読めない・不正なときは**前回の設定で続行**する
-    /// （編集途中の壊れた JSONC でプロセスを落とさない。診断は load 側が警告する）
+    /// `yuzu.toml` の変更を取り込む。読めない・不正なときは**前回の設定で続行**する
+    /// （編集途中の壊れた TOML でプロセスを落とさない。設定エラーの位置はログに出す）
     fn reload_config(&mut self) {
         let path = self.rc.root.join(yuzu_config::CONFIG_FILE_NAME);
         let Ok(text) = fs::read_to_string(&path) else {
@@ -208,10 +202,14 @@ impl WatchBuild {
         let mut next = match yuzu_config::load(&self.rc.root) {
             Ok(next) => next,
             Err(e) => {
-                tracing::error!("yuzu.jsonc を読み込めません（前回の設定で続行します）: {e}");
+                tracing::error!(
+                    "{} を読み込めません（前回の設定で続行します）: {e}",
+                    yuzu_config::CONFIG_FILE_NAME
+                );
                 return;
             }
         };
+        crate::commands::warn_config_diagnostics(&next);
         self.overrides.apply(&mut next);
         pin_restart_only(&mut next, &self.rc);
 
@@ -222,10 +220,7 @@ impl WatchBuild {
             Ok(session) => {
                 self.session = session;
                 self.rc = next;
-                if let Err(e) = yuzu_config::write_resolved(&self.rc) {
-                    tracing::warn!(".yuzu/settings.json を更新できません: {e}");
-                }
-                tracing::info!("yuzu.jsonc の変更を反映しました");
+                tracing::info!("{} の変更を反映しました", yuzu_config::CONFIG_FILE_NAME);
             }
             Err(e) => tracing::error!("設定の変更を反映できません（前回の設定で続行します）: {e}"),
         }
@@ -238,9 +233,9 @@ impl WatchBuild {
 /// これらを watch 中に差し替えると壊れる:
 /// - `output.dir` — 新しい出力先が**監視除外に入らない**（再ビルド → 変更検知の無限ループ）。
 ///   配信中のディレクトリでもある
-/// - `baseUrl` / `dev.host` / `dev.port` — 起動済みサーバの bind と URL 接頭辞
-/// - `dev.liveReload` — 注入済みの JS と WS 通知の有無
-/// - `build.watchIgnore` — 監視除外の glob（起動時に監視スレッドへ渡している）
+/// - `base_url` / `dev.host` / `dev.port` — 起動済みサーバの bind と URL 接頭辞
+/// - `dev.live_reload` — 注入済みの JS と WS 通知の有無
+/// - `build.watch_ignore` — 監視除外の glob（起動時に監視スレッドへ渡している）
 fn pin_restart_only(next: &mut ResolvedConfig, current: &ResolvedConfig) {
     let mut pinned: Vec<&str> = Vec::new();
     if next.config.output.dir != current.config.output.dir {
@@ -249,13 +244,13 @@ fn pin_restart_only(next: &mut ResolvedConfig, current: &ResolvedConfig) {
         next.output_dir = current.output_dir.clone();
     }
     if next.base_url != current.base_url {
-        pinned.push("baseUrl");
+        pinned.push("base_url");
         next.base_url = current.base_url.clone();
         next.config.site.base_url = current.config.site.base_url.clone();
         next.config.build.base_url = current.config.build.base_url.clone();
     }
     if next.config.build.watch_ignore != current.config.build.watch_ignore {
-        pinned.push("build.watchIgnore");
+        pinned.push("build.watch_ignore");
         next.config.build.watch_ignore = current.config.build.watch_ignore.clone();
     }
     if next.config.dev.host != current.config.dev.host {
@@ -267,7 +262,7 @@ fn pin_restart_only(next: &mut ResolvedConfig, current: &ResolvedConfig) {
         next.config.dev.port = current.config.dev.port;
     }
     if next.config.dev.live_reload != current.config.dev.live_reload {
-        pinned.push("dev.liveReload");
+        pinned.push("dev.live_reload");
         next.config.dev.live_reload = current.config.dev.live_reload;
     }
     if !pinned.is_empty() {
@@ -309,8 +304,9 @@ impl BuildSession {
 /// 不一致は全キャッシュ破棄（フルビルド）に縮退するだけなので、
 /// 迷ったら含めて安全側に倒す
 fn env_key(rc: &ResolvedConfig) -> anyhow::Result<String> {
-    let config_json =
-        serde_json::to_string(&rc.config).context("設定のシリアライズに失敗しました")?;
+    // 正規形の TOML（同じ値からは常に同じバイト列）。キー順・書式の揺れで
+    // キャッシュが無駄に落ちない
+    let config_toml = rc.config.to_toml();
     // 辞書ファイルは設定（パス）が同じでも中身が変わりうるため内容ハッシュを採る
     let model = if rc.config.search.enabled {
         let dictionary = rc
@@ -325,7 +321,7 @@ fn env_key(rc: &ResolvedConfig) -> anyhow::Result<String> {
     };
     Ok(BuildCache::sha256_hex_parts(&[
         env!("CARGO_PKG_VERSION").as_bytes(),
-        config_json.as_bytes(),
+        config_toml.as_bytes(),
         rc.base_url.as_bytes(),
         model.as_bytes(),
     ]))
