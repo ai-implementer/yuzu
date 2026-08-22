@@ -489,8 +489,8 @@ fn is_valid_float(body: &str) -> bool {
 }
 
 /// RFC 3339 の形（local date / local time / `T` 区切りの date-time ＋ 任意の offset）。
-/// 値の範囲は月 01-12・日 01-31・時 00-23・分 00-59・秒 00-60（うるう秒）まで見る
-/// （参照実装が弾く `1979-13-01` を妥当扱いしないため）。暦の妥当性（2 月 30 日等）は見ない
+/// 値の範囲は月 01-12・月ごとの日数（閏年込み）・時 00-23・分 00-59・秒 00-60
+/// （うるう秒）まで見る（参照実装が弾く `1979-13-01` / `1979-02-29` を妥当扱いしないため）
 fn is_valid_datetime(body: &str) -> bool {
     if let Some((date, rest)) = body.split_once(['T', 't']) {
         return is_valid_date(date) && is_valid_time_with_offset(rest);
@@ -498,17 +498,36 @@ fn is_valid_datetime(body: &str) -> bool {
     is_valid_date(body) || is_valid_time(body)
 }
 
-/// `YYYY-MM-DD`
+/// `YYYY-MM-DD`（暦として存在する日付だけを妥当とする）
 fn is_valid_date(s: &str) -> bool {
     let b = s.as_bytes();
     if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
         return false;
     }
-    let month = two_digits(&b[5..7]);
-    let day = two_digits(&b[8..10]);
-    b[..4].iter().all(u8::is_ascii_digit)
-        && month.is_some_and(|m| (1..=12).contains(&m))
-        && day.is_some_and(|d| (1..=31).contains(&d))
+    if !b[..4].iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    let year = b[..4]
+        .iter()
+        .fold(0u16, |acc, &d| acc * 10 + u16::from(d - b'0'));
+    let (Some(month), Some(day)) = (two_digits(&b[5..7]), two_digits(&b[8..10])) else {
+        return false;
+    };
+    (1..=12).contains(&month) && (1..=days_in_month(year, month)).contains(&day)
+}
+
+/// 月の日数。閏年は Gregorian 規則（4 の倍数。ただし 100 の倍数は 400 の倍数のときだけ）。
+/// RFC 3339 は proleptic Gregorian なので 0000 年も 400 の倍数として閏年
+fn days_in_month(year: u16, month: u8) -> u8 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+            if leap { 29 } else { 28 }
+        }
+        _ => 0,
+    }
 }
 
 /// `HH:MM:SS` ＋ 任意の `.` 小数秒
@@ -628,6 +647,12 @@ mod tests {
             ("1979-05-27t07:32:00+09:00", UnsupportedFeature::DateTime),
             ("07:32:00.5", UnsupportedFeature::DateTime),
             ("23:59:60", UnsupportedFeature::DateTime),
+            // 暦として存在する日付（閏年は 4 の倍数、100 の倍数は 400 の倍数のときだけ）
+            ("2000-02-29", UnsupportedFeature::DateTime),
+            ("2024-02-29", UnsupportedFeature::DateTime),
+            ("1979-04-30", UnsupportedFeature::DateTime),
+            ("1979-01-31", UnsupportedFeature::DateTime),
+            ("0000-02-29", UnsupportedFeature::DateTime),
         ] {
             assert_eq!(
                 classify_scalar(src),
@@ -661,6 +686,15 @@ mod tests {
             "1979-05-27T07:32:00+9:00",
             "1979-05-27T07:32:00-24:00",
             "-1979-05-27",
+            // 暦として存在しない日付（参照実装も拒否する）
+            "1979-02-29",
+            "2000-02-30",
+            "1979-04-31",
+            "1900-02-29",
+            "2100-02-29",
+            "1979-06-31",
+            "1979-02-00",
+            "1979-02-29T00:00:00Z",
         ] {
             assert_eq!(classify_scalar(src), ScalarClass::InvalidLiteral, "{src}");
         }
