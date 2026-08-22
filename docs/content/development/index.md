@@ -16,7 +16,7 @@ crate を分けています。
     ├─ yuzu-core    # comrak パース → Document/サイトモデル（nav・TOC・slug・sourcepos）
     ├─ yuzu-render  # サイトモデル → HTML（minijinja・syntect・mermaid 変換・base path 解決）
     ├─ yuzu-config  # yuzu.toml の探索・スキーマ・解決（パーサは kabosu）
-    ├─ kabosu       # TOML パーサ・エンコーダ（依存ゼロ・no_std。yuzu 非依存・crates.io 公開予定）
+    ├─ kabosu       # TOML パーサ・エンコーダ（依存ゼロ・no_std。yuzu 非依存・crates.io 公開）
     ├─ yuzu-theme   # デフォルトテーマ（rust-embed: テンプレ + CSS + JS + mermaid.js）
     ├─ yuzu-cli     # CLI（bin: yuzu）
     ├─ yuzu-server  # preview/watch 用最小静的サーバ + notify 監視

@@ -7,8 +7,8 @@ yuzu の開発計画と、これまでのリリースの内訳。**このファ�
 
 **v0.14 まで公開済み**。次の版（v0.15）は未策定で、候補は下の
 「[v0.15 以降の候補](#v015-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
-kabosu 0.1.0 の crates.io publish は yuzu のリリースとは非同期で未実施
-（publish 前に fuzz を回す規律は CLAUDE.md にある）。
+[kabosu 0.1.0 は crates.io で公開済み](https://crates.io/crates/kabosu)（yuzu の
+リリースとは非同期。publish 前に fuzz を回す規律は CLAUDE.md にある）。
 
 ## v0.10.1 レビューの持ち越し
 
@@ -141,7 +141,7 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
 - **v0.14**（Phase 62〜63）設定基盤の刷新 = TOML 化 — 依存ゼロ・`no_std + alloc` の
   TOML ライブラリ **kabosu** を新設（設計は
   [docs/content/development/kabosu.md](docs/content/development/kabosu.md)。
-  crates.io 公開予定）/ 設定を `yuzu.jsonc`（JSONC）から `yuzu.toml`（snake_case
+  [crates.io で単独公開](https://crates.io/crates/kabosu)）/ 設定を `yuzu.jsonc`（JSONC）から `yuzu.toml`（snake_case
   キー）へ全面移行。**非互換**: JSONC の互換読み込み・変換コマンドは無し・
   未知キー / 型違い / 重複キーは設定エラー（exit 2）で停止・`config-unknown-key` /
   `config-duplicate-key` ルールは廃止・`.yuzu/settings.json` は廃止・envKey が

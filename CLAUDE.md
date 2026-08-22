@@ -51,7 +51,7 @@ yuzu-config → kabosu（通常依存はこれだけ）
 （mikan は native/wasm 共通の本体。mikan-wasm はその wasm ラッパで、
 トークナイザ・フォーマット・抜粋生成を 1 実装で共有する）
 tankan・mikan・mikan-wasm・kabosu は他の yuzu crate 非依存の汎用ライブラリ
-（tankan・mikan は crates.io で公開済み、kabosu は公開予定。検索スタックの書き側集約は
+（tankan・mikan・kabosu は crates.io で公開済み。検索スタックの書き側集約は
 mikan::build、読み側クエリエンジンは SearchEngine にあり、
 yuzu-index はページ抽出とファイル I/O だけの薄い呼び出し側）
 mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に改名）
@@ -112,7 +112,7 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 
 ### 汎用ライブラリの crates.io 公開（yuzu のリリースと非同期）
 
-**tankan**（Mermaid SSR）・**mikan**（検索エンジン。旧 yuzu-index-format）は crates.io へ公開済み、**kabosu**（TOML。依存ゼロ・no_std+alloc）は 0.1.0 を公開予定で**まだ未公開**（monorepo のまま。バージョンは workspace と独立で、各 `Cargo.toml` の `version` を明示指定＝現状 tankan / mikan は 0.2.0、kabosu は 0.1.0）。変更が溜まったら: version を上げる → `cargo build`（Cargo.lock 追随）→ CI green → `cargo publish --dry-run -p <crate>` → `cargo publish -p <crate>`（要 `cargo login`。公開は取り消し不可・yank のみ可能）。**kabosu の publish 前には fuzz を必ず一度回す**（`.github/workflows/fuzz.yml` の手動実行、または手元で `cd crates/kabosu && cargo +nightly fuzz run <parse|roundtrip|decode>`）。ci.yml の `cargo package --locked -p tankan -p mikan -p kabosu` がメタデータ・同梱内容の回帰を PR で検出する。
+**tankan**（Mermaid SSR）・**mikan**（検索エンジン。旧 yuzu-index-format）・**kabosu**（TOML。依存ゼロ・no_std+alloc）を crates.io へ公開している（monorepo のまま。バージョンは workspace と独立で、各 `Cargo.toml` の `version` を明示指定＝現状 tankan / mikan は 0.2.0、kabosu は 0.1.0）。変更が溜まったら: version を上げる → `cargo build`（Cargo.lock 追随）→ CI green → `cargo publish --dry-run -p <crate>` → `cargo publish -p <crate>`（要 `cargo login`。公開は取り消し不可・yank のみ可能）。**kabosu の publish 前には fuzz を必ず一度回す**（`.github/workflows/fuzz.yml` の手動実行、または手元で `cd crates/kabosu && cargo +nightly fuzz run <parse|roundtrip|decode>`）。ci.yml の `cargo package --locked -p tankan -p mikan -p kabosu` がメタデータ・同梱内容の回帰を PR で検出する。
 
 **mikan-wasm**（旧 yuzu-search-wasm）は公開しない（`publish = false`。`cargo add` する Rust ライブラリではなく wasm 成果物を作るビルド用 crate）。yuzu 本体側の crate も公開しない（`publish = false`。名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため。将来 本体を公開する構想は ROADMAP.md 参照）。
 
