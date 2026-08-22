@@ -1,0 +1,38 @@
+# kabosu の fuzzing ハーネス（cargo-fuzz / nightly 必須。手動運用）。
+# ルート workspace の members glob（crates/*）は 1 階層のみのため、
+# 空の [workspace] で独立 workspace にしている（cargo-fuzz の標準形）
+[package]
+name = "kabosu-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+kabosu = { path = ".." }
+
+[[bin]]
+name = "parse"
+path = "fuzz_targets/parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "roundtrip"
+path = "fuzz_targets/roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

@@ -32,10 +32,12 @@ cargo test -p yuzu-server   # ← サンドボックス外で実行する
 
 ```bash
 cargo build --workspace
-cargo package --locked -p tankan -p mikan
+cargo package --locked -p tankan -p mikan -p kabosu
 ```
 
-- `cargo package` は公開対象 2 crate のメタデータ・同梱内容の回帰を検出する（CI にもある）。
+- `cargo package` は公開対象 3 crate のメタデータ・同梱内容の回帰を検出する（CI にもある）。
+  kabosu は加えて package 後 manifest の依存ゼロ検査（CI）と
+  `cargo check -p kabosu --target thumbv7em-none-eabi`（no_std 担保）がある。
   **作業ツリーが dirty だと拒否される**ので、コミット後に走らせるか意図を確認して `--allow-dirty`。
 
 ## 4. wasm32 チェック

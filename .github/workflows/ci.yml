@@ -42,10 +42,23 @@ jobs:
       - name: build
         run: cargo build --workspace
 
-      # crates.io 公開対象（tankan・mikan）のパッケージ検証。メタデータ・同梱内容の
-      # 回帰を PR で検出する。実公開は手動 cargo publish（CLAUDE.md「リリース手順」）
-      - name: package (tankan, mikan)
-        run: cargo package --locked -p tankan -p mikan
+      # crates.io 公開対象（tankan・mikan・kabosu）のパッケージ検証。メタデータ・
+      # 同梱内容の回帰を PR で検出する。実公開は手動 cargo publish（CLAUDE.md「リリース手順」）
+      - name: package (tankan, mikan, kabosu)
+        run: cargo package --locked -p tankan -p mikan -p kabosu
+
+      # kabosu の依存ゼロ検査: package 後の正規化 manifest に通常依存・build 依存・
+      # ターゲット固有依存のセクションが無いことを縛る（dev 依存だけは許可）
+      - name: kabosu dependency-free check
+        run: |
+          version=$(grep '^version = ' crates/kabosu/Cargo.toml | head -1 | cut -d'"' -f2)
+          manifest="target/package/kabosu-$version/Cargo.toml"
+          test -f "$manifest" || { echo "package 済み manifest が見つからない: $manifest" >&2; exit 1; }
+          if grep -qE '^\[(dependencies|build-dependencies)\]|^\[target\.' "$manifest"; then
+            echo "kabosu に通常依存が入っている（依存ゼロを維持する）:" >&2
+            grep -E '^\[(dependencies|build-dependencies)\]|^\[target\.' "$manifest" >&2
+            exit 1
+          fi
 
       # wasm32 でのコンパイル可能性を確認する
       # - mikan-wasm: 成果物は scripts/build-search-wasm.sh で vendor 済み
@@ -55,6 +68,15 @@ jobs:
           rustup target add wasm32-unknown-unknown
           cargo check -p mikan-wasm --target wasm32-unknown-unknown
           cargo check -p tankan --target wasm32-unknown-unknown
+          cargo check -p kabosu --target wasm32-unknown-unknown
+
+      # kabosu の no_std 担保。std が存在しないターゲットでの check なので、
+      # std 依存の紛れ込みが必ずコンパイルエラーになる
+      # （wasm32-unknown-unknown は std があるため no_std の担保にはならない）
+      - name: no_std check (kabosu)
+        run: |
+          rustup target add thumbv7em-none-eabi
+          cargo check -p kabosu --target thumbv7em-none-eabi
 
       # docs/: yuzu 自身のドキュメントサイト（Phase 36）を PR でも検証する。
       # デプロイは docs.yml（main push）だが、壊れた原稿・SSR フォールバックの
@@ -321,3 +343,16 @@ jobs:
           printf '{\n  "site": { "title": "A", "title": "B" }\n}\n' > yuzu.jsonc
           "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
             | head -1 | grep -q '^{$'
+
+  # kabosu の MSRV（rust-version = 1.85）でのコンパイル可能性。
+  # 公開ライブラリなので stable より古い固定版でも check が通ることを縛る
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # 1.85
+        with:
+          toolchain: "1.85"
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: check (kabosu, MSRV)
+        run: cargo check -p kabosu

@@ -1,0 +1,35 @@
+name: fuzz
+
+# kabosu の fuzzing（手動トリガのみ）。nightly + cargo-fuzz が必要なため
+# 通常 CI から分離している。kabosu の publish 前には必ず一度回すこと
+# （CLAUDE.md「リリース手順」参照）
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "1 ターゲットあたりの実行秒数"
+        required: false
+        default: "300"
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      # actions はフルコミット SHA でピン留めする（ci.yml と同じ規律）
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # nightly
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: crates/kabosu/fuzz
+
+      - name: install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: fuzz (parse / roundtrip / decode)
+        working-directory: crates/kabosu
+        run: |
+          for target in parse roundtrip decode; do
+            cargo +nightly fuzz run "$target" -- -max_total_time="${{ inputs.seconds || '300' }}"
+          done

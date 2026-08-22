@@ -1,0 +1,5 @@
+# dotted key で作ったテーブルをヘッダで再定義するのはエラー
+fruit.apple = 1
+
+[fruit]
+orange = 2

@@ -20,7 +20,7 @@ cargo fmt --all --check
 ```
 
 CI（.github/workflows/ci.yml。ジョブは `check` 1 つ）は fmt → machete（未使用依存）→ clippy → test → build →
-`cargo package --locked -p tankan -p mikan`（crates.io メタデータの回帰検出）→ wasm32 チェック
+`cargo package --locked -p tankan -p mikan -p kabosu`（crates.io メタデータの回帰検出。kabosu は依存ゼロ検査も）→ wasm32 チェック → kabosu の no_std チェック（thumbv7em-none-eabi）
 → docs サイト検証（docs/ での check・build・grep ゲート・SSR フォールバック検出）→ e2e の順に実行する。
 `.devcontainer/**` の変更時だけ container.yml が別途走る:
 
@@ -111,7 +111,7 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 
 ### 汎用ライブラリの crates.io 公開（yuzu のリリースと非同期）
 
-**tankan**（Mermaid SSR）と **mikan**（検索エンジン。旧 yuzu-index-format）を crates.io へ公開している（monorepo のまま。バージョンは workspace と独立で、各 `Cargo.toml` の `version` を明示指定＝現状どちらも 0.2.0）。変更が溜まったら: version を上げる → `cargo build`（Cargo.lock 追随）→ CI green → `cargo publish --dry-run -p <crate>` → `cargo publish -p <crate>`（要 `cargo login`。公開は取り消し不可・yank のみ可能）。ci.yml の `cargo package --locked -p tankan -p mikan` がメタデータ・同梱内容の回帰を PR で検出する。
+**tankan**（Mermaid SSR）・**mikan**（検索エンジン。旧 yuzu-index-format）・**kabosu**（TOML。依存ゼロ・no_std+alloc）を crates.io へ公開している（monorepo のまま。バージョンは workspace と独立で、各 `Cargo.toml` の `version` を明示指定＝現状 tankan / mikan は 0.2.0、kabosu は 0.1.0）。変更が溜まったら: version を上げる → `cargo build`（Cargo.lock 追随）→ CI green → `cargo publish --dry-run -p <crate>` → `cargo publish -p <crate>`（要 `cargo login`。公開は取り消し不可・yank のみ可能）。**kabosu の publish 前には fuzz を必ず一度回す**（`.github/workflows/fuzz.yml` の手動実行、または手元で `cd crates/kabosu && cargo +nightly fuzz run <parse|roundtrip|decode>`）。ci.yml の `cargo package --locked -p tankan -p mikan -p kabosu` がメタデータ・同梱内容の回帰を PR で検出する。
 
 **mikan-wasm**（旧 yuzu-search-wasm）は公開しない（`publish = false`。`cargo add` する Rust ライブラリではなく wasm 成果物を作るビルド用 crate）。yuzu 本体側の crate も公開しない（`publish = false`。名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため。将来 本体を公開する構想は ROADMAP.md 参照）。
 

@@ -1,0 +1,21 @@
+---
+source: crates/kabosu/tests/normalize_snapshot.rs
+expression: text
+---
+title = "柚子 \"yuzu\" と\\改行\n"
+description = "説明つき"
+port = 5173
+dark = true
+tags = ["docs", "静的サイト"]
+synonyms = [
+  ["ログイン", "サインイン"],
+  ["検索"],
+]
+
+[css_vars]
+--accent = "#0a6cff"
+"フォント" = "sans-serif"
+
+[dev]
+host = "127.0.0.1"
+live_reload = false

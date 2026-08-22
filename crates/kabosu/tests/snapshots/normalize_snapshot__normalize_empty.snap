@@ -1,0 +1,7 @@
+---
+source: crates/kabosu/tests/normalize_snapshot.rs
+expression: "kabosu::to_string(&Empty).unwrap()"
+---
+empty_array = []
+
+[empty_table]

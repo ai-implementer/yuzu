@@ -1,0 +1,11 @@
+# 基本のスカラー
+title = "TOML Example"
+enabled = true
+disabled = false
+count = 42
+negative = -17
+plus = +99
+big = 9223372036854775807
+small = -9223372036854775808
+underscore = 1_000_000
+zero = 0
