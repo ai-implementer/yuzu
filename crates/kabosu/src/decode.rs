@@ -131,10 +131,12 @@ impl Diagnostic {
 pub struct DecodeReport<T> {
     value: Option<T>,
     diagnostics: Vec<Diagnostic>,
+    /// Error 診断が 1 件でも積まれたか（上限超過で一覧から省略された分も含む）
+    has_error: bool,
 }
 
 impl<T> DecodeReport<T> {
-    /// エラーが 1 件でもあれば None
+    /// エラーが 1 件でもあれば None（`has_errors()` と常に対応する）
     pub fn value(&self) -> Option<&T> {
         self.value.as_ref()
     }
@@ -144,10 +146,10 @@ impl<T> DecodeReport<T> {
         &self.diagnostics
     }
 
+    /// Error 診断があったか。`max_diagnostics` の上限で一覧から省略された Error も
+    /// 数える（一覧の走査では省略分を見落とし、`value()` が None なのに false になる）
     pub fn has_errors(&self) -> bool {
-        self.diagnostics
-            .iter()
-            .any(|d| d.severity == Severity::Error)
+        self.has_error
     }
 
     pub fn into_parts(self) -> (Option<T>, Vec<Diagnostic>) {
@@ -238,6 +240,7 @@ impl<'a> DecodeContext<'a> {
         DecodeReport {
             value,
             diagnostics: self.diagnostics,
+            has_error: self.has_error,
         }
     }
 }

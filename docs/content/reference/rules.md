@@ -37,7 +37,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `term-variant` | 辞書に登録したゆれ表記の出現 | 可 | `lint.terms`・無効化可 |
 | `duplicate-h1` | 本文の h1 が 2 個以上 | 不可 | 無効化可 |
 | `heading-level-skip` | 見出しレベルの飛び（h2 の次に h4） | 不可 | 無効化可 |
-| `directory-too-deep` | `content` 配下のディレクトリが深すぎる | 不可 | `lint.maxDirectoryDepth`・無効化可 |
+| `directory-too-deep` | `content` 配下のディレクトリが深すぎる | 不可 | `lint.max_directory_depth`・無効化可 |
 | `code-block-meta` | フェンス情報文字列の書き間違い・範囲外の行ハイライト | 不可 | 無効化可 |
 | `duplicate-label` | 図表ラベル（`{#fig:x}`）の同一ページ内での重複 | 不可 | 無効化可 |
 | `frontmatter-unknown-key` | frontmatter の未知のトップレベルキー | 不可 | 無効化可 |

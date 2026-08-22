@@ -240,3 +240,21 @@ fn テーブルでない場所にテーブルを要求すると型不一致() {
     assert!(matches!(d.code(), DiagnosticCode::TypeMismatch { .. }));
     assert!(d.message().contains("expected table"), "{}", d.message());
 }
+
+#[test]
+fn 上限で省略された_error_も_has_errors_に反映される() {
+    // max_diagnostics = 0 だと必須キー欠落の Error は一覧から省略され、
+    // TooManyDiagnostics の Warning だけが残る。それでも値は返さず has_errors は true
+    let mut options = DecodeOptions::default();
+    options.max_diagnostics = 0;
+    let report = kabosu::from_str_with_options::<Config>("port = 1\n", options).unwrap();
+    assert!(report.value().is_none(), "必須キー欠落なので値は無い");
+    assert!(report.has_errors(), "省略された Error も数える");
+    let diags = report.diagnostics();
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(
+        *diags[0].code(),
+        DiagnosticCode::TooManyDiagnostics { omitted: 1 }
+    );
+    assert_eq!(diags[0].severity(), Severity::Warning);
+}

@@ -68,6 +68,9 @@ impl core::fmt::Display for ParseError {
             ParseErrorKind::EmptyKey => f.write_str("empty key"),
             ParseErrorKind::IntegerOutOfRange => f.write_str("integer out of range for i64"),
             ParseErrorKind::InvalidInteger => f.write_str("invalid integer literal"),
+            ParseErrorKind::InvalidLiteral => {
+                f.write_str("invalid literal (not a valid TOML value)")
+            }
             ParseErrorKind::DuplicateKey => f.write_str("duplicate key"),
             ParseErrorKind::TableConflict => {
                 f.write_str("table conflicts with a previously defined key or table")
@@ -100,6 +103,9 @@ pub enum ParseErrorKind {
     EmptyKey,
     IntegerOutOfRange,
     InvalidInteger,
+    /// float / date-time / 進数整数の**形はしているが TOML として不正**なリテラル
+    /// （`1e` / `0xGG` / `1979-bad` など）。妥当なリテラルだけが `Unsupported` になる
+    InvalidLiteral,
     /// 重複キー（`previous_span` に先行定義）
     DuplicateKey,
     /// テーブルの再定義・キーとテーブルの衝突・dotted key の非テーブル横断

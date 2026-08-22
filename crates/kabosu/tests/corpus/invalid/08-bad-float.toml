@@ -1,0 +1,2 @@
+# 指数部が空の float は書き間違い（Unsupported ではない）
+x = 1e

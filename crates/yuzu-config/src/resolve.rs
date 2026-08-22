@@ -256,6 +256,9 @@ fn syntax_message(text: &str, e: &ParseError) -> String {
         ParseErrorKind::EmptyKey => "空のキーは書けません".to_string(),
         ParseErrorKind::IntegerOutOfRange => "整数が i64 の範囲を超えています".to_string(),
         ParseErrorKind::InvalidInteger => "整数リテラルが不正です".to_string(),
+        ParseErrorKind::InvalidLiteral => {
+            "値のリテラルが不正です（整数・小数・日時のどれとしても読めません）".to_string()
+        }
         ParseErrorKind::DepthExceeded => "ネストが深すぎます（上限 128）".to_string(),
         _ => e.to_string(),
     }

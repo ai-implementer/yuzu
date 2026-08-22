@@ -356,12 +356,17 @@ pub(crate) enum ScalarClass {
     Unsupported(UnsupportedFeature),
     /// 整数系の書き間違い（先頭ゼロ・アンダースコア位置違反など）
     InvalidInteger,
+    /// float / date-time / 進数整数の形はしているが TOML として不正
+    /// （`1e` / `0xGG` / `1979-bad` など。`Unsupported` にすると誤った書き換え案内になる）
+    InvalidLiteral,
     /// 値として解釈できない（英字始まりの未知語など）
     NotAValue,
 }
 
 /// blob を分類する。v0.1 未対応（float / date-time / 16,8,2 進）を
-/// 一般構文エラーと区別するのが目的
+/// 一般構文エラーと区別するのが目的。**`Unsupported` は TOML 1.0 として妥当な
+/// リテラルに限る** — 形で当たりを付けたあと字句全体を検証し、不正なら
+/// `InvalidLiteral`（参照実装が構文エラーにする入力を未対応と案内しない）
 pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
     match blob {
         "true" => return ScalarClass::True,
@@ -369,9 +374,23 @@ pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
         "" => return ScalarClass::NotAValue,
         _ => {}
     }
+    let signed = blob.starts_with(['+', '-']);
     let body = blob.strip_prefix(['+', '-']).unwrap_or(blob);
-    if body.starts_with("0x") || body.starts_with("0o") || body.starts_with("0b") {
-        return ScalarClass::Unsupported(UnsupportedFeature::RadixInteger);
+    // 16 / 8 / 2 進整数（符号は付けられない）
+    if let Some((prefix, rest)) = body.split_at_checked(2) {
+        let radix = match prefix {
+            "0x" => Some(16),
+            "0o" => Some(8),
+            "0b" => Some(2),
+            _ => None,
+        };
+        if let Some(radix) = radix {
+            return if !signed && is_digit_run(rest, radix) {
+                ScalarClass::Unsupported(UnsupportedFeature::RadixInteger)
+            } else {
+                ScalarClass::InvalidLiteral
+            };
+        }
     }
     if matches!(body, "inf" | "nan") {
         return ScalarClass::Unsupported(UnsupportedFeature::Float);
@@ -379,17 +398,28 @@ pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
     if !body.starts_with(|c: char| c.is_ascii_digit()) {
         return ScalarClass::NotAValue;
     }
-    if body.contains(['.', 'e', 'E']) {
-        return ScalarClass::Unsupported(UnsupportedFeature::Float);
-    }
-    // 日付（1979-05-27）と時刻（07:32:00）の形だけを date-time と判定する
+    // 日付（1979-05-27）と時刻（07:32:00）の形は date-time として検証する。
+    // float より先に見るのは、local time が小数秒（07:32:00.5）で `.` を含むため。
+    // 空白区切りの date-time は blob が空白で切れて date 単体になるが、
+    // 最初のエラーで停止する規約上 Unsupported(DateTime) で足りる
     let bytes = body.as_bytes();
     let looks_date =
         bytes.len() > 4 && bytes[..4].iter().all(u8::is_ascii_digit) && bytes[4] == b'-';
     let looks_time =
         bytes.len() > 2 && bytes[..2].iter().all(u8::is_ascii_digit) && bytes[2] == b':';
     if looks_date || looks_time {
-        return ScalarClass::Unsupported(UnsupportedFeature::DateTime);
+        return if !signed && is_valid_datetime(body) {
+            ScalarClass::Unsupported(UnsupportedFeature::DateTime)
+        } else {
+            ScalarClass::InvalidLiteral
+        };
+    }
+    if body.contains(['.', 'e', 'E']) {
+        return if is_valid_float(body) {
+            ScalarClass::Unsupported(UnsupportedFeature::Float)
+        } else {
+            ScalarClass::InvalidLiteral
+        };
     }
     if is_valid_integer(body) {
         ScalarClass::Integer
@@ -398,33 +428,133 @@ pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
     }
 }
 
-/// TOML の 10 進整数本体（符号除去済み）の字句検証。
-/// アンダースコアは数字の間のみ・先頭ゼロ不可
-fn is_valid_integer(body: &str) -> bool {
-    let bytes = body.as_bytes();
-    if bytes.is_empty() {
-        return false;
-    }
+/// 数字列の字句検証（非空・`_` は数字の間のみ）。radix は 2 / 8 / 10 / 16
+fn is_digit_run(s: &str, radix: u32) -> bool {
     let mut prev_digit = false;
-    for (i, &b) in bytes.iter().enumerate() {
-        match b {
-            b'0'..=b'9' => prev_digit = true,
-            b'_' => {
-                let next_digit = bytes.get(i + 1).is_some_and(u8::is_ascii_digit);
-                if !prev_digit || !next_digit {
-                    return false;
-                }
-                prev_digit = false;
+    let mut any = false;
+    for (i, c) in s.char_indices() {
+        if c.is_digit(radix) {
+            prev_digit = true;
+            any = true;
+        } else if c == '_' {
+            let next_digit = s[i + 1..].chars().next().is_some_and(|n| n.is_digit(radix));
+            if !prev_digit || !next_digit {
+                return false;
             }
-            _ => return false,
+            prev_digit = false;
+        } else {
+            return false;
         }
     }
-    if !prev_digit {
+    any && prev_digit
+}
+
+/// TOML の 10 進整数本体（符号除去済み）の字句検証。
+/// アンダースコアは数字の間のみ・先頭ゼロ不可（"0" 単独は可）
+fn is_valid_integer(body: &str) -> bool {
+    if !is_digit_run(body, 10) {
         return false;
     }
-    // 先頭ゼロの禁止（"0" 単独は可）
-    let digits: alloc::vec::Vec<u8> = bytes.iter().copied().filter(u8::is_ascii_digit).collect();
-    !(digits.len() > 1 && digits[0] == b'0')
+    let mut digits = body.bytes().filter(u8::is_ascii_digit);
+    !(digits.next() == Some(b'0') && digits.next().is_some())
+}
+
+/// TOML の float 本体（符号除去済み・inf / nan 以外）: `int (frac | exp | frac exp)`。
+/// int は整数と同じ規則、frac は `.` ＋ 数字列、exp は `[eE][+-]?` ＋ 数字列
+/// （指数部は先頭ゼロ可）
+fn is_valid_float(body: &str) -> bool {
+    let (mantissa, exp) = match body.find(['e', 'E']) {
+        Some(i) => (&body[..i], Some(&body[i + 1..])),
+        None => (body, None),
+    };
+    let (int, frac) = match mantissa.split_once('.') {
+        Some((i, f)) => (i, Some(f)),
+        None => (mantissa, None),
+    };
+    if !is_valid_integer(int) {
+        return false;
+    }
+    if let Some(f) = frac {
+        if !is_digit_run(f, 10) {
+            return false;
+        }
+    }
+    if let Some(e) = exp {
+        let e = e.strip_prefix(['+', '-']).unwrap_or(e);
+        if !is_digit_run(e, 10) {
+            return false;
+        }
+    }
+    frac.is_some() || exp.is_some()
+}
+
+/// RFC 3339 の形（local date / local time / `T` 区切りの date-time ＋ 任意の offset）。
+/// 値の範囲は月 01-12・日 01-31・時 00-23・分 00-59・秒 00-60（うるう秒）まで見る
+/// （参照実装が弾く `1979-13-01` を妥当扱いしないため）。暦の妥当性（2 月 30 日等）は見ない
+fn is_valid_datetime(body: &str) -> bool {
+    if let Some((date, rest)) = body.split_once(['T', 't']) {
+        return is_valid_date(date) && is_valid_time_with_offset(rest);
+    }
+    is_valid_date(body) || is_valid_time(body)
+}
+
+/// `YYYY-MM-DD`
+fn is_valid_date(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return false;
+    }
+    let month = two_digits(&b[5..7]);
+    let day = two_digits(&b[8..10]);
+    b[..4].iter().all(u8::is_ascii_digit)
+        && month.is_some_and(|m| (1..=12).contains(&m))
+        && day.is_some_and(|d| (1..=31).contains(&d))
+}
+
+/// `HH:MM:SS` ＋ 任意の `.` 小数秒
+fn is_valid_time(s: &str) -> bool {
+    let (clock, frac) = match s.split_once('.') {
+        Some((c, f)) => (c, Some(f)),
+        None => (s, None),
+    };
+    let b = clock.as_bytes();
+    if b.len() != 8 || b[2] != b':' || b[5] != b':' {
+        return false;
+    }
+    let hour = two_digits(&b[0..2]);
+    let minute = two_digits(&b[3..5]);
+    let second = two_digits(&b[6..8]);
+    hour.is_some_and(|h| h <= 23)
+        && minute.is_some_and(|m| m <= 59)
+        && second.is_some_and(|s| s <= 60)
+        && frac.is_none_or(|f| !f.is_empty() && f.bytes().all(|c| c.is_ascii_digit()))
+}
+
+/// time ＋ 任意の offset（`Z` / `z` / `±HH:MM`）
+fn is_valid_time_with_offset(s: &str) -> bool {
+    if let Some(t) = s.strip_suffix(['Z', 'z']) {
+        return is_valid_time(t);
+    }
+    if s.len() > 6 {
+        let (t, off) = s.split_at(s.len() - 6);
+        let b = off.as_bytes();
+        if matches!(b[0], b'+' | b'-') && b[3] == b':' {
+            let hour = two_digits(&b[1..3]);
+            let minute = two_digits(&b[4..6]);
+            return hour.is_some_and(|h| h <= 23)
+                && minute.is_some_and(|m| m <= 59)
+                && is_valid_time(t);
+        }
+    }
+    is_valid_time(s)
+}
+
+/// 2 桁の ASCII 数字を数値へ（それ以外は None）
+fn two_digits(b: &[u8]) -> Option<u8> {
+    match b {
+        [a, c] if a.is_ascii_digit() && c.is_ascii_digit() => Some((a - b'0') * 10 + (c - b'0')),
+        _ => None,
+    }
 }
 
 /// 分類済みの整数 blob を i64 へ変換する（範囲外は `IntegerOutOfRange`）
@@ -473,6 +603,69 @@ mod tests {
         assert_eq!(classify_scalar("1__0"), ScalarClass::InvalidInteger);
         assert_eq!(classify_scalar("_1"), ScalarClass::NotAValue);
         assert_eq!(classify_scalar("hello"), ScalarClass::NotAValue);
+    }
+
+    /// `Unsupported` は TOML として妥当なリテラルに限る（参照実装が構文エラーに
+    /// する入力を「未対応」と案内しない）
+    #[test]
+    fn 不正なリテラルは_unsupported_にならない() {
+        // 妥当側（参照実装が受理する）
+        for (src, feature) in [
+            ("6.02e23", UnsupportedFeature::Float),
+            ("1_000.5", UnsupportedFeature::Float),
+            ("-0.0", UnsupportedFeature::Float),
+            ("1e-3", UnsupportedFeature::Float),
+            ("1E+00", UnsupportedFeature::Float),
+            ("+inf", UnsupportedFeature::Float),
+            ("0xDEAD_BEEF", UnsupportedFeature::RadixInteger),
+            ("0o755", UnsupportedFeature::RadixInteger),
+            ("0b1010", UnsupportedFeature::RadixInteger),
+            ("1979-05-27T07:32:00Z", UnsupportedFeature::DateTime),
+            (
+                "1979-05-27T00:32:00.999999-07:00",
+                UnsupportedFeature::DateTime,
+            ),
+            ("1979-05-27t07:32:00+09:00", UnsupportedFeature::DateTime),
+            ("07:32:00.5", UnsupportedFeature::DateTime),
+            ("23:59:60", UnsupportedFeature::DateTime),
+        ] {
+            assert_eq!(
+                classify_scalar(src),
+                ScalarClass::Unsupported(feature),
+                "{src}"
+            );
+        }
+        // 不正側（参照実装も構文エラー）
+        for src in [
+            "1e",
+            "1.",
+            "1.e5",
+            "1_.0",
+            "1._5",
+            "01.5",
+            "1e5.5",
+            "0xGG",
+            "0x",
+            "+0x1",
+            "0b12",
+            "0o_7",
+            "1979-bad",
+            "1979-13-01",
+            "1979-05-32",
+            "1979-5-27",
+            "07:60:00",
+            "24:00:00",
+            "07:32",
+            "07:32:00.",
+            "1979-05-27T",
+            "1979-05-27T07:32:00+9:00",
+            "1979-05-27T07:32:00-24:00",
+            "-1979-05-27",
+        ] {
+            assert_eq!(classify_scalar(src), ScalarClass::InvalidLiteral, "{src}");
+        }
+        // 数字で始まらないものは従来どおり NotAValue（= ExpectedValue）
+        assert_eq!(classify_scalar(".5"), ScalarClass::NotAValue);
     }
 
     #[test]

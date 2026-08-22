@@ -309,6 +309,9 @@ fn parse_value(
                 ScalarClass::InvalidInteger => {
                     Err(ParseError::new(ParseErrorKind::InvalidInteger, span))
                 }
+                ScalarClass::InvalidLiteral => {
+                    Err(ParseError::new(ParseErrorKind::InvalidLiteral, span))
+                }
                 ScalarClass::NotAValue => Err(ParseError::new(
                     ParseErrorKind::ExpectedValue,
                     if blob.is_empty() {
