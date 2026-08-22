@@ -93,8 +93,8 @@ jobs:
           test -f dist/_search/manifest.json
           # エイリアス（guide/quality の旧 URL）にリダイレクト HTML が生成される
           grep -q 'http-equiv="refresh"' dist/guide/lint/index.html
-          # コンテンツインクルード: yuzu.jsonc の引用が展開されている
-          grep -q '<figcaption>yuzu.jsonc:15-31</figcaption>' dist/guide/code-and-math/index.html
+          # コンテンツインクルード: yuzu.toml の引用が展開されている
+          grep -q '<figcaption>yuzu.toml:25-45</figcaption>' dist/guide/code-and-math/index.html
           # 図表番号: キャプションの採番と参照リンクの自動補完
           grep -q 'id="fig:deps"' dist/development/index.html
           grep -q '<a href="#fig:deps">図 1</a>' dist/development/index.html
@@ -252,22 +252,33 @@ jobs:
             | grep -q '"rule": "spec-error"'
           mv specs/api.yaml.bak specs/api.yaml
           "$GITHUB_WORKSPACE/target/debug/yuzu" check
-          # Phase 47: yuzu.jsonc のキーのタイポを検出する（従来は無言で無視されていた）
-          cp yuzu.jsonc yuzu.jsonc.bak
-          printf '{\n  "markdwon": { "gfm": true }\n}\n' > yuzu.jsonc
-          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
-            | grep -q '"rule": "config-unknown-key"'
-          # 設定の診断はプロジェクトルート相対で出る（content 相対だと .. が混ざり、
-          # GitHub の注釈がリポジトリのファイルへ紐づかなくなる）
-          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
-            | grep -q '"path": "yuzu.jsonc"'
-          mv yuzu.jsonc.bak yuzu.jsonc
+          # yuzu.toml のキーのタイポは設定エラーで止まる（exit 2。v0.14 で JSONC の
+          # config-unknown-key 警告から変更。位置と対応キー一覧を stderr に出し、
+          # --format json でも標準出力には何も書かない）
+          cp yuzu.toml yuzu.toml.bak
+          printf '[markdwon]\ngfm = true\n' > yuzu.toml
+          if "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json \
+               > "$RUNNER_TEMP/typo.out" 2> "$RUNNER_TEMP/typo.err"; then
+            echo "check が yuzu.toml の未知キーを検出しなかった" >&2
+            exit 1
+          fi
+          grep -q 'yuzu.toml:1:2: 未知のキー `markdwon`' "$RUNNER_TEMP/typo.err"
+          grep -q 'markdown' "$RUNNER_TEMP/typo.err"   # 正しい綴りが対応キー一覧に出る
+          test ! -s "$RUNNER_TEMP/typo.out"
+          # 旧形式（camelCase）のキーも同じく設定エラー（互換読み込みは作らない）
+          printf '[site]\nbaseUrl = "/docs/"\n' > yuzu.toml
+          if "$GITHUB_WORKSPACE/target/debug/yuzu" build 2> "$RUNNER_TEMP/camel.err"; then
+            echo "build が旧形式のキーを受理した" >&2
+            exit 1
+          fi
+          grep -q 'base_url' "$RUNNER_TEMP/camel.err"
+          mv yuzu.toml.bak yuzu.toml
           "$GITHUB_WORKSPACE/target/debug/yuzu" check
           # Phase 48: コンテンツインクルードの参照先だけを編集しても検索索引が追随する
           # （検索 tf のキャッシュがページ source ハッシュだけで判定していた回帰ガード。
           # --force を付けずにインクリメンタルで検証することが要点）
-          cp yuzu.jsonc yuzu.jsonc.bak
-          printf '{\n  "search": { "indexCode": true }\n}\n' > yuzu.jsonc
+          cp yuzu.toml yuzu.toml.bak
+          printf '[search]\nindex_code = true\n' > yuzu.toml
           mkdir -p snippets
           printf 'fn alphaSymbol() {}\n' > snippets/demo.rs
           printf -- '---\ntitle: 引用\n---\n\n# 引用\n\n```rust file="snippets/demo.rs"\n```\n' > content/inc.md
@@ -279,7 +290,7 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" search alphaSymbol \
             | grep -q "一致するページはありませんでした"
           rm content/inc.md
-          mv yuzu.jsonc.bak yuzu.jsonc
+          mv yuzu.toml.bak yuzu.toml
           # Phase 49: fmt --diff は unified diff を出し、--check を含意する
           # （書き換えない・差分ありで終了コード 1）。出力がそのまま当てられる
           # パッチであることが実質の契約なので patch -p1 まで通す
@@ -338,11 +349,16 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint --fix --format json 2>/dev/null \
             | head -1 | grep -q '^{$'
           # tracing のログが標準出力へ漏れないこと（既定 writer は stdout なので明示指定が要る）。
-          # 重複キーは警告を出す数少ない経路で、混ざると JSON のパースが壊れる
-          # （設定キーはすべて省略可能なので、この最小 jsonc でも check は動く）
-          printf '{\n  "site": { "title": "A", "title": "B" }\n}\n' > yuzu.jsonc
-          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
+          # input.dir がルート外の警告（config-path-outside-root）は読み込み後も続行して
+          # 警告を出す数少ない経路で、混ざると JSON のパースが壊れる
+          mkdir -p "$RUNNER_TEMP/shared-docs"
+          printf -- '---\ntitle: 共有原稿\n---\n\n# 共有原稿\n' > "$RUNNER_TEMP/shared-docs/index.md"
+          printf '[input]\ndir = "../shared-docs"\n' > yuzu.toml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2> "$RUNNER_TEMP/outside.err" \
             | head -1 | grep -q '^{$'
+          grep -q 'config-path-outside-root\|プロジェクトルート配下ではありません' "$RUNNER_TEMP/outside.err"
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
+            | grep -q '"rule": "config-path-outside-root"'
 
   # kabosu の MSRV（rust-version = 1.85）でのコンパイル可能性。
   # 公開ライブラリなので stable より古い固定版でも check が通ることを縛る

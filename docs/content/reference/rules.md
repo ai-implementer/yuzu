@@ -27,7 +27,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 深刻度はすべて warning です。「無効化可」のルールは
 [`lint.rules`](#プロジェクト全体の無効化lintrules) の `false` で
 プロジェクト全体を無効化できます（`config-*` と抑制機構自身の 2 ルールは対象外）。
-`lint.terms` / `lint.maxDirectoryDepth` を使うルールは、設定しない限り発火しません。
+`lint.terms` / `lint.max_directory_depth` を使うルールは、設定しない限り発火しません。
 
 | ルール | 検出内容 | `--fix` | 設定 |
 | --- | --- | --- | --- |
@@ -41,8 +41,6 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `code-block-meta` | フェンス情報文字列の書き間違い・範囲外の行ハイライト | 不可 | 無効化可 |
 | `duplicate-label` | 図表ラベル（`{#fig:x}`）の同一ページ内での重複 | 不可 | 無効化可 |
 | `frontmatter-unknown-key` | frontmatter の未知のトップレベルキー | 不可 | 無効化可 |
-| `config-unknown-key` | `yuzu.jsonc` の未知のキー（タイポ） | 不可 | 常時有効 |
-| `config-duplicate-key` | `yuzu.jsonc` のキーの重複（JSONC は後勝ち） | 不可 | 常時有効 |
 | `config-path-outside-root` | `input.dir` がプロジェクトルートの外を指す | 不可 | 常時有効 |
 | `invalid-lint-suppression` | frontmatter `lintDisable` の未知・抑制不可のルール名 | 不可 | 常時有効 |
 | `unused-lint-suppression` | `lintDisable` に書いたのにこのページで発火しなかった抑制 | 不可 | 常時有効 |
@@ -50,10 +48,10 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 `katakana-choon` の「条件付き」は、長音符ゆれを**多数派の表記へ寄せる**ため、
 同数で並んだときは正解を決められず報告だけになる、という意味です。
 
-`config-` で始まるルールは、ページではなく `yuzu.jsonc` を指します
-（パスはプロジェクトルート相対で出ます）。設定のタイポは無言で無視されて
-「設定したのに効かない」事故になりやすいため、`yuzu lint` / `check` で
-気づけるようにしてあります。
+`config-` で始まるルールは、ページではなく `yuzu.toml` を指します
+（パスはプロジェクトルート相対で出ます）。なお設定のキーのタイポ・型違い・
+重複は診断ではなく**設定エラー**（終了コード 2）で、どのコマンドでも
+読み込み時に止まります（[設定](config.md)参照）。
 
 `code-block-meta` はフェンス情報文字列の問題をまとめて報告します
 （`showLineNumbers` の書き間違い、`{2,4-6}` の解釈できない部分、`file=` のない `lines=`、
@@ -117,7 +115,7 @@ lintDisable:
 ```
 
 error のルールは抑制できません（壊れたリンクや非決定な出力が生成物に残るのを
-防ぐためのルールです）。`config-*` はページではなく `yuzu.jsonc` を指すため
+防ぐためのルールです）。`config-*` はページではなく `yuzu.toml` を指すため
 対象外です。未知・抑制不可のルール名は `invalid-lint-suppression`、
 書いたのに発火しなかった抑制は `unused-lint-suppression` の warning になります
 （直したのに残った指定を放置させないためです）。
@@ -143,19 +141,20 @@ frontmatter の `lintDisable` で該当する 4 ルールを抑制していま�
 
 ## プロジェクト全体の無効化（lint.rules）
 
-方針と合わないルールは、`yuzu.jsonc` の `lint.rules` に「ルール ID → `false`」を
+方針と合わないルールは、`yuzu.toml` の `lint.rules` に「ルール ID → `false`」を
 書くと**プロジェクト全体で**無効化できます（対象は `lintDisable` で抑制できる
 範囲と同じ warning のルールだけです）:
 
-```jsonc
-"lint": {
-  "rules": { "katakana-choon": false, "term-variant": false }
-}
+```toml
+[lint.rules]
+katakana-choon = false
+term-variant = false
 ```
 
 - 書かない ID は有効のままです（`true` は書いても書かなくても同じ）
 - ルール ID のタイポ・error 系の ID・旧形式のキー（`katakanaChoon` 等）は
-  `config-unknown-key` の警告になり、ルールは有効のまま残ります（安全側）
+  無効化できる ID の一覧付きの**設定エラー**になります（黙って効かないまま
+  進むことはありません）
 - 無効化中のルールをページ（`lintDisable`）・行コメントで抑制していても
   `unused-lint-suppression` にはなりません。ルールを再有効化すると
   抑制はそのまま生き返ります

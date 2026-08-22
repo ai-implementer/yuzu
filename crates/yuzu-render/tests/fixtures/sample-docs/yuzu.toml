@@ -1,0 +1,9 @@
+# スナップショットテスト用フィクスチャ。
+# base_url を付けて base path 解決も検証する
+[site]
+title = "Fixture Docs"
+description = "yuzu-render のテスト用サイト"
+lang = "ja"
+
+[build]
+base_url = "/docs/"

@@ -1,6 +1,6 @@
 //! watch / dev セッションで再利用する重い共有状態。
 //!
-//! 設定はセッション中固定（yuzu.jsonc の変更は再起動で反映）なので、
+//! 設定はセッション中固定（yuzu.toml の変更は cli がセッションを作り直して反映）なので、
 //! syntect ハイライタ（two_face 構文セット）と syntect CSS は不変。
 //! minijinja Env はテーマ（theme/templates/）変更時のみ再構築する。
 //!
@@ -66,9 +66,8 @@ mod tests {
     fn ハイライト無効なら_syntect_css_は空でテーマ名を検証しない() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
-            dir.path().join("yuzu.jsonc"),
-            r#"{ "markdown": { "highlight": {
-                 "enabled": false, "themeLight": "存在しないテーマ" } } }"#,
+            dir.path().join("yuzu.toml"),
+            "[markdown.highlight]\nenabled = false\ntheme_light = \"存在しないテーマ\"\n",
         )
         .unwrap();
         let rc = yuzu_config::load(dir.path()).unwrap();

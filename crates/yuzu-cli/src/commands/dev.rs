@@ -23,7 +23,7 @@ pub fn run(
     };
     let rc = build::load_config(&overrides)?;
 
-    // dev.liveReload=false は「WS 注入なしの監視ビルド＋配信のみ」
+    // dev.live_reload = false は「WS 注入なしの監視ビルド＋配信のみ」
     let mode = if rc.config.dev.live_reload {
         LiveReloadMode::Ws
     } else {
@@ -37,7 +37,7 @@ pub fn run(
     // プロジェクトルート全体を監視する（コンテンツインクルード `file=` の
     // 参照先は content/ の外にもあるため）。出力ディレクトリは必ず除外する
     // = 除外しないと再ビルド → 変更検知 → 再ビルドの無限ループになる。
-    // yuzu.jsonc の変更は WatchBuild が取り込む（サーバの前提になる設定は除く）
+    // yuzu.toml の変更は WatchBuild が取り込む（サーバの前提になる設定は除く）
     let paths = vec![rc.root.clone()];
     let ignore = build::watch_ignore(&rc)?;
     let notifier_for_watch = notifier.clone();

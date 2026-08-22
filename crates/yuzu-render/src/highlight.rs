@@ -39,7 +39,7 @@ pub struct SyntectCodeRenderer {
     /// 「ハイライト無効」の表現をこのフィールド 1 つへ寄せることで、
     /// 早期 return が include 解決や表示メタを巻き添えにする事故を型で防ぐ
     syntax_set: Option<SyntaxSet>,
-    /// 行番号表示のサイト既定（`markdown.highlight.lineNumbers`。
+    /// 行番号表示のサイト既定（`markdown.highlight.line_numbers`。
     /// ブロック単位の `showLineNumbers` / `noLineNumbers` が優先される）
     line_numbers_default: bool,
     mermaid_enabled: bool,

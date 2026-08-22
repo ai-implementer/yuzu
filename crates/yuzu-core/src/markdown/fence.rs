@@ -40,7 +40,7 @@ pub struct CodeBlockMeta {
     pub tab: Option<String>,
     /// ハイライト行の範囲リスト（1 始まり・両端含む・未ソート可）
     pub highlight_lines: Vec<(usize, usize)>,
-    /// 行番号表示の上書き。`None` = サイト設定（`markdown.highlight.lineNumbers`）に従う
+    /// 行番号表示の上書き。`None` = サイト設定（`markdown.highlight.line_numbers`）に従う
     pub line_numbers: Option<bool>,
     /// 外部ソースファイルの引用（`file=` 指定時のみ）
     pub include: Option<IncludeSpec>,

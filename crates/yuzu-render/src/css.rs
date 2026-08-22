@@ -70,7 +70,7 @@ fn scope_css(css: &str, scope: &str) -> String {
     out
 }
 
-/// `theme.cssVars` / `cssVarsDark` から CSS 変数の上書きスタイルを生成する。
+/// `theme.css_vars` / `cssVarsDark` から CSS 変数の上書きスタイルを生成する。
 /// 空なら None。不正な変数名・値（スタイル注入になり得る文字）は警告してスキップする
 pub(crate) fn generate_theme_var_overrides(
     vars: &std::collections::BTreeMap<String, String>,
@@ -89,7 +89,7 @@ pub(crate) fn generate_theme_var_overrides(
                 && !value.contains(['<', '>', '{', '}', ';'])
                 && !value.contains("/*");
             if !name_ok || !value_ok {
-                tracing::warn!(name, value, "theme.cssVars の不正なエントリをスキップ");
+                tracing::warn!(name, value, "theme.css_vars の不正なエントリをスキップ");
                 continue;
             }
             decls.push_str(&format!("  --{name}: {value};\n"));

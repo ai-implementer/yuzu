@@ -288,6 +288,18 @@ macro_rules! encode_int {
 }
 encode_int!(i32, u8, u16, u32);
 
+impl<T: Encode> Encode for Option<T> {
+    /// `None` は何も書かない = テーブルのフィールドならキーごと省略される
+    /// （TOML に null が無いことへの対応。`TableEncoder::optional_field` と同じ）。
+    /// 配列要素の `None` も同じ規則で要素ごと落ちる
+    fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+        match self {
+            Some(v) => v.encode(encoder),
+            None => Ok(()),
+        }
+    }
+}
+
 impl<T: Encode> Encode for [T] {
     fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
         let mut array = encoder.array();

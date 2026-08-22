@@ -9,7 +9,7 @@ use crate::out::outln;
 
 /// 生成するファイル一式（scaffold/ からコンパイル時に埋め込む）
 const FILES: &[(&str, &str)] = &[
-    ("yuzu.jsonc", include_str!("../../scaffold/yuzu.jsonc")),
+    ("yuzu.toml", include_str!("../../scaffold/yuzu.toml")),
     (".gitignore", include_str!("../../scaffold/gitignore")),
     ("content/index.md", include_str!("../../scaffold/index.md")),
     (

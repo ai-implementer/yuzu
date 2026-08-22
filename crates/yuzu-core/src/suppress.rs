@@ -12,7 +12,7 @@
 //!
 //! 抑制できるのは warning ルールのみ（[`crate::rules::Rule::suppressible`]）。
 //! error は build を中断する・壊れた出力を防ぐ正なので対象外。
-//! `config-*` は `yuzu.jsonc` を指す（`DiagBase::ProjectRoot`）ため、
+//! `config-*` は `yuzu.toml` を指す（`DiagBase::ProjectRoot`）ため、
 //! 突き合わせがページ単位で成立せず構造的に素通りする。
 
 use std::collections::{BTreeSet, HashMap};
@@ -47,7 +47,7 @@ pub fn apply_suppressions(
     // プロジェクト全体の無効化（lint.rules）の判定。ユーザの部分マップは既定を
     // 丸ごと置き換えるため「マップに無い ID = 有効」の解釈をここだけが持つ。
     // suppressible ガードが防御の要 — error 名に false を書いても落とさない
-    // （設定側では config-unknown-key が既知キー木経由で警告する）。
+    // （設定側では yuzu-config の `lint.rules` decode が未知 ID を設定エラーにする）。
     // 判定は実行中不変なので、診断ごとに再計算せず先に集合へ畳む
     let disabled_rules: BTreeSet<&str> = lint
         .rules
@@ -180,7 +180,7 @@ pub fn apply_suppressions(
     }
 
     // パス 2b: `lintDisable` 自身の検証（未知名・抑制不可名・未使用）。
-    // 抑制が「黙って効かない」のは config-unknown-key と同じ事故クラスなので
+    // 抑制が「黙って効かない」のは設定の未知キーと同じ事故クラスなので
     // 無視せず警告する
     for page in pages
         .iter()
@@ -299,7 +299,7 @@ fn invalid_entry_reason(entry: &str) -> Option<String> {
                 "`{entry}` は error ルールのため抑制できません（error は壊れた出力を防ぐためのルールです）"
             )
         } else if rule.id.starts_with("config-") {
-            format!("`{entry}` は `yuzu.jsonc` を指すルールのため抑制できません")
+            format!("`{entry}` は `yuzu.toml` を指すルールのため抑制できません")
         } else {
             format!("`{entry}` は抑制できません")
         }),
@@ -532,22 +532,25 @@ mod tests {
         let opts = MarkdownOptions::default();
         let pages = pages_of(&[(
             "index.md",
-            "---\nlintDisable: [config-unknown-key]\n---\n\n# t\n",
+            "---\nlintDisable: [config-path-outside-root]\n---\n\n# t\n",
         )]);
         // config 診断は DiagBase::ProjectRoot（cli の変換と同じ形）
         let config_diag = Diagnostic {
-            rule: crate::rules::CONFIG_UNKNOWN_KEY.id,
-            severity: crate::rules::CONFIG_UNKNOWN_KEY.severity,
+            rule: crate::rules::CONFIG_PATH_OUTSIDE_ROOT.id,
+            severity: crate::rules::CONFIG_PATH_OUTSIDE_ROOT.severity,
             base: crate::DiagBase::ProjectRoot,
-            rel: "yuzu.jsonc".into(),
+            rel: "yuzu.toml".into(),
             span: None,
-            message: "未知のキー".to_string(),
+            message: "input.dir がルート外".to_string(),
             fix: None,
         };
         let outcome = apply_suppressions(vec![config_diag], &pages, &opts, &LintOptions::default());
         assert_eq!(outcome.suppressed, 0);
         assert!(
-            outcome.diags.iter().any(|d| d.rule == "config-unknown-key"),
+            outcome
+                .diags
+                .iter()
+                .any(|d| d.rule == "config-path-outside-root"),
             "config 診断は残る: {:?}",
             outcome.diags
         );
@@ -557,7 +560,7 @@ mod tests {
             .find(|d| d.rule == "invalid-lint-suppression")
             .unwrap();
         assert!(
-            invalid.message.contains("`yuzu.jsonc` を指すルール"),
+            invalid.message.contains("`yuzu.toml` を指すルール"),
             "{}",
             invalid.message
         );

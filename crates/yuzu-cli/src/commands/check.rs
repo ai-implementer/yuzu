@@ -3,15 +3,12 @@
 
 use std::process::ExitCode;
 
-use anyhow::Context;
 use yuzu_core::{DiagBase, Diagnostic, MarkdownOptions};
 
 use super::diag;
 
 pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
-    let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
-    let root = yuzu_config::find_project_root(&cwd)?;
-    let rc = yuzu_config::load(&root)?;
+    let (root, rc) = super::load_project()?;
     let opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
         math: rc.config.markdown.math.enabled,

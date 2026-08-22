@@ -1,14 +1,13 @@
-//! `yuzu.jsonc` の設定スキーマ。
+//! `yuzu.toml` の設定スキーマ。
 //!
 //! すべてのキーは省略可能で、省略時は各 `Default` 実装の値になる。
-//! JSON 側のキーは camelCase（`baseUrl` など）。
+//! TOML 側のキーは snake_case（`base_url` など）で、構造体のフィールド名と同じ。
+//! TOML との相互変換（kabosu の `Decode` / `Encode`）は `codec.rs` にあり、
+//! キー名とフィールドの対応はそこで 1 行ずつ定義する。
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone, Default)]
 pub struct Config {
     pub site: SiteConfig,
     pub input: InputConfig,
@@ -25,8 +24,7 @@ pub struct Config {
 }
 
 /// git 連携メタ（ページフッターの最終更新日・編集リンク）
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone, Default)]
 pub struct GitConfig {
     /// ページの最終更新日（最終コミット日）をフッターに表示する。
     /// git が無い・リポジトリ外・未コミットのファイルでは表示しない（縮退）
@@ -36,12 +34,11 @@ pub struct GitConfig {
     pub edit_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct SiteConfig {
     pub title: String,
     pub description: Option<String>,
-    /// サイトを配信するパス接頭辞（例: `/docs/`）。`build.baseUrl` があればそちらが優先
+    /// サイトを配信するパス接頭辞（例: `/docs/`）。`build.base_url` があればそちらが優先
     pub base_url: Option<String>,
     pub lang: String,
     /// ヘッダーのタイトル横に出すロゴ画像（例: `/images/logo.svg`。public/ 配下を指す）。
@@ -61,8 +58,7 @@ impl Default for SiteConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct InputConfig {
     pub dir: String,
     /// 除外 glob（`content/` からの相対パスに対して評価。例: `**/_drafts/**`）
@@ -78,8 +74,7 @@ impl Default for InputConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct OutputConfig {
     pub dir: String,
     /// ビルド前に出力ディレクトリを削除するか
@@ -95,13 +90,12 @@ impl Default for OutputConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct ThemeConfig {
     pub name: String,
     /// ダークモード切替 UI を有効にするか
     pub dark: bool,
-    /// テーマ CSS 変数の上書き（キーは `--` 省略可。例: `"accent": "#0a6cff"`）。
+    /// テーマ CSS 変数の上書き（キーは `--` 省略可。例: `accent = "#0a6cff"`）。
     /// 変数名は theme.css の `:root` 定義を参照。BTreeMap なので出力は決定的
     pub css_vars: BTreeMap<String, String>,
     /// ダークモード時にのみ適用する上書き（`html[data-theme="dark"]` スコープ）
@@ -122,8 +116,7 @@ impl Default for ThemeConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct TocConfig {
     /// ページ内 TOC に表示する見出しレベルの範囲（h1〜h6 = 1〜6）。
     /// インクルードの `lines=` と同じ記法で `"2-3"` / `"4"` のように書く。
@@ -139,8 +132,7 @@ impl Default for TocConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct NavConfig {
     /// ディレクトリ階層＋frontmatter `title`/`order` からナビを自動生成する。
     /// 現在は自動生成のみ対応で、`false` は将来の手動ナビ定義用の予約（効果なし）
@@ -159,8 +151,7 @@ impl Default for NavConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct MarkdownConfig {
     /// GFM 拡張（表・打ち消し線・autolink・タスクリスト）
     pub gfm: bool,
@@ -175,10 +166,9 @@ pub struct MarkdownConfig {
 ///
 /// 辞書を設定に置くのは `lint.terms` と同じ思想で、本文の Markdown を
 /// 汚さずに済む（素の Markdown ビューアでも読める、を保つ）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct GlossaryConfig {
-    /// 用語辞書（略語 → 説明文）。例: `{ "API": "Application Programming Interface" }`。
+    /// 用語辞書（略語 → 説明文）。例: `API = "Application Programming Interface"`。
     /// `BTreeMap` なので反復順が決定的（出力バイト同一・envKey の安定に効く）
     pub terms: BTreeMap<String, String>,
     /// 本文中の初出を `<abbr title="説明">略語</abbr>` にするか
@@ -202,8 +192,7 @@ impl Default for GlossaryConfig {
 }
 
 /// 図表番号（`Figure:` / `Table:` / `Listing:` キャプション行）の採番設定
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct CrossrefConfig {
     /// 採番の単位。`"page"`（既定）はページごとに 1 から、
     /// `"site"` はサイドバーの表示順でサイト全体を通し番号にする
@@ -218,14 +207,23 @@ impl Default for CrossrefConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CrossrefNumbering {
     /// ページ内連番（既定）
     #[default]
     Page,
     /// サイト全体の通し番号（サイドバー表示順）
     Site,
+}
+
+impl CrossrefNumbering {
+    /// TOML 上の値（`"page"` / `"site"`）
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Page => "page",
+            Self::Site => "site",
+        }
+    }
 }
 
 impl Default for MarkdownConfig {
@@ -241,8 +239,7 @@ impl Default for MarkdownConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct HighlightConfig {
     pub enabled: bool,
     /// syntect のライト側テーマ名
@@ -265,8 +262,7 @@ impl Default for HighlightConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct MermaidConfig {
     /// mermaid コードブロックの描画を有効にするか
     pub enabled: bool,
@@ -284,8 +280,7 @@ impl Default for MermaidConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MermaidBackend {
     /// mermaid.js によるクライアント描画（既定）
     #[default]
@@ -294,12 +289,21 @@ pub enum MermaidBackend {
     Ssr,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+impl MermaidBackend {
+    /// TOML 上の値（`"client"` / `"ssr"`）
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Client => "client",
+            Self::Ssr => "ssr",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct MathConfig {
     /// 数式（`$...$` / `$$...$$` / `` $`...`$ `` / ```math）を有効にするか。
     /// 描画は同梱 KaTeX のクライアント描画で、数式のあるページだけ読み込む
-    // 将来: backend（"client" | "ssr"）。serde は未知キーを無視するので後方互換で追加できる
+    // 将来: backend（"client" | "ssr"）。キーを足すときは codec.rs の対応も足す
     pub enabled: bool,
 }
 
@@ -309,17 +313,16 @@ impl Default for MathConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct LintConfig {
     /// content 配下で許容するディレクトリ階層の最大深さ
     /// （直下 = 0。例: 1 なら `content/guide/x.md` まで）。未指定なら無制限
     pub max_directory_depth: Option<u32>,
     /// 用語統一の辞書（正しい表記 → ゆれ表記のリスト）。
-    /// 例: `"terms": { "サーバー": ["サーバ"], "ユーザー": ["ユーザ"] }`
+    /// 例: `[lint.terms]` の下に `"サーバー" = ["サーバ"]`
     pub terms: BTreeMap<String, Vec<String>>,
     /// ルール ID → 有効フラグ。`false` でプロジェクト全体無効化
-    /// （例: `"rules": { "katakana-choon": false }`。`true` は no-op として受理）。
+    /// （例: `[lint.rules]` の下に `katakana-choon = false`。`true` は no-op として受理）。
     /// **ユーザの部分マップは既定を丸ごと置き換える**ため、参照側は
     /// 「マップに無い ID = 有効」と解釈する（解釈は yuzu-core の漏斗が持つ）
     pub rules: BTreeMap<String, bool>,
@@ -340,9 +343,8 @@ impl Default for LintConfig {
 /// `lint.rules` で無効化できるルール ID（= レジストリの suppressible 集合と同一）。
 /// yuzu-config は依存グラフの葉で `yuzu_core::rules` を参照できないため一覧をここに
 /// 持ち、一致は yuzu-cli 側のテストが縛る（`CONFIG_RULES` と同じ規律）。
-/// `Config::default()` の JSON 化（既知キー木）にこの ID が全部載ることで、
-/// タイポ・旧キー・無効化不可の ID は行番号付き `config-unknown-key`
-/// （正しい ID の兄弟一覧入り）になる
+/// `lint.rules` の decode（codec.rs）がこの一覧でキーを検証するので、
+/// タイポ・旧キー・無効化不可の ID は位置付きの設定エラー（正しい ID の一覧入り）になる
 pub const DISABLEABLE_RULES: &[&str] = &[
     "code-block-meta",
     "directory-too-deep",
@@ -364,8 +366,7 @@ fn default_lint_rules() -> BTreeMap<String, bool> {
         .collect()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct SearchConfig {
     /// 全文検索（インデックス生成＋テーマの検索 UI）を有効にするか
     pub enabled: bool,
@@ -410,8 +411,7 @@ impl Default for SearchConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct TypoToleranceConfig {
     pub enabled: bool,
     /// 許容編集距離。v1 では 0..=1 に clamp される（2 以上はノイズと構築コストが跳ねる）
@@ -427,8 +427,7 @@ impl Default for TypoToleranceConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct ShardConfig {
     /// 1 シャードあたりの term 数（term_id の連続範囲で分割）
     pub max_terms_per_shard: u32,
@@ -442,8 +441,7 @@ impl Default for ShardConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct LlmsConfig {
     /// llms.txt / llms-full.txt を生成するか
     pub enabled: bool,
@@ -460,10 +458,9 @@ impl Default for LlmsConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct BuildConfig {
-    /// ビルド時の baseUrl 上書き（`site.baseUrl` より優先）
+    /// ビルド時の base_url 上書き（`site.base_url` より優先）
     pub base_url: Option<String>,
     /// `yuzu dev` / `yuzu build --watch` の監視から除外する glob。
     /// プロジェクトルート相対・`/` 区切りで評価し、**当たったディレクトリの
@@ -485,8 +482,7 @@ impl Default for BuildConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone)]
 pub struct DevConfig {
     pub host: String,
     pub port: u16,

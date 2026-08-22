@@ -37,14 +37,14 @@ lsof -nP -i :5173 | head -3        # 使用中か確認（サンドボックス�
 ## 機能別の設定メモ
 
 - **検索 UI**: `file://` では fetch が動かないため、必ず preview / dev 経由で確認。
-- **Mermaid SSR**: 生成された yuzu.jsonc では `"backend": "ssr"` が**コメントアウト行**として入っている。有効化は `"enabled": true` にカンマを足し、`// "backend": "ssr"` の `//` を外す。SSR 成功の確認は「対象ページの `<svg` 数」と「vendor/mermaid のロードが 0 箇所」。
+- **Mermaid SSR**: 生成された yuzu.toml では `[markdown.mermaid]` の `# backend = "ssr"` が**コメントアウト行**として入っている。有効化は行頭の `# ` を外す。SSR 成功の確認は「対象ページの `<svg` 数」と「vendor/mermaid のロードが 0 箇所」。
 - **ライブリロード**: `yuzu dev` は WS（/__livereload）。md 保存から約 1 秒で反映。
 
 ## 確認観点チェックリスト
 
 - ダークモード切替（◐ ボタン）でテキスト・SVG・ハイライトが追従するか
 - 右 TOC（幅 >72rem）とモバイル TOC（≤72rem の `<details>`）の両方
-- `build.baseUrl` にサブパス（例 `/docs/`）を設定してリンク・アセット参照が壊れないか
+- `build.base_url` にサブパス（例 `/docs/`）を設定してリンク・アセット参照が壊れないか
 - JS 無効時に表示が崩れないか（テーマ JS はすべてプログレッシブエンハンスメント）
 - **折りたたみの自動展開**: 閉じた `<details>` の中にある見出しへ検索結果・目次・図表参照から
   飛んだとき、祖先が開いて該当箇所が見えるか

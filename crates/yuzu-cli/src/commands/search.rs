@@ -2,14 +2,10 @@
 //! ブラウザの wasm と同一のエンジン・同一のモデルを通るため、
 //! トークナイザ整合のドッグフードと CI の E2E を兼ねる
 
-use anyhow::Context;
-
 use crate::out::outln;
 
 pub fn run(query: &str, limit: usize, sections: &[String], json: bool) -> anyhow::Result<()> {
-    let cwd = std::env::current_dir().context("カレントディレクトリを取得できません")?;
-    let root = yuzu_config::find_project_root(&cwd)?;
-    let rc = yuzu_config::load(&root)?;
+    let (_, rc) = super::load_project()?;
 
     let out = yuzu_index::search_dist_with_options(&rc.output_dir, query, limit, sections)?;
     let (results, total) = (out.results, out.total);

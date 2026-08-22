@@ -1,6 +1,6 @@
 ---
 name: add-markdown-feature
-description: 新しい Markdown 記法・本文レンダリング機能を yuzu へ追加するレシピ（コンテンツインクルード・図表相互参照・折りたたみ等と同型）。キャッシュ無効化・fmt 温存・lint/check・docs ゲートまでの配線漏れを防ぐ。yuzu.jsonc への設定キー追加も含む。
+description: 新しい Markdown 記法・本文レンダリング機能を yuzu へ追加するレシピ（コンテンツインクルード・図表相互参照・折りたたみ等と同型）。キャッシュ無効化・fmt 温存・lint/check・docs ゲートまでの配線漏れを防ぐ。yuzu.toml への設定キー追加も含む。
 ---
 
 # Markdown 記法・本文レンダリング機能の追加レシピ
@@ -81,12 +81,14 @@ Phase 42〜45 すべてが実施している:
           grep -q 'id="fig:deps"' dist/development/index.html
 ```
 
-## `yuzu.jsonc` に設定キーを足す場合（4 手）
+## `yuzu.toml` に設定キーを足す場合（5 手）
 
-1. `crates/yuzu-config/src/schema.rs` に camelCase のフィールド＋既定値
-2. 消費側（yuzu-core / yuzu-render / yuzu-index）へ配線
-3. `crates/yuzu-cli/scaffold/yuzu.jsonc` にコメント付きで追記
-4. `docs/content/reference/config.md` の**全キー例と該当セクションの表の 2 箇所**
+1. `crates/yuzu-config/src/schema.rs` に snake_case のフィールド＋既定値
+2. `crates/yuzu-config/src/codec.rs` の `table_codec!` に `"キー名" => フィールド` を 1 行
+   （Decode / Encode の両方に効く。**忘れると未知キー = 設定エラー**になり、キーを書いても読めない）
+3. 消費側（yuzu-core / yuzu-render / yuzu-index）へ配線
+4. `crates/yuzu-cli/scaffold/yuzu.toml` にコメント付きで追記
+5. `docs/content/reference/config.md` の**全キー例と該当セクションの表の 2 箇所**
 
 frontmatter のキーを足す場合は `crates/yuzu-core/src/frontmatter.rs` の `KNOWN_KEYS` にも足す
 （忘れても構造体との乖離検知テストが落ちるので気づける）。
@@ -100,7 +102,7 @@ frontmatter のキーを足す場合は `crates/yuzu-core/src/frontmatter.rs` �
 - **doc コメント内でフェンスを入れ子にすると doctest がコンパイルされて失敗する**（インデント記法も同様）。散文で書く
 - **アンカー採番は extract_meta / HTML 化 / extract_plain_sections の 3 経路とも全見出しを文書順に** Anchorizer へ通す。片方で飛ばすと id がずれる
 - `comrak_options_keep_footnotes` は fmt / normalize / linkcheck 専用。HTML レンダと extract_meta に使うと壊れる
-- **`docs/yuzu.jsonc` の 15-21 行目**はインクルードの `lines=` で引用されている。この範囲を動かすと docs の原稿と ci.yml のゲートが同時に壊れる
+- **`docs/yuzu.toml` の 25-45 行目**（`[markdown]` ブロック）はインクルードの `lines=` で引用されている。この範囲を動かすと docs の原稿と ci.yml のゲートが同時に壊れる
 
 ## 仕上げ
 

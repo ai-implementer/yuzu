@@ -129,7 +129,15 @@ fn 未知キーの_3_方針() {
     assert!(!report.has_errors());
     assert!(report.value().is_some());
     let d = &report.diagnostics()[0];
-    assert_eq!(*d.code(), DiagnosticCode::UnknownKey);
+    // 対応キーは構造化して持つ（利用側が翻訳・候補提示に使う）
+    assert_eq!(
+        *d.code(),
+        DiagnosticCode::UnknownKey {
+            known_keys: ["title", "port", "tags", "description", "vars", "dev"]
+                .map(String::from)
+                .to_vec(),
+        }
+    );
     assert_eq!(d.severity(), Severity::Warning);
     assert!(d.message().contains("known keys:"), "{}", d.message());
 

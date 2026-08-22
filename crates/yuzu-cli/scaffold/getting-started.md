@@ -24,7 +24,7 @@ yuzu dev
 
 `content/` と `theme/` を監視して自動再ビルドし、WebSocket で
 ブラウザを即リロードします（執筆はこれ 1 コマンド）。
-`yuzu.jsonc` の `dev.open: true` で起動時にブラウザも開きます。
+`yuzu.toml` の `dev.open = true` で起動時にブラウザも開きます。
 
 WebSocket が使えない環境では `yuzu build --watch`（ポーリング式）が退避先です。
 
@@ -70,7 +70,7 @@ h2 / h3 見出しは右側の「目次」に自動で載ります。
 
 ### ダークモード
 
-ヘッダー右上の ◐ ボタンで切り替えられます（`theme.dark: false` で無効化）。
+ヘッダー右上の ◐ ボタンで切り替えられます（`theme.dark = false` で無効化）。
 
 ## 記法サンプル
 
@@ -135,14 +135,14 @@ a^2 + b^2 = c^2
 
 ` ```mermaid ` ブロックで図が描けます。既定は同梱 mermaid.js によるクライアント描画です。
 
-`yuzu.jsonc` で `"backend": "ssr"` にすると、**sequence・flowchart・class・
+`yuzu.toml` で `backend = "ssr"` にすると、**sequence・flowchart・class・
 state・ER・gantt・pie・mindmap・timeline・packet の 10 図種はビルド時に SVG 化**されます
 （JS 不要・ダークモードに即追従）。未対応の図種は自動でクライアント描画にフォールバックし、
 フォールバックが発生したページだけ mermaid.js が読み込まれます
 （クライアント描画もダークモード切替に追従して再描画されます）。
 
 flowchart・state・ER・class 図は `classDef` / `:::` / `style` などの
-スタイル指定にも対応しています（`"backend": "ssr"` でもビルド時の SVG に
+スタイル指定にも対応しています（`backend = "ssr"` でもビルド時の SVG に
 反映されます。指定した色はダークモードでも意図どおり固定されます）:
 
 ```mermaid
@@ -364,12 +364,14 @@ components:
 
 ## 用語統一 lint
 
-`yuzu.jsonc` の `lint.terms` に「正しい表記 → ゆれ表記」の辞書を書くと、
+`yuzu.toml` の `lint.terms` に「正しい表記 → ゆれ表記」の辞書を書くと、
 `yuzu lint` / `yuzu check` が本文・見出しの表記ゆれを行番号付きで報告します
 （コードブロック・URL は対象外）:
 
-```jsonc
-"lint": { "terms": { "サーバー": ["サーバ"], "ユーザー": ["ユーザ"] } }
+```toml
+[lint.terms]
+"サーバー" = ["サーバ"]
+"ユーザー" = ["ユーザ"]
 ```
 
 ```bash
@@ -407,8 +409,9 @@ yuzu lint --fix
 表記ゆれのほかに**文書規約**も常時検査します（h1 の重複 `duplicate-h1`・
 見出しレベルの飛び `heading-level-skip`・frontmatter の未知キー
 `frontmatter-unknown-key`・コードブロックの表示メタのタイポ `code-block-meta`・
-図表ラベルの重複 `duplicate-label`・`yuzu.jsonc` のキーのタイポ
-`config-unknown-key`）。`yuzu check` はこれにリンク切れ・アンカー切れ
+図表ラベルの重複 `duplicate-label`）。`yuzu.toml` のキーのタイポや型違いは
+診断ではなく設定エラーで、どのコマンドも読み込み時に位置付きで止まります。
+`yuzu check` はこれにリンク切れ・アンカー切れ
 （`broken-link` / `broken-anchor`）・引用先の不備（`include-error`）・
 API 仕様の不備（`spec-error`）・整形差分（`fmt`）を足した統合チェックです。
 
@@ -425,14 +428,13 @@ yuzu fmt --diff              # 整形差分を unified diff で確認（patch �
 
 ## 最終更新日と編集リンク
 
-`yuzu.jsonc` の `git` セクションを有効にすると、ページフッターに
+`yuzu.toml` の `git` セクションを有効にすると、ページフッターに
 最終コミット日と「このページを編集」リンクが出ます:
 
-```jsonc
-"git": {
-  "lastUpdated": true, // 最終コミット日（git が無い環境では自動で非表示）
-  "editUrl": "https://github.com/me/docs/edit/main/content/{path}"
-}
+```toml
+[git]
+last_updated = true # 最終コミット日（git が無い環境では自動で非表示）
+edit_url = "https://github.com/me/docs/edit/main/content/{path}"
 ```
 
 ## 全文検索
@@ -449,12 +451,13 @@ yuzu fmt --diff              # 整形差分を unified diff で確認（patch �
 たとえば辞書に `"サーバー": ["サーバ"]` があれば、`サーバ` で検索しても
 `サーバー` と書かれたページがヒットし、ハイライトも付きます。
 
-`search.indexCode: true` にすると**フェンスコードブロックの中身も検索対象**になり、
+`search.index_code = true` にすると**フェンスコードブロックの中身も検索対象**になり、
 関数名や設定キーで設計書を引けます（既定は off。mermaid など特別描画される
 ブロックのソースは対象外です）:
 
-```jsonc
-"search": { "indexCode": true }
+```toml
+[search]
+index_code = true
 ```
 
 ターミナルからも同じエンジンで検索できます:
@@ -463,4 +466,4 @@ yuzu fmt --diff              # 整形差分を unified diff で確認（patch �
 yuzu search "検索したい言葉"
 ```
 
-`search.enabled: false` で機能ごと無効化できます。
+`search.enabled = false` で機能ごと無効化できます。

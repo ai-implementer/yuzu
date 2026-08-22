@@ -27,7 +27,7 @@ llms-full.txt の本文は原文そのままではなく、`yuzu fmt` と同じ�
 - `yuzu llms` / `yuzu llms --full` で、`dist/` を作らずに標準出力へも出せます
 
 > [!TIP]
-> 公開サイトでは `build.baseUrl` にフル URL（`https://…/docs/` など）を
+> 公開サイトでは `build.base_url` にフル URL（`https://…/docs/` など）を
 > 設定すると、llms.txt のリンクが絶対 URL になります（llms.txt の慣行に
 > 合います）。このサイトは CI が `--base-url` でフル URL を注入しています。
 

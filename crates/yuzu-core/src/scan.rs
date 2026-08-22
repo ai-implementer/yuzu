@@ -123,7 +123,7 @@ pub(crate) fn scan_content_assets(
 }
 
 /// glob パターン集合のマッチャ。`input.ignore`（content 相対）と
-/// `build.watchIgnore`（プロジェクトルート相対）が**同じ解釈**を共有する。
+/// `build.watch_ignore`（プロジェクトルート相対）が**同じ解釈**を共有する。
 /// globset を公開 API へ露出させないための薄いラッパでもある
 pub struct IgnoreMatcher(GlobSet);
 

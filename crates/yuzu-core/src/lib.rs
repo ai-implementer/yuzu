@@ -134,7 +134,7 @@ pub struct SearchPageOptions {
 }
 
 /// フェンス言語がビルド時に特別レンダリングされるか（＝コードブロックとして表示されない）。
-/// 検索インデックスのコード除外（`search.indexCode` 有効時）はこの述語が唯一の判定。
+/// 検索インデックスのコード除外（`search.index_code` 有効時）はこの述語が唯一の判定。
 /// yuzu-render 側のディスパッチ（highlight.rs の `render`）と集合を同期させること。
 /// mermaid / math は設定で無効化するとプレーンコード表示になるため対象から外れる
 /// （ページに見えるテキストは索引される）。openapi / jsonschema は常に特別レンダリング
@@ -490,7 +490,7 @@ pub fn render_body_html(
 
 /// ページ本文を h2/h3 見出し境界で分割したプレーンテキストセクションを返す（検索用）。
 /// 先頭要素はリード文（anchor/heading = None）。h4〜h6 は直近セクションに併合される。
-/// `index_code = true`（`search.indexCode`）でフェンスコードブロックの本文も含める
+/// `index_code = true`（`search.index_code`）でフェンスコードブロックの本文も含める
 /// （インデントコードブロックと、特別レンダリングされる言語
 /// [`is_special_render_lang`] は除く）
 /// `root` を渡すと `file=` のコンテンツインクルードを展開して索引する

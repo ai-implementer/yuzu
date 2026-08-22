@@ -16,12 +16,11 @@ fn write(dir: &Path, rel: &str, content: &str) {
     fs::write(path, content).unwrap();
 }
 
+/// テスト用プロジェクトの最小設定（検索は index テスト側で担保するので切る）
+const BASE_CONFIG: &str = "[site]\ntitle = \"Incr Docs\"\n\n[build]\nbase_url = \"/docs/\"\n\n[search]\nenabled = false\n";
+
 fn setup_project(root: &Path) {
-    write(
-        root,
-        "yuzu.jsonc",
-        r#"{ "site": { "title": "Incr Docs" }, "build": { "baseUrl": "/docs/" }, "search": { "enabled": false } }"#,
-    );
+    write(root, "yuzu.toml", BASE_CONFIG);
     write(
         root,
         "content/index.md",
@@ -505,9 +504,9 @@ fn 断片参照ページは_body_キャッシュに載らず断片の編集が�
 fn 用語集を無効にすると生成ページが孤児掃除される() {
     let dir = tempfile::tempdir().unwrap();
     setup_project(dir.path());
-    let with_glossary = r#"{ "site": { "title": "Incr Docs" }, "build": { "baseUrl": "/docs/" }, "search": { "enabled": false },
-      "markdown": { "glossary": { "terms": { "SSG": "Static Site Generator" } } } }"#;
-    write(dir.path(), "yuzu.jsonc", with_glossary);
+    let with_glossary =
+        format!("{BASE_CONFIG}\n[markdown.glossary.terms]\nSSG = \"Static Site Generator\"\n");
+    write(dir.path(), "yuzu.toml", &with_glossary);
     let cache_dir = dir.path().join(".yuzu/cache");
     let manifest = cache_dir.join("output-manifest.json");
 
@@ -518,11 +517,7 @@ fn 用語集を無効にすると生成ページが孤児掃除される() {
     assert!(dir.path().join("dist/glossary/index.html").is_file());
 
     // 辞書を消す = envKey も変わるので、cli と同じく新しいキーで読み直す
-    write(
-        dir.path(),
-        "yuzu.jsonc",
-        r#"{ "site": { "title": "Incr Docs" }, "build": { "baseUrl": "/docs/" }, "search": { "enabled": false } }"#,
-    );
+    write(dir.path(), "yuzu.toml", BASE_CONFIG);
     let cache = BuildCache::load(&cache_dir, "env2");
     let (written, _) = build_incremental(dir.path(), &cache);
     assert!(!written.contains("glossary/index.html"), "{written:?}");

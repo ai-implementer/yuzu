@@ -16,7 +16,7 @@ if (root) setup(root);
 function setup(root) {
   const SEARCH_BASE = root.dataset.searchBase || "/_search/";
   const BASE = root.dataset.base || "/";
-  // `search.pageSize`（テンプレート経由）。1 回に表示する件数
+  // `search.page_size`（テンプレート経由）。1 回に表示する件数
   const PAGE_SIZE = Math.max(1, parseInt(root.dataset.pageSize, 10) || 10);
   const DEBOUNCE_MS = 150;
 

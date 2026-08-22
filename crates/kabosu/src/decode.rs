@@ -64,7 +64,11 @@ pub enum DiagnosticCode {
     },
     IntegerOutOfRange,
     MissingKey,
-    UnknownKey,
+    UnknownKey {
+        /// その階層で受理されるキー（`TableDecoder` への要求順）。
+        /// 利用側が独自の文言（翻訳・候補提示）を組み立てられるよう構造化して持つ
+        known_keys: Vec<String>,
+    },
     /// 上限超過で省略した件数（末尾に 1 件だけ置かれる）
     TooManyDiagnostics {
         omitted: usize,
@@ -341,7 +345,9 @@ impl<'t, 'c, 'doc> TableDecoder<'t, 'c, 'doc> {
             let mut path = self.cx.path.clone();
             path.push(entry.key_segment().clone());
             let d = Diagnostic::new(
-                DiagnosticCode::UnknownKey,
+                DiagnosticCode::UnknownKey {
+                    known_keys: self.known.clone(),
+                },
                 severity,
                 message,
                 path,

@@ -1,6 +1,6 @@
 [package]
 name = "yuzu-config"
-description = "yuzu の設定スキーマ（yuzu.jsonc）と探索・解決"
+description = "yuzu の設定スキーマ（yuzu.toml）と探索・解決"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,11 +11,9 @@ authors.workspace = true
 publish = false
 
 [dependencies]
-jsonc-parser = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tracing = { workspace = true }
+# 通常依存は kabosu（TOML。依存ゼロ）だけ（設計書 docs/content/development/kabosu.md
+# 「境界と依存保証」）。探索・yuzu 固有スキーマ・既定値・パス解決だけをこの crate が持つ
+kabosu = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

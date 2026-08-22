@@ -6,7 +6,8 @@ description: 依存ゼロの TOML 設定ライブラリと yuzu-config の責務
 
 # kabosu の設計
 
-> 状態: 実装着手前の確定設計（2026-08-16）
+> 状態: 確定設計（2026-08-16）。v0.1 の実装と yuzu-config への統合は完了済み
+> （2026-08-22。`crates/kabosu/`・`crates/yuzu-config/src/codec.rs`）。以下は設計の原文
 
 `kabosu` は、TOML の解析・型変換・検証・生成を担う汎用ライブラリです。
 yuzu 固有の設定スキーマやファイル操作を含めず、crates.io で単独公開します。

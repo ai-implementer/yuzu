@@ -59,7 +59,7 @@ cd docs
 test -f dist/index.html && test -f dist/_search/manifest.json
 # 機能ごとの配信ゲート（CI と同じ。新機能を足したら 1 行増やす）
 grep -q 'http-equiv="refresh"' dist/guide/lint/index.html                      # エイリアス
-grep -q '<figcaption>yuzu.jsonc:15-31</figcaption>' dist/guide/code-and-math/index.html  # インクルード
+grep -q '<figcaption>yuzu.toml:25-45</figcaption>' dist/guide/code-and-math/index.html   # インクルード
 grep -q 'id="fig:deps"' dist/development/index.html                            # 図表番号
 grep -q '<a href="#fig:deps">図 1</a>' dist/development/index.html             # 参照の自動補完
 grep -q '<details class="markdown-alert markdown-alert-tip">' dist/guide/writing/index.html  # 折りたたみ
@@ -79,8 +79,8 @@ grep -q '"docGroups"' dist/_search/manifest.json                               #
 grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html" && echo "NG: フォールバック発生"
 ```
 
-**`docs/yuzu.jsonc` の 15-31 行目**（`markdown` ブロック全体）はインクルードの `lines=` で
-引用されている。この範囲を動かすと原稿の中身とゲートが同時に壊れるので、
+**`docs/yuzu.toml` の 25-45 行目**（`[markdown]` から `[markdown.glossary.terms]` の末尾まで）は
+インクルードの `lines=` で引用されている。この範囲を動かすと原稿の中身とゲートが同時に壊れるので、
 `docs/content/guide/code-and-math.md` の `lines=` 3 箇所と ci.yml の grep を同時に直す。
 
 ## 6. e2e（CLI 実機）
@@ -101,7 +101,7 @@ test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_s
 <repo>/target/debug/yuzu search '"リロードライブ"' | grep -q "一致するページはありませんでした"
 # --base-url は設定より優先（deploy.yml が configure-pages の base_path を渡す契約）
 <repo>/target/debug/yuzu build --base-url /docs/ && grep -q '/docs/_assets/' dist/index.html
-<repo>/target/debug/yuzu build   # 後続の検査は既定 baseUrl に戻してから
+<repo>/target/debug/yuzu build   # 後続の検査は既定 base_url に戻してから
 <repo>/target/debug/yuzu fmt --check && <repo>/target/debug/yuzu lint && <repo>/target/debug/yuzu check
 # 異常系: 壊れリンクを注入して check が終了コード 1 を返すこと（CI と同じ）
 echo '[壊れリンク](missing.md)' >> content/index.md

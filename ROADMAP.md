@@ -5,8 +5,16 @@ yuzu の開発計画と、これまでのリリースの内訳。**このファ�
 
 ## 現在
 
-**v0.13 まで公開済み**。次の版（v0.14）は未策定で、候補は下の
-「[v0.14 以降の候補](#v014-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
+**v0.13 まで公開済み**。v0.14 は「設定ファイルの TOML 化」に着手済み —
+依存ゼロ・no_std の TOML ライブラリ **kabosu**（設計は
+[docs/content/development/kabosu.md](docs/content/development/kabosu.md)）を追加し、
+設定を `yuzu.jsonc`（JSONC）から `yuzu.toml`（snake_case キー）へ全面移行した。
+**非互換**: JSONC の互換読み込み・変換コマンドは作らない / 未知キー・型違い・
+重複キーは設定エラー（exit 2）で止まる（`config-unknown-key` /
+`config-duplicate-key` ルールは廃止、`config-path-outside-root` だけ残る）/
+`.yuzu/settings.json` は廃止 / envKey が変わるので移行後の初回ビルドはフルビルド。
+Phase 番号と内訳は ROADMAP 整理時に付ける。ほかの候補は下の
+「[v0.14 以降の候補](#v014-以降の候補)」にある。
 
 ## v0.10.1 レビューの持ち越し
 
