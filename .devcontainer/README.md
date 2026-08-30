@@ -46,7 +46,8 @@ symlink ならその実体）を**ホストと同一の絶対パスへ bind moun
 
 VS Code から接続したい場合: 設定で `"dev.containers.experimentalAppleContainerSupport": true`
 を有効にし、`up` 済みの状態でコマンドパレットから **「Dev Containers: Attach to Running
-Apple Container...」** → `yuzu-dev` → `/workspaces/yuzu` を開く
+Apple Container...」** → `yuzu-dev` → **ホストと同一のリポジトリ実パス**を開く
+（ラッパー経路の workspace はホスト同一パス。旧構成の `/workspaces/yuzu` はもう存在しない）
 （**Reopen in Container は使えない** — Docker/Podman 前提のため）。
 
 ### Linux / Docker（VS Code・IntelliJ・Codespaces）

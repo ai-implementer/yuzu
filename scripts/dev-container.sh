@@ -155,8 +155,7 @@ cmd_up() {
     fi
   fi
 
-  # --ssh: 秘密鍵（~/.ssh）はマウントせず SSH agent フォワードで git push/fetch を通す
-  local args=(-d --name "$NAME" --ssh -v "$ROOT:$ROOT")
+  local args=(-d --name "$NAME" -v "$ROOT:$ROOT")
   local spec
   for spec in "${VOLUMES[@]}"; do
     args+=(-v "$spec")
@@ -184,11 +183,18 @@ cmd_up() {
   # 残さないよう run には焼かず exec 時のみ）
   args+=(${GIT_ENV_FLAGS[@]+"${GIT_ENV_FLAGS[@]}"})
   args+=(-p "127.0.0.1:5173:5173")
-  # エンジン差分 2/3: apple container はコンテナ = 軽量 VM で既定リソースが小さく、
-  # rustc の並列ビルドでメモリ不足になり得るため明示する
+  # エンジン差分 2/3: リソースと SSH agent フォワードの渡し方。
+  # - apple container はコンテナ = 軽量 VM で既定リソースが小さく、rustc の並列ビルドで
+  #   メモリ不足になり得るため明示する。SSH は専用の --ssh フラグ（秘密鍵 ~/.ssh は
+  #   マウントせず agent フォワードで git push/fetch を通す）
+  # - docker の run に --ssh は無いため、ホストの agent ソケットを同一パスで
+  #   bind mount して代替する（無ければスキップ = git は https か手動設定で）
   if [ "$ENGINE" = "container" ]; then
+    args+=(--ssh)
     args+=(--memory "${YUZU_CONTAINER_MEMORY:-8g}")
     args+=(--cpus "${YUZU_CONTAINER_CPUS:-$(sysctl -n hw.ncpu)}")
+  elif [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "$SSH_AUTH_SOCK" ]; then
+    args+=(-v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" -e SSH_AUTH_SOCK)
   fi
 
   "$ENGINE" run "${args[@]}" "$IMAGE"
