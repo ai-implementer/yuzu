@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 yuzu は Markdown の設計書を静的 HTML ドキュメントサイトに変換する Rust 製ツール（Cargo workspace、MSRV 1.85 / edition 2024）。対話・コメント・ドキュメント・テスト名はすべて日本語で書く。コミットはユーザの指示があるまで行わない（push もユーザが行う運用）。
 
-プロジェクトスキル（`.claude/skills/`）: 検証一式は `verify`、実機確認は `run`、リリースは `release`、Markdown 記法・本文レンダリング機能の追加は `add-markdown-feature`、テーマ JS / アセットの追加は `add-theme-asset`、tankan の図種追加は `tankan-add-diagram`、vendor 資産更新は `vendor-update`、開発コンテナ・apple container 操作は `apple-container` を使う。
+プロジェクトスキル（`.claude/skills/`）: 検証一式は `verify`、実機確認は `run`、リリースは `release`、Markdown 記法・本文レンダリング機能の追加は `add-markdown-feature`、テーマ JS / アセットの追加は `add-theme-asset`、tankan の図種追加は `tankan-add-diagram`、vendor 資産更新は `vendor-update`、開発コンテナ操作は `dev-container` を使う（apple container CLI 自体の汎用リファレンスはユーザスキル `apple-container`）。
 
 ## コマンド
 
