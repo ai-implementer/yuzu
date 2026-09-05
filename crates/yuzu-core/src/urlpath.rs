@@ -69,6 +69,23 @@ pub fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// 外部参照か（スキーム付き URL・`mailto:`・`tel:`）。
+/// render の書き換え（`UrlResolver::rewrite`）と linkcheck の「触らない」判定が
+/// 共有する唯一の定義
+pub fn is_external_url(url: &str) -> bool {
+    url.contains("://") || url.starts_with("mailto:") || url.starts_with("tel:")
+}
+
+/// `yuzu check --external-links` の検査対象か（`http://` / `https://` だけ。
+/// スキームは大文字小文字を区別しない）
+pub fn is_http_url(url: &str) -> bool {
+    let scheme = match url.find("://") {
+        Some(i) => &url[..i],
+        None => return false,
+    };
+    scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
+}
+
 /// `?query` / `#fragment` を切り離す
 pub fn split_suffix(url: &str) -> (&str, &str) {
     match url.find(['?', '#']) {
@@ -194,6 +211,27 @@ mod tests {
         assert_eq!(percent_decode("a%2"), "a%2", "桁が足りない % もそのまま");
         assert_eq!(percent_decode("a+b"), "a+b", "+ は空白にしない");
         assert_eq!(percent_decode("%FF"), "\u{FFFD}", "不正な UTF-8 は置換文字");
+    }
+
+    #[test]
+    fn 外部参照の判定() {
+        for url in [
+            "https://example.com/a.md",
+            "http://x",
+            "ftp://x/y",
+            "mailto:a@example.com",
+            "tel:+81",
+        ] {
+            assert!(is_external_url(url), "{url}");
+        }
+        for url in ["guide/a.md", "/images/x.png", "#frag", "a:b.md"] {
+            assert!(!is_external_url(url), "{url}");
+        }
+        assert!(is_http_url("https://example.com/"));
+        assert!(is_http_url("HTTP://example.com/"));
+        assert!(!is_http_url("ftp://example.com/"));
+        assert!(!is_http_url("mailto:a@example.com"));
+        assert!(!is_http_url("guide/a.md"));
     }
 
     #[test]

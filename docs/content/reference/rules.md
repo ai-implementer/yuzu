@@ -61,11 +61,12 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 ## yuzu check が追加するルール
 
-深刻度はすべて error で、常時有効・`--fix` では直せません。
+深刻度は `external-link-broken` を除いてすべて error で、常時有効・`--fix` では直せません。
 
 | ルール | 検出内容 |
 | --- | --- |
-| `broken-link` | 内部リンクの切れ（外部 URL は検査しません） |
+| `broken-link` | 内部リンクの切れ（外部 URL は既定では検査しません） |
+| `external-link-broken` | `check --external-links` を付けたときだけ。外部リンク（`http` / `https`）が HTTP 4xx を返した。warning で、`lintDisable`・行コメント・`lint.rules` で抑制できます。DNS 失敗・タイムアウト・5xx・429 は診断にせず「スキップ N 件」（`summary.skipped`）に数えます |
 | `broken-anchor` | 見出し・図表ラベルへのアンカーの切れ |
 | `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない（`#` `?` を含む・出力パスに使えない文字を含む等） |
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |

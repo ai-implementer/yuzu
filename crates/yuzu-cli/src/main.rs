@@ -73,6 +73,9 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
         cli::Command::Llms { full } => commands::llms::run(full).map(ok),
         cli::Command::Fmt { check, diff } => commands::fmt::run(check, diff),
         cli::Command::Lint { fix, format } => commands::lint::run(fix, format),
-        cli::Command::Check { format } => commands::check::run(format),
+        cli::Command::Check {
+            format,
+            external_links,
+        } => commands::check::run(format, external_links),
     }
 }

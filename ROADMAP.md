@@ -88,30 +88,36 @@ v0.15 の軸は「**正しさ・堅牢性**」。v0.10.1 の外部コードレ�
   明文化**し、破壊的変更を許す契約に格上げした（i18n 候補の `theme.strings` も同じ契約に
   乗せる前提）
 
-### 66 外部リンク切れ検査（opt-in） ⬜
+### 66 外部リンク切れ検査（opt-in） ✅
 
-`broken-link` は「外部 URL は検査しない」が契約（`linkcheck.rs` の「決定的・オフライン」。
-ただし「凍結した設計判断」の表には無く、doc コメントと `rules.md` にしか書かれていない）。
-これを既定経路に入れずに opt-in で足す。
+`broken-link` は「外部 URL は検査しない」が契約（決定的・オフライン）。これを既定経路に
+入れずに `yuzu check --external-links` の opt-in で足した。
 
-- **土台**: 外部 URL 判定が `linkcheck.rs` / `urls.rs`（2 箇所）に文字列リテラルで
-  散っているので `is_external_url` を 1 実装へ寄せる。`check_links` は外部 URL を捨てずに
-  `(rel, span, url)` で返し、HTTP は cli 層（`commands/check.rs` の `check_links` 直後）
-  だけが行う。インクルード断片内のリンクは現状 linkcheck の対象外（生 Markdown を見る）
-  なので、外部検査の対象も同じ線に揃える
-- **最大の判断点は TLS**: workspace に HTTP クライアントも TLS も無い（`hyper` は axum の
-  サーバ側のみ。`serve.rs` のテストは依存を増やさない手書き GET）。https を叩くには
-  `rustls` 系の新規依存が要り、依存グラフの質が変わる。選択肢は (a) `ureq` + `rustls` を
-  yuzu-cli だけに足す、(b) `curl` への委譲、(c) 形式検証（スキーム・ホスト）だけに留める。
-  (a) なら `cargo machete` と配布バイナリサイズへの影響を見る
-- **入口**: `yuzu check --external-links`（一時的）か `yuzu.toml` の `[check]` セクション
-  （永続。`config.md` と docs ゲートが増える）。新ルール `external-link-broken` は
-  warning・suppressible（`lintDisable` で例外を通せる）。`DISABLEABLE_RULES` と docs
-  `rules.md` の表へ追記
-- **`--format json` の契約**: ネットワーク失敗（タイムアウト・DNS）を診断に載せると出力が
-  環境依存になる。`summary` に `skipped` を足すなど加算的変更で収める。「凍結した設計判断」
-  表へ「ネットワーク I/O はビルド・検査の既定経路に入れない」を明文化するのも成果物
-- docs.yml で実運用するかは Phase 67 で決める
+- **土台**: 外部 URL 判定を `urlpath::is_external_url` / `is_http_url` の 1 実装へ寄せた
+  （`linkcheck.rs` / `urls.rs` の文字列リテラルを置換）。`check_links` は
+  `LinkReport { diags, external }` を返し、http / https の出現箇所（`ExternalLink` =
+  rel / span / url / is_image）を捨てない。HTTP を行うのは cli の `commands/extlink.rs`
+  だけ。インクルード断片内のリンクは従来どおり対象外
+- **判断: HTTP は curl へ委譲**（(b)）。workspace に HTTP クライアントも TLS も無く、
+  `ureq` + `rustls` は ring の C/asm ビルドと 20 超の crate を配布バイナリと 4 プラット
+  フォームのリリースビルドへ持ち込む（comrak / syntect で onig を避けたのと同じ規律で
+  却下）。opt-in の検査だけが外部ツールに依存し、curl が無ければ実行エラー（exit 2）。
+  `curl -sS -o /dev/null -L --max-redirs 10 --connect-timeout 10 --max-time 20 -w %{http_code}`
+  を 8 並列（`std::thread::scope`）・同一 URL は 1 回。テストは依存を増やさない手書きの
+  ローカル HTTP サーバに curl を当てる。**docs 自身への dogfooding で判明**: crates.io は
+  ブラウザ相当の `Accept: text/html` が無いと 404 を返すので、curl に Accept ヘッダを
+  付ける（付けないと `crates.io/crates/tankan` 等が誤報になる）
+- **判断: 入口はフラグだけ**（`[check]` セクションは作らない。必要になったら後から）。
+  新ルール `external-link-broken` は warning・suppressible（`lintDisable` / 行コメント /
+  `lint.rules`）。`DISABLEABLE_RULES` と docs `rules.md` に追記
+- **判断: 4xx（429 を除く）だけ診断、それ以外は skipped**。DNS 失敗・タイムアウト・
+  TLS エラー・5xx・429・curl の失敗は診断に載せず `summary.skipped`（URL 単位・キー追加の
+  加算的変更・常に出す）と集計行「スキップ N 件」に計上し、理由は warn ログへ = 環境依存の
+  失敗で CI を赤にしない。「凍結した設計判断」表（docs `development/index.md` と
+  CLAUDE.md）に「ネットワーク I/O は既定経路に入れない」を明文化
+- CI の e2e はネットワークへ出ず、自分の `yuzu preview` を相手に「4xx → warning・
+  到達不能 → skipped・既定の check は触れない」を検証する。docs.yml で実運用するかは
+  Phase 67 で決める
 
 ### 67 dogfooding 改善 ⬜
 

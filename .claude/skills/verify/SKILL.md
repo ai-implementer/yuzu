@@ -120,6 +120,13 @@ echo '[壊れリンク](missing.md)' >> content/index.md
 GITHUB_WORKSPACE="$(dirname "$PWD")" <repo>/target/debug/yuzu check --format github | grep '^::error file='
 # lint --fix と併用しても標準出力は JSON のまま（進捗は stderr へ逃げる）
 <repo>/target/debug/yuzu lint --fix --format json 2>/dev/null | head -1 | grep -q '^{$' && echo "OK fix+json"
+# 外部リンク検査（opt-in・Phase 66）: ネットワークへは出ず、自分の preview を相手にする
+<repo>/target/debug/yuzu preview --port 48123 >/dev/null 2>&1 & PREVIEW_PID=$!
+sleep 1
+printf '\n[ok](http://127.0.0.1:48123/)\n\n[missing](http://127.0.0.1:48123/no-such-file)\n\n[down](http://127.0.0.1:1/)\n' >> content/index.md
+<repo>/target/debug/yuzu check --external-links --format json > /tmp/extlink.json; kill $PREVIEW_PID
+grep -q '"rule": "external-link-broken"' /tmp/extlink.json && grep -q '"skipped": 1' /tmp/extlink.json && echo "OK extlink"
+<repo>/target/debug/yuzu check --format json | grep -q '"skipped": 0' && echo "OK 既定は触れない"
 ```
 
 終了コード規約: 0 = 成功 / 1 = 違反あり / 2 = 実行エラー。

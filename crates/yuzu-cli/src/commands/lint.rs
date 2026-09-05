@@ -122,6 +122,8 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
             pages: pages.iter().filter(|p| !p.is_generated()).count(),
             suppressed,
             disabled,
+            // lint は外部リンクを見ない（check の opt-in だけ）
+            skipped: 0,
         },
     )
 }

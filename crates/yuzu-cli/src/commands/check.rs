@@ -1,5 +1,7 @@
 //! `yuzu check`: lint ＋ リンク切れ検査 ＋ fmt 差分検出の統合チェック（CI 用）。
-//! 1 件でも診断があれば終了コード 1
+//! 1 件でも診断があれば終了コード 1。
+//! `--external-links` を付けたときだけ外部リンクの到達性も見る（`extlink`。
+//! 既定経路はネットワークに触れない）
 
 use std::process::ExitCode;
 
@@ -7,7 +9,7 @@ use yuzu_core::{DiagBase, Diagnostic, MarkdownOptions};
 
 use super::diag;
 
-pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
+pub fn run(format: diag::Format, external_links: bool) -> anyhow::Result<ExitCode> {
     let (root, rc) = super::load_project()?;
     let opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
@@ -62,13 +64,21 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
     // ブロックだけを見る。描画は失敗してもエラーボックスで継続するため、
     // 公開前に気づける場所はこの 2 つだけ
     diags.extend(yuzu_render::validate_api_specs(&pages, &root, &opts));
-    // 内部リンク・アンカー
-    diags.extend(yuzu_core::check_links(
-        &pages,
-        rc.public_dir.as_deref(),
-        &rc.content_dir,
-        &opts,
-    )?);
+    // 内部リンク・アンカー（外部リンクの出現箇所は捨てずに受け取る）
+    let yuzu_core::LinkReport {
+        diags: link_diags,
+        external,
+    } = yuzu_core::check_links(&pages, rc.public_dir.as_deref(), &rc.content_dir, &opts)?;
+    diags.extend(link_diags);
+    // 外部リンクの到達性（opt-in。ここだけがネットワークに触れる）。
+    // 診断は下の抑制の漏斗を通す = lintDisable / 行コメント / lint.rules が効く
+    let skipped = if external_links {
+        let outcome = super::extlink::check(&external)?;
+        diags.extend(outcome.diags);
+        outcome.skipped
+    } else {
+        0
+    };
 
     // frontmatter `lintDisable` のページ単位抑制。全検査の診断が
     // この漏斗を通ってから報告される（config-* は ProjectRoot なので素通り）
@@ -87,6 +97,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
             pages: pages.iter().filter(|p| !p.is_generated()).count(),
             suppressed,
             disabled,
+            skipped,
         },
     )
 }

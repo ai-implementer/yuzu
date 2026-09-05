@@ -144,6 +144,10 @@ jobs:
           grep -q '追随する' dist/guide/deploy/index.html
           grep -q 'シンボリックリンクを辿りません' dist/reference/cli/index.html
           grep -q 'css/syntect.css' dist/index.html && test -f dist/_assets/css/syntect.css
+          # 外部リンク検査（Phase 66）が原稿に載っている
+          grep -q 'external-link-broken' dist/reference/rules/index.html
+          grep -q -- '--external-links' dist/reference/cli/index.html
+          grep -q 'ネットワーク I/O' dist/development/index.html
           # ページ単位の lint 抑制（Phase 58）が原稿に載っている
           grep -q 'unused-lint-suppression' dist/reference/rules/index.html
           grep -q 'lintDisable' dist/guide/quality/index.html
@@ -356,6 +360,21 @@ jobs:
           # lint --fix と json を併用しても標準出力が JSON のまま（進捗は stderr へ）
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint --fix --format json 2>/dev/null \
             | head -1 | grep -q '^{$'
+          # Phase 66: 外部リンク検査（opt-in）。ネットワークへは出ず、自分の preview を
+          # 相手にして「4xx → warning・到達不能 → skipped・既定の check は触れない」を検証する
+          "$GITHUB_WORKSPACE/target/debug/yuzu" preview --port 48123 >/dev/null 2>&1 &
+          PREVIEW_PID=$!
+          for _ in $(seq 1 50); do curl -sf -o /dev/null http://127.0.0.1:48123/ && break; sleep 0.2; done
+          printf '\n[ok](http://127.0.0.1:48123/)\n\n[missing](http://127.0.0.1:48123/no-such-file)\n\n[down](http://127.0.0.1:1/)\n' >> content/index.md
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --external-links --format json > "$RUNNER_TEMP/extlink.json" || true
+          kill "$PREVIEW_PID"
+          grep -q '"rule": "external-link-broken"' "$RUNNER_TEMP/extlink.json"
+          grep -q 'no-such-file' "$RUNNER_TEMP/extlink.json"
+          grep -q '"skipped": 1' "$RUNNER_TEMP/extlink.json"
+          # 既定の check は外部リンクに触れない（診断なし・skipped 0）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json > "$RUNNER_TEMP/diag2.json" || true
+          ! grep -q 'external-link-broken' "$RUNNER_TEMP/diag2.json"
+          grep -q '"skipped": 0' "$RUNNER_TEMP/diag2.json"
           # tracing のログが標準出力へ漏れないこと（既定 writer は stdout なので明示指定が要る）。
           # input.dir がルート外の警告（config-path-outside-root）は読み込み後も続行して
           # 警告を出す数少ない経路で、混ざると JSON のパースが壊れる

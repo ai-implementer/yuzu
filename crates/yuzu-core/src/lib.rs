@@ -41,6 +41,7 @@ pub use include::{
     IncludeRef, SpecRefError, SpecSource, collect_include_specs, resolve_include,
     resolve_spec_file, resolve_spec_source, validate_includes, validate_spec_refs,
 };
+pub use linkcheck::{ExternalLink, LinkReport};
 pub use markdown::crossref::CaptionKind;
 pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
 pub use markdown::fragment::FRAGMENT_LANG;
@@ -574,13 +575,15 @@ pub fn apply_fixes(source: &str, diags: &[Diagnostic]) -> (String, usize) {
 ///
 /// - `pages` には draft 込みの全ページ（[`build_source_pages`]）を渡す。
 ///   リンクの**有効ターゲットは非 draft ページのみ**（ビルド成果物に実在するもの）
-/// - 外部 URL（スキーム付き）はネットワークに触れず検査しない
+/// - 外部 URL（スキーム付き）はネットワークに触れず検査しない。http / https の
+///   出現箇所だけ [`LinkReport::external`] で返す（到達性の検査は cli の opt-in
+///   `yuzu check --external-links` が行う = 既定経路にネットワーク I/O を入れない）
 /// - アンカーは本文 HTML と同一採番の見出し id で照合する
 pub fn check_links(
     pages: &[Page],
     public_dir: Option<&Path>,
     content_dir: &Path,
     opts: &MarkdownOptions,
-) -> Result<Vec<Diagnostic>, CoreError> {
+) -> Result<LinkReport, CoreError> {
     linkcheck::check_links(pages, public_dir, content_dir, opts)
 }
