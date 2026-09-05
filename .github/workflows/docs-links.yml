@@ -1,0 +1,42 @@
+# yuzu 自身のドキュメントサイト（docs/）の外部リンクを週次で検査する（Phase 67）。
+# デプロイ（docs.yml）とは切り離す: 外部リンクの到達性はネットワークと相手側の
+# 状態に依存するため、デプロイのゲートには入れない（凍結した設計判断
+# 「ネットワーク I/O は既定経路に入れない」）。到達不能・5xx・429 は skipped に
+# 逃がして失敗にしないので、赤くなるのは HTTP 4xx = リンク切れのときだけ。
+# actions はフルコミット SHA でピン留めする（docs.yml と同じ値に揃える）
+name: docs-links
+
+on:
+  schedule:
+    # 毎週月曜 09:00 JST（00:00 UTC）
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  external-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # SHA ピンでは ref 名からツールチェインを推定できないため toolchain の明示が必須
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: yuzu をビルド
+        # check はテーマを読まないので debug ビルドで足りる（docs.yml の release 必須は
+        # rust-embed がテーマをファイルシステムから読む build のための制約）
+        run: cargo build -p yuzu-cli
+
+      - name: 外部リンクの到達性検査（docs/）
+        # HTTP は curl へ委譲（ubuntu-latest に同梱）。github 形式で注釈を出し、
+        # 集計行の「スキップ N 件」で環境要因の件数も残す
+        working-directory: docs
+        run: |
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --external-links --format github

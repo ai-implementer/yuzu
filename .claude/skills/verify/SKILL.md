@@ -120,6 +120,14 @@ echo '[壊れリンク](missing.md)' >> content/index.md
 GITHUB_WORKSPACE="$(dirname "$PWD")" <repo>/target/debug/yuzu check --format github | grep '^::error file='
 # lint --fix と併用しても標準出力は JSON のまま（進捗は stderr へ逃げる）
 <repo>/target/debug/yuzu lint --fix --format json 2>/dev/null | head -1 | grep -q '^{$' && echo "OK fix+json"
+# preview のリンク遮断（Phase 65）: dist にリンクを置いて 404 と内容非漏洩を見る
+mkdir -p /tmp/outside && echo '<html>secret</html>' > /tmp/outside/secret.html
+ln -s /tmp/outside dist/link && ln -s /tmp/outside/secret.html dist/leaf.html
+<repo>/target/debug/yuzu preview --port 48124 >/dev/null 2>&1 & GUARD_PID=$!
+sleep 1
+test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:48124/link/secret.html)" = 404 && echo "OK link 404"
+! curl -s http://127.0.0.1:48124/leaf.html | grep -q secret && echo "OK 非漏洩"
+kill $GUARD_PID; rm dist/link dist/leaf.html
 # 外部リンク検査（opt-in・Phase 66）: ネットワークへは出ず、自分の preview を相手にする
 <repo>/target/debug/yuzu preview --port 48123 >/dev/null 2>&1 & PREVIEW_PID=$!
 sleep 1

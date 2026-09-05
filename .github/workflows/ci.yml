@@ -360,6 +360,21 @@ jobs:
           # lint --fix と json を併用しても標準出力が JSON のまま（進捗は stderr へ）
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint --fix --format json 2>/dev/null \
             | head -1 | grep -q '^{$'
+          # Phase 65: preview はシンボリックリンクを辿らない（実バイナリ経由の e2e）。
+          # dist 内のリンクとリンク先ファイルを置き、404 かつ内容が漏れないことを見る
+          mkdir -p "$RUNNER_TEMP/outside"
+          echo '<html>secret</html>' > "$RUNNER_TEMP/outside/secret.html"
+          ln -s "$RUNNER_TEMP/outside" dist/link
+          ln -s "$RUNNER_TEMP/outside/secret.html" dist/leaf.html
+          "$GITHUB_WORKSPACE/target/debug/yuzu" preview --port 48124 >/dev/null 2>&1 &
+          GUARD_PID=$!
+          for _ in $(seq 1 50); do curl -sf -o /dev/null http://127.0.0.1:48124/ && break; sleep 0.2; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:48124/link/secret.html)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:48124/leaf.html)" = 404
+          ! curl -s http://127.0.0.1:48124/link/secret.html | grep -q secret
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:48124/)" = 200
+          kill "$GUARD_PID"
+          rm dist/link dist/leaf.html
           # Phase 66: 外部リンク検査（opt-in）。ネットワークへは出ず、自分の preview を
           # 相手にして「4xx → warning・到達不能 → skipped・既定の check は触れない」を検証する
           "$GITHUB_WORKSPACE/target/debug/yuzu" preview --port 48123 >/dev/null 2>&1 &
