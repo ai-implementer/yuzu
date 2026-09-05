@@ -785,3 +785,26 @@ fn 検索結果ページ自身は索引に載らない() {
     .unwrap();
     assert_ne!(fragment["url"], "search/");
 }
+
+#[test]
+fn 索引の_url_は_route_をパーセントエンコードした配信_url() {
+    // search-hits.js は `base + url` をそのまま href にするので、
+    // 本文・ナビと同じ変換点（encode_path）を通した値を焼く
+    let content = tempfile::tempdir().unwrap();
+    write(
+        content.path(),
+        "設計/概 要#1.md",
+        "---\ntitle: 概要\n---\n# 概要\n\nこのページは設計の概要を説明します。\n",
+    );
+    let md_opts = MarkdownOptions::default();
+    let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    build_search_index(&site, &md_opts, &IndexParams::default(), dist.path()).unwrap();
+
+    let results = search_dist(dist.path(), "設計", 10).unwrap();
+    assert!(!results.is_empty());
+    assert_eq!(
+        results[0].url, "%E8%A8%AD%E8%A8%88/%E6%A6%82%20%E8%A6%81%231/",
+        "results={results:?}"
+    );
+}

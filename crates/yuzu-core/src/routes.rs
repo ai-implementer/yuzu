@@ -4,9 +4,11 @@
 //!   同じ `foo/index.html` を出力する。レンダリングはページ並列（rayon）なので
 //!   検出しないと**勝者が実行ごとに変わる**（出力マニフェストは `BTreeSet` で
 //!   同じ rel を 1 件に潰すため痕跡も残らない）
-//! - `unsafe-page-path` — yuzu は slug 化をせずファイル名をそのまま route にするため、
-//!   `#` や `?` を含むファイル名は URL にするとフラグメント・クエリとして解釈され、
-//!   **リンクが必ず壊れる**（`a#b.md` の `/a#b/` は `/a` ＋ フラグメント `b/`）
+//! - `unsafe-page-path` — yuzu は slug 化をせずファイル名をそのまま route にする。
+//!   URL で意味を持つ文字（`#` `?` `%` 空白・非 ASCII 等）は route → URL の変換点
+//!   （`urlpath::encode_path`）がパーセントエンコードするので許容し、**出力パスとして
+//!   書けない文字**（`\` と制御文字）だけを拒否する。設定・frontmatter 由来の route
+//!   （合成ページ・エイリアス）は加えて Windows の予約文字も全 OS で拒否する
 //!
 //! [`crate::validate_aliases`] と対になる「出力 URL」の担当で、
 //! check（診断一覧）と render（書き出し前の中断）の両方から呼ぶ。
@@ -17,18 +19,58 @@ use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::model::Page;
 use crate::rules;
 
-/// route が壊れる文字。
+/// 実ファイル名の route にできない文字。
 ///
-/// - `#` `?` は URL 構文として解釈されてリンクが切れる
-/// - `%` は**パーセントエンコード済みに見える**ため、`a%23b.md` は
-///   `dist/a%23b/index.html` へ出力されるのに URL `/a%23b/` はサーバ側で
-///   `a#b/` へデコードされ、物理パスと食い違って 404 になる
-/// - 引用符・山括弧は生成 HTML の属性や `<script>` の文脈を壊す
-///   （テンプレートの `| url` フィルタがエスケープするが、リンクの切れは直らない）
+/// `\` は `output::resolve_output_rel` が出力 rel として拒否する（Windows の
+/// 区切り。URL にすると `/` と混同される）。制御文字（改行・タブ等）は
+/// [`unsafe_path_chars`] で別途弾く。
 ///
-/// 半角スペースは含めない（ブラウザが `%20` へ補正するため実害が薄く、
-/// 日本語プロジェクトでは誤検知が多い）
-const UNSAFE_PATH_CHARS: &[char] = &['"', '\'', '<', '>', '#', '?', '%', '\\', '`'];
+/// `#` `?` `%` 引用符・山括弧・空白・非 ASCII は**ここでは弾かない**。
+/// 表示・書き出しの直前に `urlpath::encode_path` が `%XX` にするので、
+/// `a#b.md` の URL は `/a%23b/`、`a%23b.md` は `/a%2523b/` になり、
+/// サーバがデコードすると物理パスと一致する。実ファイル名は執筆者の OS が
+/// 作れる範囲に既に収まっている（Windows なら `?` 等のファイルはそもそも無い）
+const UNSAFE_PATH_CHARS: &[char] = &['\\'];
+
+/// 設定・frontmatter 由来の route（合成ページ・エイリアス）にできない文字。
+///
+/// 実ファイル名と違い、設定値と alias は**どの OS でビルドしても**同じ出力パスを
+/// 作らせるので、Windows がファイル名に使えない `< > : " | ? *`（と `\`）は
+/// 全プラットフォームで拒否する。Linux で通った `search.page = "a?b"` が Windows の
+/// dist 書き出し途中で I/O エラーになる事態を、事前診断に変える
+pub(crate) const PORTABLE_UNSAFE_PATH_CHARS: &[char] = &['\\', '<', '>', ':', '"', '|', '?', '*'];
+
+/// `rel`（`/` 区切り）に含まれる出力パスとして使えない文字（出現順・重複なし）。
+/// `portable` なら Windows の予約文字も対象にする（合成ページ・エイリアス用）
+pub(crate) fn unsafe_path_chars(rel: &str, portable: bool) -> Vec<char> {
+    let set = if portable {
+        PORTABLE_UNSAFE_PATH_CHARS
+    } else {
+        UNSAFE_PATH_CHARS
+    };
+    let mut found: Vec<char> = Vec::new();
+    for c in rel.chars() {
+        if (set.contains(&c) || c.is_control()) && !found.contains(&c) {
+            found.push(c);
+        }
+    }
+    found
+}
+
+/// 診断文面用に文字列化する（制御文字はコードポイントで可視化する）
+pub(crate) fn describe_chars(chars: &[char]) -> String {
+    chars
+        .iter()
+        .map(|c| {
+            if c.is_control() {
+                format!("U+{:04X}", *c as u32)
+            } else {
+                format!("`{c}`")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
 /// 全ページの route（出力 URL）の一意性と妥当性を検証する。
 ///
@@ -110,28 +152,20 @@ pub fn validate_routes(pages: &[Page]) -> Vec<Diagnostic> {
     diags
 }
 
-/// ファイル名に URL を壊す文字が入っていないか。
+/// ファイル名（合成ページは設定値）に出力パスとして書けない文字が入っていないか。
 ///
-/// **警告ではなくエラーにする**。route → URL の変換はテンプレートだけでなく
-/// 検索インデックス・llms.txt・sitemap にも波及し、テンプレート段階では
-/// 「パスの一部の `#`」と「URL 構文の `#`」を区別できないため、
-/// 生成物のあちこちに壊れたリンクが出る。書き出す前に止めるのが唯一の整合策
+/// **警告ではなくエラーにする**。`\` を含む rel は `output::write_under` が
+/// 書き出しを拒否するため、通すと render の途中で I/O エラーになる。
+/// 制御文字は URL・HTML・ログのどれでも見えない切れ目になる。
+/// 書き出す前に止めるのが唯一の整合策。合成ページは設定由来なので
+/// Windows の予約文字も拒否する（[`PORTABLE_UNSAFE_PATH_CHARS`]）
 fn check_page_path(page: &Page, out: &mut Vec<Diagnostic>) {
     let rel = crate::urlpath::rel_to_slash(&page.rel);
-    let found: Vec<char> = UNSAFE_PATH_CHARS
-        .iter()
-        .copied()
-        .filter(|c| rel.contains(*c))
-        .chain(rel.chars().filter(|c| c.is_control()))
-        .collect();
+    let found = unsafe_path_chars(&rel, page.is_generated());
     if found.is_empty() {
         return;
     }
-    let list = found
-        .iter()
-        .map(|c| format!("`{c}`"))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let list = describe_chars(&found);
     out.push(Diagnostic {
         rule: rules::UNSAFE_PAGE_PATH.id,
         severity: rules::UNSAFE_PAGE_PATH.severity,
@@ -141,12 +175,12 @@ fn check_page_path(page: &Page, out: &mut Vec<Diagnostic>) {
         message: match page.generated {
             // 合成ページは設定から作られるので、直す場所はファイル名ではない
             Some(kind) => format!(
-                "`{}` に URL で意味を持つ文字（{list}）が含まれています。yuzu は値をそのまま URL にするため、{}へのリンクが壊れます",
+                "`{}` に出力パスとして使えない文字（{list}）が含まれています。yuzu は値をそのまま出力先のパスにするため、{}を書き出せません（Windows で使えない `< > : \" | ? *` はどの OS でも拒否します）",
                 kind.config_key(),
                 kind.label()
             ),
             None => format!(
-                "ファイル名に URL で意味を持つ文字（{list}）が含まれています。yuzu はファイル名をそのまま URL にするため、このページへのリンクが壊れます。ファイル名を変えてください"
+                "ファイル名に出力パスとして使えない文字（{list}）が含まれています。yuzu はファイル名をそのまま出力先のパスにするため、このページを書き出せません。ファイル名を変えてください"
             ),
         },
         fix: None,
@@ -296,7 +330,7 @@ mod tests {
             (GeneratedKind::Glossary, "markdown.glossary.page"),
             (GeneratedKind::Search, "search.page"),
         ] {
-            let diags = validate_routes(&[generated_page("a#b.md", "a#b/", kind)]);
+            let diags = validate_routes(&[generated_page("a\\b.md", "a\\b/", kind)]);
             let hits: Vec<_> = diags
                 .iter()
                 .filter(|d| d.rule == "unsafe-page-path")
@@ -311,10 +345,10 @@ mod tests {
     }
 
     #[test]
-    fn url_で意味を持つ文字を含むファイル名はエラーになる() {
-        // `#` `?` はリンクが必ず壊れる。警告では生成物に壊れた URL が残るため
-        // `a%23b.md` は「エンコード済みに見える」ため物理パスと URL が食い違う
-        for rel in [r#"a"b.md"#, "a#b.md", "a?b.md", "a%23b.md", "guide/x<y>.md"] {
+    fn 出力パスとして使えない文字を含むファイル名はエラーになる() {
+        // `\` は output::write_under が拒否する（通すと書き出し途中で I/O エラー）。
+        // 制御文字は URL・HTML・ログのどれでも見えない切れ目になる
+        for rel in ["a\\b.md", "guide/x\ty.md", "a\nb.md"] {
             let route = rel.trim_end_matches(".md").to_string() + "/";
             let diags = validate_routes(&[page(rel, &route)]);
             let hits: Vec<_> = diags
@@ -324,17 +358,78 @@ mod tests {
             assert_eq!(hits.len(), 1, "{rel:?}: {diags:?}");
             assert_eq!(hits[0].severity, crate::Severity::Error);
             assert!(hits[0].span.is_none(), "ファイル配置の問題なので span なし");
+            assert!(
+                hits[0].message.contains("出力パス"),
+                "{rel:?}: {}",
+                hits[0].message
+            );
         }
     }
 
     #[test]
+    fn 合成ページは_windows_で使えない文字もどの_os_でも拒否する() {
+        // 設定値はどの OS でビルドしても同じ出力パスを作るので、Linux で通って
+        // Windows の書き出し途中で I/O エラーになる形を事前診断にする
+        for (rel, route) in [
+            ("a?b.md", "a?b/"),
+            ("a<b>.md", "a<b>/"),
+            ("a\"b.md", "a\"b/"),
+            ("a|b.md", "a|b/"),
+            ("a*b.md", "a*b/"),
+            ("a:b.md", "a:b/"),
+        ] {
+            let diags = validate_routes(&[generated_page(rel, route, GeneratedKind::Search)]);
+            assert_eq!(diags.len(), 1, "{rel:?}: {diags:?}");
+            assert_eq!(diags[0].rule, "unsafe-page-path");
+            assert!(
+                diags[0].message.contains("Windows"),
+                "{rel:?}: {}",
+                diags[0].message
+            );
+            // 同じ文字でも実ファイル名は OS が作れた時点で正当（URL 化でエンコードされる）
+            assert!(
+                validate_routes(&[page(rel, route)]).is_empty(),
+                "{rel:?} は実ファイルなら許容"
+            );
+        }
+        // `#` `%` 空白・非 ASCII は合成ページでも許容
+        for (rel, route) in [
+            ("a#b.md", "a#b/"),
+            ("a%23b.md", "a%23b/"),
+            ("設 計.md", "設 計/"),
+        ] {
+            assert!(
+                validate_routes(&[generated_page(rel, route, GeneratedKind::Glossary)]).is_empty(),
+                "{rel:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn 制御文字はコードポイントで報告する() {
+        let diags = validate_routes(&[page("a\tb.md", "a\tb/")]);
+        assert!(
+            diags[0].message.contains("U+0009"),
+            "見えない文字を可視化する: {}",
+            diags[0].message
+        );
+    }
+
+    #[test]
     fn 通常のファイル名は報告しない() {
-        // 日本語・ハイフン・アンダースコア・半角スペースは対象外
+        // 日本語・ハイフン・アンダースコア・半角スペースは対象外。
+        // `#` `?` `%` 引用符・山括弧も、URL 化で `%XX` にエンコードされるので許容
+        // （`a%23b.md` は `/a%2523b/` になり、サーバのデコード後に物理パスと一致）
         for (rel, route) in [
             ("index.md", ""),
             ("guide/getting-started.md", "guide/getting-started/"),
             ("設計/概要.md", "設計/概要/"),
             ("a b.md", "a b/"),
+            ("a#b.md", "a#b/"),
+            ("a?b.md", "a?b/"),
+            ("a%23b.md", "a%23b/"),
+            (r#"a"b'c.md"#, r#"a"b'c/"#),
+            ("guide/x<y>.md", "guide/x<y>/"),
         ] {
             let diags = validate_routes(&[page(rel, route)]);
             assert!(diags.is_empty(), "{rel:?}: {diags:?}");

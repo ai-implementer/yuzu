@@ -59,7 +59,9 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v20: frontmatter に `lintDisable`（ページ単位の lint 抑制）を追加
 ///   （CachedMeta の Frontmatter に載る）
 /// - v21: packet の SSR 追加（従来フォールバックが SSR 成功へ）
-pub const CACHE_FORMAT_VERSION: u32 = 21;
+/// - v22: route → URL のパーセントエンコード（本文リンクの `.md` 解決結果が
+///   `encode_path` を通り、著者がエンコード済みで書いた参照もデコードして解決する）
+pub const CACHE_FORMAT_VERSION: u32 = 22;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

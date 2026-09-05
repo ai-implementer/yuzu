@@ -11,7 +11,9 @@ use crate::MarkdownOptions;
 use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::markdown;
 use crate::model::{Page, SourceSpan};
+use crate::routes;
 use crate::rules;
+use crate::urlpath::percent_decode;
 
 /// エイリアス文字列を route 形式（`old/path/`。ルートは `""`）へ正規化する。
 /// 先頭 `/` と末尾スラッシュの省略は吸収し、サイト外・不正なパスは Err で返す
@@ -35,7 +37,22 @@ pub(crate) fn normalize_alias(raw: &str) -> Result<String, String> {
             "エイリアスの区切りは / を使ってください: {trimmed}"
         ));
     }
-    let core = trimmed.trim_start_matches('/').trim_end_matches('/');
+    // エイリアスは **URL として**書かれる（旧 URL をそのまま貼る用途）ので、
+    // `%XX` はデコードして生の route にする。`old%20name/` は出力先
+    // `old name/index.html` になり、ブラウザの `/old%20name/` がサーバのデコードで
+    // 一致する（デコードしないと `old%20name/` ディレクトリに書かれて 404）。
+    // デコード後の文字列が出力ディレクトリ名になる。エイリアスは設定由来で
+    // どの OS でビルドしても同じパスを作るので、Windows の予約文字
+    // （`a%3Fb` → `a?b` 等）と制御文字は全プラットフォームで拒否する
+    let decoded = percent_decode(trimmed);
+    let bad = routes::unsafe_path_chars(&decoded, true);
+    if !bad.is_empty() {
+        return Err(format!(
+            "エイリアスに出力パスとして使えない文字（{}）が含まれています: {trimmed}",
+            routes::describe_chars(&bad)
+        ));
+    }
+    let core = decoded.trim_start_matches('/').trim_end_matches('/');
     if core.is_empty() {
         return Err("サイトルートへのエイリアスは指定できません".to_string());
     }
@@ -229,6 +246,47 @@ mod tests {
         assert_eq!(normalize_alias("guide/old/"), Ok("guide/old/".to_string()));
         assert_eq!(normalize_alias("/guide/old"), Ok("guide/old/".to_string()));
         assert_eq!(normalize_alias(" old "), Ok("old/".to_string()));
+    }
+
+    #[test]
+    fn 正規化はパーセントエンコードをデコードする() {
+        // エイリアスは旧 URL を貼る用途なので URL として解釈する。
+        // 出力先は生のディレクトリ名 = サーバがデコードした要求パスと一致する
+        assert_eq!(normalize_alias("old%20name/"), Ok("old name/".to_string()));
+        assert_eq!(
+            normalize_alias("/%E8%A8%AD%E8%A8%88/%E6%A6%82%E8%A6%81"),
+            Ok("設計/概要/".to_string())
+        );
+        // `%23` は「`#` という名前のディレクトリ」であって URL 構文のフラグメントではない
+        assert_eq!(normalize_alias("a%23b"), Ok("a#b/".to_string()));
+        // 生の非 ASCII はそのまま（デコード不要）
+        assert_eq!(normalize_alias("設計/旧/"), Ok("設計/旧/".to_string()));
+    }
+
+    #[test]
+    fn デコード後に不正になるエイリアスも拒否する() {
+        for bad in ["a%5Cb", "%2E%2E/x", "a/%2E/b", "a%00b", "a%2F%2Fb"] {
+            assert!(normalize_alias(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn windows_で使えない文字はどの_os_でも拒否する() {
+        // エイリアスは設定由来なので、Linux で通って Windows の書き出し途中で
+        // I/O エラーになる形を事前診断にする（生でもデコード後でも同じ）
+        for bad in [
+            "a%3Fb", "a?b", "a%3Cb%3E", "a<b>", "a%3Ab", "a:b", "a%22b", "a|b", "a%2Ab", "a*b",
+        ] {
+            let err = normalize_alias(bad).unwrap_err();
+            assert!(
+                err.contains("出力パスとして使えない文字") || err.contains("フラグメント"),
+                "{bad:?}: {err}"
+            );
+        }
+        // `#` `%` 空白・非 ASCII は出力パスにできる（URL 化でエンコードされる）
+        for ok in ["a%23b", "a%2523b", "a%20b", "設計"] {
+            assert!(normalize_alias(ok).is_ok(), "{ok:?}");
+        }
     }
 
     #[test]
