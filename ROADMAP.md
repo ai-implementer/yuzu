@@ -3,12 +3,120 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在
+## 現在: v0.16（Phase 68〜71）
 
-**v0.15 まで公開済み**。次の版（v0.16）は未策定で、候補は下の
-「[v0.16 以降の候補](#v016-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
-kabosu 0.1.0 / tankan 0.2.0 / mikan 0.2.0 は crates.io で公開済み（yuzu のリリースとは
-非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある）。
+**v0.15 まで公開済み**（kabosu 0.1.0 / tankan 0.2.0 / mikan 0.2.0 も crates.io で公開済み。
+yuzu のリリースとは非同期）。
+
+軸は「**kabosu の TOML 1.0 完全対応**」。
+
+- 動機: v0.14 で「設定ファイル用途のサブセット」として切り出したまま crates.io へ公開した。
+  TOML 1.0 全体を受理できないパーサは利用側で「書ける TOML が分からない」摩擦になる
+- ゴール: 未対応 6 構文（float / date-time / 16,8,2 進整数 / 複数行文字列 / inline table /
+  array of tables）を実装し、公式 toml-test を通して **kabosu 0.2.0 を公開**する
+- yuzu 本体の機能追加はしない（公開サイトの仕上げ候補は「v0.17 以降の候補」へ据え置き）
+- Phase は lexer → 値型 → 構造 → 検証・公開の依存順。着手時に判断点を決めてから実装する
+
+### 68 数値と文字列の完全対応 ⬜
+
+lexer は既に「TOML として妥当なリテラルか」を判定してから `Unsupported` を返している
+（`is_valid_float` / `is_valid_datetime`）ので、判定を値の構築へ昇格させる。
+
+- **float**
+  - 小数・指数・`_` 区切り・`inf` / `nan`（符号付き）
+  - `Value::Float(f64)` / `ValueKind::Float` を追加（`#[non_exhaustive]` なので非破壊）
+  - `Decode for f64`、`TableEncoder` / `ArrayEncoder` の float 出力
+  - 判断点: 整数リテラルを f64 フィールドに受けるか（参照実装の serde は受ける。
+    kabosu は型厳格が方針 = 受けずに診断にする案）
+  - 判断点: 正規化の表現（`{:?}` の最短表現を基本に、`.` も `e` も無ければ `.0` を補う・
+    `inf` / `-inf` / `nan`・`-0.0` は温存・`nan` の符号は落とす）
+  - `toml` crate との差分テストは `nan` を等値比較できないので特別扱い
+- **16 / 8 / 2 進整数**
+  - `0x` / `0o` / `0b`・`_` 区切り・符号なし・i64 範囲（範囲外はエラー）
+  - 値は `Value::Integer` のまま、正規化は 10 進（原文の表現は保持しない = 非破壊編集の範疇）
+- **複数行文字列**
+  - basic `"""`: 開始直後の改行削除・行末 `\` で空白と改行をトリム・閉じ直前の `"` は
+    最大 2 個・エスケープ集合は単行と同じ・タブ以外の制御文字は不可
+  - literal `'''`: エスケープなし・閉じ直前の `'` は最大 2 個
+  - CRLF は原文どおり保持（参照実装との差分テストで縛る。正規化出力は LF）
+- 追随
+  - `UnsupportedFeature::{Float, RadixInteger, MultilineString}` を削除
+  - corpus: `unsupported/01,03,04` を `valid/` へ移してケース拡充（inf / nan / 指数 /
+    `_` / `0x` の範囲外 / `""""` / 行末 `\`）、`invalid/` に `1.`・`.5`・`1e`・`0x`・
+    `1__0`・`_1`・`"""` 内の不正エスケープ
+  - round-trip と正規化 snapshot に新しい値種別を足す
+
+### 69 日時（date-time） ⬜
+
+依存ゼロを維持するので独自の日時型を持つ。時刻演算・タイムゾーン変換・`chrono` / `time`
+への変換は持たない（非スコープに明記。利用側が数値フィールドから組む）。
+
+- 4 種: offset date-time / local date-time / local date / local time
+  - 区切りは `T` / `t` / 空白、小数秒は任意桁、オフセットは `Z` / `z` / `±HH:MM`
+  - 検証: 月日（閏年。`09-leap-day` は corpus 済み）・時 0〜23・分 0〜59・秒 0〜60
+    （うるう秒）・オフセットの範囲。既存 `is_valid_datetime` を値の構築へ昇格
+- 判断点: 値型の形。参照実装 `toml::value::Datetime { date, time, offset }`（各 Option）と
+  同型の 1 型 `Value::DateTime` にするか、4 variant に分けるか（差分テストとの相性は前者）
+- 判断点: 小数秒は `nanos: u32` で 9 桁まで保持し、超過桁は切り捨て（参照実装と同じ）か
+  エラーか
+- 判断点: 正規化の形。RFC 3339 の正規形（`T` 大文字・小数秒の末尾ゼロ除去）に加え、
+  オフセット 0 を `Z` に統一するか `+00:00` を保持するか（「同じ値 → 同じバイト列」なら `Z`）
+- 追随: `Decode` / `Encode` impl と `Display`（正規形）。corpus は `unsupported/02,07,08,09`
+  を `valid/` へ、`invalid/` に `2024-02-30`・`24:00:00`・`+25:00`・秒の省略 `07:32`。
+  `UnsupportedFeature::DateTime` を削除
+
+### 70 inline table と array of tables ⬜
+
+**テーブル状態機械（`TableOrigin` = Root / Header / HeaderImplicit / Dotted）の拡張が核。**
+
+- **inline table** `{ k = v, a.b = 1 }`
+  - 1 行・末尾カンマ不可・改行不可（TOML 1.0）・空 `{}` 可・ネスト可・dotted key 可
+  - 生成した Table は closed = 後続の `[a.b]` ヘッダや `a.c = 1` での拡張は競合エラー。
+    `TableOrigin::Inline` を追加して既存の競合検査へ組み込む
+- **array of tables** `[[a]]`
+  - 配列末尾に新テーブル。続く `[a.b]` は最後の要素配下、`[[a.b]]` は最後の要素の配列
+  - 競合規則: 静的配列 `a = [...]` への `[[a]]` は不可（逆も）・`[a]` を `[[a]]` の後に
+    書くのは不可（逆も）・inline table の配列 `a = [{...}]` は静的扱い
+  - `TableOrigin::ArrayHeader` を追加し、「最後の要素に追記」する経路を parser に足す。
+    `[[a]]` ヘッダの span を要素 Table の span にする（診断位置）
+- 判断点: 正規化出力。inline table は出さない（常にヘッダ形式へ展開。compact 出力は
+  非スコープ）。テーブルだけの配列は `[[a]]` で出すか `a = [{...}]` にするか
+  （参照実装のエンコーダは `[[a]]`。「要素が全部テーブルなら `[[...]]`」に決める案）
+- 確認事項: `Decode for Vec<T>` は配列要素ノードから decode するので array of tables は
+  無改造で通るはず
+- 追随
+  - `UnsupportedFeature::{InlineTable, ArrayOfTables}` を削除
+  - yuzu-config の `unsupported_message`（`resolve.rs`）は variant の削除で消える
+  - `yuzu.toml` は inline table や `[[...]]` を受理する。`table_codec!` は node 種別で見るので
+    `[lint.terms]` を `lint.terms = { ... }` と書いても同じ結果（config_test に 1 件足す）
+  - docs `reference/config.md` の「サブセット」段落と `development/kabosu.md` の対応範囲を更新
+
+### 71 toml-test による検証と kabosu 0.2.0 公開 ⬜
+
+- 判断点: 公式 toml-test の取り込み方
+  - (a) `scripts/vendor-toml-test.sh` で **TOML 1.0.0 のタグ**を
+    `crates/kabosu/tests/toml-test/` へ vendor（他の vendor 資産と同じ規律 = タグと
+    チェックサム固定。MIT）← 推奨
+  - (b) 自作 corpus を手で拡充し続ける
+  - (a) なら valid の期待値 `.json`（`{"type":"integer","value":"1"}` 形式）を kabosu の
+    値木から生成して比較するハーネス `toml_test.rs` を書き、自作 corpus は公式ハーネスへ
+    置き換える（corpus README の宣言どおり）。1.1 のケースは混ぜない
+- 判断点: `Unsupported` の行き先。TOML 1.0 を全部実装すると `UnsupportedFeature` は空になる
+  - enum ごと削除する
+  - TOML 1.1 の構文（`\e`・`\xHH`・inline table の改行と末尾カンマ・秒の省略・Unicode
+    bare key）を `Unsupported(TomlV11)` として位置付きで返す仕組みへ転用する ← 推奨
+    （「1.1 で書いたが 1.0 パーサ」の事故を親切に伝えられる。yuzu-config の文言も合わせる）
+- 判断点: encoder 側の toml-test。kabosu の出力は正規化専用（compact 無し）なので
+  「decoder 側の再パース一致」で読む
+- 検証: 差分テスト `to_toml_value` を Float / Datetime に拡張（`nan` は特別扱い）・fuzz
+  3 ターゲット（parse / roundtrip / decode）を新しい値種別込みで回す（publish 前の規律）
+- 公開
+  - README「対応状況」表・`docs/development/kabosu.md`（「v0.1 の対応範囲」→「TOML 1.0 の
+    対応範囲」）・corpus README を更新
+  - kabosu **0.1.0 → 0.2.0**（`Value` の variant 追加は非破壊だが、`UnsupportedFeature` の
+    削除と `Decode` / `Encode` の追加があるため minor bump）
+  - `cargo publish --dry-run` → `cargo publish -p kabosu`。yuzu 側の `Cargo.lock` 追随と
+    `unsupported_message` の整理は Phase 70 で済ませ、ここは公開作業だけ
 
 ## v0.10.1 レビューの持ち越し
 
@@ -29,7 +137,7 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   devcontainer のビルドが壊れるため固定は見送った。バージョン指定
   （`bash -s -- <version>`）は可能なので、必要になったらそこから
 
-## v0.16 以降の候補
+## v0.17 以降の候補
 
 - **dogfooding 候補（v0.13 Phase 61 からの持ち越し。判断根拠ごと残す）**:
   - `theme.dark: false`・JS 無効時の OS ダーク追従 — base.jinja が
