@@ -17,10 +17,26 @@ yuzu のリリースとは非同期）。
 - yuzu 本体の機能追加はしない（公開サイトの仕上げ候補は「v0.17 以降の候補」へ据え置き）
 - Phase は lexer → 値型 → 構造 → 検証・公開の依存順。着手時に判断点を決めてから実装する
 
-### 68 数値と文字列の完全対応 ⬜
+### 68 数値と文字列の完全対応 ✅
 
-lexer は既に「TOML として妥当なリテラルか」を判定してから `Unsupported` を返している
-（`is_valid_float` / `is_valid_datetime`）ので、判定を値の構築へ昇格させる。
+lexer の「TOML として妥当なリテラルか」の判定（`is_valid_float` 等）を値の構築へ昇格させた。
+判断は 2 点とも推奨案: `Decode for f64` は整数リテラルを受けない（型厳格）/ 正規化は
+`{:?}` の最短表現に `.0` を補い、`nan` の符号は落とす。
+
+- 実装メモ
+  - `Value::Float(f64)` / `ValueKind::Float` / `Node::as_float` / `Decode` `Encode` for `f64` /
+    `Encoder::float` / `normalize::render_float`。進数整数は `Value::Integer` に畳む
+  - 文字列は `read_string_value` が単行 / 複数行 × basic / literal を振り分ける。キー位置の
+    `"""` / `'''` は新しい `MultilineStringAsKey`、閉じ直前の引用符 3 個以上は `TooManyQuotes`
+  - `UnsupportedFeature` は DateTime / InlineTable / ArrayOfTables の 3 つに縮小（yuzu-config の
+    `unsupported_message` から 3 分岐を削除）
+  - corpus: `unsupported/01,03,04` → `valid/07〜09`（TOML 仕様の例文で拡充）、`invalid/12〜15`
+    （複数行文字列のキー・引用符 6 個・行末 `\` の後の非空白・16 進の範囲外）
+  - 差分テストは `nan` を文字列に正規化してから比較。round-trip に float（特殊値と乱数ビット列。
+    nan は別テスト）、正規化 snapshot に `normalize_floats` を追加
+
+以下は策定時のメモ。
+
 
 - **float**
   - 小数・指数・`_` 区切り・`inf` / `nan`（符号付き）

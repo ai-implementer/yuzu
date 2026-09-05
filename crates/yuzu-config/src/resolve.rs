@@ -264,27 +264,22 @@ fn syntax_message(text: &str, e: &ParseError) -> String {
     }
 }
 
-/// kabosu v0.1 で未対応の構文。yuzu の設定で必要になる書き換え先を案内する
+/// kabosu がまだ未対応の構文（date-time / inline table / array of tables）。
+/// yuzu の設定で必要になる書き換え先を案内する
 fn unsupported_message(feature: UnsupportedFeature) -> String {
     let (name, hint) = match feature {
         UnsupportedFeature::InlineTable => (
             "インラインテーブル（`{ ... }`）",
             "`[lint.terms]` のようなテーブルヘッダで書いてください",
         ),
-        UnsupportedFeature::MultilineString => (
-            "複数行文字列（`\"\"\"` / `'''`）",
-            "1 行の文字列で書いてください",
-        ),
         UnsupportedFeature::ArrayOfTables => (
             "テーブルの配列（`[[...]]`）",
             "yuzu の設定にテーブルの配列を取るキーはありません",
         ),
-        UnsupportedFeature::Float => ("小数（float）", "yuzu の設定に小数を取るキーはありません"),
         UnsupportedFeature::DateTime => ("日付・時刻リテラル", "文字列として引用してください"),
-        UnsupportedFeature::RadixInteger => ("16 / 8 / 2 進整数", "10 進で書いてください"),
         _ => ("この構文", "別の書き方にしてください"),
     };
-    format!("{name}は {CONFIG_FILE_NAME} では使えません（kabosu v0.1 の未対応構文）。{hint}")
+    format!("{name}は {CONFIG_FILE_NAME} では使えません（kabosu の未対応構文）。{hint}")
 }
 
 /// ディレクトリ設定の値がプロジェクトルート配下でない理由

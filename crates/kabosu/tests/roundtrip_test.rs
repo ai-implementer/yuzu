@@ -11,6 +11,8 @@ use kabosu::{ArrayEncoder, Decode, DecodeContext, Encode, EncodeError, Encoder, 
 enum Rand {
     Str(String),
     Int(i64),
+    /// nan は生成しない（`nan != nan` で同値比較できない。別テストで往復を見る）
+    Float(f64),
     Bool(bool),
     List(Vec<Rand>),
 }
@@ -20,6 +22,7 @@ impl Encode for Rand {
         match self {
             Rand::Str(s) => encoder.string(s),
             Rand::Int(n) => encoder.integer(*n),
+            Rand::Float(f) => encoder.float(*f),
             Rand::Bool(b) => encoder.boolean(*b),
             Rand::List(items) => {
                 let mut array: ArrayEncoder<'_> = encoder.array();
@@ -39,6 +42,7 @@ impl Decode for Rand {
         match node.value() {
             Value::String(s) => Some(Rand::Str(s.clone())),
             Value::Integer(n) => Some(Rand::Int(*n)),
+            Value::Float(f) => Some(Rand::Float(*f)),
             Value::Boolean(b) => Some(Rand::Bool(*b)),
             Value::Array(items) => {
                 let mut out = Vec::new();
@@ -82,11 +86,41 @@ fn rand_string(rng: &mut Lcg) -> String {
         .collect()
 }
 
+/// 特殊値と乱数ビット列から float を生成する（nan は除く）
+fn rand_float(rng: &mut Lcg) -> f64 {
+    const SPECIAL: &[f64] = &[
+        0.0,
+        -0.0,
+        1.0,
+        -1.5,
+        core::f64::consts::PI,
+        1e21,
+        1e-7,
+        6.02e23,
+        0.1 + 0.2,
+        f64::MAX,
+        f64::MIN_POSITIVE,
+        5e-324,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    if rng.below(2) == 0 {
+        return SPECIAL[rng.below(SPECIAL.len() as u64) as usize];
+    }
+    loop {
+        let f = f64::from_bits(rng.next() << 16 | rng.below(1 << 16));
+        if !f.is_nan() {
+            return f;
+        }
+    }
+}
+
 fn rand_value(rng: &mut Lcg, depth: usize) -> Rand {
-    match rng.below(if depth >= 3 { 3 } else { 4 }) {
+    match rng.below(if depth >= 3 { 4 } else { 5 }) {
         0 => Rand::Str(rand_string(rng)),
         1 => Rand::Int(rng.next() as i64),
         2 => Rand::Bool(rng.below(2) == 0),
+        3 => Rand::Float(rand_float(rng)),
         _ => {
             let len = rng.below(4) as usize;
             Rand::List((0..len).map(|_| rand_value(rng, depth + 1)).collect())
@@ -119,6 +153,11 @@ fn 手書きケースの_round_trip() {
     map.insert("count".into(), Rand::Int(i64::MIN));
     map.insert("max".into(), Rand::Int(i64::MAX));
     map.insert("flag".into(), Rand::Bool(false));
+    map.insert("ratio".into(), Rand::Float(0.1 + 0.2));
+    map.insert("neg_zero".into(), Rand::Float(-0.0));
+    map.insert("huge".into(), Rand::Float(f64::MAX));
+    map.insert("tiny".into(), Rand::Float(5e-324));
+    map.insert("inf".into(), Rand::Float(f64::NEG_INFINITY));
     map.insert("empty".into(), Rand::List(vec![]));
     map.insert(
         "nested".into(),
@@ -159,4 +198,25 @@ fn 乱数生成の_round_trip_と正規化の恒等() {
 fn ルートがテーブルでない値は_root_not_table() {
     let e = kabosu::to_string(&Rand::Int(1)).unwrap_err();
     assert_eq!(*e.kind(), kabosu::EncodeErrorKind::RootNotTable);
+}
+
+#[test]
+fn nan_と負のゼロの往復() {
+    // nan は同値比較できないので個別に見る。符号は落ちて `nan` になる
+    let mut map: BTreeMap<String, Rand> = BTreeMap::new();
+    map.insert("n".into(), Rand::Float(-f64::NAN));
+    map.insert("z".into(), Rand::Float(-0.0));
+    let text = kabosu::to_string(&map).unwrap();
+    assert_eq!(text, "n = nan\nz = -0.0\n");
+    let report = kabosu::from_str::<BTreeMap<String, Rand>>(&text).unwrap();
+    let value = report.value().unwrap();
+    match value.get("n") {
+        Some(Rand::Float(f)) => assert!(f.is_nan() && !f.is_sign_negative()),
+        other => panic!("{other:?}"),
+    }
+    // -0.0 == 0.0 なので符号ビットで見る
+    match value.get("z") {
+        Some(Rand::Float(f)) => assert!(f.is_sign_negative()),
+        other => panic!("{other:?}"),
+    }
 }

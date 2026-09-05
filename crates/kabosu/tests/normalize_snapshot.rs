@@ -96,3 +96,27 @@ fn 空テーブルと空配列() {
     }
     insta::assert_snapshot!("normalize_empty", kabosu::to_string(&Empty).unwrap());
 }
+
+#[test]
+fn float_の正規形() {
+    struct Floats;
+    impl Encode for Floats {
+        fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+            let mut t = encoder.table();
+            t.field("one", &1.0_f64)?;
+            t.field("pi", &core::f64::consts::PI)?;
+            t.field("neg_zero", &-0.0_f64)?;
+            t.field("big", &1e21_f64)?;
+            t.field("small", &1e-7_f64)?;
+            t.field("sum", &(0.1_f64 + 0.2))?;
+            t.field("max", &f64::MAX)?;
+            t.field("denormal", &5e-324_f64)?;
+            t.field("inf", &f64::INFINITY)?;
+            t.field("neg_inf", &f64::NEG_INFINITY)?;
+            t.field("nan", &-f64::NAN)?;
+            t.field("list", &vec![1.5_f64, 2.0, -0.5])?;
+            Ok(())
+        }
+    }
+    insta::assert_snapshot!("normalize_floats", kabosu::to_string(&Floats).unwrap());
+}

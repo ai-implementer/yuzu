@@ -7,9 +7,10 @@
 //! - **手書き decode / encode**（derive マクロなし）: 必須・任意・既定値・ネスト・
 //!   検証・未知キー検出（Warn / Deny / Ignore）をサポート
 //! - **正規化出力**: 同じ値から常に同じバイト列を生成する
-//! - v0.1 の対応範囲は TOML 1.0 のサブセット。未対応構文（float / date-time /
-//!   16,8,2 進整数 / 複数行文字列 / inline table / array of tables）は
-//!   一般的な構文エラーにせず、位置付きの [`ParseErrorKind::Unsupported`] として返す
+//! - 対応範囲は TOML 1.0 のサブセット（文字列は複数行含む全種・整数は 10 進と
+//!   16,8,2 進・float・boolean・配列・テーブル）。まだ未対応の構文（date-time /
+//!   inline table / array of tables）は一般的な構文エラーにせず、位置付きの
+//!   [`ParseErrorKind::Unsupported`] として返す
 //!
 //! ```
 //! let doc = kabosu::Document::parse("title = \"yuzu\"\n[dev]\nport = 5173\n").unwrap();

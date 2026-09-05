@@ -34,16 +34,18 @@ yuzu 固有の設定スキーマやファイル操作を含めず、crates.io �
 - UTF-8、LF / CRLF、`#` コメント
 - bare key、quoted key、dotted key
 - 標準テーブルとネストテーブル
-- 単行 basic string と主要エスケープ、単行 literal string
-- 符号付き 10 進整数、`_` 区切り、TOML の i64 範囲
+- basic string と literal string（単行・複数行。エスケープは TOML 1.0 の全種）
+- 符号付き 10 進整数と 16 / 8 / 2 進整数、`_` 区切り、TOML の i64 範囲
+- float（小数・指数・`inf` / `nan`）
 - boolean
 - 複数行、末尾カンマ、コメント、ネストを含む配列
 - 重複キーとテーブル競合の検出
 - キー、値、コメントの正確な span
 
 v0.1 では float、date/time、16 / 8 / 2 進整数、複数行文字列、inline table、
-array of tables を扱いません。未対応構文は一般的な構文エラーにせず、位置付きの
-「v0.1 では未対応」として返します。
+array of tables を扱いませんでした。0.2 で float、16 / 8 / 2 進整数、複数行文字列に
+対応し（v0.16 Phase 68）、date/time、inline table、array of tables が残っています。
+未対応構文は一般的な構文エラーにせず、位置付きの「未対応」として返します。
 
 0.x で対応範囲を段階的に広げ、TOML 1.0 の公式 toml-test の valid、invalid、
 encoder テストをすべて通過することを `1.0.0` の条件にします。

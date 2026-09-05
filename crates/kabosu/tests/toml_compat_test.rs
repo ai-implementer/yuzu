@@ -12,10 +12,11 @@ fn to_toml_value(node: &Node) -> toml::Value {
     match node.value() {
         Value::String(s) => toml::Value::String(s.clone()),
         Value::Integer(n) => toml::Value::Integer(*n),
+        Value::Float(f) => toml::Value::Float(*f),
         Value::Boolean(b) => toml::Value::Boolean(*b),
         Value::Array(items) => toml::Value::Array(items.iter().map(to_toml_value).collect()),
         Value::Table(t) => table_to_toml(t),
-        other => unreachable!("v0.1 に無い値種別: {other:?}"),
+        other => unreachable!("未対応の値種別: {other:?}"),
     }
 }
 
@@ -25,6 +26,19 @@ fn table_to_toml(table: &Table) -> toml::Value {
         map.insert(entry.key().to_string(), to_toml_value(entry.node()));
     }
     toml::Value::Table(map)
+}
+
+/// `nan` は `nan != nan` なので等値比較できない。比較用に文字列へ置き換える
+/// （kabosu 側も参照実装側も同じ変換を通す）
+fn canon(v: toml::Value) -> toml::Value {
+    match v {
+        toml::Value::Float(f) if f.is_nan() => toml::Value::String(String::from("<nan>")),
+        toml::Value::Array(items) => toml::Value::Array(items.into_iter().map(canon).collect()),
+        toml::Value::Table(t) => {
+            toml::Value::Table(t.into_iter().map(|(k, v)| (k, canon(v))).collect())
+        }
+        other => other,
+    }
 }
 
 fn corpus(dir: &str) -> Vec<(String, String)> {
@@ -51,13 +65,13 @@ fn valid_corpus_の値解釈が参照実装と一致する() {
     for (name, src) in corpus("valid") {
         let doc =
             Document::parse(&src).unwrap_or_else(|e| panic!("{name}: kabosu が受理しない: {e}"));
-        let ours = table_to_toml(doc.root());
+        let ours = canon(table_to_toml(doc.root()));
         let theirs: toml::Table = src
             .parse()
             .unwrap_or_else(|e| panic!("{name}: 参照実装が受理しない: {e}"));
         assert_eq!(
             ours,
-            toml::Value::Table(theirs),
+            canon(toml::Value::Table(theirs)),
             "{name}: 値解釈が参照実装と一致しない"
         );
     }
@@ -93,7 +107,7 @@ fn unsupported_corpus_は参照実装では受理される() {
 fn 正規化出力は参照実装でも同じ値に読める() {
     for (name, src) in corpus("valid") {
         let doc = Document::parse(&src).unwrap();
-        let ours = table_to_toml(doc.root());
+        let ours = canon(table_to_toml(doc.root()));
         // Document → 値 → 正規形はまだ無い（decode 型が要る）ので、
         // 参照実装の値を kabosu の正規形と突き合わせる代わりに
         // 参照実装で正規形を再パースして値一致を見る
@@ -103,7 +117,7 @@ fn 正規化出力は参照実装でも同じ値に読める() {
             .unwrap_or_else(|e| panic!("{name}: 正規形を参照実装が受理しない: {e}\n{normalized}"));
         assert_eq!(
             ours,
-            toml::Value::Table(reparsed),
+            canon(toml::Value::Table(reparsed)),
             "{name}: 正規形の値が変わった\n{normalized}"
         );
     }
@@ -132,6 +146,7 @@ fn reencode(doc: &Document) -> String {
             match self.0.value() {
                 Value::String(s) => encoder.string(s),
                 Value::Integer(n) => encoder.integer(*n),
+                Value::Float(f) => encoder.float(*f),
                 Value::Boolean(b) => encoder.boolean(*b),
                 Value::Array(items) => {
                     let mut array = encoder.array();
@@ -142,7 +157,7 @@ fn reencode(doc: &Document) -> String {
                 Value::Table(t) => {
                     return encode_table(t, &mut encoder.table());
                 }
-                other => unreachable!("v0.1 に無い値種別: {other:?}"),
+                other => unreachable!("未対応の値種別: {other:?}"),
             }
             Ok(())
         }

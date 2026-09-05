@@ -33,6 +33,7 @@ fn reencode(doc: &Document) -> String {
             match self.0.value() {
                 Value::String(s) => encoder.string(s),
                 Value::Integer(n) => encoder.integer(*n),
+                Value::Float(f) => encoder.float(*f),
                 Value::Boolean(b) => encoder.boolean(*b),
                 Value::Array(items) => {
                     let mut array = encoder.array();
@@ -41,7 +42,7 @@ fn reencode(doc: &Document) -> String {
                     }
                 }
                 Value::Table(t) => return encode_table(t, &mut encoder.table()),
-                other => unreachable!("v0.1 に無い値種別: {other:?}"),
+                other => unreachable!("未対応の値種別: {other:?}"),
             }
             Ok(())
         }
