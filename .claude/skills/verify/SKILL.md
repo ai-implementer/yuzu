@@ -74,6 +74,10 @@ grep -q 'href="/glossary/"' dist/index.html                                    #
 grep -q '<strong>「重要」</strong>' dist/guide/writing/index.html              # 約物に隣接した強調
 grep -q '<dl>' dist/guide/writing/index.html                                   # 定義リスト
 grep -q '"docGroups"' dist/_search/manifest.json                               # 検索の絞り込み区分
+grep -q 'パーセントエンコード' dist/guide/writing/index.html                    # URL エンコード（Phase 64）
+grep -q '追随する' dist/guide/deploy/index.html                                # テーマ上書きの契約（Phase 65）
+grep -q 'シンボリックリンクを辿りません' dist/reference/cli/index.html          # 配信のリンク遮断（Phase 65）
+grep -q 'css/syntect.css' dist/index.html && test -f dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
 grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html" && echo "NG: フォールバック発生"

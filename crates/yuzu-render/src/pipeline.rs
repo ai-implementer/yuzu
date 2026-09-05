@@ -285,6 +285,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 live_reload_ws => params.live_reload == LiveReloadMode::Ws,
                 mermaid_enabled => mermaid_js_needed,
                 math_enabled => math_needed,
+                highlight_enabled => cfg.markdown.highlight.enabled,
                 dark_enabled => cfg.theme.dark,
                 search_enabled => cfg.search.enabled,
                 search_page_url => search_page_url.as_deref(),
@@ -349,6 +350,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         live_reload_ws => params.live_reload == LiveReloadMode::Ws,
         mermaid_enabled => false,
         math_enabled => false,
+        highlight_enabled => cfg.markdown.highlight.enabled,
         dark_enabled => cfg.theme.dark,
         search_enabled => cfg.search.enabled,
         search_page_url => search_page_url.as_deref(),
@@ -357,12 +359,16 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     assets::write_output(ctx.outputs, output_dir, "404.html", not_found.as_bytes())?;
 
     assets::write_theme_assets(output_dir, rc.theme_dir.as_deref(), ctx.outputs)?;
-    assets::write_output(
-        ctx.outputs,
-        output_dir,
-        "_assets/css/syntect.css",
-        shared.syntect_css.as_bytes(),
-    )?;
+    // syntect.css はハイライト有効時だけ書く（base.jinja の <link> も
+    // `highlight_enabled` で同じ条件。無効化したら孤児掃除が消す）
+    if let Some(css) = &shared.syntect_css {
+        assets::write_output(
+            ctx.outputs,
+            output_dir,
+            "_assets/css/syntect.css",
+            css.as_bytes(),
+        )?;
+    }
 
     // llms.txt / llms-full.txt（copy_public より前 = ユーザが public/llms.txt を
     // 置いた場合はそちらが上書きして優先される。テーマ上書きと同じ思想）

@@ -14,5 +14,5 @@ mod watch;
 
 pub use error::ServerError;
 pub use livereload::{LIVERELOAD_PATH, ReloadNotifier};
-pub use serve::{ServeOptions, base_path, serve};
+pub use serve::{PathGuard, ServeOptions, base_path, serve};
 pub use watch::{WatchHandle, WatchIgnore, watch};

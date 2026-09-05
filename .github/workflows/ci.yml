@@ -139,6 +139,11 @@ jobs:
           # URL のパーセントエンコード（Phase 64）が原稿に載っている
           grep -q 'パーセントエンコード' dist/guide/writing/index.html
           grep -q '%E8%A8%AD%E8%A8%88/%E6%A6%82%20%E8%A6%81' dist/guide/writing/index.html
+          # 配信とテーマ契約（Phase 65）: テーマ上書きの追随責任と配信のリンク遮断が
+          # 原稿に載り、docs（ハイライト有効）では syntect.css が <link> される
+          grep -q '追随する' dist/guide/deploy/index.html
+          grep -q 'シンボリックリンクを辿りません' dist/reference/cli/index.html
+          grep -q 'css/syntect.css' dist/index.html && test -f dist/_assets/css/syntect.css
           # ページ単位の lint 抑制（Phase 58）が原稿に載っている
           grep -q 'unused-lint-suppression' dist/reference/rules/index.html
           grep -q 'lintDisable' dist/guide/quality/index.html

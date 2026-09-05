@@ -2249,6 +2249,7 @@ dependencies = [
  "serde",
  "serde_json",
  "similar",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "yuzu-config",
