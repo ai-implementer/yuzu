@@ -256,13 +256,14 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 .and_then(|dates| dates.get(&rel_key))
                 .cloned();
             // 合成ページ（用語集）は実ファイルが無いので編集リンクを出さない
-            // （last_updated は git_dates に無いので自動的に None になる）
+            // （last_updated は git_dates に無いので自動的に None になる）。
+            // `{path}` は外部 URL のパスに埋まるので route と同じ規則でエンコードする
             let edit_url = cfg
                 .git
                 .edit_url
                 .as_ref()
                 .filter(|_| !page.is_generated())
-                .map(|tpl| tpl.replace("{path}", &rel_key));
+                .map(|tpl| tpl.replace("{path}", &yuzu_core::urlpath::encode_path(&rel_key)));
             // 検索結果ページだけ専用テンプレート。コンテキストは共通の 1 個
             // （search_page_size は search.jinja だけが使い、page.jinja は無視する）
             let tpl = match page.generated {

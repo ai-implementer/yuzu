@@ -70,7 +70,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない |
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |
 | `route-conflict` | 2 つ以上のページが同じ URL になる（`x.md` と `x/index.md`）。自動生成されるページ（[用語集](../guide/writing.md#用語集と略語)・[検索結果ページ](../guide/search.md#検索結果ページ)）との衝突もここで報告します |
-| `unsafe-page-path` | ファイル名（または `markdown.glossary.page` / `search.page`）に URL で意味を持つ文字（`#` `?` `%` `"` `'` `<` `>` `` ` `` `\`） |
+| `unsafe-page-path` | ファイル名（または `markdown.glossary.page` / `search.page`）に出力パスとして使えない文字（`\` と制御文字）。`#` `?` `%` 空白・日本語は URL 化のときにパーセントエンコードされるので対象外です |
 | `include-error` | コンテンツインクルード（`file=`）の参照先が読めない・範囲外。Markdown 断片（\`\`\`include）の散文違反（見出し・キャプション行・脚注・frontmatter・`file=` の入れ子）もここで報告 |
 | `spec-error` | `openapi` / `jsonschema` の `file:` 参照が読めない・仕様が壊れている・未対応バージョン・`$ref` 先が解決できない |
 | `fmt` | 整形差分がある（`yuzu fmt` で修正、`yuzu fmt --diff` で内容を確認できます） |
@@ -80,9 +80,8 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 `lintDisable` の抑制と `lint.rules` の無効化の対象です。
 
 `route-conflict` と `unsafe-page-path` は `yuzu build` も中断します。どちらも
-「生成物のどこかに壊れたリンクや非決定な出力が残る」問題で、書き出してしまうと
-気づけないためです。yuzu はファイル名を slug 化せずそのまま URL にするので、
-`a#b.md` の URL `/a#b/` はブラウザから `/a` ＋ フラグメント `b/` に見えます。
+「書き出してしまうと気づけない」問題です。前者は生成物のどこかに非決定な出力が
+残り、後者は書き出しの途中で入出力エラーになります。
 
 > [!NOTE]
 > API 仕様の描画は失敗してもビルドを止めません（執筆中に止まらないよう、

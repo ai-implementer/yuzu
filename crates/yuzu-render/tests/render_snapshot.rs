@@ -131,46 +131,171 @@ fn エイリアスはリダイレクト_html_になり_base_url_に追随する(
     );
 }
 
-/// yuzu には slug 化が無く、ファイル名がそのまま route → URL になる。
-/// `#` を含むファイル名の `/a#b/` は `/a` ＋ フラグメント `b/` と解釈され、
-/// nav・リダイレクト・検索・llms.txt のすべてで壊れたリンクになるので、
-/// テンプレートでのエスケープではなく**書き出し前に止める**
+/// `\` を含むファイル名は出力パスにできない（`output::write_under` が拒否する）ので
+/// 書き出す前に中断する。Windows では `\` がパス区切りなのでこの形は作れない
+#[cfg(unix)]
 #[test]
-fn 危険な文字を含むファイル名はビルドを中断する() {
-    for name in [r#"a"b.md"#, "a#b.md"] {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
-        let dir = tempfile::tempdir().unwrap();
-        copy_tree(&fixture, dir.path());
-        fs::write(
-            dir.path().join("content").join(name),
-            "---\ntitle: 危険\n---\n\n# 危険\n",
-        )
-        .unwrap();
+fn 出力パスにできないファイル名はビルドを中断する() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    fs::write(
+        dir.path().join("content").join("a\\b.md"),
+        "---\ntitle: 危険\n---\n\n# 危険\n",
+    )
+    .unwrap();
 
-        let rc = yuzu_config::load(dir.path()).unwrap();
-        let site = yuzu_core::build_site_model(
-            &rc.content_dir,
-            &rc.config.input.ignore,
-            &MarkdownOptions::default(),
+    let rc = yuzu_config::load(dir.path()).unwrap();
+    let site = yuzu_core::build_site_model(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &MarkdownOptions::default(),
+    )
+    .unwrap();
+    let err = render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
+    })
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("出力パス"),
+        "ファイル名起因のエラー: {err}"
+    );
+    assert!(
+        !dir.path().join("dist/index.html").exists(),
+        "書き出し前に中断される"
+    );
+}
+
+/// URL で意味を持つ文字（`#` `%` 空白・非 ASCII）を含むファイル名はビルドを止めず、
+/// route → URL の変換点で一律にパーセントエンコードされる。ディスク上のパスは生の
+/// ファイル名のままなので、サーバがデコードした要求パスと一致する。
+/// 本文リンク・ナビ・ページ単位 .md・llms.txt・sitemap・編集リンクが同じ表記になること
+#[test]
+fn url_で意味を持つ文字を含むファイル名はエンコードして配信される() {
+    let dir = build_fixture_with(|root| {
+        let content = root.join("content");
+        fs::create_dir_all(content.join("設計")).unwrap();
+        fs::write(
+            content.join("設計/概 要#1.md"),
+            "---\ntitle: 概要\n---\n\n# 概要\n\n![図](<図 1.png>)\n\n![図2](%E5%9B%B3%201.png)\n",
         )
         .unwrap();
-        let err = render_site(&RenderParams {
-            config: &rc,
-            site: &site,
-            live_reload: LiveReloadMode::None,
-            ctx: yuzu_render::RenderCtx::default(),
-            git_dates: None,
-        })
-        .unwrap_err();
-        assert!(
-            err.to_string().contains("URL"),
-            "{name}: URL 起因のエラー: {err}"
-        );
-        assert!(
-            !dir.path().join("dist/index.html").exists(),
-            "{name}: 書き出し前に中断される"
-        );
-    }
+        fs::write(content.join("設計/図 1.png"), b"png").unwrap();
+        fs::write(
+            content.join("a%23b.md"),
+            "---\ntitle: パーセント\n---\n\n# パーセント\n",
+        )
+        .unwrap();
+        // `#` を含むファイル名は `%23` と書かないと `#` 以降がフラグメントになる
+        // （URL 構文上の制約。`<>` で囲んでも同じ）。空白は `<>` 記法・`%20` 記法・
+        // 生のファイル名の 3 通りとも同じページへ解決される
+        fs::write(
+            content.join("links.md"),
+            "---\ntitle: リンク\n---\n\n# リンク\n\n\
+             [済](%E8%A8%AD%E8%A8%88/%E6%A6%82%20%E8%A6%81%231.md#概要)\n\n\
+             [半](設計/概%20要%231.md)\n\n\
+             [角](<設計/概 要%231.md>)\n\n\
+             [percent](a%2523b.md)\n",
+        )
+        .unwrap();
+        let toml = root.join("yuzu.toml");
+        let src = fs::read_to_string(&toml).unwrap();
+        fs::write(
+            &toml,
+            src.replace("\"/docs/\"", "\"https://example.com/docs/\"")
+                + "\n[git]\nedit_url = \"https://github.com/me/docs/edit/main/content/{path}\"\n",
+        )
+        .unwrap();
+    });
+    let dist = dir.path().join("dist");
+    const ENC: &str = "%E8%A8%AD%E8%A8%88/%E6%A6%82%20%E8%A6%81%231";
+
+    // ディスクは生のファイル名
+    assert!(dist.join("設計/概 要#1/index.html").is_file());
+    assert!(dist.join("設計/概 要#1.md").is_file());
+    assert!(dist.join("設計/図 1.png").is_file());
+    assert!(dist.join("a%23b/index.html").is_file());
+
+    // 本文リンク: `%20` 記法・`<>` 記法の 2 本＋ナビ＋前後ページリンクの計 4 箇所が
+    // 同じ URL になる（フル エンコード済みの `[済]` はフラグメント付きで別カウント）
+    let links = fs::read_to_string(dist.join("links/index.html")).unwrap();
+    assert_eq!(
+        links
+            .matches(&format!("href=\"https://example.com/docs/{ENC}/\""))
+            .count(),
+        4,
+        "{links}"
+    );
+    // suffix は yuzu ではエンコードしない（comrak の escape_href が非 ASCII を
+    // 従来どおり `%XX` にする。ブラウザはデコードして id と照合する）
+    assert!(
+        links.contains(&format!(
+            "href=\"https://example.com/docs/{ENC}/#%E6%A6%82%E8%A6%81\""
+        )),
+        "{links}"
+    );
+    assert!(
+        links.contains("href=\"https://example.com/docs/a%2523b/\""),
+        "`%` は `%25` へ（二重にならない）: {links}"
+    );
+    // ナビ（サイドバー）も同じ表記
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(
+        index.contains(&format!("href=\"https://example.com/docs/{ENC}/\"")),
+        "{index}"
+    );
+    assert!(index.contains("href=\"https://example.com/docs/a%2523b/\""));
+
+    // ページ自身: ページ単位 .md の URL・同伴アセット・編集リンク
+    let page = fs::read_to_string(dist.join("設計/概 要#1/index.html")).unwrap();
+    assert!(
+        page.contains(&format!(
+            "data-md-url=\"https://example.com/docs/{ENC}.md\""
+        )),
+        "{page}"
+    );
+    // 同伴アセット: `<図 1.png>` 記法と `%20` 記法のどちらも同じ URL になる
+    assert_eq!(
+        page.matches("src=\"https://example.com/docs/%E8%A8%AD%E8%A8%88/%E5%9B%B3%201.png\"")
+            .count(),
+        2,
+        "{page}"
+    );
+    assert!(
+        page.contains(&format!(
+            "href=\"https://github.com/me/docs/edit/main/content/{ENC}.md\""
+        )),
+        "{page}"
+    );
+
+    // llms.txt / llms-full.txt / sitemap.xml も同じ変換点を通る
+    let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
+    assert!(
+        llms.contains(&format!("](https://example.com/docs/{ENC}.md)")),
+        "{llms}"
+    );
+    assert!(
+        llms.contains("](https://example.com/docs/a%2523b.md)"),
+        "{llms}"
+    );
+    let full = fs::read_to_string(dist.join("llms-full.txt")).unwrap();
+    assert!(
+        full.contains(&format!("URL: https://example.com/docs/{ENC}/\n")),
+        "{full}"
+    );
+    let sitemap = fs::read_to_string(dist.join("sitemap.xml")).unwrap();
+    assert!(
+        sitemap.contains(&format!("<loc>https://example.com/docs/{ENC}/</loc>")),
+        "{sitemap}"
+    );
+    assert!(
+        sitemap.contains("<loc>https://example.com/docs/a%2523b/</loc>"),
+        "{sitemap}"
+    );
 }
 
 /// 設定由来の URL（route ではないのでビルドは通る）はテンプレートで

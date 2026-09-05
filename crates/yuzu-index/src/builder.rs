@@ -239,7 +239,9 @@ pub fn build_search_index_with(
         .zip(&sections_per_page)
         .map(|(page, sections)| DocumentInput {
             title: page.title.clone(),
-            url: page.route.clone(),
+            // 索引の url は search-hits.js が `base + url` で href にする配信 URL。
+            // route → URL の変換点（encode_path）を通す。group のキーは生 route のまま
+            url: yuzu_core::urlpath::encode_path(&page.route),
             group: group_of(&page.route),
             sections: sections
                 .iter()

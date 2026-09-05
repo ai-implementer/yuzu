@@ -3,6 +3,9 @@
 //! - 外部 URL（スキーム付き・mailto・tel）には触れない（決定的・オフライン）
 //! - URL の分類は yuzu-render の `UrlResolver::rewrite` と同じ規則
 //!   （crates/yuzu-render/src/urls.rs — 変更時は両方を揃えること）
+//! - 著者が書いたパスは `%XX` を**デコードしてから**照合する（`my%20page.md` /
+//!   `/%E8%A8%AD…/`）。ブラウザで辿れるリンクは検査も通る、が契約。
+//!   `?` / `#` 以降の suffix はデコードの対象外（フラグメントは `has_anchor` が別途）
 //! - アンカーは `Page.toc` の id（本文 HTML と同一の採番）で照合する。
 //!   自前 slugify はしない
 
@@ -15,7 +18,7 @@ use crate::error::CoreError;
 use crate::markdown::{self, LinkRef};
 use crate::model::Page;
 use crate::rules;
-use crate::urlpath::{rel_to_slash, resolve_relative, split_suffix};
+use crate::urlpath::{percent_decode, rel_to_slash, resolve_relative, split_suffix};
 
 /// ビルドが生成する route 以外のパス（ルート絶対リンクの有効ターゲット）
 const GENERATED: &[&str] = &["llms.txt", "llms-full.txt"];
@@ -91,6 +94,10 @@ fn check_one(
 
     let (path, suffix) = split_suffix(url);
     let frag = suffix.split_once('#').map(|(_, f)| f);
+    // 著者がエンコード済みで書いたパスを生のファイル名 / route へ戻す
+    // （render 側の `rewrite` と同じ。suffix はデコードしない）
+    let path = percent_decode(path);
+    let path = path.as_str();
 
     // ルート絶対（`/foo`）→ public/・ページ route・ビルド生成物に照合
     if let Some(rest) = path.strip_prefix('/') {
@@ -217,27 +224,6 @@ fn has_anchor(page: &Page, frag: &str) -> bool {
     decoded != frag && known(&decoded)
 }
 
-/// `%XX` の最小限デコード（不正な並びはそのまま残す。新規依存を避ける）
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            let hi = (bytes[i + 1] as char).to_digit(16);
-            let lo = (bytes[i + 2] as char).to_digit(16);
-            if let (Some(hi), Some(lo)) = (hi, lo) {
-                out.push((hi * 16 + lo) as u8);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 fn push(
     out: &mut Vec<Diagnostic>,
     page: &Page,
@@ -254,17 +240,4 @@ fn push(
         message,
         fix: None,
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::percent_decode;
-
-    #[test]
-    fn percent_decode_の基本() {
-        assert_eq!(percent_decode("%E8%A6%8B%E5%87%BA%E3%81%97"), "見出し");
-        assert_eq!(percent_decode("plain"), "plain");
-        assert_eq!(percent_decode("a%2Gb"), "a%2Gb", "不正な 16 進はそのまま");
-        assert_eq!(percent_decode("%"), "%", "末尾の % もそのまま");
-    }
 }

@@ -16,39 +16,44 @@ v0.15 の軸は「**正しさ・堅牢性**」。v0.10.1 の外部コードレ�
 「外部リンク切れ検査」も、凍結方針（決定的・オフライン）と衝突しない opt-in の形を
 決めてここで入れる。Phase は価値と実装コスト・依存関係の順（着手時に個別に設計する）。
 
-### 64 URL のパーセントエンコード ⬜
+### 64 URL のパーセントエンコード ✅
 
-現状は `#` `?` `%` `"` `'` `<` `>` `` ` `` `\` を含むファイル名を `unsafe-page-path`
-（error・build 中断）で**拒否**して整合を取っている（`routes.rs` の `UNSAFE_PATH_CHARS`）。
-空白と非 ASCII は受理していて、`/設計/概要/` のような IRI は ServeDir とブラウザが
-黙って補正するから動いている。「たまたま動く」を「仕様として動く」に格上げするのが
-この Phase（本来は route → URL の変換でパスセグメントをエンコードするのが筋、という
-レビュー時の結論どおり）。
+従来は `#` `?` `%` `"` `'` `<` `>` `` ` `` `\` を含むファイル名を `unsafe-page-path`
+（error・build 中断）で**拒否**して整合を取り、空白と非 ASCII は ServeDir とブラウザが
+黙って補正するから動いていた。route → URL の変換点を 1 つに決めてパスセグメントを
+エンコードし、「たまたま動く」を「仕様として動く」に格上げした。
 
-- **変換点は 1 つに決める**。候補は (A) `yuzu-core/src/urlpath.rs` に
-  `encode_path_segments` とデコードの対を置く — ここは既に yuzu-render の `urls.rs` と
-  yuzu-core の `linkcheck.rs` が唯一共有するモジュールで、`linkcheck::percent_decode` と
-  逆関数の対を同じファイルに収められる。(C) `Page` に URL 用の表現を持たせる —
-  構造的に漏れにくいが `CachedMeta` / `CACHE_FORMAT_VERSION` / routesKey の再定義を伴う。
-  **`| url` フィルタに足す案は不可**（`page.edit_url` の `://` とクエリを壊す。持ち越し時の
-  結論のまま）
-- **`UrlResolver` を通らない経路が 2 本ある**: 検索索引の `url`（`yuzu-index/src/builder.rs`
-  が生 route を索引に焼き、`search-hits.js` が `base + url` で連結。`yuzu search` の出力も
-  同じ値）と llms.txt の `[title](url)`（空白や `)` で Markdown が壊れる潜在バグ）。
-  sitemap は XML エスケープだけでパーセントエンコードが無い。これらを同じ変換点へ通す
-- **「ディスクは生・URL はエンコード」の境界**を決めて二重エンコードを禁じる。生 route を
-  キーにした HashMap が nav / pager / breadcrumbs / llms / linkcheck / 索引のグループキーに
-  散っているので、エンコード済み文字列を混ぜると**診断の出ないズレ**になる — キーは
-  生 route のまま、表示の直前だけエンコードする
-- `UrlRewriter::rewrite` ⇄ `linkcheck::check_one` の分類 6 種は引き続き同期
-  （`?` / `#` 以降の suffix は**エンコードしない**）。著者がエンコード済みで書いたリンク
-  （`%E8%A8%AD…`）をデコードして照合するかも決める
-- 拒否を残す文字: `\`（`output.rs` が出力 rel として拒否・Windows 区切り）と制御文字。
-  `#` `?` `%` `"` `'` `<` `>` `` ` `` は error から外す。`%` は `%25` へ正規化すれば
-  ServeDir のデコードで物理パスと一致する
-- 本文 HTML に URL が焼き込まれるので `CACHE_FORMAT_VERSION` bump 必須。
-  `aliases::normalize_alias`（`#` `?` `\` を拒否）の規則も同じ方針で見直す。docs
-  `reference/rules.md` / `guide/writing.md` と ci.yml の `unsafe-page-path` ゲートを追随
+- **変換点は (A) `yuzu-core/src/urlpath.rs`** の `encode_path` / `percent_decode` の対
+  （`linkcheck::percent_decode` をここへ移設）。呼ぶのは `UrlResolver::page_url` /
+  `md_url` / `rewrite`（本文・ナビ・pager・パンくず・リダイレクト・llms・sitemap が
+  全部ここを通る）、検索索引の `url`（`yuzu-index/builder.rs`）、`git.edit_url` の
+  `{path}` の 4 箇所。(C) の `Page` に URL 表現を持たせる案は CachedMeta / routesKey の
+  再定義を伴うので採らなかった。**`| url` フィルタに足す案は不可**のまま
+  （`page.edit_url` の `://` とクエリを壊す）
+- **非 ASCII もエンコードする**（英数字と `-._~!$*+,;=:@` 以外を UTF-8 バイト単位で
+  `%XX`）。本文リンクは comrak の `escape_href` が既に非 ASCII を `%XX` にしていて、
+  ナビ・llms・sitemap・索引だけ生の `/設計/` だった食い違いが解消した。comrak は
+  `%XX` を素通しするので、先にエンコードした値を本文に埋めても二重にならない。
+  `'` `(` `)` `&` は RFC 上は許されるが属性・CommonMark のリンク先・実体参照を
+  壊すのでエンコード側（llms.txt の `[title](url)` が `)` で壊れる潜在バグの修正）
+- **「ディスクは生・URL はエンコード」**: `Page.route` と route をキーにした HashMap
+  （nav / pager / breadcrumbs / llms / linkcheck / 索引のグループ）は生のまま、
+  書き出し・表示の直前だけエンコードする。`?` / `#` 以降の suffix はエンコードしない
+  （フラグメントは従来どおり comrak が処理）。`/foo` 始まりの著者 URL も再エンコード
+  しない（`%E8` が `%25E8` に化けるため）
+- **著者がエンコード済みで書いた参照はデコードして照合する**（render の `.md` 解決・
+  同伴アセット解決、linkcheck の 3 分類、aliases の正規化）。CommonMark で空白入りの
+  ファイル名を書く素の形 `[x](my%20page.md)` が従来は route 解決に失敗して警告＋機械変換、
+  alias `old%20name/` は `old%20name/` ディレクトリに書かれて 404 だった、の 2 件を
+  修正した形。**`yuzu fmt`（format_commonmark）は `<my page.md>` を `my%20page.md` へ
+  正規化する**ので、デコードしないと fmt の正規形でリンクが切れる = この判断は必須だった。
+  aliases の生の `#` `?` は引き続き拒否（URL として書く場所なので）。ファイル名の
+  `#` `?` へのリンクは `%23` `%3F` と書く以外にない（`<a#b.md>` でも `#` 以降は
+  フラグメント。URL 構文上の制約で docs に明記）
+- `unsafe-page-path` は `\` と制御文字だけに縮小（メッセージも「出力パスとして
+  使えない」へ）。`CACHE_FORMAT_VERSION` 21 → 22。docs `reference/rules.md` /
+  `guide/writing.md`（リンクの書き方と aliases のデコード）と ci.yml のゲート
+  （原稿の語＋docs 自身の nav に生の非 ASCII href が無いこと）を追随
 
 ### 65 配信とテーマ契約の堅牢化 ⬜
 

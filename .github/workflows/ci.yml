@@ -136,6 +136,9 @@ jobs:
           # 出力先・URL の安全化（v0.10.1）で足したルールが原稿に載っている
           grep -q 'route-conflict' dist/reference/rules/index.html
           grep -q 'unsafe-page-path' dist/reference/rules/index.html
+          # URL のパーセントエンコード（Phase 64）が原稿に載っている
+          grep -q 'パーセントエンコード' dist/guide/writing/index.html
+          grep -q '%E8%A8%AD%E8%A8%88/%E6%A6%82%20%E8%A6%81' dist/guide/writing/index.html
           # ページ単位の lint 抑制（Phase 58）が原稿に載っている
           grep -q 'unused-lint-suppression' dist/reference/rules/index.html
           grep -q 'lintDisable' dist/guide/quality/index.html

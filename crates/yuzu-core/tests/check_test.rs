@@ -191,3 +191,41 @@ fn 画像の相対参照は実在チェック() {
     let diags = check(&[("index.md", "# t\n\n[dir](guide/)\n")], &[]);
     assert!(diags.is_empty(), "{diags:?}");
 }
+
+#[test]
+fn エンコード済みで書いたリンクはデコードして照合する() {
+    // ブラウザで辿れるリンクは検査も通る（`[x](my%20page.md)` は CommonMark で
+    // 空白を書く唯一の素の形。従来は `my%20page.md` の実在検査に失敗していた）
+    let diags = check(
+        &[
+            (
+                "index.md",
+                "# t\n\n\
+                 [空白](my%20page.md)\n\n\
+                 [日本語](%E8%A8%AD%E8%A8%88/%E6%A6%82%E8%A6%81.md#%E6%A6%82%E8%A6%81)\n\n\
+                 [絶対](/%E8%A8%AD%E8%A8%88/%E6%A6%82%E8%A6%81/)\n\n\
+                 [パーセント](a%2523b.md)\n\n\
+                 ![画像](img/my%20image.png)\n\n\
+                 [public](/files/my%20file.pdf)\n",
+            ),
+            ("my page.md", "# p\n"),
+            ("設計/概要.md", "# 概要\n"),
+            ("a%23b.md", "# percent\n"),
+            ("img/my image.png", ""),
+        ],
+        &["files/my file.pdf"],
+    );
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+#[test]
+fn デコードしても無いものは壊れ扱い() {
+    let diags = check(
+        &[(
+            "index.md",
+            "# t\n\n[無い](no%20page.md)\n\n[絶対](/%E7%84%A1%E3%81%84/)\n",
+        )],
+        &[],
+    );
+    assert_eq!(rules(&diags), ["broken-link", "broken-link"]);
+}
