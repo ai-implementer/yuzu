@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 yuzu は Markdown の設計書を静的 HTML ドキュメントサイトに変換する Rust 製ツール（Cargo workspace、MSRV 1.85 / edition 2024）。対話・コメント・ドキュメント・テスト名はすべて日本語で書く。コミットはユーザの指示があるまで行わない（push もユーザが行う運用）。
 
-プロジェクトスキル（`.claude/skills/`）: 検証一式は `verify`、実機確認は `run`、リリースは `release`、Markdown 記法・本文レンダリング機能の追加は `add-markdown-feature`、テーマ JS / アセットの追加は `add-theme-asset`、tankan の図種追加は `tankan-add-diagram`、vendor 資産更新は `vendor-update`、開発コンテナ操作は `dev-container` を使う（apple container CLI 自体の汎用リファレンスはユーザスキル `apple-container`）。
+プロジェクトスキル（`.claude/skills/`）: 検証一式は `verify`、実機確認は `run`、リリースは `release`、汎用ライブラリの crates.io 公開は `publish-crate`、Markdown 記法・本文レンダリング機能の追加は `add-markdown-feature`、テーマ JS / アセットの追加は `add-theme-asset`、tankan の図種追加は `tankan-add-diagram`、vendor 資産更新は `vendor-update`、開発コンテナ操作は `dev-container` を使う（apple container CLI 自体の汎用リファレンスはユーザスキル `apple-container`）。
 
 ## コマンド
 
@@ -19,10 +19,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
-CI（.github/workflows/ci.yml。ジョブは `check` と、kabosu を Rust 1.85 で check する `msrv` の 2 つ）の `check` は fmt → machete（未使用依存）→ clippy → test → build →
-`cargo package --locked -p tankan -p mikan -p kabosu`（crates.io メタデータの回帰検出。kabosu は依存ゼロ検査も）→ wasm32 チェック → kabosu の no_std チェック（thumbv7em-none-eabi）
-→ docs サイト検証（docs/ での check・build・grep ゲート・SSR フォールバック検出）→ e2e の順に実行する。
-`.devcontainer/**` の変更時だけ container.yml が別途走る:
+CI 相当の検証一式（ci.yml と同じ順序・罠込み）は `verify` スキル。cargo test に含まれない追加の確認:
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -100,21 +97,7 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 
 ## リリース手順（vX.Y.Z）
 
-**詳細と罠は `release` スキル**（マイナーとパッチで ROADMAP.md の書き方が違う等）。骨子だけ再掲する:
-
-1. ROADMAP.md の Phase 状態を更新する（README には版と概要しか置かない）
-2. バンプコミット「リリース: ワークスペースバージョンを X.Y.Z へ」: ルート Cargo.toml の `workspace.package.version` を変更し、`cargo build` で Cargo.lock を追随させる（変更はこの 2 ファイルだけ）
-3. push して CI green を確認する（release.yml はタグが main に含まれることを検証するため、この順序が必須）
-4. 注釈付きタグを push: `git tag -a vX.Y.Z -m "yuzu vX.Y.Z — <Phase 概要>"` → `git push origin vX.Y.Z`。`.github/workflows/release.yml` が 4 プラットフォームのバイナリを draft Release に集約し、SHA256SUMS を添付して公開する
-5. 一部ジョブが失敗したら Actions の「Re-run failed jobs」だけで復旧できる（アップロードは `--clobber` で上書き・公開まで draft のため外部に見えない）
-
-**タグは打った時点の main を切り出す**。機能コミットをタグより後に積むと配布バイナリに入らない一方、docs サイトは main から作られて反映済みに見えるため気づきにくい（v0.9.1 はこれで切ったパッチリリース）。
-
-### 汎用ライブラリの crates.io 公開（yuzu のリリースと非同期）
-
-**tankan**（Mermaid SSR）・**mikan**（検索エンジン。旧 yuzu-index-format）・**kabosu**（TOML。依存ゼロ・no_std+alloc）を crates.io へ公開している（monorepo のまま。バージョンは workspace と独立で、各 `Cargo.toml` の `version` を明示指定＝現状 tankan / mikan は 0.2.0、kabosu は 0.1.0）。変更が溜まったら: version を上げる → `cargo build`（Cargo.lock 追随）→ CI green → `cargo publish --dry-run -p <crate>` → `cargo publish -p <crate>`（要 `cargo login`。公開は取り消し不可・yank のみ可能）。**kabosu の publish 前には fuzz を必ず一度回す**（`.github/workflows/fuzz.yml` の手動実行、または手元で `cd crates/kabosu && cargo +nightly fuzz run <parse|roundtrip|decode>`）。ci.yml の `cargo package --locked -p tankan -p mikan -p kabosu` がメタデータ・同梱内容の回帰を PR で検出する。
-
-**mikan-wasm**（旧 yuzu-search-wasm）は公開しない（`publish = false`。`cargo add` する Rust ライブラリではなく wasm 成果物を作るビルド用 crate）。yuzu 本体側の crate も公開しない（`publish = false`。名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため。将来 本体を公開する構想は ROADMAP.md 参照）。
+手順と罠（マイナーとパッチで ROADMAP.md の書き方が違う・**タグは打った時点の main を切り出す**ので機能コミットをタグの後に積まない等）は **`release` スキル**に集約してある。汎用ライブラリ（tankan / mikan / kabosu）の crates.io 公開は yuzu のリリースと非同期で、手順は **`publish-crate` スキル**（kabosu は publish 前に fuzz 必須）。mikan-wasm と yuzu 本体の crate は `publish = false`（名前 `yuzu`・`yuzu-core` は別プロジェクトに取得済み。本体を公開する将来構想は ROADMAP.md）。
 
 ## 罠・注意点
 
