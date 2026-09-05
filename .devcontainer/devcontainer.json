@@ -8,14 +8,21 @@
 // 詳細: .devcontainer/README.md
 {
   "name": "yuzu",
+  // Dockerfile の ARG（DEV_USER 等）は既定値のまま使う（vscode/1000 + /workspaces/yuzu）。
+  // ホスト同一パス化はラッパー経路（scripts/dev-container.sh）だけの構成
   "build": { "dockerfile": "Dockerfile", "context": "." },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/yuzu,type=bind",
   "workspaceFolder": "/workspaces/yuzu",
-  // 不変条件: volume 名とマウント先は scripts/dev-container.sh の VOLUMES と一致させること
+  // 不変条件: registry / target の volume 名は scripts/dev-container.sh の VOLUMES と
+  // 一致させること（マウント先は DEV_HOME 配下の同じ相対位置と /cargo-target）。
+  // claude / codex / gh はラッパー経路ではホストの実ディレクトリを bind mount するため
+  // volume にしない — この経路（Docker）だけ volume で永続化し、コンテナ内で各自ログインする
   "mounts": [
     "source=yuzu-cargo-registry,target=/home/vscode/.cargo/registry,type=volume",
     "source=yuzu-target,target=/cargo-target,type=volume",
-    "source=yuzu-claude,target=/home/vscode/.claude,type=volume"
+    "source=yuzu-claude,target=/home/vscode/.claude,type=volume",
+    "source=yuzu-codex,target=/home/vscode/.codex,type=volume",
+    "source=yuzu-gh,target=/home/vscode/.config/gh,type=volume"
   ],
   "remoteUser": "vscode",
   "forwardPorts": [5173],

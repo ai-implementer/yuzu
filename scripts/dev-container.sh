@@ -2,10 +2,18 @@
 # yuzu の開発コンテナを apple container / docker のどちらでも同じ体験で扱うラッパー。
 # 環境の定義は .devcontainer/Dockerfile が唯一（このスクリプトは配線のみ）。
 #
+# この経路は「ホスト同一パス」構成: ユーザ名・uid・HOME・リポジトリパスをホストと
+# 一致させてイメージを焼き、~/.claude / ~/.codex / ~/.config/gh を同一パスへ bind mount
+# する（skills の絶対 symlink・hooks・codex の projects トラストが無傷で動く）。
+# devcontainer.json の Docker 経路は ARG 既定値（vscode/1000）のまま。詳細は
+# .devcontainer/README.md「認証の仕組み」。
+#
 # 使い方:
 #   scripts/dev-container.sh build   # イメージをビルド（--no-cache 可）
 #   scripts/dev-container.sh up      # 長寿命コンテナを起動（キャッシュ volume 付き）
-#   scripts/dev-container.sh shell   # コンテナ内の bash に入る
+#   scripts/dev-container.sh shell   # コンテナ内の bash に入る（shell -c '...' で単発実行）
+#   scripts/dev-container.sh claude  # コンテナ内で Claude Code を起動
+#   scripts/dev-container.sh codex   # コンテナ内で Codex CLI を起動
 #   scripts/dev-container.sh down    # コンテナを停止・削除（volume は保持）
 #   scripts/dev-container.sh clean   # down ＋ キャッシュ volume も削除
 #   scripts/dev-container.sh status  # 状態表示
@@ -20,11 +28,21 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 IMAGE="${YUZU_CONTAINER_IMAGE:-yuzu-dev:latest}"
 NAME="${YUZU_CONTAINER_NAME:-yuzu-dev}"
-# 不変条件: volume 名とマウント先は .devcontainer/devcontainer.json と一致させること
+
+# ホスト同一パス化のための build ARG 値。gid はホスト mac の staff=20 が Debian の
+# 既存 gid と衝突し得るため uid と同値にする（virtiofs が所有権をコンテナユーザへ
+# マッピングするので実害なし。ホスト側では従来どおり uid:staff で見える）
+DEV_USER="$(id -un)"
+DEV_UID="$(id -u)"
+DEV_GID="$DEV_UID"
+
+# 不変条件: volume 名は .devcontainer/devcontainer.json と一致させること
+# （マウント先はどちらも「$DEV_HOME/.cargo/registry」と「/cargo-target」。
+# ~/.claude / ~/.codex / ~/.config/gh はこの経路では volume ではなくホストの
+# 実ディレクトリを bind mount する — devcontainer 経路は volume で各自ログイン）
 VOLUMES=(
-  "yuzu-cargo-registry:/home/vscode/.cargo/registry"
+  "yuzu-cargo-registry:$HOME/.cargo/registry"
   "yuzu-target:/cargo-target"
-  "yuzu-claude:/home/vscode/.claude"
 )
 
 if [ -n "${YUZU_CONTAINER_ENGINE:-}" ]; then
@@ -64,6 +82,33 @@ ensure_volumes() {
   done
 }
 
+# gh のトークンは macOS Keychain 保存でファイルに無いため、ホストで取り出して
+# 値なしの -e GH_TOKEN（ホスト環境から継承）で注入する — argv（ps で見える）に値を出さない。
+# git identity も ~/.gitconfig をマウントしない（lfs filter 事故回避）ため同じ形で渡す。
+# 空の値は注入しない（空の GIT_AUTHOR_NAME は git がエラーにする）
+export_host_env() {
+  GH_TOKEN=$(gh auth token 2>/dev/null || true)
+  GIT_AUTHOR_NAME=$(git config user.name 2>/dev/null || true)
+  GIT_AUTHOR_EMAIL=$(git config user.email 2>/dev/null || true)
+  GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+  GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+  export GH_TOKEN GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+  GIT_ENV_FLAGS=()
+  HOST_ENV_FLAGS=()
+  local key
+  for key in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
+    if [ -n "${!key}" ]; then
+      GIT_ENV_FLAGS+=(-e "$key")
+    fi
+  done
+  HOST_ENV_FLAGS=(${GIT_ENV_FLAGS[@]+"${GIT_ENV_FLAGS[@]}"})
+  if [ -n "$GH_TOKEN" ]; then
+    HOST_ENV_FLAGS+=(-e GH_TOKEN)
+  else
+    echo "warn: gh auth token が取得できませんでした（gh は未認証になります）" >&2
+  fi
+}
+
 container_exists() {
   "$ENGINE" inspect "$NAME" >/dev/null 2>&1
 }
@@ -83,12 +128,19 @@ revive_or_remove() {
 
 cmd_build() {
   ensure_engine_running
-  "$ENGINE" build "$@" -t "$IMAGE" -f "$ROOT/.devcontainer/Dockerfile" "$ROOT/.devcontainer"
+  "$ENGINE" build "$@" \
+    --build-arg "DEV_USER=$DEV_USER" \
+    --build-arg "DEV_UID=$DEV_UID" \
+    --build-arg "DEV_GID=$DEV_GID" \
+    --build-arg "DEV_HOME=$HOME" \
+    --build-arg "DEV_WORKSPACE=$ROOT" \
+    -t "$IMAGE" -f "$ROOT/.devcontainer/Dockerfile" "$ROOT/.devcontainer"
 }
 
 cmd_up() {
   ensure_engine_running
   ensure_volumes
+  export_host_env
 
   if container_exists; then
     if container_alive; then
@@ -103,34 +155,81 @@ cmd_up() {
     fi
   fi
 
-  local args=(-d --name "$NAME" -v "$ROOT:/workspaces/yuzu")
+  local args=(-d --name "$NAME" -v "$ROOT:$ROOT")
   local spec
   for spec in "${VOLUMES[@]}"; do
     args+=(-v "$spec")
   done
+  # ホスト設定の共有（同一パス bind mount）。無いものはスキップする
+  # （存在しないパスを bind mount すると root 所有の空ディレクトリが作られる事故を防ぐ）
+  local dir
+  for dir in "$HOME/.claude" "$HOME/.codex" "$HOME/.config/gh"; do
+    if [ -d "$dir" ]; then
+      args+=(-v "$dir:$dir")
+    else
+      echo "warn: $dir が無いためマウントしません" >&2
+    fi
+  done
+  # ~/.claude/skills が symlink なら実体（dotfiles 等）も同一パスでマウントして symlink を生かす
+  if [ -L "$HOME/.claude/skills" ]; then
+    local skills
+    skills="$(readlink -f "$HOME/.claude/skills" || true)"
+    if [ -d "$skills" ]; then
+      args+=(-v "$skills:$skills")
+    fi
+  fi
+  # git identity は run 時にも焼いておく（ラッパーを介さない素の `container exec` 用。
+  # ラッパーの shell/claude/codex は exec 時にも注入する。GH_TOKEN は inspect の env に
+  # 残さないよう run には焼かず exec 時のみ）
+  args+=(${GIT_ENV_FLAGS[@]+"${GIT_ENV_FLAGS[@]}"})
   args+=(-p "127.0.0.1:5173:5173")
-  # エンジン差分 2/3: apple container はコンテナ = 軽量 VM で既定リソースが小さく、
-  # rustc の並列ビルドでメモリ不足になり得るため明示する
+  # エンジン差分 2/3: リソースと SSH agent フォワードの渡し方。
+  # - apple container はコンテナ = 軽量 VM で既定リソースが小さく、rustc の並列ビルドで
+  #   メモリ不足になり得るため明示する。SSH は専用の --ssh フラグ（秘密鍵 ~/.ssh は
+  #   マウントせず agent フォワードで git push/fetch を通す）
+  # - docker の run に --ssh は無いため、ホストの agent ソケットを同一パスで
+  #   bind mount して代替する（無ければスキップ = git は https か手動設定で）
   if [ "$ENGINE" = "container" ]; then
+    args+=(--ssh)
     args+=(--memory "${YUZU_CONTAINER_MEMORY:-8g}")
     args+=(--cpus "${YUZU_CONTAINER_CPUS:-$(sysctl -n hw.ncpu)}")
+  elif [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "$SSH_AUTH_SOCK" ]; then
+    args+=(-v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" -e SSH_AUTH_SOCK)
   fi
 
   "$ENGINE" run "${args[@]}" "$IMAGE"
-  # 共通フック（volume 所有権の正規化・Claude Code 導入）。devcontainer 経路の
+  # 共通フック（volume 所有権の正規化・Claude Code 導入の fallback）。devcontainer 経路の
   # postCreateCommand と同一スクリプトを使う
-  "$ENGINE" exec "$NAME" bash /workspaces/yuzu/.devcontainer/post-create.sh
+  "$ENGINE" exec "$NAME" bash "$ROOT/.devcontainer/post-create.sh"
   echo "起動しました: ${NAME}（scripts/dev-container.sh shell で入れます）"
 }
 
-cmd_shell() {
+ensure_up() {
   if ! container_exists; then
     echo "コンテナが見つかりません。up から起動します..."
     cmd_up
   elif ! container_alive; then
     revive_or_remove || cmd_up
   fi
-  exec "$ENGINE" exec -it "$NAME" bash
+}
+
+# shell / claude / codex の共通形: exec のたびに GH_TOKEN 等を取り直して注入する
+# （長寿命コンテナでもトークンが古くならない）。
+# stdin が TTY なら -i、stdout も TTY のときだけ -t を付ける（TTY なしの -t は
+# exec が「Operation not supported on socket」で失敗する。パイプ時の色・CRLF 混入も防ぐ）
+# ※ macOS 標準の bash 3.2 は set -u で空配列展開がエラーになるため展開側で +"" を使う
+cmd_exec_interactive() {
+  ensure_up
+  export_host_env
+  local tty_flags=()
+  if [ -t 0 ]; then
+    tty_flags+=(-i)
+    if [ -t 1 ]; then
+      tty_flags+=(-t)
+    fi
+  fi
+  exec "$ENGINE" exec ${tty_flags[@]+"${tty_flags[@]}"} \
+    ${HOST_ENV_FLAGS[@]+"${HOST_ENV_FLAGS[@]}"} "$NAME" "$@"
 }
 
 cmd_down() {
@@ -146,6 +245,8 @@ cmd_clean() {
     name="${spec%%:*}"
     "$ENGINE" volume rm "$name" >/dev/null 2>&1 || true
   done
+  # 旧構成（~/.claude を volume にしていた頃）の残骸も掃除する
+  "$ENGINE" volume rm yuzu-claude >/dev/null 2>&1 || true
   echo "キャッシュ volume も削除しました"
 }
 
@@ -162,12 +263,14 @@ cmd_status() {
 case "${1:-}" in
   build) shift; cmd_build "$@" ;;
   up) cmd_up ;;
-  shell) cmd_shell ;;
+  shell) shift; cmd_exec_interactive bash "$@" ;;
+  claude) shift; cmd_exec_interactive claude "$@" ;;
+  codex) shift; cmd_exec_interactive codex "$@" ;;
   down) cmd_down ;;
   clean) cmd_clean ;;
   status) cmd_status ;;
   *)
-    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac
