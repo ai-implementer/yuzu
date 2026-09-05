@@ -140,6 +140,7 @@ I/O なし・時刻/乱数非依存（wasm32 担保のため。gantt の today �
 - **fmt の独自記法温存は fmt 経路限定**。format_commonmark は `{#fig:x}` を `{\#fig:x}` へ、`[!NOTE]-` を `[!NOTE] -` へ変えるので `restore_yuzu_syntax` が書いた形に戻すが、これを呼ぶのは `format_document` だけ。`normalize_markdown`（llms-full.txt）は復元しないため、**llms-full.txt にエスケープ形が出るのは仕様**（バグと誤認して直さない）
 - `docs/` はこのリポジトリ自身のドキュメントサイト（yuzu プロジェクト。`docs/yuzu.toml` がルート）。main push で `.github/workflows/docs.yml` が GitHub Pages へデプロイし、ci.yml でも check・build・SSR フォールバック検出を検証する。原稿は `yuzu fmt` の正規形・表記は長音符なし（`lint.terms` 準拠）で書く
 - **ci.yml の docs ゲートは docs の原稿と結合している**（新機能ごとに `grep` を 1 行足す運用）。特に `docs/yuzu.toml` の 25-45 行目（`[markdown]` ブロック）はインクルードの `lines=` で引用されているので、この範囲を動かすと原稿の中身と CI が同時に壊れる（`verify` スキルに直す箇所の一覧あり）
+- **ci.yml の否定ゲートに `! cmd` を書かない**。GitHub Actions の `bash -e` でも `!` で反転したコマンドは errexit の対象外で、失敗しても次の行へ進む（= ゲートになっていない）。`if cmd; then echo "…" >&2; exit 1; fi` の形で明示的に落とす（PR #7 のレビュー指摘で既存 7 箇所を置換済み）
 - **`yuzu-index` は rust-embed（`assets/search/`）を使うのに build.rs が無い**。既存ファイルの更新は追跡されるので vendor スクリプトの通常運用では問題ないが、**新規ファイルを足すと release が古い埋め込みを使う**恐れがある（上記 yuzu-theme と同じ罠。足すときは build.rs を付ける）
 - `docs/design/` は git 管理外のローカル設計ノート。公開物（コード・README・コミット）から参照しない
 - 開発コンテナ内（`.devcontainer/`）は `CARGO_TARGET_DIR=/cargo-target` のため、CLI 実機確認は `"$CARGO_TARGET_DIR/debug/yuzu"` を使う（`./target/debug/yuzu` は**存在しない**）。環境定義は `.devcontainer/Dockerfile` が唯一で、devcontainer.json とラッパーの不変条件は `.devcontainer/README.md` の表を参照
