@@ -350,6 +350,7 @@ pub const DISABLEABLE_RULES: &[&str] = &[
     "directory-too-deep",
     "duplicate-h1",
     "duplicate-label",
+    "external-link-broken",
     "frontmatter-unknown-key",
     "fullwidth-alphanumeric",
     "halfwidth-kana",

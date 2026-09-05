@@ -77,6 +77,7 @@ description: yuzu の全コマンド・主要フラグ・終了コード規約
 | `lint --fix` | 表記ゆれの変換候補をソースへ自動適用（修正できない違反は報告のまま残る） |
 | `lint --format <形式>` | 出力形式（`human` / `json` / `github`。既定 `human`） |
 | `check --format <形式>` | 同上 |
+| `check --external-links` | 外部リンク（`http` / `https`）の到達性も検査する（HTTP は `curl` に委譲。HTTP 4xx を warning `external-link-broken` で報告し、到達不能・5xx・429 はスキップ件数に数える。[品質チェック](../guide/quality.md#外部リンクの検査opt-in)参照） |
 | `llms --full` | llms-full.txt（全ページの正規化 Markdown 連結）を出力 |
 
 ## ビルドの進捗ログ
@@ -129,7 +130,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
       "fixable": false
     }
   ],
-  "summary": { "errors": 1, "warnings": 0, "pages": 12, "suppressed": 0, "disabled": 0 }
+  "summary": { "errors": 1, "warnings": 0, "pages": 12, "suppressed": 0, "disabled": 0, "skipped": 0 }
 }
 ```
 
@@ -138,6 +139,9 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 - `fixable` は `yuzu lint --fix` で自動修正できるかを表します
 - `summary.suppressed` は frontmatter の `lintDisable` で抑制した診断の件数です
 - `summary.disabled` は `lint.rules` のプロジェクト全体無効化で落とした診断の件数です
+- `summary.skipped` は `check --external-links` で検査できなかった外部 URL の数です
+  （到達不能・5xx・429。環境依存の失敗を診断に混ぜないための逃がし先で、
+  フラグなしでは常に 0 です）
 - キーは追加されることがありますが、削除・改名はしません
 
 ### github

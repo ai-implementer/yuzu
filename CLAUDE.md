@@ -65,7 +65,7 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 
 ### 凍結した設計判断（docs `development/index.md`「凍結した設計判断」参照。差し替えないこと）
 
-comrak（Markdown）/ minijinja（テンプレート）/ syntect + two-face（ハイライト、CSS クラス出力）/ clap derive / TOML 設定は自作の kabosu（依存ゼロ。v0.14 で serde + JSONC から移行。JSONC の互換読み込みは作らない）/ rust-embed / axum + notify + WebSocket（dev サーバ）/ rayon（ページ並列化。出力はスレッド数に依らずバイト同一）。comrak・syntect・two-face は onig（C 依存）を引かないよう **必ず `default-features = false`**（Cargo.toml のコメント参照）。
+comrak（Markdown）/ minijinja（テンプレート）/ syntect + two-face（ハイライト、CSS クラス出力）/ clap derive / TOML 設定は自作の kabosu（依存ゼロ。v0.14 で serde + JSONC から移行。JSONC の互換読み込みは作らない）/ rust-embed / axum + notify + WebSocket（dev サーバ）/ rayon（ページ並列化。出力はスレッド数に依らずバイト同一）。comrak・syntect・two-face は onig（C 依存）を引かないよう **必ず `default-features = false`**（Cargo.toml のコメント参照）。**ネットワーク I/O は build / check / dev の既定経路に入れない**（外部リンク検査は `yuzu check --external-links` の opt-in で、HTTP は curl へ委譲 = HTTP クライアント・TLS を依存に持ち込まない。`commands/extlink.rs`）。
 
 ### 検索の最重要制約
 

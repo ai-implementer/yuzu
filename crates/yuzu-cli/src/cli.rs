@@ -128,5 +128,10 @@ pub enum Command {
         /// github = GitHub Actions の注釈）
         #[arg(long, value_enum, default_value_t = crate::commands::diag::Format::Human)]
         format: crate::commands::diag::Format,
+        /// 外部リンク（http / https）の到達性も検査する（curl へ委譲。
+        /// HTTP 4xx を warning `external-link-broken` として報告し、
+        /// 到達不能・5xx・429 はスキップ件数に数える）
+        #[arg(long)]
+        external_links: bool,
     },
 }

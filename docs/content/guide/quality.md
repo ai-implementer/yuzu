@@ -156,6 +156,11 @@ katakana-choon = false
   そのまま表に出る件数とは限りません（抑制に吸収された分は「抑制 N 件」側に出ます）
 - 無効化中のルールへのページ・行単位の抑制は `unused-lint-suppression` に
   なりません（再有効化すると抑制がそのまま生き返ります）
+- 同じ理由で、`--external-links` を付けない `check` / `lint` では
+  `external-link-broken` は評価されないため、その抑制も `unused-lint-suppression`
+  になりません（外部リンクの例外指定を書いても既定のオフライン CI は落ちません）。
+  `--external-links` を付けた実行でも、到達性を判定できずスキップした URL
+  （接続失敗・タイムアウト・5xx・429）への抑制は同じ扱いです
 
 ### ディレクトリ階層の制限（`lint.max_directory_depth`）
 
@@ -178,6 +183,25 @@ lint のすべてに加えて、**内部リンク・アンカー切れ**（ペ�
 > 
 > このサイト自身も、デプロイ前に `yuzu check` を通しています
 > （[配信とデプロイ](deploy.md)参照）。
+
+### 外部リンクの検査（opt-in）
+
+`--external-links` を付けると、本文中の `http://` / `https://` リンクの到達性も
+検査します。既定の `yuzu check` はネットワークに触れません（ビルドと検査は
+オフラインで決定的、が契約です）:
+
+```bash
+yuzu check --external-links
+```
+
+- HTTP 4xx を返した URL は `external-link-broken`（warning）として出現箇所ごとに
+  報告します。相手側の都合で変わる情報なので error にはせず、`lintDisable`・
+  行コメント・`lint.rules` で例外を通せます
+- DNS 失敗・タイムアウト・5xx・429 は環境や相手側の一時的な状態なので診断にせず、
+  集計行の「スキップ N 件」と `summary.skipped` に数えて、理由を警告ログに出します
+  （CI が環境要因で赤くなりません）
+- 同じ URL は 1 回だけ取得します。HTTP は `curl` に委譲するので、`curl` が
+  無い環境では実行エラー（終了コード 2）になります
 
 ## CI に組み込む
 

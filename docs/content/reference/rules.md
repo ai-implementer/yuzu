@@ -61,11 +61,12 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 ## yuzu check が追加するルール
 
-深刻度はすべて error で、常時有効・`--fix` では直せません。
+深刻度は `external-link-broken` を除いてすべて error で、常時有効・`--fix` では直せません。
 
 | ルール | 検出内容 |
 | --- | --- |
-| `broken-link` | 内部リンクの切れ（外部 URL は検査しません） |
+| `broken-link` | 内部リンクの切れ（外部 URL は既定では検査しません） |
+| `external-link-broken` | `check --external-links` を付けたときだけ。外部リンク（`http` / `https`）が HTTP 4xx を返した。warning で、`lintDisable`・行コメント・`lint.rules` で抑制できます。DNS 失敗・タイムアウト・5xx・429 は診断にせず「スキップ N 件」（`summary.skipped`）に数えます |
 | `broken-anchor` | 見出し・図表ラベルへのアンカーの切れ |
 | `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない（`#` `?` を含む・出力パスに使えない文字を含む等） |
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |
@@ -156,5 +157,8 @@ term-variant = false
   進むことはありません）
 - 無効化中のルールをページ（`lintDisable`）・行コメントで抑制していても
   `unused-lint-suppression` にはなりません。ルールを再有効化すると
-  抑制はそのまま生き返ります
+  抑制はそのまま生き返ります。`--external-links` を付けない実行での
+  `external-link-broken` の抑制も同じ扱いです（評価していないルールは
+  発火しようがないため）。付けた実行でも、到達性を判定できずスキップした
+  URL への抑制は unused にしません（発火したかどうかを判定できないため）
 - 集計行には「（無効化 N 件）」、`--format json` には `summary.disabled` が出ます

@@ -72,6 +72,7 @@ Web 調査込みで確定済みの技術選定です（差し替えない前提�
 | Mermaid | 既定はクライアント描画 | `markdown.mermaid.backend: "ssr"` で自作 SSR（tankan）に切り替える。未対応の図種は自動でクライアント描画へフォールバックする |
 | dev サーバ | axum ＋ notify ＋ WebSocket | `/__livereload` への push でリロード |
 | ページ並列化 | rayon | render / index のページループをデータ並列化。出力はスレッド数に依らずバイト同一 |
+| ネットワーク I/O | 既定経路に入れない | build / check / dev はオフラインで決定的。外部リンクの到達性検査は `yuzu check --external-links` の opt-in だけで、HTTP は `curl` へ委譲して依存グラフに HTTP クライアント・TLS を持ち込まない |
 
 ## tankan の設計原則
 

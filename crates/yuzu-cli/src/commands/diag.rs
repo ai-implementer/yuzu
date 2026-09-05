@@ -38,13 +38,25 @@ pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
 }
 
 /// `yuzu.toml` の lint 設定を core の [`LintOptions`] へ写す（`lint` / `check` 共通。
-/// 変換を 1 箇所に置き、片方のコマンドだけ配線されて有効ルールが食い違うのを防ぐ）
-pub fn lint_options(rc: &yuzu_config::ResolvedConfig) -> LintOptions {
+/// 変換を 1 箇所に置き、片方のコマンドだけ配線されて有効ルールが食い違うのを防ぐ）。
+///
+/// `external_links` はこの実行で外部リンク検査を行うか（`check --external-links`
+/// だけ true。`lint` は常に false）。false なら `external-link-broken` を
+/// 「評価しなかったルール」として渡し、その抑制が `unused-lint-suppression` に
+/// ならないようにする（例外指定のある原稿で既定のオフライン CI が落ちない）
+pub fn lint_options(rc: &yuzu_config::ResolvedConfig, external_links: bool) -> LintOptions {
+    let mut unevaluated_rules = std::collections::BTreeSet::new();
+    if !external_links {
+        unevaluated_rules.insert(yuzu_core::rules::EXTERNAL_LINK_BROKEN.id.to_string());
+    }
     LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,
         terms: rc.config.lint.terms.clone(),
         // ルール ID → bool を無解釈で写す（「不在 = 有効」の解釈は core の漏斗が持つ）
         rules: rc.config.lint.rules.clone(),
+        unevaluated_rules,
+        // 判定できなかった出現箇所は check が外部検査の後に埋める
+        unevaluated_occurrences: Vec::new(),
     }
 }
 
@@ -72,6 +84,10 @@ pub struct Context<'a> {
     pub suppressed: usize,
     /// `lint.rules` の全体無効化で落とした件数（集計行と `summary.disabled`）
     pub disabled: usize,
+    /// `check --external-links` で検査できなかった外部 URL の数（DNS 失敗・
+    /// タイムアウト・5xx・429。集計行と `summary.skipped`。環境依存の失敗を
+    /// 診断に混ぜず、ここへ逃がす）
+    pub skipped: usize,
 }
 
 /// 診断を出力して終了コードを返す（0 = 違反なし / 1 = 違反あり）。
@@ -120,6 +136,7 @@ pub fn report(
                     pages: ctx.pages,
                     suppressed: ctx.suppressed,
                     disabled: ctx.disabled,
+                    skipped: ctx.skipped,
                 },
             )?
         ),
@@ -134,8 +151,8 @@ pub fn report(
 }
 
 /// 「問題ありません」「エラー N 件・警告 M 件」の集計行（human / github 共通）。
-/// 抑制（`lintDisable`）と全体無効化（`lint.rules`）は効いたときだけ件数を付記する
-/// （どちらも 0 件なら従来とバイト同一）
+/// 抑制（`lintDisable`）・全体無効化（`lint.rules`）・スキップ（外部リンク検査）は
+/// 効いたときだけ件数を付記する（すべて 0 件なら従来とバイト同一）
 fn print_summary(diags: &[Diagnostic], ctx: &Context, errors: usize, warnings: usize) {
     let pages = ctx.pages;
     let mut notes = Vec::new();
@@ -144,6 +161,9 @@ fn print_summary(diags: &[Diagnostic], ctx: &Context, errors: usize, warnings: u
     }
     if ctx.disabled > 0 {
         notes.push(format!("無効化 {} 件", ctx.disabled));
+    }
+    if ctx.skipped > 0 {
+        notes.push(format!("スキップ {} 件", ctx.skipped));
     }
     let note = notes.join("・");
     if diags.is_empty() {
@@ -338,6 +358,9 @@ struct JsonSummary {
     suppressed: usize,
     /// `lint.rules` の全体無効化で落とした件数（キー追加のみ = 契約準拠）
     disabled: usize,
+    /// `check --external-links` で検査できなかった外部 URL の数（キー追加のみ = 契約準拠。
+    /// 環境依存の失敗を診断に載せないための逃がし先）
+    skipped: usize,
 }
 
 #[derive(Serialize)]
@@ -404,6 +427,7 @@ mod tests {
             pages,
             suppressed: 0,
             disabled: 0,
+            skipped: 0,
         }
     }
 
@@ -569,6 +593,24 @@ mod tests {
         assert_eq!(v["summary"]["pages"], 16);
         assert_eq!(v["summary"]["suppressed"], 0, "抑制ゼロでもキーは必ず出す");
         assert_eq!(v["summary"]["disabled"], 0, "無効化ゼロでもキーは必ず出す");
+        assert_eq!(v["summary"]["skipped"], 0, "スキップゼロでもキーは必ず出す");
+    }
+
+    #[test]
+    fn json_の_summary_に_skipped_が入る() {
+        let out = render_json(
+            &[],
+            Path::new("content"),
+            Path::new(""),
+            JsonSummary {
+                skipped: 4,
+                ..summary(3)
+            },
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["summary"]["skipped"], 4);
+        assert_eq!(v["summary"]["warnings"], 0);
     }
 
     #[test]

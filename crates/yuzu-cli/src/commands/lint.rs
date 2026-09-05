@@ -30,7 +30,8 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
         glossary: yuzu_render::glossary_options(&rc.config),
         search_page: yuzu_render::search_page_options(&rc.config),
     };
-    let lint_opts = diag::lint_options(&rc);
+    // lint は外部リンクを評価しない（その抑制を unused にしない）
+    let lint_opts = diag::lint_options(&rc, false);
     let collect = |pages: &[Page]| -> anyhow::Result<Vec<Diagnostic>> {
         let mut diags = Vec::new();
         for page in pages {
@@ -122,6 +123,8 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
             pages: pages.iter().filter(|p| !p.is_generated()).count(),
             suppressed,
             disabled,
+            // lint は外部リンクを見ない（check の opt-in だけ）
+            skipped: 0,
         },
     )
 }

@@ -56,6 +56,10 @@ pub fn apply_suppressions(
         .map(|(id, _)| id.as_str())
         .collect();
     let rule_disabled = |rule: &str| disabled_rules.contains(rule);
+    // unused 判定の免除: 全体無効化中のルールに加え、この実行で評価しなかったルール
+    // （`--external-links` なしの `external-link-broken` 等）も発火しようがない
+    let rule_exempt_from_unused =
+        |rule: &str| rule_disabled(rule) || lint.unevaluated_rules.contains(rule);
 
     // rel → 抑制ルール集合（重複エントリはここで畳む。合成ページは
     // frontmatter を持たないので lint_disable は常に空 = 自然に対象外）
@@ -131,6 +135,31 @@ pub fn apply_suppressions(
         kept.push(d);
     }
 
+    // パス 1c: 評価できなかった出現箇所（到達性を判定できずスキップした外部 URL 等）。
+    // 発火したかどうかを判定できないので、その位置を狙う抑制は「効いた」扱いにして
+    // unused 判定を保留する（診断は無いので suppressed には数えない）。
+    // 照合の順序（行コメント → ページ単位）はパス 1 と同じ
+    for (rel, line, rule) in &lint.unevaluated_occurrences {
+        let Some(rule) = rules::find(rule).map(|r| r.id) else {
+            continue;
+        };
+        if let Some((rel, pc)) = by_page_comments.get_key_value(rel.as_path()) {
+            let hit = pc
+                .line
+                .iter()
+                .position(|ls| ls.target_line == Some(*line) && ls.rules.iter().any(|r| r == rule));
+            if let Some(idx) = hit {
+                used_line.entry(rel).or_default().insert((idx, rule));
+                continue;
+            }
+        }
+        if let Some((rel, set)) = by_page.get_key_value(rel.as_path()) {
+            if set.contains(rule) {
+                used.insert((rel, rule));
+            }
+        }
+    }
+
     // パス 2a: 行コメントの検証（壊れたコメント・未知名・抑制不可名・未使用）。
     // span はすべてコメント自身を指す
     for page in pages.iter().filter(|p| !p.is_generated()) {
@@ -156,9 +185,9 @@ pub fn apply_suppressions(
                         (rules::INVALID_LINT_SUPPRESSION, reason)
                     }
                     None => {
-                        // 全体無効化中は発火しようがないので unused 免除
+                        // 全体無効化中・未評価のルールは発火しようがないので unused 免除
                         // （段階導入で警告の嵐にしない・再有効化で抑制が生き返る）
-                        if rule_disabled(name) {
+                        if rule_exempt_from_unused(name) {
                             continue;
                         }
                         let is_used = page_used
@@ -200,8 +229,8 @@ pub fn apply_suppressions(
                     let id = rules::find(entry)
                         .expect("invalid でない名前は必ず引ける")
                         .id;
-                    if rule_disabled(id) {
-                        continue; // 全体無効化中は unused 免除（パス 2a と同じ理由）
+                    if rule_exempt_from_unused(id) {
+                        continue; // 全体無効化中・未評価は unused 免除（パス 2a と同じ理由）
                     }
                     if used.contains(&(page.rel.as_path(), id)) {
                         continue; // 正しく効いた抑制
@@ -1054,6 +1083,102 @@ mod tests {
             outcome.diags
         );
         assert_eq!(outcome.disabled, 1);
+    }
+
+    /// この実行で評価しなかったルール（`--external-links` なしの
+    /// `external-link-broken`）の抑制は unused にしない。外部リンクの例外指定が
+    /// 既定のオフライン CI（`check` / `lint`）を落とさないため（レビュー指摘）
+    #[test]
+    fn 未評価のルールへの抑制は_unused_にならない() {
+        let src = "---\ntitle: t\nlintDisable: [\"external-link-broken\"]\n---\n\n# t\n\n\
+                   <!-- yuzu-lint-disable-next-line external-link-broken -->\n\
+                   [外](https://example.com/missing)\n";
+        let unevaluated = LintOptions {
+            unevaluated_rules: ["external-link-broken".to_string()].into_iter().collect(),
+            ..LintOptions::default()
+        };
+        let outcome = lint_suppressed_with(&[("index.md", src)], &unevaluated);
+        assert!(
+            outcome
+                .diags
+                .iter()
+                .all(|d| d.rule != "unused-lint-suppression"),
+            "{:?}",
+            outcome.diags
+        );
+
+        // 評価した実行（--external-links あり）で発火しなければ従来どおり unused
+        let outcome = lint_suppressed_with(&[("index.md", src)], &LintOptions::default());
+        assert_eq!(
+            outcome
+                .diags
+                .iter()
+                .filter(|d| d.rule == "unused-lint-suppression")
+                .count(),
+            2,
+            "ページ単位と行単位の両方: {:?}",
+            outcome.diags
+        );
+    }
+
+    /// 評価はしたが判定できなかった出現箇所（到達性を判定できずスキップした外部 URL）
+    /// への抑制は unused にしない。行コメントはその行、`lintDisable` はそのページが
+    /// 対象（レビュー指摘: skipped と同時に unused が出て環境要因で exit 1 になっていた）
+    #[test]
+    fn 判定できなかった出現箇所への抑制は_unused_にならない() {
+        // 行コメント（9 行目のリンクを狙う）
+        let line_src = "# t\n\n本文\n\n本文\n\n本文\n\n\
+                        <!-- yuzu-lint-disable-next-line external-link-broken -->\n\
+                        [外](http://127.0.0.1:1/)\n";
+        // ページ単位
+        let page_src = "---\ntitle: t\nlintDisable: [\"external-link-broken\"]\n---\n\n# t\n\n\
+                        [外](http://127.0.0.1:1/)\n";
+        let opts = LintOptions {
+            unevaluated_occurrences: vec![
+                (
+                    std::path::PathBuf::from("line.md"),
+                    10,
+                    "external-link-broken".to_string(),
+                ),
+                (
+                    std::path::PathBuf::from("page.md"),
+                    8,
+                    "external-link-broken".to_string(),
+                ),
+            ],
+            ..LintOptions::default()
+        };
+        let outcome = lint_suppressed_with(&[("line.md", line_src), ("page.md", page_src)], &opts);
+        assert!(
+            outcome
+                .diags
+                .iter()
+                .all(|d| d.rule != "unused-lint-suppression"),
+            "{:?}",
+            outcome.diags
+        );
+        assert_eq!(outcome.suppressed, 0, "診断は無いので抑制件数には数えない");
+
+        // 別の行を指す出現箇所では免除されない（行コメントは行単位で照合する）
+        let opts = LintOptions {
+            unevaluated_occurrences: vec![(
+                std::path::PathBuf::from("line.md"),
+                3,
+                "external-link-broken".to_string(),
+            )],
+            ..LintOptions::default()
+        };
+        let outcome = lint_suppressed_with(&[("line.md", line_src)], &opts);
+        assert_eq!(
+            outcome
+                .diags
+                .iter()
+                .filter(|d| d.rule == "unused-lint-suppression")
+                .count(),
+            1,
+            "{:?}",
+            outcome.diags
+        );
     }
 
     #[test]

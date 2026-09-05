@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use yuzu_core::urlpath::{
-    encode_path, percent_decode, rel_to_slash, resolve_relative, split_suffix,
+    encode_path, is_external_url, percent_decode, rel_to_slash, resolve_relative, split_suffix,
 };
 use yuzu_core::{Page, SiteModel, UrlRewriter};
 
@@ -79,7 +79,7 @@ impl UrlRewriter for UrlResolver {
         if url.is_empty() || url.starts_with('#') {
             return None;
         }
-        if url.contains("://") || url.starts_with("mailto:") || url.starts_with("tel:") {
+        if is_external_url(url) {
             return None;
         }
 

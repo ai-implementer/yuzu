@@ -79,6 +79,11 @@ pub const FMT: Rule = error("fmt");
 // --- spec-error の警告版（描画が注記へ縮退するだけのもの） ---
 pub const SPEC_WARNING: Rule = warning("spec-warning");
 
+// --- 外部リンクの到達性（`yuzu check --external-links` の opt-in だけが出す）。
+// 相手側の都合で変わる情報なので error にはせず、`lintDisable` / 行コメント /
+// `lint.rules` で例外を通せる warning にする ---
+pub const EXTERNAL_LINK_BROKEN: Rule = warning("external-link-broken");
+
 // --- 抑制機構自身のルール（warning）。自身を抑制できると古びた抑制が
 // 黙って溜まるため、抑制不可で固定する ---
 pub const INVALID_LINT_SUPPRESSION: Rule = warning_unsuppressible("invalid-lint-suppression");
@@ -107,6 +112,7 @@ pub const RULES: &[Rule] = &[
     SPEC_ERROR,
     FMT,
     SPEC_WARNING,
+    EXTERNAL_LINK_BROKEN,
     INVALID_LINT_SUPPRESSION,
     UNUSED_LINT_SUPPRESSION,
 ];

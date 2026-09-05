@@ -1,5 +1,7 @@
 //! `yuzu check`: lint ＋ リンク切れ検査 ＋ fmt 差分検出の統合チェック（CI 用）。
-//! 1 件でも診断があれば終了コード 1
+//! 1 件でも診断があれば終了コード 1。
+//! `--external-links` を付けたときだけ外部リンクの到達性も見る（`extlink`。
+//! 既定経路はネットワークに触れない）
 
 use std::process::ExitCode;
 
@@ -7,7 +9,7 @@ use yuzu_core::{DiagBase, Diagnostic, MarkdownOptions};
 
 use super::diag;
 
-pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
+pub fn run(format: diag::Format, external_links: bool) -> anyhow::Result<ExitCode> {
     let (root, rc) = super::load_project()?;
     let opts = MarkdownOptions {
         gfm: rc.config.markdown.gfm,
@@ -20,7 +22,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
         glossary: yuzu_render::glossary_options(&rc.config),
         search_page: yuzu_render::search_page_options(&rc.config),
     };
-    let lint_opts = diag::lint_options(&rc);
+    let mut lint_opts = diag::lint_options(&rc, external_links);
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
 
@@ -62,13 +64,34 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
     // ブロックだけを見る。描画は失敗してもエラーボックスで継続するため、
     // 公開前に気づける場所はこの 2 つだけ
     diags.extend(yuzu_render::validate_api_specs(&pages, &root, &opts));
-    // 内部リンク・アンカー
-    diags.extend(yuzu_core::check_links(
-        &pages,
-        rc.public_dir.as_deref(),
-        &rc.content_dir,
-        &opts,
-    )?);
+    // 内部リンク・アンカー（外部リンクの出現箇所は捨てずに受け取る）
+    let yuzu_core::LinkReport {
+        diags: link_diags,
+        external,
+    } = yuzu_core::check_links(&pages, rc.public_dir.as_deref(), &rc.content_dir, &opts)?;
+    diags.extend(link_diags);
+    // 外部リンクの到達性（opt-in。ここだけがネットワークに触れる）。
+    // 診断は下の抑制の漏斗を通す = lintDisable / 行コメント / lint.rules が効く
+    let skipped = if external_links {
+        let outcome = super::extlink::check(&external)?;
+        diags.extend(outcome.diags);
+        // 到達性を判定できなかった出現箇所は抑制の unused 判定から外す
+        // （環境要因で CI を落とさない契約。診断が無いので suppressed にも数えない）
+        lint_opts.unevaluated_occurrences = outcome
+            .skipped_links
+            .iter()
+            .map(|l| {
+                (
+                    l.rel.clone(),
+                    l.span.start_line,
+                    yuzu_core::rules::EXTERNAL_LINK_BROKEN.id.to_string(),
+                )
+            })
+            .collect();
+        outcome.skipped
+    } else {
+        0
+    };
 
     // frontmatter `lintDisable` のページ単位抑制。全検査の診断が
     // この漏斗を通ってから報告される（config-* は ProjectRoot なので素通り）
@@ -87,6 +110,7 @@ pub fn run(format: diag::Format) -> anyhow::Result<ExitCode> {
             pages: pages.iter().filter(|p| !p.is_generated()).count(),
             suppressed,
             disabled,
+            skipped,
         },
     )
 }

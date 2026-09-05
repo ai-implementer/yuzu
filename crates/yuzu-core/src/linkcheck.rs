@@ -1,8 +1,12 @@
 //! 内部リンク・アンカーの静的検査（`yuzu check`）。
 //!
-//! - 外部 URL（スキーム付き・mailto・tel）には触れない（決定的・オフライン）
+//! - 外部 URL（スキーム付き・mailto・tel）には触れない（決定的・オフライン）。
+//!   ただし http / https の出現箇所は [`LinkReport::external`] で返す = 到達性の
+//!   検査（ネットワーク I/O）は cli 層の opt-in（`yuzu check --external-links`）だけが
+//!   行い、core は既定経路をオフラインに保つ
 //! - URL の分類は yuzu-render の `UrlResolver::rewrite` と同じ規則
-//!   （crates/yuzu-render/src/urls.rs — 変更時は両方を揃えること）
+//!   （crates/yuzu-render/src/urls.rs — 変更時は両方を揃えること。外部参照の判定は
+//!   `urlpath::is_external_url` の 1 実装を共有）
 //! - 著者が書いたパスは `%XX` を**デコードしてから**照合する（`my%20page.md` /
 //!   `/%E8%A8%AD…/`）。ブラウザで辿れるリンクは検査も通る、が契約。
 //!   `?` / `#` 以降の suffix はデコードの対象外（フラグメントは `has_anchor` が別途）
@@ -10,26 +14,48 @@
 //!   自前 slugify はしない
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::MarkdownOptions;
 use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::error::CoreError;
 use crate::markdown::{self, LinkRef};
-use crate::model::Page;
+use crate::model::{Page, SourceSpan};
 use crate::rules;
-use crate::urlpath::{percent_decode, rel_to_slash, resolve_relative, split_suffix};
+use crate::urlpath::{
+    is_external_url, is_http_url, percent_decode, rel_to_slash, resolve_relative, split_suffix,
+};
 
 /// ビルドが生成する route 以外のパス（ルート絶対リンクの有効ターゲット）
 const GENERATED: &[&str] = &["llms.txt", "llms-full.txt"];
 const GENERATED_DIRS: &[&str] = &["_assets/", "_search/"];
+
+/// 本文中の外部リンク（http / https）の出現箇所。
+/// core はネットワークに触れないので、到達性の検査は呼び出し側（cli の opt-in）が行う
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalLink {
+    /// リンク元ページの content 相対パス
+    pub rel: PathBuf,
+    /// リンクの位置（診断に付ける）
+    pub span: SourceSpan,
+    /// 書かれたとおりの URL
+    pub url: String,
+    pub is_image: bool,
+}
+
+/// [`check_links`] の結果。内部リンクの診断と、検査対象外だった外部リンクの一覧
+#[derive(Debug, Default)]
+pub struct LinkReport {
+    pub diags: Vec<Diagnostic>,
+    pub external: Vec<ExternalLink>,
+}
 
 pub(crate) fn check_links(
     pages: &[Page],
     public_dir: Option<&Path>,
     content_dir: &Path,
     opts: &MarkdownOptions,
-) -> Result<Vec<Diagnostic>, CoreError> {
+) -> Result<LinkReport, CoreError> {
     // rel（/ 区切り）→ ページ。draft も引ける（専用メッセージを出すため）
     let by_rel: HashMap<String, &Page> = pages.iter().map(|p| (rel_to_slash(&p.rel), p)).collect();
     // route → ページ。有効ターゲットは非 draft のみ（ビルド成果物に実在するもの）
@@ -40,11 +66,23 @@ pub(crate) fn check_links(
         .collect();
 
     let mut out = Vec::new();
+    let mut external = Vec::new();
     // 合成ページ（用語集）は**リンク先としてだけ**有効にする。上の by_rel / by_route
     // には入れて `[用語集](../glossary.md#api)` を解決可能にしつつ、リンク元としては
     // 見ない（辞書の説明文に書かれたリンクを実在しないファイルの診断として出さない）
     for page in pages.iter().filter(|p| !p.is_generated()) {
         for link in markdown::extract_link_refs(&page.source, opts) {
+            // http / https は到達性検査（opt-in）へ回す。mailto / tel / 他スキームは
+            // 検査しようがないので捨てる（従来どおり）
+            if is_http_url(&link.url) {
+                external.push(ExternalLink {
+                    rel: page.rel.clone(),
+                    span: link.span,
+                    url: link.url.clone(),
+                    is_image: link.is_image,
+                });
+                continue;
+            }
             check_one(
                 page,
                 &link,
@@ -56,7 +94,10 @@ pub(crate) fn check_links(
             );
         }
     }
-    Ok(out)
+    Ok(LinkReport {
+        diags: out,
+        external,
+    })
 }
 
 fn check_one(
@@ -87,8 +128,8 @@ fn check_one(
         return;
     }
 
-    // 外部参照は検査しない
-    if url.contains("://") || url.starts_with("mailto:") || url.starts_with("tel:") {
+    // 外部参照は検査しない（http / https は呼び出し側で external へ回し済み）
+    if is_external_url(url) {
         return;
     }
 

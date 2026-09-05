@@ -3,10 +3,15 @@
 use std::fs;
 use std::path::Path;
 
-use yuzu_core::{Diagnostic, MarkdownOptions, build_source_pages, check_links};
+use yuzu_core::{Diagnostic, LinkReport, MarkdownOptions, build_source_pages, check_links};
 
-/// content/・public/ を持つ一時プロジェクトで check_links を実行する
+/// content/・public/ を持つ一時プロジェクトで check_links を実行し、内部リンクの診断を返す
 fn check(files: &[(&str, &str)], public: &[&str]) -> Vec<Diagnostic> {
+    report(files, public).diags
+}
+
+/// 診断と外部リンク一覧の両方
+fn report(files: &[(&str, &str)], public: &[&str]) -> LinkReport {
     let dir = tempfile::tempdir().unwrap();
     let content = dir.path().join("content");
     let public_dir = dir.path().join("public");
@@ -254,5 +259,57 @@ fn 絶対_相対の分類はデコード前の文字列で行う() {
         rules(&diags),
         ["broken-link"],
         "public/logo.png があっても相対参照なので壊れ扱い"
+    );
+}
+
+#[test]
+fn 外部リンクは_http_と_https_だけを位置付きで返す() {
+    // core はネットワークに触れない = 診断は出さず、cli の opt-in 検査に渡す一覧だけ返す
+    let LinkReport { diags, external } = report(
+        &[
+            (
+                "index.md",
+                "# t\n\n[a](https://example.com/x)\n\n![img](HTTP://example.com/i.png)\n\n\
+                 [mail](mailto:a@example.com)\n\n[ftp](ftp://example.com/f)\n\n[内部](guide/a.md)\n",
+            ),
+            ("guide/a.md", "# a\n\n<https://example.com/x>\n"),
+        ],
+        &[],
+    );
+    assert!(diags.is_empty(), "{diags:?}");
+    let seen: Vec<(String, String, usize, bool)> = external
+        .iter()
+        .map(|e| {
+            (
+                e.rel.to_string_lossy().into_owned(),
+                e.url.clone(),
+                e.span.start_line,
+                e.is_image,
+            )
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            (
+                "guide/a.md".to_string(),
+                "https://example.com/x".to_string(),
+                3,
+                false
+            ),
+            (
+                "index.md".to_string(),
+                "https://example.com/x".to_string(),
+                3,
+                false
+            ),
+            (
+                "index.md".to_string(),
+                "HTTP://example.com/i.png".to_string(),
+                5,
+                true
+            ),
+        ],
+        "mailto / ftp / 内部リンクは含まれない。同じ URL の重複はそのまま（cli が畳む）"
     );
 }
