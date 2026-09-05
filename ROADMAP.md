@@ -50,10 +50,15 @@ v0.15 の軸は「**正しさ・堅牢性**」。v0.10.1 の外部コードレ�
   aliases の生の `#` `?` は引き続き拒否（URL として書く場所なので）。ファイル名の
   `#` `?` へのリンクは `%23` `%3F` と書く以外にない（`<a#b.md>` でも `#` 以降は
   フラグメント。URL 構文上の制約で docs に明記）
-- `unsafe-page-path` は `\` と制御文字だけに縮小（メッセージも「出力パスとして
-  使えない」へ）。`CACHE_FORMAT_VERSION` 21 → 22。docs `reference/rules.md` /
-  `guide/writing.md`（リンクの書き方と aliases のデコード）と ci.yml のゲート
-  （原稿の語＋docs 自身の nav に生の非 ASCII href が無いこと）を追随
+- `unsafe-page-path` は実ファイル名では `\` と制御文字だけに縮小（メッセージも
+  「出力パスとして使えない」へ）。**設定・frontmatter 由来の route（合成ページ・
+  aliases）は Windows の予約文字 `< > : " | ? *` も全 OS で拒否する**（レビュー指摘。
+  Linux で通った `search.page = "a?b"` や alias `a%3Fb` が Windows の書き出し途中で
+  I/O エラーになる形を事前診断へ。実ファイル名は執筆者の OS が作れた時点で正当）。
+  linkcheck の絶対・相対の分類は render と同じくデコード前の文字列で行う
+  （`%2Flogo.png` は相対。同じくレビュー指摘）。`CACHE_FORMAT_VERSION` 21 → 22。
+  docs `reference/rules.md` / `guide/writing.md`（リンクの書き方と aliases のデコード）
+  と ci.yml のゲート（原稿の語とエンコード例）を追随
 
 ### 65 配信とテーマ契約の堅牢化 ⬜
 

@@ -229,3 +229,30 @@ fn デコードしても無いものは壊れ扱い() {
     );
     assert_eq!(rules(&diags), ["broken-link", "broken-link"]);
 }
+
+#[test]
+fn 絶対_相対の分類はデコード前の文字列で行う() {
+    // render（UrlResolver::rewrite）は元の文字列が `/` 始まりかで分類してから
+    // デコードする。`%2Flogo.png` はデコードすると `/logo.png` だが相対参照として
+    // `guide/logo.png` へ解決されるので、check も同じ分類でないと誤報・誤通過になる
+    let diags = check(
+        &[
+            ("guide/page.md", "# p\n\n![x](%2Flogo.png)\n"),
+            ("guide/logo.png", ""),
+        ],
+        &["logo.png"],
+    );
+    assert!(
+        diags.is_empty(),
+        "相対として guide/logo.png を見る: {diags:?}"
+    );
+    let diags = check(
+        &[("guide/page.md", "# p\n\n![x](%2Flogo.png)\n")],
+        &["logo.png"],
+    );
+    assert_eq!(
+        rules(&diags),
+        ["broken-link"],
+        "public/logo.png があっても相対参照なので壊れ扱い"
+    );
+}

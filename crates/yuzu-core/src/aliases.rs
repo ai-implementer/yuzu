@@ -11,6 +11,7 @@ use crate::MarkdownOptions;
 use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::markdown;
 use crate::model::{Page, SourceSpan};
+use crate::routes;
 use crate::rules;
 use crate::urlpath::percent_decode;
 
@@ -40,11 +41,15 @@ pub(crate) fn normalize_alias(raw: &str) -> Result<String, String> {
     // `%XX` はデコードして生の route にする。`old%20name/` は出力先
     // `old name/index.html` になり、ブラウザの `/old%20name/` がサーバのデコードで
     // 一致する（デコードしないと `old%20name/` ディレクトリに書かれて 404）。
-    // デコード後に現れた `\` や制御文字も route にはできない
+    // デコード後の文字列が出力ディレクトリ名になる。エイリアスは設定由来で
+    // どの OS でビルドしても同じパスを作るので、Windows の予約文字
+    // （`a%3Fb` → `a?b` 等）と制御文字は全プラットフォームで拒否する
     let decoded = percent_decode(trimmed);
-    if decoded.contains('\\') || decoded.chars().any(char::is_control) {
+    let bad = routes::unsafe_path_chars(&decoded, true);
+    if !bad.is_empty() {
         return Err(format!(
-            "エイリアスにパスとして使えない文字が含まれています: {trimmed}"
+            "エイリアスに出力パスとして使えない文字（{}）が含まれています: {trimmed}",
+            routes::describe_chars(&bad)
         ));
     }
     let core = decoded.trim_start_matches('/').trim_end_matches('/');
@@ -262,6 +267,25 @@ mod tests {
     fn デコード後に不正になるエイリアスも拒否する() {
         for bad in ["a%5Cb", "%2E%2E/x", "a/%2E/b", "a%00b", "a%2F%2Fb"] {
             assert!(normalize_alias(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn windows_で使えない文字はどの_os_でも拒否する() {
+        // エイリアスは設定由来なので、Linux で通って Windows の書き出し途中で
+        // I/O エラーになる形を事前診断にする（生でもデコード後でも同じ）
+        for bad in [
+            "a%3Fb", "a?b", "a%3Cb%3E", "a<b>", "a%3Ab", "a:b", "a%22b", "a|b", "a%2Ab", "a*b",
+        ] {
+            let err = normalize_alias(bad).unwrap_err();
+            assert!(
+                err.contains("出力パスとして使えない文字") || err.contains("フラグメント"),
+                "{bad:?}: {err}"
+            );
+        }
+        // `#` `%` 空白・非 ASCII は出力パスにできる（URL 化でエンコードされる）
+        for ok in ["a%23b", "a%2523b", "a%20b", "設計"] {
+            assert!(normalize_alias(ok).is_ok(), "{ok:?}");
         }
     }
 

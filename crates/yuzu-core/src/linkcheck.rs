@@ -94,16 +94,21 @@ fn check_one(
 
     let (path, suffix) = split_suffix(url);
     let frag = suffix.split_once('#').map(|(_, f)| f);
-    // 著者がエンコード済みで書いたパスを生のファイル名 / route へ戻す
-    // （render 側の `rewrite` と同じ。suffix はデコードしない）
-    let path = percent_decode(path);
-    let path = path.as_str();
 
+    // 絶対・相対の分類は**デコード前**の文字列で行う（render 側の `rewrite` と同じ
+    // 順序）。`%2Flogo.png` はデコードすると `/logo.png` だが相対参照として
+    // `<dir>/logo.png` へ解決されるので、先にデコードすると分類が render とずれる
     // ルート絶対（`/foo`）→ public/・ページ route・ビルド生成物に照合
     if let Some(rest) = path.strip_prefix('/') {
-        check_absolute(page, link, rest, frag, by_route, public_dir, out);
+        // 著者がエンコード済みで書いた `/%E8%A8%AD…/` を生の route へ戻す
+        let rest = percent_decode(rest);
+        check_absolute(page, link, &rest, frag, by_route, public_dir, out);
         return;
     }
+
+    // content 相対の参照は生のファイル名へ戻してから照合する（suffix はデコードしない）
+    let path = percent_decode(path);
+    let path = path.as_str();
 
     // 相対 `.md` リンク → ページに照合
     if path.ends_with(".md") {

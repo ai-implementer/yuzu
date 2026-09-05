@@ -67,10 +67,10 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | --- | --- |
 | `broken-link` | 内部リンクの切れ（外部 URL は検査しません） |
 | `broken-anchor` | 見出し・図表ラベルへのアンカーの切れ |
-| `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない |
+| `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない（`#` `?` を含む・出力パスに使えない文字を含む等） |
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |
 | `route-conflict` | 2 つ以上のページが同じ URL になる（`x.md` と `x/index.md`）。自動生成されるページ（[用語集](../guide/writing.md#用語集と略語)・[検索結果ページ](../guide/search.md#検索結果ページ)）との衝突もここで報告します |
-| `unsafe-page-path` | ファイル名（または `markdown.glossary.page` / `search.page`）に出力パスとして使えない文字（`\` と制御文字）。`#` `?` `%` 空白・日本語は URL 化のときにパーセントエンコードされるので対象外です |
+| `unsafe-page-path` | ファイル名（または `markdown.glossary.page` / `search.page`）に出力パスとして使えない文字（`\` と制御文字）。`#` `?` `%` 空白・日本語は URL 化のときにパーセントエンコードされるので対象外です。設定由来の `markdown.glossary.page` / `search.page` と `aliases` は、どの OS でビルドしても同じ出力パスを作るため、Windows で使えない `< > : " \| ? *` も全 OS で拒否します |
 | `include-error` | コンテンツインクルード（`file=`）の参照先が読めない・範囲外。Markdown 断片（\`\`\`include）の散文違反（見出し・キャプション行・脚注・frontmatter・`file=` の入れ子）もここで報告 |
 | `spec-error` | `openapi` / `jsonschema` の `file:` 参照が読めない・仕様が壊れている・未対応バージョン・`$ref` 先が解決できない |
 | `fmt` | 整形差分がある（`yuzu fmt` で修正、`yuzu fmt --diff` で内容を確認できます） |
