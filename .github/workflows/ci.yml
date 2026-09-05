@@ -115,7 +115,10 @@ jobs:
           # 合成ページが nav 経路に乗っている（サイドバーに出る）
           grep -q 'href="/glossary/"' dist/index.html
           # 用語集ページ自身は abbr 化しない（説明文の中で用語が光る循環を防ぐ）
-          ! grep -q '<abbr' dist/glossary/index.html
+          if grep -q '<abbr' dist/glossary/index.html; then
+            echo "用語集ページ自身が abbr 化された" >&2
+            exit 1
+          fi
           # 約物に隣接した強調（Phase 53 の cjk_friendly_emphasis）
           grep -q '<strong>「重要」</strong>' dist/guide/writing/index.html
           grep -q '<strong>この文は重要です。</strong>但し' dist/guide/writing/index.html
@@ -168,9 +171,15 @@ jobs:
           # ドロップダウン → 結果ページへの導線（全ページに data-search-page が配られる）
           grep -q 'data-search-page' dist/index.html
           # llms.txt に検索結果ページが載らない（guide/search.md は実ページなので残る）
-          ! grep -q '\[検索\](' dist/llms.txt
+          if grep -q '\[検索\](' dist/llms.txt; then
+            echo "llms.txt に検索結果ページが載った" >&2
+            exit 1
+          fi
           # ページ単位 .md も出さない
-          ! test -f dist/search.md
+          if test -f dist/search.md; then
+            echo "検索結果ページのページ単位 .md が出た" >&2
+            exit 1
+          fi
           # ナビと目次の規模対応（Phase 56）: 現在セクションだけ開いた折りたたみ・
           # 他セクションは閉じる・TOC の nav 化・scrollspy 基準線の実測化
           grep -q '<details class="nav-section" open>' dist/guide/writing/index.html
@@ -233,7 +242,10 @@ jobs:
           # Phase 53: 定義リストが描画される
           grep -q '<dl>' dist/index.html
           # Phase 53: 未知のセクション名は実行エラー（終了コード 2）
-          ! "$GITHUB_WORKSPACE/target/debug/yuzu" search --section 存在しない "はじめに"
+          if "$GITHUB_WORKSPACE/target/debug/yuzu" search --section 存在しない "はじめに"; then
+            echo "存在しないセクションの絞り込みが成功扱いになった" >&2
+            exit 1
+          fi
           # Phase 22: openapi/jsonschema SSR — scaffold の jsonschema ブロックが
           # 静的 HTML 化されていること＋ file: 参照は仕様ファイルの変更だけで反映されること
           # （jsonschema は class="api-spec api-schema" なので閉じ引用符まで書かない）
@@ -360,6 +372,25 @@ jobs:
           # lint --fix と json を併用しても標準出力が JSON のまま（進捗は stderr へ）
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint --fix --format json 2>/dev/null \
             | head -1 | grep -q '^{$'
+          # Phase 65: preview はシンボリックリンクを辿らない（実バイナリ経由の e2e）。
+          # dist 内のリンクとリンク先ファイルを置き、404 かつ内容が漏れないことを見る
+          mkdir -p "$RUNNER_TEMP/outside"
+          echo '<html>secret</html>' > "$RUNNER_TEMP/outside/secret.html"
+          ln -s "$RUNNER_TEMP/outside" dist/link
+          ln -s "$RUNNER_TEMP/outside/secret.html" dist/leaf.html
+          "$GITHUB_WORKSPACE/target/debug/yuzu" preview --port 48124 >/dev/null 2>&1 &
+          GUARD_PID=$!
+          for _ in $(seq 1 50); do curl -sf -o /dev/null http://127.0.0.1:48124/ && break; sleep 0.2; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:48124/link/secret.html)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:48124/leaf.html)" = 404
+          # `! cmd` は set -e の対象外で失敗しても続行してしまうので、否定ゲートは if で明示的に落とす
+          if curl -s http://127.0.0.1:48124/link/secret.html | grep -q secret; then
+            echo "preview がリンク先の内容を漏らした" >&2
+            exit 1
+          fi
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:48124/)" = 200
+          kill "$GUARD_PID"
+          rm dist/link dist/leaf.html
           # Phase 66: 外部リンク検査（opt-in）。ネットワークへは出ず、自分の preview を
           # 相手にして「4xx → warning・到達不能 → skipped・既定の check は触れない」を検証する
           "$GITHUB_WORKSPACE/target/debug/yuzu" preview --port 48123 >/dev/null 2>&1 &
@@ -372,10 +403,16 @@ jobs:
           grep -q '"rule": "external-link-broken"' "$RUNNER_TEMP/extlink.json"
           grep -q 'no-such-file' "$RUNNER_TEMP/extlink.json"
           grep -q '"skipped": 2' "$RUNNER_TEMP/extlink.json"
-          ! grep -q 'unused-lint-suppression' "$RUNNER_TEMP/extlink.json"
+          if grep -q 'unused-lint-suppression' "$RUNNER_TEMP/extlink.json"; then
+            echo "判定できなかった URL への抑制が unused になった" >&2
+            exit 1
+          fi
           # 既定の check は外部リンクに触れない（診断なし・skipped 0）
           "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json > "$RUNNER_TEMP/diag2.json" || true
-          ! grep -q 'external-link-broken' "$RUNNER_TEMP/diag2.json"
+          if grep -q 'external-link-broken' "$RUNNER_TEMP/diag2.json"; then
+            echo "既定の check が外部リンクを検査した" >&2
+            exit 1
+          fi
           grep -q '"skipped": 0' "$RUNNER_TEMP/diag2.json"
           # tracing のログが標準出力へ漏れないこと（既定 writer は stdout なので明示指定が要る）。
           # input.dir がルート外の警告（config-path-outside-root）は読み込み後も続行して
