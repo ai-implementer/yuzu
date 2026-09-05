@@ -38,13 +38,23 @@ pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
 }
 
 /// `yuzu.toml` の lint 設定を core の [`LintOptions`] へ写す（`lint` / `check` 共通。
-/// 変換を 1 箇所に置き、片方のコマンドだけ配線されて有効ルールが食い違うのを防ぐ）
-pub fn lint_options(rc: &yuzu_config::ResolvedConfig) -> LintOptions {
+/// 変換を 1 箇所に置き、片方のコマンドだけ配線されて有効ルールが食い違うのを防ぐ）。
+///
+/// `external_links` はこの実行で外部リンク検査を行うか（`check --external-links`
+/// だけ true。`lint` は常に false）。false なら `external-link-broken` を
+/// 「評価しなかったルール」として渡し、その抑制が `unused-lint-suppression` に
+/// ならないようにする（例外指定のある原稿で既定のオフライン CI が落ちない）
+pub fn lint_options(rc: &yuzu_config::ResolvedConfig, external_links: bool) -> LintOptions {
+    let mut unevaluated_rules = std::collections::BTreeSet::new();
+    if !external_links {
+        unevaluated_rules.insert(yuzu_core::rules::EXTERNAL_LINK_BROKEN.id.to_string());
+    }
     LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,
         terms: rc.config.lint.terms.clone(),
         // ルール ID → bool を無解釈で写す（「不在 = 有効」の解釈は core の漏斗が持つ）
         rules: rc.config.lint.rules.clone(),
+        unevaluated_rules,
     }
 }
 

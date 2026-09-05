@@ -173,6 +173,11 @@ pub struct LintOptions {
     /// 漏斗だけが持つ（lint_page / lint_project は見ない = チェックは常に走り、
     /// 報告直前に落とす。空マップ = 全有効）
     pub rules: std::collections::BTreeMap<String, bool>,
+    /// この実行では**評価しなかった**ルール ID（例: `--external-links` なしの
+    /// `check` / `lint` における `external-link-broken`）。発火しようがないので、
+    /// その抑制を `unused-lint-suppression` にしない（全体無効化中と同じ免除。
+    /// 外部リンクの例外指定が既定のオフライン CI を落とさないため）
+    pub unevaluated_rules: std::collections::BTreeSet<String>,
 }
 
 /// `content_dir` 以下の `.md` 以外の同伴アセット（ページ横の画像等）を列挙する。

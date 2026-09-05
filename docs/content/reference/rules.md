@@ -157,5 +157,7 @@ term-variant = false
   進むことはありません）
 - 無効化中のルールをページ（`lintDisable`）・行コメントで抑制していても
   `unused-lint-suppression` にはなりません。ルールを再有効化すると
-  抑制はそのまま生き返ります
+  抑制はそのまま生き返ります。`--external-links` を付けない実行での
+  `external-link-broken` の抑制も同じ扱いです（評価していないルールは
+  発火しようがないため）
 - 集計行には「（無効化 N 件）」、`--format json` には `summary.disabled` が出ます

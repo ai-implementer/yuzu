@@ -22,7 +22,7 @@ pub fn run(format: diag::Format, external_links: bool) -> anyhow::Result<ExitCod
         glossary: yuzu_render::glossary_options(&rc.config),
         search_page: yuzu_render::search_page_options(&rc.config),
     };
-    let lint_opts = diag::lint_options(&rc);
+    let lint_opts = diag::lint_options(&rc, external_links);
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
 

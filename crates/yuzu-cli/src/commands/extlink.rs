@@ -148,6 +148,10 @@ fn probe(url: &str) -> std::io::Result<Probe> {
     let output = Command::new("curl")
         .args([
             "-sS",
+            // URL のグロブ展開を止める。`?q=[1-2]` は 2 回取得されて `%{http_code}` が
+            // `404404` に連結され、`?filter[name]=x` は構文エラーになり、どちらも
+            // 壊れたリンクなのに skipped 扱いになる（レビュー指摘）
+            "--globoff",
             "-o",
             null,
             "-L",
@@ -219,7 +223,8 @@ mod tests {
                     .and_then(|line| line.split_whitespace().nth(1))
                     .unwrap_or("/")
                     .to_string();
-                let (status, extra) = match path.as_str() {
+                // クエリを除いたパスで判定する（`?q=[1-2]` 付きも同じ応答）
+                let (status, extra) = match path.split('?').next().unwrap_or(&path) {
                     "/ok" => ("200 OK", String::new()),
                     "/moved" => ("302 Found", "Location: /ok\r\n".to_string()),
                     "/missing" => ("404 Not Found", String::new()),
@@ -323,6 +328,33 @@ mod tests {
                 .iter()
                 .all(|d| d.severity == yuzu_core::Severity::Warning)
         );
+    }
+
+    /// 角括弧・波括弧入りの URL を curl のグロブに解釈させず、書かれたまま 1 回だけ
+    /// 取得する。グロブが効くと `[1-2]` は 2 回取得されて応答コードが `404404` に
+    /// 連結され、`[name]` は構文エラーになり、どちらも skipped へ逃げてしまう
+    #[test]
+    fn 角括弧付きの_url_はグロブ展開せずそのまま_1_回取得する() {
+        let base = serve();
+        let links = vec![
+            link("index.md", 3, &format!("{base}/missing?q=[1-2]")),
+            link("index.md", 5, &format!("{base}/missing?filter[name]=x")),
+            link("index.md", 7, &format!("{base}/ok?ids={{1,2}}")),
+        ];
+        let outcome = check(&links).expect("curl が動く");
+        let mut lines: Vec<usize> = outcome
+            .diags
+            .iter()
+            .map(|d| d.span.unwrap().start_line)
+            .collect();
+        lines.sort();
+        assert_eq!(lines, [3, 5], "{:?}", outcome.diags);
+        assert!(
+            outcome.diags.iter().all(|d| d.message.contains("HTTP 404")),
+            "{:?}",
+            outcome.diags
+        );
+        assert_eq!(outcome.skipped, 0, "グロブ由来の失敗が skipped に化けない");
     }
 
     #[test]

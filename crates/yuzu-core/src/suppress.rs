@@ -56,6 +56,10 @@ pub fn apply_suppressions(
         .map(|(id, _)| id.as_str())
         .collect();
     let rule_disabled = |rule: &str| disabled_rules.contains(rule);
+    // unused 判定の免除: 全体無効化中のルールに加え、この実行で評価しなかったルール
+    // （`--external-links` なしの `external-link-broken` 等）も発火しようがない
+    let rule_exempt_from_unused =
+        |rule: &str| rule_disabled(rule) || lint.unevaluated_rules.contains(rule);
 
     // rel → 抑制ルール集合（重複エントリはここで畳む。合成ページは
     // frontmatter を持たないので lint_disable は常に空 = 自然に対象外）
@@ -156,9 +160,9 @@ pub fn apply_suppressions(
                         (rules::INVALID_LINT_SUPPRESSION, reason)
                     }
                     None => {
-                        // 全体無効化中は発火しようがないので unused 免除
+                        // 全体無効化中・未評価のルールは発火しようがないので unused 免除
                         // （段階導入で警告の嵐にしない・再有効化で抑制が生き返る）
-                        if rule_disabled(name) {
+                        if rule_exempt_from_unused(name) {
                             continue;
                         }
                         let is_used = page_used
@@ -200,8 +204,8 @@ pub fn apply_suppressions(
                     let id = rules::find(entry)
                         .expect("invalid でない名前は必ず引ける")
                         .id;
-                    if rule_disabled(id) {
-                        continue; // 全体無効化中は unused 免除（パス 2a と同じ理由）
+                    if rule_exempt_from_unused(id) {
+                        continue; // 全体無効化中・未評価は unused 免除（パス 2a と同じ理由）
                     }
                     if used.contains(&(page.rel.as_path(), id)) {
                         continue; // 正しく効いた抑制
@@ -1054,6 +1058,42 @@ mod tests {
             outcome.diags
         );
         assert_eq!(outcome.disabled, 1);
+    }
+
+    /// この実行で評価しなかったルール（`--external-links` なしの
+    /// `external-link-broken`）の抑制は unused にしない。外部リンクの例外指定が
+    /// 既定のオフライン CI（`check` / `lint`）を落とさないため（レビュー指摘）
+    #[test]
+    fn 未評価のルールへの抑制は_unused_にならない() {
+        let src = "---\ntitle: t\nlintDisable: [\"external-link-broken\"]\n---\n\n# t\n\n\
+                   <!-- yuzu-lint-disable-next-line external-link-broken -->\n\
+                   [外](https://example.com/missing)\n";
+        let unevaluated = LintOptions {
+            unevaluated_rules: ["external-link-broken".to_string()].into_iter().collect(),
+            ..LintOptions::default()
+        };
+        let outcome = lint_suppressed_with(&[("index.md", src)], &unevaluated);
+        assert!(
+            outcome
+                .diags
+                .iter()
+                .all(|d| d.rule != "unused-lint-suppression"),
+            "{:?}",
+            outcome.diags
+        );
+
+        // 評価した実行（--external-links あり）で発火しなければ従来どおり unused
+        let outcome = lint_suppressed_with(&[("index.md", src)], &LintOptions::default());
+        assert_eq!(
+            outcome
+                .diags
+                .iter()
+                .filter(|d| d.rule == "unused-lint-suppression")
+                .count(),
+            2,
+            "ページ単位と行単位の両方: {:?}",
+            outcome.diags
+        );
     }
 
     #[test]

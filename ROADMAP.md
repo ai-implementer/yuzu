@@ -118,6 +118,13 @@ v0.15 の軸は「**正しさ・堅牢性**」。v0.10.1 の外部コードレ�
 - CI の e2e はネットワークへ出ず、自分の `yuzu preview` を相手に「4xx → warning・
   到達不能 → skipped・既定の check は触れない」を検証する。docs.yml で実運用するかは
   Phase 67 で決める
+- **レビュー指摘 2 件**: (1) `--external-links` なしの `check` / `lint` では
+  `external-link-broken` の抑制が `unused-lint-suppression` になり、例外指定が既定の
+  オフライン CI を落としていた → `LintOptions.unevaluated_rules`（この実行で評価しなかった
+  ルール）を足し、`apply_suppressions` の unused 免除を「全体無効化中 or 未評価」にした。
+  (2) curl のグロブ展開で `?q=[1-2]` が 2 回取得（`404404`）・`?filter[name]=x` が
+  構文エラーになり、壊れたリンクが skipped に化けていた → `--globoff` を付け、
+  角括弧・波括弧 URL の回帰テストを追加
 
 ### 67 dogfooding 改善 ⬜
 

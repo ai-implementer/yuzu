@@ -156,6 +156,9 @@ katakana-choon = false
   そのまま表に出る件数とは限りません（抑制に吸収された分は「抑制 N 件」側に出ます）
 - 無効化中のルールへのページ・行単位の抑制は `unused-lint-suppression` に
   なりません（再有効化すると抑制がそのまま生き返ります）
+- 同じ理由で、`--external-links` を付けない `check` / `lint` では
+  `external-link-broken` は評価されないため、その抑制も `unused-lint-suppression`
+  になりません（外部リンクの例外指定を書いても既定のオフライン CI は落ちません）
 
 ### ディレクトリ階層の制限（`lint.max_directory_depth`）
 
