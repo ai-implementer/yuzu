@@ -365,12 +365,14 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" preview --port 48123 >/dev/null 2>&1 &
           PREVIEW_PID=$!
           for _ in $(seq 1 50); do curl -sf -o /dev/null http://127.0.0.1:48123/ && break; sleep 0.2; done
-          printf '\n[ok](http://127.0.0.1:48123/)\n\n[missing](http://127.0.0.1:48123/no-such-file)\n\n[down](http://127.0.0.1:1/)\n' >> content/index.md
+          # down2 は抑制コメント付きの到達不能 URL = 判定できない出現箇所への抑制は unused にしない
+          printf '\n[ok](http://127.0.0.1:48123/)\n\n[missing](http://127.0.0.1:48123/no-such-file)\n\n[down](http://127.0.0.1:1/)\n\n<!-- yuzu-lint-disable-next-line external-link-broken -->\n[down2](http://127.0.0.1:1/x)\n' >> content/index.md
           "$GITHUB_WORKSPACE/target/debug/yuzu" check --external-links --format json > "$RUNNER_TEMP/extlink.json" || true
           kill "$PREVIEW_PID"
           grep -q '"rule": "external-link-broken"' "$RUNNER_TEMP/extlink.json"
           grep -q 'no-such-file' "$RUNNER_TEMP/extlink.json"
-          grep -q '"skipped": 1' "$RUNNER_TEMP/extlink.json"
+          grep -q '"skipped": 2' "$RUNNER_TEMP/extlink.json"
+          ! grep -q 'unused-lint-suppression' "$RUNNER_TEMP/extlink.json"
           # 既定の check は外部リンクに触れない（診断なし・skipped 0）
           "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json > "$RUNNER_TEMP/diag2.json" || true
           ! grep -q 'external-link-broken' "$RUNNER_TEMP/diag2.json"

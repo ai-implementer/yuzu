@@ -55,6 +55,8 @@ pub fn lint_options(rc: &yuzu_config::ResolvedConfig, external_links: bool) -> L
         // ルール ID → bool を無解釈で写す（「不在 = 有効」の解釈は core の漏斗が持つ）
         rules: rc.config.lint.rules.clone(),
         unevaluated_rules,
+        // 判定できなかった出現箇所は check が外部検査の後に埋める
+        unevaluated_occurrences: Vec::new(),
     }
 }
 

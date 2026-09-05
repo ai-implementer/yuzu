@@ -158,7 +158,9 @@ katakana-choon = false
   なりません（再有効化すると抑制がそのまま生き返ります）
 - 同じ理由で、`--external-links` を付けない `check` / `lint` では
   `external-link-broken` は評価されないため、その抑制も `unused-lint-suppression`
-  になりません（外部リンクの例外指定を書いても既定のオフライン CI は落ちません）
+  になりません（外部リンクの例外指定を書いても既定のオフライン CI は落ちません）。
+  `--external-links` を付けた実行でも、到達性を判定できずスキップした URL
+  （接続失敗・タイムアウト・5xx・429）への抑制は同じ扱いです
 
 ### ディレクトリ階層の制限（`lint.max_directory_depth`）
 

@@ -178,6 +178,12 @@ pub struct LintOptions {
     /// その抑制を `unused-lint-suppression` にしない（全体無効化中と同じ免除。
     /// 外部リンクの例外指定が既定のオフライン CI を落とさないため）
     pub unevaluated_rules: std::collections::BTreeSet<String>,
+    /// この実行で**評価できなかった**診断の出現箇所 `(rel, 1 始まりの行, ルール ID)`。
+    /// 例: `--external-links` で到達性を判定できず（接続失敗・タイムアウト・5xx・
+    /// 429）スキップした URL の位置。その行を狙う行コメントと、そのページの
+    /// `lintDisable` は発火の有無を判定できないので unused にしない
+    /// （環境要因で CI を落とさない契約）
+    pub unevaluated_occurrences: Vec<(std::path::PathBuf, usize, String)>,
 }
 
 /// `content_dir` 以下の `.md` 以外の同伴アセット（ページ横の画像等）を列挙する。

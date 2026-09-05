@@ -27,6 +27,9 @@ use yuzu_core::{DiagBase, Diagnostic, ExternalLink, rules};
 pub struct Outcome {
     pub diags: Vec<Diagnostic>,
     pub skipped: usize,
+    /// 検査できなかった URL の出現箇所（抑制の unused 判定を保留させるために
+    /// 呼び出し側が `LintOptions.unevaluated_occurrences` へ写す）
+    pub skipped_links: Vec<ExternalLink>,
 }
 
 /// 同時に走らせる curl の数
@@ -50,6 +53,7 @@ pub fn check(links: &[ExternalLink]) -> anyhow::Result<Outcome> {
 
     let mut diags = Vec::new();
     let mut skipped = 0;
+    let mut skipped_links = Vec::new();
     for (url, probe) in urls.iter().zip(&probes) {
         match classify(probe) {
             Verdict::Ok => {}
@@ -68,11 +72,16 @@ pub fn check(links: &[ExternalLink]) -> anyhow::Result<Outcome> {
             }
             Verdict::Skipped(reason) => {
                 skipped += 1;
+                skipped_links.extend(by_url[url].iter().map(|l| (*l).clone()));
                 tracing::warn!(url = %url, reason = %reason, "外部リンクを検査できませんでした（スキップ）");
             }
         }
     }
-    Ok(Outcome { diags, skipped })
+    Ok(Outcome {
+        diags,
+        skipped,
+        skipped_links,
+    })
 }
 
 /// curl 1 回の結果
@@ -328,6 +337,14 @@ mod tests {
                 .iter()
                 .all(|d| d.severity == yuzu_core::Severity::Warning)
         );
+        // スキップした出現箇所は抑制の unused 判定を保留させるために返す
+        let mut skipped_lines: Vec<usize> = outcome
+            .skipped_links
+            .iter()
+            .map(|l| l.span.start_line)
+            .collect();
+        skipped_lines.sort();
+        assert_eq!(skipped_lines, [6, 8, 10], "{:?}", outcome.skipped_links);
     }
 
     /// 角括弧・波括弧入りの URL を curl のグロブに解釈させず、書かれたまま 1 回だけ

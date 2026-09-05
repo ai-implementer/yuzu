@@ -135,6 +135,31 @@ pub fn apply_suppressions(
         kept.push(d);
     }
 
+    // パス 1c: 評価できなかった出現箇所（到達性を判定できずスキップした外部 URL 等）。
+    // 発火したかどうかを判定できないので、その位置を狙う抑制は「効いた」扱いにして
+    // unused 判定を保留する（診断は無いので suppressed には数えない）。
+    // 照合の順序（行コメント → ページ単位）はパス 1 と同じ
+    for (rel, line, rule) in &lint.unevaluated_occurrences {
+        let Some(rule) = rules::find(rule).map(|r| r.id) else {
+            continue;
+        };
+        if let Some((rel, pc)) = by_page_comments.get_key_value(rel.as_path()) {
+            let hit = pc
+                .line
+                .iter()
+                .position(|ls| ls.target_line == Some(*line) && ls.rules.iter().any(|r| r == rule));
+            if let Some(idx) = hit {
+                used_line.entry(rel).or_default().insert((idx, rule));
+                continue;
+            }
+        }
+        if let Some((rel, set)) = by_page.get_key_value(rel.as_path()) {
+            if set.contains(rule) {
+                used.insert((rel, rule));
+            }
+        }
+    }
+
     // パス 2a: 行コメントの検証（壊れたコメント・未知名・抑制不可名・未使用）。
     // span はすべてコメント自身を指す
     for page in pages.iter().filter(|p| !p.is_generated()) {
@@ -1092,6 +1117,66 @@ mod tests {
                 .count(),
             2,
             "ページ単位と行単位の両方: {:?}",
+            outcome.diags
+        );
+    }
+
+    /// 評価はしたが判定できなかった出現箇所（到達性を判定できずスキップした外部 URL）
+    /// への抑制は unused にしない。行コメントはその行、`lintDisable` はそのページが
+    /// 対象（レビュー指摘: skipped と同時に unused が出て環境要因で exit 1 になっていた）
+    #[test]
+    fn 判定できなかった出現箇所への抑制は_unused_にならない() {
+        // 行コメント（9 行目のリンクを狙う）
+        let line_src = "# t\n\n本文\n\n本文\n\n本文\n\n\
+                        <!-- yuzu-lint-disable-next-line external-link-broken -->\n\
+                        [外](http://127.0.0.1:1/)\n";
+        // ページ単位
+        let page_src = "---\ntitle: t\nlintDisable: [\"external-link-broken\"]\n---\n\n# t\n\n\
+                        [外](http://127.0.0.1:1/)\n";
+        let opts = LintOptions {
+            unevaluated_occurrences: vec![
+                (
+                    std::path::PathBuf::from("line.md"),
+                    10,
+                    "external-link-broken".to_string(),
+                ),
+                (
+                    std::path::PathBuf::from("page.md"),
+                    8,
+                    "external-link-broken".to_string(),
+                ),
+            ],
+            ..LintOptions::default()
+        };
+        let outcome = lint_suppressed_with(&[("line.md", line_src), ("page.md", page_src)], &opts);
+        assert!(
+            outcome
+                .diags
+                .iter()
+                .all(|d| d.rule != "unused-lint-suppression"),
+            "{:?}",
+            outcome.diags
+        );
+        assert_eq!(outcome.suppressed, 0, "診断は無いので抑制件数には数えない");
+
+        // 別の行を指す出現箇所では免除されない（行コメントは行単位で照合する）
+        let opts = LintOptions {
+            unevaluated_occurrences: vec![(
+                std::path::PathBuf::from("line.md"),
+                3,
+                "external-link-broken".to_string(),
+            )],
+            ..LintOptions::default()
+        };
+        let outcome = lint_suppressed_with(&[("line.md", line_src)], &opts);
+        assert_eq!(
+            outcome
+                .diags
+                .iter()
+                .filter(|d| d.rule == "unused-lint-suppression")
+                .count(),
+            1,
+            "{:?}",
             outcome.diags
         );
     }

@@ -22,7 +22,7 @@ pub fn run(format: diag::Format, external_links: bool) -> anyhow::Result<ExitCod
         glossary: yuzu_render::glossary_options(&rc.config),
         search_page: yuzu_render::search_page_options(&rc.config),
     };
-    let lint_opts = diag::lint_options(&rc, external_links);
+    let mut lint_opts = diag::lint_options(&rc, external_links);
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
 
@@ -75,6 +75,19 @@ pub fn run(format: diag::Format, external_links: bool) -> anyhow::Result<ExitCod
     let skipped = if external_links {
         let outcome = super::extlink::check(&external)?;
         diags.extend(outcome.diags);
+        // 到達性を判定できなかった出現箇所は抑制の unused 判定から外す
+        // （環境要因で CI を落とさない契約。診断が無いので suppressed にも数えない）
+        lint_opts.unevaluated_occurrences = outcome
+            .skipped_links
+            .iter()
+            .map(|l| {
+                (
+                    l.rel.clone(),
+                    l.span.start_line,
+                    yuzu_core::rules::EXTERNAL_LINK_BROKEN.id.to_string(),
+                )
+            })
+            .collect();
         outcome.skipped
     } else {
         0

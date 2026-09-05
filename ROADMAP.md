@@ -124,7 +124,11 @@ v0.15 の軸は「**正しさ・堅牢性**」。v0.10.1 の外部コードレ�
   ルール）を足し、`apply_suppressions` の unused 免除を「全体無効化中 or 未評価」にした。
   (2) curl のグロブ展開で `?q=[1-2]` が 2 回取得（`404404`）・`?filter[name]=x` が
   構文エラーになり、壊れたリンクが skipped に化けていた → `--globoff` を付け、
-  角括弧・波括弧 URL の回帰テストを追加
+  角括弧・波括弧 URL の回帰テストを追加。(3) 続報: `--external-links` ありでも
+  到達性を判定できずスキップした URL への抑制が unused になり、環境要因で exit 1 に
+  なっていた → `LintOptions.unevaluated_occurrences`（rel / 行 / ルール）で
+  スキップした出現箇所を抑制処理へ渡し、その行の行コメント・そのページの
+  `lintDisable` を「効いた」扱いにして unused 判定を保留（suppressed には数えない）
 
 ### 67 dogfooding 改善 ⬜
 
