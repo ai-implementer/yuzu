@@ -3,166 +3,24 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在: v0.15（Phase 64〜67）
+## 現在
 
-**v0.14 まで公開済み**（[kabosu 0.1.0 も crates.io で公開済み](https://crates.io/crates/kabosu)。
-yuzu のリリースとは非同期。publish 前に fuzz を回す規律は CLAUDE.md にある）。
-
-v0.15 の軸は「**正しさ・堅牢性**」。v0.10.1 の外部コードレビューで「今回は入れない」と
-判断した持ち越し 3 件（URL のパーセントエンコード全面対応 / `ServeDir` がシンボリック
-リンクを辿る / `syntect.css` の無条件出力）は、どれも**正しさの穴を規約や空ファイルで
-塞いでいる**状態のまま 5 版を越えた。v0.14 で設定の正しさ（位置付き診断・未知キーの拒否）
-を整えたので、次は生成 URL・配信・検査の正しさへ寄せる。候補に残していた
-「外部リンク切れ検査」も、凍結方針（決定的・オフライン）と衝突しない opt-in の形を
-決めてここで入れる。Phase は価値と実装コスト・依存関係の順（着手時に個別に設計する）。
-
-### 64 URL のパーセントエンコード ✅
-
-従来は `#` `?` `%` `"` `'` `<` `>` `` ` `` `\` を含むファイル名を `unsafe-page-path`
-（error・build 中断）で**拒否**して整合を取り、空白と非 ASCII は ServeDir とブラウザが
-黙って補正するから動いていた。route → URL の変換点を 1 つに決めてパスセグメントを
-エンコードし、「たまたま動く」を「仕様として動く」に格上げした。
-
-- **変換点は (A) `yuzu-core/src/urlpath.rs`** の `encode_path` / `percent_decode` の対
-  （`linkcheck::percent_decode` をここへ移設）。呼ぶのは `UrlResolver::page_url` /
-  `md_url` / `rewrite`（本文・ナビ・pager・パンくず・リダイレクト・llms・sitemap が
-  全部ここを通る）、検索索引の `url`（`yuzu-index/builder.rs`）、`git.edit_url` の
-  `{path}` の 4 箇所。(C) の `Page` に URL 表現を持たせる案は CachedMeta / routesKey の
-  再定義を伴うので採らなかった。**`| url` フィルタに足す案は不可**のまま
-  （`page.edit_url` の `://` とクエリを壊す）
-- **非 ASCII もエンコードする**（英数字と `-._~!$*+,;=:@` 以外を UTF-8 バイト単位で
-  `%XX`）。本文リンクは comrak の `escape_href` が既に非 ASCII を `%XX` にしていて、
-  ナビ・llms・sitemap・索引だけ生の `/設計/` だった食い違いが解消した。comrak は
-  `%XX` を素通しするので、先にエンコードした値を本文に埋めても二重にならない。
-  `'` `(` `)` `&` は RFC 上は許されるが属性・CommonMark のリンク先・実体参照を
-  壊すのでエンコード側（llms.txt の `[title](url)` が `)` で壊れる潜在バグの修正）
-- **「ディスクは生・URL はエンコード」**: `Page.route` と route をキーにした HashMap
-  （nav / pager / breadcrumbs / llms / linkcheck / 索引のグループ）は生のまま、
-  書き出し・表示の直前だけエンコードする。`?` / `#` 以降の suffix はエンコードしない
-  （フラグメントは従来どおり comrak が処理）。`/foo` 始まりの著者 URL も再エンコード
-  しない（`%E8` が `%25E8` に化けるため）
-- **著者がエンコード済みで書いた参照はデコードして照合する**（render の `.md` 解決・
-  同伴アセット解決、linkcheck の 3 分類、aliases の正規化）。CommonMark で空白入りの
-  ファイル名を書く素の形 `[x](my%20page.md)` が従来は route 解決に失敗して警告＋機械変換、
-  alias `old%20name/` は `old%20name/` ディレクトリに書かれて 404 だった、の 2 件を
-  修正した形。**`yuzu fmt`（format_commonmark）は `<my page.md>` を `my%20page.md` へ
-  正規化する**ので、デコードしないと fmt の正規形でリンクが切れる = この判断は必須だった。
-  aliases の生の `#` `?` は引き続き拒否（URL として書く場所なので）。ファイル名の
-  `#` `?` へのリンクは `%23` `%3F` と書く以外にない（`<a#b.md>` でも `#` 以降は
-  フラグメント。URL 構文上の制約で docs に明記）
-- `unsafe-page-path` は実ファイル名では `\` と制御文字だけに縮小（メッセージも
-  「出力パスとして使えない」へ）。**設定・frontmatter 由来の route（合成ページ・
-  aliases）は Windows の予約文字 `< > : " | ? *` も全 OS で拒否する**（レビュー指摘。
-  Linux で通った `search.page = "a?b"` や alias `a%3Fb` が Windows の書き出し途中で
-  I/O エラーになる形を事前診断へ。実ファイル名は執筆者の OS が作れた時点で正当）。
-  linkcheck の絶対・相対の分類は render と同じくデコード前の文字列で行う
-  （`%2Flogo.png` は相対。同じくレビュー指摘）。`CACHE_FORMAT_VERSION` 21 → 22。
-  docs `reference/rules.md` / `guide/writing.md`（リンクの書き方と aliases のデコード）
-  と ci.yml のゲート（原稿の語とエンコード例）を追随
-
-### 65 配信とテーマ契約の堅牢化 ✅
-
-小さい 2 件。どちらも「書き込み側は塞いだが読み側・テンプレート側に同じ規律が
-無い」型だった。
-
-- **`preview` / `dev` がシンボリックリンクを辿らない**: tower-http 0.7 の `ServeDir` には
-  リンク追従を止めるオプションが無い（パス検証は字句のみ）ので、公開されている
-  `Backend` トレイトと `ServeDir::with_backend` で `TokioBackend` を包む `GuardedBackend` を
-  yuzu-server に置き、`open` / `metadata` と 404 フォールバックの読み込みの前に述語を呼ぶ。
-  述語は `ServeOptions.path_guard`（`PathGuard = Arc<dyn Fn(&Path) -> Result<(), String>>`）
-  で cli が渡す（`WatchIgnore` と同型 = `server → core` の辺を作らない。中身は
-  `yuzu_core::output::ensure_symlink_free` = 書き側 `ensure_no_symlink_under` と同じ検査で
-  `target == root` だけ許す読み側版。**起点はプロジェクトルート**で書き側と同じ =
-  `output.dir = "alias/site"` の `alias` のような出力先までの中間ディレクトリのリンクも
-  拒否する。レビュー指摘: 当初は出力ディレクトリ起点で、build が拒否する構成を
-  preview だけが配信していた）。**判断: 遮断は 404 ＋ warn ログ**（build が書かない
-  ものは「無い」扱い。GitHub Pages 等の本番と見え方が一致し 404.html に乗る）/
-  **既定 ON・設定キー無し**（配信で辿る正当な用途が無く、opt-out を作ると
-  `pin_restart_only` の対象が増えるだけ）/ **同期 lstat をそのまま呼ぶ**（ローカル dev で
-  深さ分の µs。core の 1 実装を共有できる）
-- **`syntect.css` は有効時だけ**: `RenderShared.syntect_css` を `Option` にし、
-  `pipeline.rs` の `highlight_enabled => cfg.markdown.highlight.enabled` で `base.jinja` の
-  `<link>` と書き出しを同じ条件にした（`dark_enabled` と同型。無効化したら孤児掃除が消す）。
-  `theme/templates/base.jinja` を上書きしている利用者は追随が要るので、**「テーマ上書きは
-  デフォルトテーマ側の変更へ追随する責任が利用者側にある」を `guide/deploy.md` に
-  明文化**し、破壊的変更を許す契約に格上げした（i18n 候補の `theme.strings` も同じ契約に
-  乗せる前提）
-
-### 66 外部リンク切れ検査（opt-in） ✅
-
-`broken-link` は「外部 URL は検査しない」が契約（決定的・オフライン）。これを既定経路に
-入れずに `yuzu check --external-links` の opt-in で足した。
-
-- **土台**: 外部 URL 判定を `urlpath::is_external_url` / `is_http_url` の 1 実装へ寄せた
-  （`linkcheck.rs` / `urls.rs` の文字列リテラルを置換）。`check_links` は
-  `LinkReport { diags, external }` を返し、http / https の出現箇所（`ExternalLink` =
-  rel / span / url / is_image）を捨てない。HTTP を行うのは cli の `commands/extlink.rs`
-  だけ。インクルード断片内のリンクは従来どおり対象外
-- **判断: HTTP は curl へ委譲**（(b)）。workspace に HTTP クライアントも TLS も無く、
-  `ureq` + `rustls` は ring の C/asm ビルドと 20 超の crate を配布バイナリと 4 プラット
-  フォームのリリースビルドへ持ち込む（comrak / syntect で onig を避けたのと同じ規律で
-  却下）。opt-in の検査だけが外部ツールに依存し、curl が無ければ実行エラー（exit 2）。
-  `curl -sS -o /dev/null -L --max-redirs 10 --connect-timeout 10 --max-time 20 -w %{http_code}`
-  を 8 並列（`std::thread::scope`）・同一 URL は 1 回。テストは依存を増やさない手書きの
-  ローカル HTTP サーバに curl を当てる。**docs 自身への dogfooding で判明**: crates.io は
-  ブラウザ相当の `Accept: text/html` が無いと 404 を返すので、curl に Accept ヘッダを
-  付ける（付けないと `crates.io/crates/tankan` 等が誤報になる）
-- **判断: 入口はフラグだけ**（`[check]` セクションは作らない。必要になったら後から）。
-  新ルール `external-link-broken` は warning・suppressible（`lintDisable` / 行コメント /
-  `lint.rules`）。`DISABLEABLE_RULES` と docs `rules.md` に追記
-- **判断: 4xx（429 を除く）だけ診断、それ以外は skipped**。DNS 失敗・タイムアウト・
-  TLS エラー・5xx・429・curl の失敗は診断に載せず `summary.skipped`（URL 単位・キー追加の
-  加算的変更・常に出す）と集計行「スキップ N 件」に計上し、理由は warn ログへ = 環境依存の
-  失敗で CI を赤にしない。「凍結した設計判断」表（docs `development/index.md` と
-  CLAUDE.md）に「ネットワーク I/O は既定経路に入れない」を明文化
-- CI の e2e はネットワークへ出ず、自分の `yuzu preview` を相手に「4xx → warning・
-  到達不能 → skipped・既定の check は触れない」を検証する。docs.yml で実運用するかは
-  Phase 67 で決める
-- **レビュー指摘 2 件**: (1) `--external-links` なしの `check` / `lint` では
-  `external-link-broken` の抑制が `unused-lint-suppression` になり、例外指定が既定の
-  オフライン CI を落としていた → `LintOptions.unevaluated_rules`（この実行で評価しなかった
-  ルール）を足し、`apply_suppressions` の unused 免除を「全体無効化中 or 未評価」にした。
-  (2) curl のグロブ展開で `?q=[1-2]` が 2 回取得（`404404`）・`?filter[name]=x` が
-  構文エラーになり、壊れたリンクが skipped に化けていた → `--globoff` を付け、
-  角括弧・波括弧 URL の回帰テストを追加。(3) 続報: `--external-links` ありでも
-  到達性を判定できずスキップした URL への抑制が unused になり、環境要因で exit 1 に
-  なっていた → `LintOptions.unevaluated_occurrences`（rel / 行 / ルール）で
-  スキップした出現箇所を抑制処理へ渡し、その行の行コメント・そのページの
-  `lintDisable` を「効いた」扱いにして unused 判定を保留（suppressed には数えない）
-
-### 67 dogfooding 改善 ✅
-
-前 3 Phase を自分のサイトで使い、漏れを拾った。選定（着手時のユーザ判断）:
-
-- **docs の外部リンク検査を週次実行**（Phase 66 の実運用）: `.github/workflows/docs-links.yml`
-  を新設（毎週月曜 09:00 JST の schedule ＋ workflow_dispatch）。デプロイ（docs.yml）の
-  ゲートには入れない = ネットワークと相手側の状態に依存するものを既定経路から切り離す
-  （凍結した設計判断どおり）。到達不能・5xx・429 は skipped に逃げるので、赤くなるのは
-  4xx = 本当のリンク切れだけ。check はテーマを読まないので debug ビルドで足りる
-- **`preview` のリンク遮断の e2e**（Phase 65 の実バイナリ経由の固定）: ci.yml の e2e に
-  dist 内のリンク（ディレクトリ・ファイル）を置いて preview を叩き、404 かつ内容が
-  漏れないことを curl で見る。verify スキルにも同じ手順を追加
-- **入れなかったもの**: 日本語・空白入りファイル名のページを docs に置く案は、公開
-  サイトに演出用のページを増やさない判断で見送り（Phase 64 の実サイト検証は e2e と
-  ユニットテストで担保済み）。持ち越し候補（OS ダーク追従・パーマリンクの到達性・
-  head メタ・`--root`）は v0.16 以降へ
-- Phase 64〜66 の dogfooding で拾った漏れは各 Phase に記載（crates.io の Accept・
-  未評価ルールの抑制・curl のグロブ・配信のリンク検査の起点）
-- **レビュー指摘**: ci.yml の否定ゲート `! cmd` は `bash -e` でも errexit の対象外で、
-  失敗しても続行していた（内容漏洩の検出が効いていない）。新設分に加えて既存の
-  同型 7 箇所すべてを `if cmd; then … exit 1; fi` に置換（CLAUDE.md の罠にも追記）
+**v0.15 まで公開済み**。次の版（v0.16）は未策定で、候補は下の
+「[v0.16 以降の候補](#v016-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
+kabosu 0.1.0 / tankan 0.2.0 / mikan 0.2.0 は crates.io で公開済み（yuzu のリリースとは
+非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある）。
 
 ## v0.10.1 レビューの持ち越し
 
 v0.10.1（外部コードレビュー対応）で「今回は入れない」と判断したもの。
 **判断の根拠ごと残す**（同じ検討を繰り返さないため）。
 
-- **URL のパーセントエンコード全面対応** — v0.15 の Phase 64 へ（上記）
+- **URL のパーセントエンコード全面対応** — v0.15 の Phase 64 で実装済み（内訳は下の「完了済み: v0.15」）
 - **キャッシュ保存の原子性** — Phase 53（v0.11）で実装済み（`write_atomic_under`
   が global.json のみ tmp → rename = 当時の見積もりどおり安価な側だけ。詳細は
   v0.11 の内訳を参照）
 - **`syntect.css` の無条件出力** / **`ServeDir` が dist 内のリンクを辿る** — v0.15 の
-  Phase 65 へ（上記）
+  Phase 65 で実装済み
 - **`.devcontainer/post-create.sh` の Claude Code インストーラ** — 取得した
   `install.sh` を検証せず bash へ渡している。ただし**インストーラ自身が
   ダウンロードしたバイナリを SHA-256 検証している**（バージョンごとの
@@ -275,12 +133,87 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   未知キー / 型違い / 重複キーは設定エラー（exit 2）で停止・`config-unknown-key` /
   `config-duplicate-key` ルールは廃止・`.yuzu/settings.json` は廃止・envKey が
   変わるため移行後の初回ビルドはフルビルド
+- **v0.15**（Phase 64〜67）正しさ・堅牢性 — URL のパーセントエンコード
+  （route → URL の変換点を 1 つに決め、非 ASCII も含めて本文・ナビ・llms・sitemap・
+  検索索引で同じ表記。著者のエンコード済み参照と aliases はデコードして照合）/
+  配信のシンボリックリンク遮断と `syntect.css` の条件出力（テーマ上書きは
+  デフォルトテーマの変更へ追随する契約を明文化）/ 外部リンク切れ検査の opt-in
+  （`yuzu check --external-links`。HTTP は curl へ委譲し、4xx だけ warning・環境要因は
+  `summary.skipped` へ）/ dogfooding 改善＝docs の外部リンク検査を週次実行・
+  preview のリンク遮断 e2e。**非互換**: `unsafe-page-path` はファイル名では
+  `\` と制御文字だけに縮小（`#` `?` `%` 等を含むファイル名が受理される）一方、
+  `markdown.glossary.page` / `search.page` / `aliases` は Windows 予約文字を全 OS で
+  拒否・非 ASCII を含む URL がパーセントエンコード形になる（本文リンクは従来どおり）・
+  `highlight.enabled = false` で `syntect.css` を出力しない（`base.jinja` を上書きしている
+  利用者は追随が要る）・preview / dev がシンボリックリンクを辿らない
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、
 mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
 
 各版の Phase 内訳:
+
+<details>
+<summary>完了済み: v0.15（Phase 64〜67）の内訳</summary>
+
+軸は「**正しさ・堅牢性**」。v0.10.1 の外部コードレビューで「今回は入れない」と判断した
+持ち越し 3 件（URL のパーセントエンコード全面対応 / `ServeDir` がシンボリックリンクを
+辿る / `syntect.css` の無条件出力）は、どれも正しさの穴を規約や空ファイルで塞いでいる
+状態のまま 5 版を越えていた。v0.14 で設定の正しさを整えたので、生成 URL・配信・検査の
+正しさへ寄せ、候補に残していた外部リンク切れ検査も凍結方針（決定的・オフライン）と
+衝突しない opt-in の形で入れた。各 Phase は着手時に判断点を決めてから実装し、
+PR ごとの外部コードレビュー指摘（計 7 件）を同じ PR で取り込んだ。
+
+- **64 URL のパーセントエンコード** — route → URL の変換点を `yuzu-core/src/urlpath.rs`
+  の `encode_path` / `percent_decode` の対に 1 つ決め（呼ぶのは `UrlResolver::page_url` /
+  `md_url` / `rewrite`・検索索引の `url`・`git.edit_url` の `{path}` の 4 箇所）、
+  「ディスクは生・URL はエンコード」の境界で揃えた。非 ASCII もエンコードする（本文
+  リンクは comrak の `escape_href` が既に `%XX` にしていて、ナビ・llms・sitemap・索引だけ
+  生だった食い違いを解消。comrak は `%XX` を素通しするので二重にならない）。
+  `'` `(` `)` `&` も属性・CommonMark のリンク先・実体参照を壊すのでエンコード側
+  （llms.txt が `)` で壊れる潜在バグの修正）。著者がエンコード済みで書いた参照
+  （`my%20page.md` / `/%E8%A8%AD…/` / aliases の `old%20name/`）はデコードして照合する =
+  `yuzu fmt` が `<my page.md>` を `my%20page.md` へ正規化するため必須の判断で、alias
+  `old%20name/` が 404 になる不具合も直った。`unsafe-page-path` は実ファイル名では `\` と
+  制御文字だけに縮小し、設定・frontmatter 由来の route（合成ページ・aliases）は Windows の
+  予約文字 `< > : " | ? *` を全 OS で拒否（レビュー指摘）。linkcheck の絶対・相対の分類は
+  render と同じくデコード前の文字列で行う（レビュー指摘）。`CACHE_FORMAT_VERSION`
+  21 → 22。ファイル名の `#` `?` へのリンクは `%23` `%3F` と書く以外にない（URL 構文上の
+  制約）ことを docs に明記
+- **65 配信とテーマ契約の堅牢化** — `preview` / `dev` / `build --watch` がシンボリック
+  リンクを辿らない。tower-http 0.7 の `ServeDir` にはリンク追従を止めるオプションが無いので、
+  公開されている `Backend` トレイトと `ServeDir::with_backend` で `TokioBackend` を包む
+  `GuardedBackend` を yuzu-server に置き、`open` / `metadata` と 404 フォールバックの前に
+  述語を通す。述語は `ServeOptions.path_guard` で cli が渡す（`WatchIgnore` と同型 =
+  server → core の辺を作らない。中身は `yuzu_core::output::ensure_symlink_free` = 書き側と
+  同じ検査で基点自身だけ許す読み側版。起点はプロジェクトルートで書き側と同じ =
+  `output.dir = "alias/site"` の中間リンクも拒否。レビュー指摘）。判断: 遮断は 404 ＋
+  warn ログ・既定 ON で設定キー無し・同期 lstat。`syntect.css` は
+  `markdown.highlight.enabled` が有効なときだけ書き出し、`highlight_enabled` で
+  `base.jinja` の `<link>` と同条件にした。テーマ上書きはデフォルトテーマ側の変更へ
+  利用者が追随する契約を `guide/deploy.md` に明文化
+- **66 外部リンク切れ検査（opt-in）** — `yuzu check --external-links` を付けたときだけ
+  http / https の到達性を検査する。外部 URL 判定を `urlpath::is_external_url` /
+  `is_http_url` の 1 実装へ寄せ、`check_links` は `LinkReport { diags, external }` で
+  出現箇所を返す（core はネットワークに触れない）。判断: HTTP は **curl へ委譲**（cli の
+  `commands/extlink.rs`。ureq + rustls は ring の C/asm と 20 超の crate を配布バイナリへ
+  持ち込むので却下。8 並列・同一 URL は 1 回・curl が無ければ exit 2）/ 入口はフラグだけ /
+  4xx（429 除く）だけ `external-link-broken`（warning・抑制可）で、DNS 失敗・タイムアウト・
+  5xx・429 は診断にせず `summary.skipped`（加算キー）と集計行「スキップ N 件」へ =
+  環境依存の失敗で CI を赤にしない。「ネットワーク I/O は既定経路に入れない」を凍結した
+  設計判断に明文化。dogfooding で crates.io が `Accept: text/html` 無しでは 404 を返すと
+  分かり Accept を付与。レビュー指摘 3 件: 未評価ルールの抑制を unused にしない
+  （`LintOptions.unevaluated_rules`）/ curl のグロブ展開を `--globoff` で止める /
+  判定できずスキップした URL への抑制も unused 判定を保留
+  （`LintOptions.unevaluated_occurrences`）
+- **67 dogfooding 改善** — docs の外部リンク検査を週次実行する `docs-links.yml` を新設
+  （月曜 09:00 JST ＋ 手動。デプロイのゲートには入れない。初回手動実行は問題なし）/
+  `preview` のリンク遮断を実バイナリ経由の e2e で固定。日本語ファイル名のページを docs に
+  置く案は見送り（公開サイトに演出用ページを増やさない）、持ち越し候補は v0.16 以降へ。
+  レビュー指摘: ci.yml の否定ゲート `! cmd` は `bash -e` でも止まらない（既存含む
+  7 箇所を `if … exit 1` へ。CLAUDE.md の罠に追記）
+
+</details>
 
 <details>
 <summary>完了済み: v0.14（Phase 62〜63）の内訳</summary>
