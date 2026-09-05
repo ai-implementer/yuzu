@@ -72,7 +72,10 @@ v0.15 の軸は「**正しさ・堅牢性**」。v0.10.1 の外部コードレ�
   述語は `ServeOptions.path_guard`（`PathGuard = Arc<dyn Fn(&Path) -> Result<(), String>>`）
   で cli が渡す（`WatchIgnore` と同型 = `server → core` の辺を作らない。中身は
   `yuzu_core::output::ensure_symlink_free` = 書き側 `ensure_no_symlink_under` と同じ検査で
-  `target == root` だけ許す読み側版）。**判断: 遮断は 404 ＋ warn ログ**（build が書かない
+  `target == root` だけ許す読み側版。**起点はプロジェクトルート**で書き側と同じ =
+  `output.dir = "alias/site"` の `alias` のような出力先までの中間ディレクトリのリンクも
+  拒否する。レビュー指摘: 当初は出力ディレクトリ起点で、build が拒否する構成を
+  preview だけが配信していた）。**判断: 遮断は 404 ＋ warn ログ**（build が書かない
   ものは「無い」扱い。GitHub Pages 等の本番と見え方が一致し 404.html に乗る）/
   **既定 ON・設定キー無し**（配信で辿る正当な用途が無く、opt-out を作ると
   `pin_restart_only` の対象が増えるだけ）/ **同期 lstat をそのまま呼ぶ**（ローカル dev で

@@ -77,7 +77,7 @@ pub fn run(
         port,
         base_url: rc.base_url.clone(),
         live_reload: notifier,
-        path_guard: Some(super::preview::symlink_guard(&rc.output_dir)),
+        path_guard: Some(super::preview::symlink_guard(&rc.root)),
     })?;
     Ok(())
 }

@@ -273,6 +273,33 @@ mod tests {
         })
     }
 
+    /// 配信ディレクトリ**まで**の中間要素がリンク（`root/alias -> outside`、
+    /// 配信ディレクトリは `root/alias/site`）でも、述語の起点がその上（プロジェクト
+    /// ルート相当）なら配信しない。cli は起点にプロジェクトルートを渡す
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn 配信ディレクトリまでの中間ディレクトリのリンクも辿らない() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("root");
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(outside.join("site")).unwrap();
+        std::fs::write(outside.join("site/index.html"), "<html>leaked</html>").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("alias")).unwrap();
+        let dist = root.join("alias/site");
+
+        let guarded = spawn_server_with(&dist, "/", None, Some(symlink_guard(root.clone()))).await;
+        for path in ["/", "/index.html"] {
+            let resp = reqwest_lite(guarded, path).await;
+            assert!(resp.starts_with("HTTP/1.0 404"), "{path}: {resp}");
+            assert!(!resp.contains("leaked"), "{path}: {resp}");
+        }
+        // 起点を配信ディレクトリにすると見逃す（= 起点をルートにする理由）
+        let narrow = spawn_server_with(&dist, "/", None, Some(symlink_guard(dist.clone()))).await;
+        let resp = reqwest_lite(narrow, "/index.html").await;
+        assert!(resp.starts_with("HTTP/1.0 200"), "{resp}");
+    }
+
     /// dist 配下のリンク（`dist/link -> outside/`）は、書き側が拒否するのと同じく
     /// 読み側も辿らない。述語なし（`ServeDir` 素）だと辿ってしまうことも併記して、
     /// 遮断が述語で実現されていることを固定する
