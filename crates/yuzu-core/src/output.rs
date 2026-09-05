@@ -82,27 +82,42 @@ pub fn resolve_output_rel(root: &Path, rel: &str) -> std::io::Result<PathBuf> {
 ///
 /// [`save_manifest`]: save_manifest
 pub fn ensure_no_symlink_under(root: &Path, target: &Path) -> std::io::Result<()> {
+    if target
+        .strip_prefix(root)
+        .is_ok_and(|rel| rel.as_os_str().is_empty())
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("出力先が基準ディレクトリ自身です: {}", root.display()),
+        ));
+    }
+    ensure_symlink_free(root, target)
+}
+
+/// `target` が `root` 自身またはその配下で、`root` から `target` までの経路に
+/// シンボリックリンクが無いことを確認する。
+///
+/// [`ensure_no_symlink_under`] の読み側（配信）版で、違いは **`target == root` を
+/// 許す**こと（`preview` / `dev` は `/` の要求で基点ディレクトリ自身の metadata を
+/// 引く）。検査範囲と「まだ存在しない要素は Ok」の規律は書き側と同じ = 書き側が
+/// 拒否したリンクを読み側だけが辿ることがない。
+/// `root` 自身がリンクなら `Ok` になる経路は無い（配下をいくら検査しても無意味なため）
+pub fn ensure_symlink_free(root: &Path, target: &Path) -> std::io::Result<()> {
     let invalid = |message: String| std::io::Error::new(std::io::ErrorKind::InvalidInput, message);
 
     let rel = target.strip_prefix(root).map_err(|_| {
         invalid(format!(
-            "出力先 {} が {} の外を指しています",
+            "{} が {} の外を指しています",
             target.display(),
             root.display()
         ))
     })?;
-    if rel.as_os_str().is_empty() {
-        return Err(invalid(format!(
-            "出力先が基準ディレクトリ自身です: {}",
-            root.display()
-        )));
-    }
     if root
         .symlink_metadata()
         .is_ok_and(|m| m.file_type().is_symlink())
     {
         return Err(invalid(format!(
-            "基準ディレクトリ {} がシンボリックリンクです（リンク先へ書き込み・削除しないため中断します）",
+            "基準ディレクトリ {} がシンボリックリンクです（リンク先へは読み書きしません）",
             root.display()
         )));
     }
@@ -113,12 +128,13 @@ pub fn ensure_no_symlink_under(root: &Path, target: &Path) -> std::io::Result<()
         match cur.symlink_metadata() {
             Ok(meta) if meta.file_type().is_symlink() => {
                 return Err(invalid(format!(
-                    "出力先の経路にシンボリックリンクがあります: {}（リンク先へ書き込み・削除しないため中断します）",
+                    "経路にシンボリックリンクがあります: {}（リンク先へは読み書きしません）",
                     cur.display()
                 )));
             }
             Ok(_) => {}
-            // ここから下はまだ存在しない = これから実ディレクトリを作る
+            // ここから下はまだ存在しない = 書き側はこれから実ディレクトリを作り、
+            // 読み側は素の NotFound になる
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
             Err(e) => return Err(e),
         }

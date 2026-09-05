@@ -451,8 +451,11 @@ fn ハイライト無効でも_file_引用が本文に出る() {
         "{html}"
     );
     assert!(!html.contains("yz-"), "着色クラスは付かない");
-    // base.jinja が無条件で <link> するので、空でもファイルは要る
-    assert!(dir.path().join("dist/_assets/css/syntect.css").is_file());
+    // syntect.css は書き出さず、base.jinja の <link> も消える（404 を出さない）
+    assert!(!dir.path().join("dist/_assets/css/syntect.css").exists());
+    assert!(!html.contains("syntect.css"), "{html}");
+    let not_found = fs::read_to_string(dir.path().join("dist/404.html")).unwrap();
+    assert!(!not_found.contains("syntect.css"), "{not_found}");
 }
 
 #[test]

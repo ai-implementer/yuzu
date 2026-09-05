@@ -1,11 +1,13 @@
 //! `yuzu preview [--port]`: dist/ の配信
 
 use std::net::IpAddr;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, bail};
 
 use yuzu_config::ResolvedConfig;
-use yuzu_server::ServeOptions;
+use yuzu_server::{PathGuard, ServeOptions};
 
 pub fn run(port: Option<u16>, host: Option<String>) -> anyhow::Result<()> {
     let (_, mut rc) = super::load_project()?;
@@ -38,6 +40,17 @@ pub(crate) fn serve_dist(rc: &ResolvedConfig, port: Option<u16>) -> anyhow::Resu
         port: port.unwrap_or(rc.config.dev.port),
         base_url: rc.base_url.clone(),
         live_reload: None,
+        path_guard: Some(symlink_guard(&rc.output_dir)),
     })?;
     Ok(())
+}
+
+/// 配信パスの検査述語（`preview` / `dev` / `build --watch` で共用）。
+/// 出力ディレクトリ配下のシンボリックリンクは、書き側（`write_under` / 孤児掃除）が
+/// 拒否するのと同じ規律で読み側も辿らない（server は core を知らないので cli が包む）
+pub(crate) fn symlink_guard(dir: &Path) -> PathGuard {
+    let root: PathBuf = dir.to_path_buf();
+    Arc::new(move |path: &Path| {
+        yuzu_core::output::ensure_symlink_free(&root, path).map_err(|e| e.to_string())
+    })
 }

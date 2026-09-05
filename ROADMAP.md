@@ -60,28 +60,30 @@ v0.15 の軸は「**正しさ・堅牢性**」。v0.10.1 の外部コードレ�
   docs `reference/rules.md` / `guide/writing.md`（リンクの書き方と aliases のデコード）
   と ci.yml のゲート（原稿の語とエンコード例）を追随
 
-### 65 配信とテーマ契約の堅牢化 ⬜
+### 65 配信とテーマ契約の堅牢化 ✅
 
-小さい 2 件をまとめる。どちらも「書き込み側は塞いだが読み側・テンプレート側に
-同じ規律が無い」型。
+小さい 2 件。どちらも「書き込み側は塞いだが読み側・テンプレート側に同じ規律が
+無い」型だった。
 
-- **`preview` / `dev` がシンボリックリンクを辿る**: tower-http 0.7 の `ServeDir` には
-  リンク追従を止めるオプションが無い（公開メソッドを全部確認済み。パス検証は字句のみで
-  `symlink_metadata` を見ない）が、`Backend` トレイトと `ServeDir::with_backend` が
-  公開されているので、`TokioBackend` を包んで `open` / `metadata` の前に述語を呼ぶ
-  `GuardedBackend` を yuzu-server に置く。述語は `ServeOptions` に
-  `Arc<dyn Fn(&Path) -> bool>` で cli から渡す（`WatchIgnore` と同型 = `server → core`
-  の辺を作らない。中身は `yuzu_core::output::ensure_no_symlink_under`）。404 フォール
-  バックの `tokio::fs::read` にも同じ述語を通す。判断点: 拒否（403）か 404 か・既定 ON か
-  opt-in か・毎リクエストの同期 `lstat` を許すか
-- **`syntect.css` の無条件出力**: `pipeline.rs` に
-  `highlight_enabled => cfg.markdown.highlight.enabled` を足して `base.jinja` の `<link>` を
-  条件化し、書き出しも同じ条件に入れる（`dark_enabled` と同型。`shared.rs` の空 CSS 分岐は
-  削除。フィクスチャは有効なのでスナップショットは動かず、`render_snapshot.rs` の
-  `is_file()` アサート 1 件だけ更新）。`theme/templates/base.jinja` を上書きしている利用者
-  だけが空 CSS の 404 を踏む非互換になるので、**「テーマ上書きはアップストリームの変更に
-  追随する責任が利用者側にある」を `guide/deploy.md` に明文化**して破壊的変更を許す契約に
-  格上げする（i18n 候補の `theme.strings` も同じ論点で、先に決めておく）
+- **`preview` / `dev` がシンボリックリンクを辿らない**: tower-http 0.7 の `ServeDir` には
+  リンク追従を止めるオプションが無い（パス検証は字句のみ）ので、公開されている
+  `Backend` トレイトと `ServeDir::with_backend` で `TokioBackend` を包む `GuardedBackend` を
+  yuzu-server に置き、`open` / `metadata` と 404 フォールバックの読み込みの前に述語を呼ぶ。
+  述語は `ServeOptions.path_guard`（`PathGuard = Arc<dyn Fn(&Path) -> Result<(), String>>`）
+  で cli が渡す（`WatchIgnore` と同型 = `server → core` の辺を作らない。中身は
+  `yuzu_core::output::ensure_symlink_free` = 書き側 `ensure_no_symlink_under` と同じ検査で
+  `target == root` だけ許す読み側版）。**判断: 遮断は 404 ＋ warn ログ**（build が書かない
+  ものは「無い」扱い。GitHub Pages 等の本番と見え方が一致し 404.html に乗る）/
+  **既定 ON・設定キー無し**（配信で辿る正当な用途が無く、opt-out を作ると
+  `pin_restart_only` の対象が増えるだけ）/ **同期 lstat をそのまま呼ぶ**（ローカル dev で
+  深さ分の µs。core の 1 実装を共有できる）
+- **`syntect.css` は有効時だけ**: `RenderShared.syntect_css` を `Option` にし、
+  `pipeline.rs` の `highlight_enabled => cfg.markdown.highlight.enabled` で `base.jinja` の
+  `<link>` と書き出しを同じ条件にした（`dark_enabled` と同型。無効化したら孤児掃除が消す）。
+  `theme/templates/base.jinja` を上書きしている利用者は追随が要るので、**「テーマ上書きは
+  デフォルトテーマ側の変更へ追随する責任が利用者側にある」を `guide/deploy.md` に
+  明文化**し、破壊的変更を許す契約に格上げした（i18n 候補の `theme.strings` も同じ契約に
+  乗せる前提）
 
 ### 66 外部リンク切れ検査（opt-in） ⬜
 
