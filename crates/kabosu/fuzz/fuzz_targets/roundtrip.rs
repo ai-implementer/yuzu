@@ -35,6 +35,7 @@ fn reencode(doc: &Document) -> String {
                 Value::Integer(n) => encoder.integer(*n),
                 Value::Float(f) => encoder.float(*f),
                 Value::Boolean(b) => encoder.boolean(*b),
+                Value::Datetime(dt) => encoder.datetime(*dt),
                 Value::Array(items) => {
                     let mut array = encoder.array();
                     for item in items {

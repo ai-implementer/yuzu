@@ -8,6 +8,8 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::datetime::Datetime;
+
 /// 0 始まり・終端を含まない UTF-8 バイト範囲
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
@@ -100,6 +102,9 @@ pub enum Value {
     /// `inf` / `nan` を含む。`nan` の符号は保持しない
     Float(f64),
     Boolean(bool),
+    /// 日付・時刻。offset date-time / local date-time / local date / local time を
+    /// 1 型で表す（区別は [`Datetime::kind`]）
+    Datetime(Datetime),
     Array(Vec<Node>),
     Table(Table),
 }
@@ -112,6 +117,7 @@ pub enum ValueKind {
     Integer,
     Float,
     Boolean,
+    Datetime,
     Array,
     Table,
 }
@@ -124,6 +130,7 @@ impl ValueKind {
             Self::Integer => "integer",
             Self::Float => "float",
             Self::Boolean => "boolean",
+            Self::Datetime => "datetime",
             Self::Array => "array",
             Self::Table => "table",
         }
@@ -160,6 +167,7 @@ impl Node {
             Value::Integer(_) => ValueKind::Integer,
             Value::Float(_) => ValueKind::Float,
             Value::Boolean(_) => ValueKind::Boolean,
+            Value::Datetime(_) => ValueKind::Datetime,
             Value::Array(_) => ValueKind::Array,
             Value::Table(_) => ValueKind::Table,
         }
@@ -190,6 +198,14 @@ impl Node {
     pub fn as_boolean(&self) -> Option<bool> {
         match &self.value {
             Value::Boolean(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// 日付・時刻。4 種の区別は [`Datetime::kind`] で見る
+    pub fn as_datetime(&self) -> Option<Datetime> {
+        match &self.value {
+            Value::Datetime(dt) => Some(*dt),
             _ => None,
         }
     }

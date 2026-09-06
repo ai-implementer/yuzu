@@ -11,7 +11,8 @@ use alloc::vec::Vec;
 
 use crate::error::{ParseError, ParseErrorKind, UnsupportedFeature};
 use crate::lexer::{
-    Cursor, ScalarClass, classify_scalar, parse_float, parse_integer, parse_radix_integer,
+    Cursor, ScalarClass, classify_scalar, parse_datetime, parse_float, parse_integer,
+    parse_radix_integer,
 };
 use crate::model::{KeySegment, Node, Span, Table, TableOrigin, Value};
 
@@ -306,9 +307,10 @@ fn parse_value(
                     span,
                 )),
                 ScalarClass::Float => Ok(Node::new(Value::Float(parse_float(blob, span)?), span)),
-                ScalarClass::Unsupported(feature) => {
-                    Err(ParseError::new(ParseErrorKind::Unsupported(feature), span))
-                }
+                ScalarClass::Datetime => Ok(Node::new(
+                    Value::Datetime(parse_datetime(blob, span)?),
+                    span,
+                )),
                 ScalarClass::InvalidInteger => {
                     Err(ParseError::new(ParseErrorKind::InvalidInteger, span))
                 }
@@ -402,6 +404,7 @@ fn skip_trivia(cur: &mut Cursor<'_>, comments: &mut Vec<Span>) -> Result<(), Par
 mod tests {
     use alloc::string::ToString;
 
+    use crate::datetime::DatetimeKind;
     use crate::error::{ParseErrorKind, UnsupportedFeature};
     use crate::model::Document;
 
@@ -551,10 +554,6 @@ mod tests {
     #[test]
     fn 未対応構文は位置付きで区別される() {
         assert_eq!(
-            err_kind("x = 1979-05-27\n"),
-            ParseErrorKind::Unsupported(UnsupportedFeature::DateTime)
-        );
-        assert_eq!(
             err_kind("x = { a = 1 }\n"),
             ParseErrorKind::Unsupported(UnsupportedFeature::InlineTable)
         );
@@ -563,8 +562,54 @@ mod tests {
             ParseErrorKind::Unsupported(UnsupportedFeature::ArrayOfTables)
         );
         // span はエラー箇所を指す
-        let e = Document::parse("x = 1979-05-27\n").unwrap_err();
-        assert_eq!((e.span().start, e.span().end), (4, 14));
+        let e = Document::parse("x = { a = 1 }\n").unwrap_err();
+        assert_eq!((e.span().start, e.span().end), (4, 5));
+    }
+
+    #[test]
+    fn date_time_を値として読める() {
+        let d = parse(
+            "odt = 1979-05-27T07:32:00Z\n\
+             odt2 = 1979-05-27T00:32:00.999999-07:00\n\
+             ldt = 1979-05-27t07:32:00\n\
+             sp = 1979-05-27 07:32:00\n\
+             ld = 1979-05-27\n\
+             lt = 07:32:00.5\n",
+        );
+        let root = d.root();
+        let dt = |key: &str| root.get(key).unwrap().node().as_datetime().unwrap();
+        assert_eq!(dt("odt").kind(), DatetimeKind::OffsetDatetime);
+        assert_eq!(dt("odt").to_string(), "1979-05-27T07:32:00Z");
+        assert_eq!(dt("odt2").to_string(), "1979-05-27T00:32:00.999999-07:00");
+        assert_eq!(dt("ldt").kind(), DatetimeKind::LocalDatetime);
+        // 小文字の `t` 区切りも受理し、正規形は大文字の `T`
+        assert_eq!(dt("ldt").to_string(), "1979-05-27T07:32:00");
+        // 空白区切りは 1 塊として読む（正規形は `T` 区切り）
+        assert_eq!(dt("sp").to_string(), "1979-05-27T07:32:00");
+        assert_eq!(dt("ld").kind(), DatetimeKind::LocalDate);
+        assert_eq!(dt("lt").kind(), DatetimeKind::LocalTime);
+        assert_eq!(dt("lt").time().unwrap().nanosecond(), 500_000_000);
+        // 日付・時刻は数値としては読めない（型は区別する）
+        assert_eq!(root.get("ld").unwrap().node().as_integer(), None);
+        // span は原文のリテラル全体（空白区切りも含めて 1 つ）
+        let sp = root.get("sp").unwrap().node().span();
+        assert_eq!(&d.source()[sp.start..sp.end], "1979-05-27 07:32:00");
+    }
+
+    #[test]
+    fn 日付の後の空白はコメントや行末と繋げない() {
+        let d = parse("x = 1979-05-27 # コメント\ny = 1979-05-27\n");
+        let dt = |key: &str| {
+            d.root()
+                .get(key)
+                .unwrap()
+                .node()
+                .as_datetime()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(dt("x"), "1979-05-27");
+        assert_eq!(dt("y"), "1979-05-27");
     }
 
     #[test]

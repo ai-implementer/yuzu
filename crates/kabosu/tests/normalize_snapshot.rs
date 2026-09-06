@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use kabosu::{Encode, EncodeError, Encoder, TableEncoder};
+use kabosu::{Date, Datetime, Encode, EncodeError, Encoder, Offset, TableEncoder, Time};
 
 /// yuzu の設定を模した見本（スカラー・Option・配列・ネスト・自由キー）
 struct Sample {
@@ -119,4 +119,61 @@ fn float_の正規形() {
         }
     }
     insta::assert_snapshot!("normalize_floats", kabosu::to_string(&Floats).unwrap());
+}
+
+#[test]
+fn date_time_の正規形() {
+    struct Datetimes;
+    impl Encode for Datetimes {
+        fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+            let date = Date::new(1979, 5, 27).unwrap();
+            let noon = Time::new(7, 32, 0, 0).unwrap();
+            let mut t = encoder.table();
+            t.field(
+                "odt_utc",
+                &Datetime::offset_datetime(date, noon, Offset::UTC),
+            )?;
+            t.field(
+                "odt_west",
+                &Datetime::offset_datetime(
+                    date,
+                    Time::new(0, 32, 0, 999_999_000).unwrap(),
+                    Offset::from_minutes(-7 * 60).unwrap(),
+                ),
+            )?;
+            t.field(
+                "odt_half_hour",
+                &Datetime::offset_datetime(date, noon, Offset::from_minutes(9 * 60 + 30).unwrap()),
+            )?;
+            t.field(
+                "ldt",
+                &Datetime::local_datetime(date, Time::new(7, 32, 0, 500_000_000).unwrap()),
+            )?;
+            t.field("ld", &Datetime::local_date(date))?;
+            t.field(
+                "lt_nanos",
+                &Datetime::local_time(Time::new(7, 32, 0, 123_456_789).unwrap()),
+            )?;
+            t.field(
+                "leap_second",
+                &Datetime::local_time(Time::new(23, 59, 60, 0).unwrap()),
+            )?;
+            t.field(
+                "leap_day",
+                &Datetime::local_date(Date::new(2024, 2, 29).unwrap()),
+            )?;
+            t.field(
+                "list",
+                &vec![
+                    Datetime::local_date(date),
+                    Datetime::local_time(Time::new(0, 0, 0, 0).unwrap()),
+                ],
+            )?;
+            Ok(())
+        }
+    }
+    insta::assert_snapshot!(
+        "normalize_datetimes",
+        kabosu::to_string(&Datetimes).unwrap()
+    );
 }

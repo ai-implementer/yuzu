@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use kabosu::{
-    Decode, DecodeContext, DecodeOptions, Diagnostic, DiagnosticCode, Node, Severity, TableDecoder,
-    UnknownKeys,
+    Datetime, DatetimeKind, Decode, DecodeContext, DecodeOptions, Diagnostic, DiagnosticCode, Node,
+    Severity, TableDecoder, UnknownKeys,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -303,4 +303,50 @@ fn float_は_f64_に_decode_できて整数リテラルは受けない() {
     // 配列
     let report = kabosu::from_str::<BTreeMap<String, Vec<f64>>>("xs = [1.0, 2.5e3]\n").unwrap();
     assert_eq!(report.value().unwrap()["xs"], vec![1.0, 2500.0]);
+}
+
+#[test]
+fn date_time_は_datetime_に_decode_できる() {
+    let report = kabosu::from_str::<BTreeMap<String, Datetime>>(
+        "odt = 1979-05-27T00:32:00.999999-07:00\n\
+         ldt = 1979-05-27 07:32:00\n\
+         ld = 1979-05-27\n\
+         lt = 07:32:00.5\n",
+    )
+    .unwrap();
+    assert!(!report.has_errors(), "{:?}", report.diagnostics());
+    let v = report.value().unwrap();
+    assert_eq!(v["odt"].kind(), DatetimeKind::OffsetDatetime);
+    assert_eq!(v["odt"].offset().unwrap().minutes(), -420);
+    assert_eq!(v["ldt"].kind(), DatetimeKind::LocalDatetime);
+    assert_eq!(v["ld"].date().unwrap().day(), 27);
+    assert_eq!(v["lt"].time().unwrap().nanosecond(), 500_000_000);
+
+    // 型は厳格（文字列で書いた日付は日付欄に入らない）
+    let report = kabosu::from_str::<BTreeMap<String, Datetime>>("a = \"1979-05-27\"\n").unwrap();
+    assert!(report.value().is_none());
+    assert!(
+        report.diagnostics()[0]
+            .message()
+            .contains("expected datetime, found string"),
+        "{}",
+        report.diagnostics()[0].message()
+    );
+
+    // 逆方向: 日付を文字列欄には入れない
+    let report = kabosu::from_str::<BTreeMap<String, String>>("a = 1979-05-27\n").unwrap();
+    assert!(report.value().is_none());
+    assert!(
+        report.diagnostics()[0]
+            .message()
+            .contains("expected string, found datetime")
+    );
+
+    // 配列
+    let report =
+        kabosu::from_str::<BTreeMap<String, Vec<Datetime>>>("xs = [1979-05-27, 07:32:00]\n")
+            .unwrap();
+    let xs = &report.value().unwrap()["xs"];
+    assert_eq!(xs[0].kind(), DatetimeKind::LocalDate);
+    assert_eq!(xs[1].kind(), DatetimeKind::LocalTime);
 }

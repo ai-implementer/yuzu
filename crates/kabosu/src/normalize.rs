@@ -8,6 +8,8 @@
 //!   複数行文字列の形では出力しない）
 //! - 整数は 10 進、float は往復可能な最短表現（`.` も `e` も無ければ `.0` を補う。
 //!   `inf` / `-inf` / `nan`。`nan` の符号は落とす）
+//! - 日付・時刻は RFC 3339 の正規形（区切りは大文字 `T`・小数秒の末尾ゼロは落とす・
+//!   オフセット 0 は `Z`）。書式は `Datetime` の `Display` に 1 実装で持たせる
 //! - `[A-Za-z0-9_-]+` に一致するキーは bare key、それ以外は basic string で引用
 //! - 親テーブルの値を子テーブルより先に出力し、各グループでは追加順を維持する
 
@@ -125,6 +127,7 @@ fn render_value(out: &mut String, value: &EncValue, indent: usize) {
         EncValue::Integer(n) => out.push_str(&n.to_string()),
         EncValue::Float(f) => out.push_str(&render_float(*f)),
         EncValue::Boolean(b) => out.push_str(if *b { "true" } else { "false" }),
+        EncValue::Datetime(dt) => out.push_str(&dt.to_string()),
         EncValue::Array(items) => render_array(out, items, indent),
         EncValue::Table(_) => unreachable!("テーブルは render_table 側で描画する"),
     }

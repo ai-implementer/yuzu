@@ -8,8 +8,8 @@
 //!   検証・未知キー検出（Warn / Deny / Ignore）をサポート
 //! - **正規化出力**: 同じ値から常に同じバイト列を生成する
 //! - 対応範囲は TOML 1.0 のサブセット（文字列は複数行含む全種・整数は 10 進と
-//!   16,8,2 進・float・boolean・配列・テーブル）。まだ未対応の構文（date-time /
-//!   inline table / array of tables）は一般的な構文エラーにせず、位置付きの
+//!   16,8,2 進・float・boolean・date-time・配列・テーブル）。まだ未対応の構文
+//!   （inline table / array of tables）は一般的な構文エラーにせず、位置付きの
 //!   [`ParseErrorKind::Unsupported`] として返す
 //!
 //! ```
@@ -28,6 +28,7 @@
 
 extern crate alloc;
 
+mod datetime;
 mod decode;
 mod encode;
 mod error;
@@ -36,6 +37,7 @@ mod model;
 mod normalize;
 mod parser;
 
+pub use datetime::{Date, Datetime, DatetimeKind, Offset, Time};
 pub use decode::{
     Decode, DecodeContext, DecodeOptions, DecodeReport, Diagnostic, DiagnosticCode, Severity,
     TableDecoder, UnknownKeys,

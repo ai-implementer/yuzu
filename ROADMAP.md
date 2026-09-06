@@ -62,10 +62,34 @@ lexer の「TOML として妥当なリテラルか」の判定（`is_valid_float
     `1__0`・`_1`・`"""` 内の不正エスケープ
   - round-trip と正規化 snapshot に新しい値種別を足す
 
-### 69 日時（date-time） ⬜
+### 69 日時（date-time） ✅
 
-依存ゼロを維持するので独自の日時型を持つ。時刻演算・タイムゾーン変換・`chrono` / `time`
-への変換は持たない（非スコープに明記。利用側が数値フィールドから組む）。
+依存ゼロを維持するため独自の日時型（`Datetime` / `Date` / `Time` / `Offset`）を持つ。
+時刻演算・タイムゾーン変換・`chrono` / `time` への変換は持たない。
+判断は 3 点とも推奨案: 参照実装と同型の 1 型 / 小数秒は 9 桁で切り捨て /
+オフセット 0 は `Z` に統一。
+
+- 実装メモ
+  - `datetime.rs` を新設。フィールドは非公開で、`Date::new` / `Time::new` /
+    `Offset::from_minutes` が範囲を検証する（**暦として存在しない日付を組み立てて
+    不正な TOML を出力できない**）。4 種の区別は `Datetime::kind`、正規形は `Display`
+  - `ScalarClass::Unsupported` を `Datetime` に置き換え、`is_valid_datetime` は
+    `parse_datetime_str` へ統合した（妥当性判定と値の構築を 1 実装で兼ねる）
+  - 空白区切り（`1979-05-27 07:32:00`）は `read_scalar_blob` が空白 1 個をまたいで
+    1 塊にする。**前が妥当な日付で後ろが `HH:` のときだけ**繋げる
+    （`x = 1979-05-27 # コメント` を巻き込まない）
+  - `UnsupportedFeature` は InlineTable / ArrayOfTables に縮小（yuzu-config の
+    `unsupported_message` から日時の分岐を削除）。`kind_name` に日付・時刻と小数を
+    足した（Phase 68 の Float も `_ => "値"` に落ちていた）
+  - corpus: `unsupported/02,07,08,09` → `valid/10,11`、`invalid/16〜18`
+    （`24:00:00`・`+25:00`・`2024-02-30`）。snapshot に `normalize_datetimes`
+  - 差分テストは **`Z` と `+00:00` の違いだけ意図的に潰す**（参照実装は
+    `Offset::Custom { minutes: 0 }` で区別するが kabosu は分単位の数値しか持たない）
+  - **秒の省略（`07:32`）は invalid corpus に入れない** — 参照実装が
+    `toml 0.9+spec-1.1.0` で TOML 1.1 として受理するため、「invalid は参照実装でも
+    エラー」の照合が通らない。Phase 71 の `Unsupported(TomlV11)` 転用で扱う
+
+以下は策定時のメモ。
 
 - 4 種: offset date-time / local date-time / local date / local time
   - 区切りは `T` / `t` / 空白、小数秒は任意桁、オフセットは `Z` / `z` / `±HH:MM`

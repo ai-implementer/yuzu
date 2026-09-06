@@ -38,14 +38,25 @@ yuzu 固有の設定スキーマやファイル操作を含めず、crates.io �
 - 符号付き 10 進整数と 16 / 8 / 2 進整数、`_` 区切り、TOML の i64 範囲
 - float（小数・指数・`inf` / `nan`）
 - boolean
+- date-time（offset date-time、local date-time、local date、local time）
 - 複数行、末尾カンマ、コメント、ネストを含む配列
 - 重複キーとテーブル競合の検出
 - キー、値、コメントの正確な span
 
 v0.1 では float、date/time、16 / 8 / 2 進整数、複数行文字列、inline table、
-array of tables を扱いませんでした。0.2 で float、16 / 8 / 2 進整数、複数行文字列に
-対応し（v0.16 Phase 68）、date/time、inline table、array of tables が残っています。
-未対応構文は一般的な構文エラーにせず、位置付きの「未対応」として返します。
+array of tables を扱いませんでした。0.2 で float、16 / 8 / 2 進整数、複数行文字列
+（v0.16 Phase 68）と date/time（Phase 69）に対応し、inline table と array of tables が
+残っています。未対応構文は一般的な構文エラーにせず、位置付きの「未対応」として
+返します。
+
+date-time は依存ゼロを保つため独自型（`Datetime` / `Date` / `Time` / `Offset`）で
+表します。時刻演算・タイムゾーン変換・他の日時 crate への変換は持ちません。
+`Datetime` は参照実装と同じく date / time / offset の組み合わせ 1 型で 4 種を表し、
+区別は `Datetime::kind` で見ます。フィールドは非公開でコンストラクタが範囲を
+検証するため、暦として存在しない日付を組み立てて不正な TOML を出力することは
+できません。小数秒は 9 桁まで保持し、10 桁目以降は切り捨てます。オフセットは
+分単位の数値だけを持つので、`Z` と `+00:00` は同じ値になり、正規化ではどちらも
+`Z` で出力されます。
 
 0.x で対応範囲を段階的に広げ、TOML 1.0 の公式 toml-test の valid、invalid、
 encoder テストをすべて通過することを `1.0.0` の条件にします。

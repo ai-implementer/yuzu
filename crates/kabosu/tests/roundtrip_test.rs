@@ -4,7 +4,10 @@
 
 use std::collections::BTreeMap;
 
-use kabosu::{ArrayEncoder, Decode, DecodeContext, Encode, EncodeError, Encoder, Node, Value};
+use kabosu::{
+    ArrayEncoder, Date, Datetime, Decode, DecodeContext, Encode, EncodeError, Encoder, Node,
+    Offset, Time, Value,
+};
 
 /// 動的な値（round-trip 専用）
 #[derive(Debug, Clone, PartialEq)]
@@ -14,6 +17,7 @@ enum Rand {
     /// nan は生成しない（`nan != nan` で同値比較できない。別テストで往復を見る）
     Float(f64),
     Bool(bool),
+    Dt(Datetime),
     List(Vec<Rand>),
 }
 
@@ -24,6 +28,7 @@ impl Encode for Rand {
             Rand::Int(n) => encoder.integer(*n),
             Rand::Float(f) => encoder.float(*f),
             Rand::Bool(b) => encoder.boolean(*b),
+            Rand::Dt(dt) => encoder.datetime(*dt),
             Rand::List(items) => {
                 let mut array: ArrayEncoder<'_> = encoder.array();
                 for item in items {
@@ -44,6 +49,7 @@ impl Decode for Rand {
             Value::Integer(n) => Some(Rand::Int(*n)),
             Value::Float(f) => Some(Rand::Float(*f)),
             Value::Boolean(b) => Some(Rand::Bool(*b)),
+            Value::Datetime(dt) => Some(Rand::Dt(*dt)),
             Value::Array(items) => {
                 let mut out = Vec::new();
                 for item in items {
@@ -115,12 +121,55 @@ fn rand_float(rng: &mut Lcg) -> f64 {
     }
 }
 
+/// 暦として存在する日付（生成した日をその月の末日まで戻す）
+fn rand_date(rng: &mut Lcg) -> Date {
+    let year = rng.below(10_000) as u16;
+    let month = rng.below(12) as u8 + 1;
+    let mut day = rng.below(31) as u8 + 1;
+    while Date::new(year, month, day).is_none() {
+        day -= 1;
+    }
+    Date::new(year, month, day).expect("存在する日まで戻した")
+}
+
+/// 範囲内の時刻（秒 60 = うるう秒と小数秒の桁数違いを混ぜる）
+fn rand_time(rng: &mut Lcg) -> Time {
+    let nanosecond = match rng.below(4) {
+        0 => 0,
+        1 => 500_000_000,
+        2 => rng.below(1_000) as u32 * 1_000_000,
+        _ => rng.below(1_000_000_000) as u32,
+    };
+    Time::new(
+        rng.below(24) as u8,
+        rng.below(60) as u8,
+        rng.below(61) as u8,
+        nanosecond,
+    )
+    .expect("範囲内で生成した")
+}
+
+/// 4 種の日付・時刻
+fn rand_datetime(rng: &mut Lcg) -> Datetime {
+    match rng.below(4) {
+        0 => {
+            let minutes = rng.below(2 * (23 * 60 + 59) + 1) as i16 - (23 * 60 + 59);
+            let offset = Offset::from_minutes(minutes).expect("範囲内で生成した");
+            Datetime::offset_datetime(rand_date(rng), rand_time(rng), offset)
+        }
+        1 => Datetime::local_datetime(rand_date(rng), rand_time(rng)),
+        2 => Datetime::local_date(rand_date(rng)),
+        _ => Datetime::local_time(rand_time(rng)),
+    }
+}
+
 fn rand_value(rng: &mut Lcg, depth: usize) -> Rand {
-    match rng.below(if depth >= 3 { 4 } else { 5 }) {
+    match rng.below(if depth >= 3 { 5 } else { 6 }) {
         0 => Rand::Str(rand_string(rng)),
         1 => Rand::Int(rng.next() as i64),
         2 => Rand::Bool(rng.below(2) == 0),
         3 => Rand::Float(rand_float(rng)),
+        4 => Rand::Dt(rand_datetime(rng)),
         _ => {
             let len = rng.below(4) as usize;
             Rand::List((0..len).map(|_| rand_value(rng, depth + 1)).collect())
@@ -158,6 +207,33 @@ fn 手書きケースの_round_trip() {
     map.insert("huge".into(), Rand::Float(f64::MAX));
     map.insert("tiny".into(), Rand::Float(5e-324));
     map.insert("inf".into(), Rand::Float(f64::NEG_INFINITY));
+    map.insert(
+        "odt".into(),
+        Rand::Dt(Datetime::offset_datetime(
+            Date::new(1979, 5, 27).unwrap(),
+            Time::new(0, 32, 0, 999_999_000).unwrap(),
+            Offset::from_minutes(-7 * 60).unwrap(),
+        )),
+    );
+    // オフセット 0 は正規形で `Z` になり、往復しても同じ値のまま
+    map.insert(
+        "utc".into(),
+        Rand::Dt(Datetime::offset_datetime(
+            Date::new(2026, 9, 6).unwrap(),
+            Time::new(23, 59, 60, 0).unwrap(),
+            Offset::UTC,
+        )),
+    );
+    map.insert(
+        "leap_day".into(),
+        Rand::Dt(Datetime::local_date(Date::new(2024, 2, 29).unwrap())),
+    );
+    map.insert(
+        "lt".into(),
+        Rand::Dt(Datetime::local_time(
+            Time::new(7, 32, 0, 123_456_789).unwrap(),
+        )),
+    );
     map.insert("empty".into(), Rand::List(vec![]));
     map.insert(
         "nested".into(),

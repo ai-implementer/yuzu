@@ -4,12 +4,15 @@
 //! 整数でもある）ため、トークン列を先に作らず、パーサが文脈に応じて
 //! 読み取りメソッドを呼ぶカーソル方式にする。
 //! 値位置のスカラーは一旦「blob」として切り出してから分類し（`classify_scalar`）、
-//! 整数 / 16,8,2 進整数 / float はここで値へ変換する。まだ未対応の date-time は
-//! 一般構文エラーと区別して `Unsupported` にする。
+//! 整数 / 16,8,2 進整数 / float / date-time はここで値へ変換する。
+//!
+//! date-time は「妥当性の判定」と「値の構築」を分けず、`parse_datetime_str` の
+//! 1 実装で兼ねる（文法を 2 箇所に書くとズレるため）。
 
 use alloc::string::String;
 
-use crate::error::{ParseError, ParseErrorKind, UnsupportedFeature};
+use crate::datetime::{Date, Datetime, Offset, Time};
+use crate::error::{ParseError, ParseErrorKind};
 use crate::model::{KeySegment, Span};
 
 pub(crate) struct Cursor<'a> {
@@ -527,15 +530,18 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// 値位置のスカラー字句（数値・真偽値・日付など）を 1 塊として切り出す
+    /// 値位置のスカラー字句（数値・真偽値・日付など）を 1 塊として切り出す。
+    /// 空白区切りの date-time（`1979-05-27 07:32:00`）だけは空白 1 個をまたいで
+    /// 1 塊にする（後続が「2 桁数字 + `:`」のときだけ = コメントや次の要素は繋げない）
     pub fn read_scalar_blob(&mut self) -> (&'a str, Span) {
         let start = self.pos;
-        while let Some(c) = self.peek() {
-            if c.is_ascii_alphanumeric() || matches!(c, b'_' | b'+' | b'-' | b':' | b'.') {
-                self.bump();
-            } else {
-                break;
-            }
+        self.read_scalar_run();
+        if self.peek() == Some(b' ')
+            && parse_date(&self.src[start..self.pos]).is_some()
+            && self.at_time_after_space()
+        {
+            self.bump();
+            self.read_scalar_run();
         }
         (
             &self.src[start..self.pos],
@@ -544,6 +550,24 @@ impl<'a> Cursor<'a> {
                 end: self.pos,
             },
         )
+    }
+
+    /// スカラー字句として続くバイトを消費する（空白は含まない）
+    fn read_scalar_run(&mut self) {
+        while let Some(c) = self.peek() {
+            if c.is_ascii_alphanumeric() || matches!(c, b'_' | b'+' | b'-' | b':' | b'.') {
+                self.bump();
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// 現在位置の空白の直後が `HH:` の形か（空白区切り date-time の判定）
+    fn at_time_after_space(&self) -> bool {
+        self.peek_at(1).is_some_and(|b| b.is_ascii_digit())
+            && self.peek_at(2).is_some_and(|b| b.is_ascii_digit())
+            && self.peek_at(3) == Some(b':')
     }
 }
 
@@ -558,8 +582,8 @@ pub(crate) enum ScalarClass {
     RadixInteger(u32),
     /// float として妥当（`inf` / `nan` 含む。値は `parse_float` で得る）
     Float,
-    /// TOML として妥当だがまだ未対応（date-time）
-    Unsupported(UnsupportedFeature),
+    /// date-time として妥当（値は `parse_datetime` で得る）
+    Datetime,
     /// 整数系の書き間違い（先頭ゼロ・アンダースコア位置違反など）
     InvalidInteger,
     /// float / date-time / 進数整数の形はしているが TOML として不正
@@ -570,8 +594,8 @@ pub(crate) enum ScalarClass {
 }
 
 /// blob を分類する。形で当たりを付けたあと字句全体を検証し、妥当なものだけを
-/// 値の種別（Integer / RadixInteger / Float）か `Unsupported`（date-time）にする。
-/// 不正なら `InvalidLiteral`（参照実装が構文エラーにする入力を未対応と案内しない）
+/// 値の種別（Integer / RadixInteger / Float / Datetime）にする。
+/// 不正なら `InvalidLiteral`（参照実装が構文エラーにする入力を受理しない）
 pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
     match blob {
         "true" => return ScalarClass::True,
@@ -604,17 +628,16 @@ pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
         return ScalarClass::NotAValue;
     }
     // 日付（1979-05-27）と時刻（07:32:00）の形は date-time として検証する。
-    // float より先に見るのは、local time が小数秒（07:32:00.5）で `.` を含むため。
-    // 空白区切りの date-time は blob が空白で切れて date 単体になるが、
-    // 最初のエラーで停止する規約上 Unsupported(DateTime) で足りる
+    // float より先に見るのは、local time が小数秒（07:32:00.5）で `.` を含むため
+    // （空白区切りの date-time は read_scalar_blob が 1 塊にして渡してくる）
     let bytes = body.as_bytes();
     let looks_date =
         bytes.len() > 4 && bytes[..4].iter().all(u8::is_ascii_digit) && bytes[4] == b'-';
     let looks_time =
         bytes.len() > 2 && bytes[..2].iter().all(u8::is_ascii_digit) && bytes[2] == b':';
     if looks_date || looks_time {
-        return if !signed && is_valid_datetime(body) {
-            ScalarClass::Unsupported(UnsupportedFeature::DateTime)
+        return if !signed && parse_datetime_str(body).is_some() {
+            ScalarClass::Datetime
         } else {
             ScalarClass::InvalidLiteral
         };
@@ -693,84 +716,94 @@ fn is_valid_float(body: &str) -> bool {
     frac.is_some() || exp.is_some()
 }
 
-/// RFC 3339 の形（local date / local time / `T` 区切りの date-time ＋ 任意の offset）。
-/// 値の範囲は月 01-12・月ごとの日数（閏年込み）・時 00-23・分 00-59・秒 00-60
-/// （うるう秒）まで見る（参照実装が弾く `1979-13-01` / `1979-02-29` を妥当扱いしないため）
-fn is_valid_datetime(body: &str) -> bool {
-    if let Some((date, rest)) = body.split_once(['T', 't']) {
-        return is_valid_date(date) && is_valid_time_with_offset(rest);
+/// RFC 3339 の 4 種（local date / local time / `T`・`t`・空白区切りの date-time
+/// ＋ 任意の offset）を値へ変換する。妥当でなければ `None`。
+/// 範囲は月 01-12・月ごとの日数（閏年込み）・時 00-23・分 00-59・秒 00-60
+/// （うるう秒）まで見る（参照実装が弾く `1979-13-01` / `1979-02-29` を受理しないため）。
+/// **`classify_scalar` の妥当性判定もこの関数を通す**（文法の 1 実装）
+fn parse_datetime_str(body: &str) -> Option<Datetime> {
+    if let Some((date, rest)) = body.split_once(['T', 't', ' ']) {
+        let date = parse_date(date)?;
+        let (time, offset) = parse_time_with_offset(rest)?;
+        return Some(match offset {
+            Some(offset) => Datetime::offset_datetime(date, time, offset),
+            None => Datetime::local_datetime(date, time),
+        });
     }
-    is_valid_date(body) || is_valid_time(body)
+    if let Some(date) = parse_date(body) {
+        return Some(Datetime::local_date(date));
+    }
+    Some(Datetime::local_time(parse_time(body)?))
 }
 
-/// `YYYY-MM-DD`（暦として存在する日付だけを妥当とする）
-fn is_valid_date(s: &str) -> bool {
+/// `YYYY-MM-DD`（暦として存在する日付だけ。判定は `Date::new` に持たせる）
+fn parse_date(s: &str) -> Option<Date> {
     let b = s.as_bytes();
-    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
-        return false;
-    }
-    if !b[..4].iter().all(u8::is_ascii_digit) {
-        return false;
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' || !b[..4].iter().all(u8::is_ascii_digit) {
+        return None;
     }
     let year = b[..4]
         .iter()
         .fold(0u16, |acc, &d| acc * 10 + u16::from(d - b'0'));
-    let (Some(month), Some(day)) = (two_digits(&b[5..7]), two_digits(&b[8..10])) else {
-        return false;
-    };
-    (1..=12).contains(&month) && (1..=days_in_month(year, month)).contains(&day)
-}
-
-/// 月の日数。閏年は Gregorian 規則（4 の倍数。ただし 100 の倍数は 400 の倍数のときだけ）。
-/// RFC 3339 は proleptic Gregorian なので 0000 年も 400 の倍数として閏年
-fn days_in_month(year: u16, month: u8) -> u8 {
-    match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 => {
-            let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-            if leap { 29 } else { 28 }
-        }
-        _ => 0,
-    }
+    Date::new(year, two_digits(&b[5..7])?, two_digits(&b[8..10])?)
 }
 
 /// `HH:MM:SS` ＋ 任意の `.` 小数秒
-fn is_valid_time(s: &str) -> bool {
+fn parse_time(s: &str) -> Option<Time> {
     let (clock, frac) = match s.split_once('.') {
         Some((c, f)) => (c, Some(f)),
         None => (s, None),
     };
     let b = clock.as_bytes();
     if b.len() != 8 || b[2] != b':' || b[5] != b':' {
-        return false;
+        return None;
     }
-    let hour = two_digits(&b[0..2]);
-    let minute = two_digits(&b[3..5]);
-    let second = two_digits(&b[6..8]);
-    hour.is_some_and(|h| h <= 23)
-        && minute.is_some_and(|m| m <= 59)
-        && second.is_some_and(|s| s <= 60)
-        && frac.is_none_or(|f| !f.is_empty() && f.bytes().all(|c| c.is_ascii_digit()))
+    let nanosecond = match frac {
+        Some(f) => parse_fraction(f)?,
+        None => 0,
+    };
+    Time::new(
+        two_digits(&b[0..2])?,
+        two_digits(&b[3..5])?,
+        two_digits(&b[6..8])?,
+        nanosecond,
+    )
 }
 
-/// time ＋ 任意の offset（`Z` / `z` / `±HH:MM`）
-fn is_valid_time_with_offset(s: &str) -> bool {
+/// 小数秒（`.` の後の数字列）をナノ秒へ。**10 桁目以降は切り捨てる**
+/// （参照実装と同じ。TOML 仕様も精度の切り捨てを実装依存としている）
+fn parse_fraction(s: &str) -> Option<u32> {
+    let b = s.as_bytes();
+    if b.is_empty() || !b.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    Some(
+        (0..9)
+            .map(|i| b.get(i).map_or(0, |d| u32::from(d - b'0')))
+            .fold(0u32, |acc, d| acc * 10 + d),
+    )
+}
+
+/// time ＋ 任意の offset（`Z` / `z` / `±HH:MM`）。`-00:00` は `+00:00` と同じ値
+fn parse_time_with_offset(s: &str) -> Option<(Time, Option<Offset>)> {
     if let Some(t) = s.strip_suffix(['Z', 'z']) {
-        return is_valid_time(t);
+        return Some((parse_time(t)?, Some(Offset::UTC)));
     }
     if s.len() > 6 {
         let (t, off) = s.split_at(s.len() - 6);
         let b = off.as_bytes();
         if matches!(b[0], b'+' | b'-') && b[3] == b':' {
-            let hour = two_digits(&b[1..3]);
-            let minute = two_digits(&b[4..6]);
-            return hour.is_some_and(|h| h <= 23)
-                && minute.is_some_and(|m| m <= 59)
-                && is_valid_time(t);
+            let hour = two_digits(&b[1..3])?;
+            let minute = two_digits(&b[4..6])?;
+            if hour > 23 || minute > 59 {
+                return None;
+            }
+            let minutes = i16::from(hour) * 60 + i16::from(minute);
+            let offset = Offset::from_minutes(if b[0] == b'-' { -minutes } else { minutes })?;
+            return Some((parse_time(t)?, Some(offset)));
         }
     }
-    is_valid_time(s)
+    Some((parse_time(s)?, None))
 }
 
 /// 2 桁の ASCII 数字を数値へ（それ以外は None）
@@ -822,9 +855,61 @@ pub(crate) fn parse_float(blob: &str, span: Span) -> Result<f64, ParseError> {
     })
 }
 
+/// 分類済みの date-time blob を値へ変換する
+/// （分類が `Datetime` なら必ず成功する。防御的に `InvalidLiteral` を返す）
+pub(crate) fn parse_datetime(blob: &str, span: Span) -> Result<Datetime, ParseError> {
+    parse_datetime_str(blob).ok_or_else(|| ParseError::new(ParseErrorKind::InvalidLiteral, span))
+}
+
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use super::*;
+
+    #[test]
+    fn date_time_の変換() {
+        let span = Span { start: 0, end: 1 };
+        let dt = |s: &str| parse_datetime(s, span).unwrap();
+        assert_eq!(
+            dt("1979-05-27T07:32:00Z").to_string(),
+            "1979-05-27T07:32:00Z"
+        );
+        // `+00:00` / `-00:00` はどちらも同じ値 = 正規形は `Z`
+        assert_eq!(
+            dt("1979-05-27T07:32:00+00:00").to_string(),
+            "1979-05-27T07:32:00Z"
+        );
+        assert_eq!(
+            dt("1979-05-27T07:32:00-00:00").to_string(),
+            "1979-05-27T07:32:00Z"
+        );
+        // 空白区切り・小文字の `t` はどちらも大文字 `T` の正規形になる
+        assert_eq!(dt("1979-05-27 07:32:00").to_string(), "1979-05-27T07:32:00");
+        assert_eq!(dt("1979-05-27t07:32:00").to_string(), "1979-05-27T07:32:00");
+        // 小数秒は 9 桁まで保持し、10 桁目以降は切り捨てる
+        assert_eq!(
+            dt("07:32:00.123456789999").time().unwrap().nanosecond(),
+            123_456_789
+        );
+        assert_eq!(
+            dt("07:32:00.123456789999").to_string(),
+            "07:32:00.123456789"
+        );
+        // 末尾のゼロは正規形で落ちる
+        assert_eq!(dt("07:32:00.500").to_string(), "07:32:00.5");
+        // うるう秒
+        assert_eq!(dt("23:59:60").to_string(), "23:59:60");
+        // オフセットは分単位で持つ
+        assert_eq!(
+            dt("1979-05-27T07:32:00+09:30").offset().unwrap().minutes(),
+            570
+        );
+        assert_eq!(
+            dt("1979-05-27T07:32:00-07:00").offset().unwrap().minutes(),
+            -420
+        );
+    }
 
     #[test]
     fn スカラー分類() {
@@ -836,14 +921,8 @@ mod tests {
         assert_eq!(classify_scalar("1e6"), ScalarClass::Float);
         assert_eq!(classify_scalar("inf"), ScalarClass::Float);
         assert_eq!(classify_scalar("0xFF"), ScalarClass::RadixInteger(16));
-        assert_eq!(
-            classify_scalar("1979-05-27"),
-            ScalarClass::Unsupported(UnsupportedFeature::DateTime)
-        );
-        assert_eq!(
-            classify_scalar("07:32:00"),
-            ScalarClass::Unsupported(UnsupportedFeature::DateTime)
-        );
+        assert_eq!(classify_scalar("1979-05-27"), ScalarClass::Datetime);
+        assert_eq!(classify_scalar("07:32:00"), ScalarClass::Datetime);
         assert_eq!(classify_scalar("042"), ScalarClass::InvalidInteger);
         assert_eq!(classify_scalar("1__0"), ScalarClass::InvalidInteger);
         assert_eq!(classify_scalar("_1"), ScalarClass::NotAValue);
@@ -866,47 +945,20 @@ mod tests {
             ("0xDEAD_BEEF", ScalarClass::RadixInteger(16)),
             ("0o755", ScalarClass::RadixInteger(8)),
             ("0b1010", ScalarClass::RadixInteger(2)),
-            (
-                "1979-05-27T07:32:00Z",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
-            (
-                "1979-05-27T00:32:00.999999-07:00",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
-            (
-                "1979-05-27t07:32:00+09:00",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
-            (
-                "07:32:00.5",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
-            (
-                "23:59:60",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
+            ("1979-05-27T07:32:00Z", ScalarClass::Datetime),
+            ("1979-05-27T00:32:00.999999-07:00", ScalarClass::Datetime),
+            ("1979-05-27t07:32:00+09:00", ScalarClass::Datetime),
+            ("07:32:00.5", ScalarClass::Datetime),
+            // 空白区切り（read_scalar_blob が 1 塊にして渡す）と 9 桁超の小数秒
+            ("1979-05-27 07:32:00", ScalarClass::Datetime),
+            ("1979-05-27T07:32:00.123456789999Z", ScalarClass::Datetime),
+            ("23:59:60", ScalarClass::Datetime),
             // 暦として存在する日付（閏年は 4 の倍数、100 の倍数は 400 の倍数のときだけ）
-            (
-                "2000-02-29",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
-            (
-                "2024-02-29",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
-            (
-                "1979-04-30",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
-            (
-                "1979-01-31",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
-            (
-                "0000-02-29",
-                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
-            ),
+            ("2000-02-29", ScalarClass::Datetime),
+            ("2024-02-29", ScalarClass::Datetime),
+            ("1979-04-30", ScalarClass::Datetime),
+            ("1979-01-31", ScalarClass::Datetime),
+            ("0000-02-29", ScalarClass::Datetime),
         ] {
             assert_eq!(classify_scalar(src), class, "{src}");
         }
@@ -935,6 +987,11 @@ mod tests {
             "1979-05-27T",
             "1979-05-27T07:32:00+9:00",
             "1979-05-27T07:32:00-24:00",
+            "1979-05-27T07:32:00+25:00",
+            "1979-05-27T07:32:00.",
+            "1979-05-27 07:32",
+            "07:32:00Z",
+            "2024-02-30",
             "-1979-05-27",
             // 暦として存在しない日付（参照実装も拒否する）
             "1979-02-29",

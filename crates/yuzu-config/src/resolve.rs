@@ -210,7 +210,9 @@ fn kind_name(kind: ValueKind) -> &'static str {
     match kind {
         ValueKind::String => "文字列",
         ValueKind::Integer => "整数",
+        ValueKind::Float => "小数",
         ValueKind::Boolean => "真偽値",
+        ValueKind::Datetime => "日付・時刻",
         ValueKind::Array => "配列",
         ValueKind::Table => "テーブル",
         _ => "値",
@@ -264,7 +266,7 @@ fn syntax_message(text: &str, e: &ParseError) -> String {
     }
 }
 
-/// kabosu がまだ未対応の構文（date-time / inline table / array of tables）。
+/// kabosu がまだ未対応の構文（inline table / array of tables）。
 /// yuzu の設定で必要になる書き換え先を案内する
 fn unsupported_message(feature: UnsupportedFeature) -> String {
     let (name, hint) = match feature {
@@ -276,7 +278,6 @@ fn unsupported_message(feature: UnsupportedFeature) -> String {
             "テーブルの配列（`[[...]]`）",
             "yuzu の設定にテーブルの配列を取るキーはありません",
         ),
-        UnsupportedFeature::DateTime => ("日付・時刻リテラル", "文字列として引用してください"),
         _ => ("この構文", "別の書き方にしてください"),
     };
     format!("{name}は {CONFIG_FILE_NAME} では使えません（kabosu の未対応構文）。{hint}")
