@@ -64,6 +64,12 @@ TOML 1.0 どおり拒否するもの（秒を省略した `07:32`、インライ
 末尾カンマ）は差分テストの `invalid/` コーパスに置けません。これらは crate 内の
 ユニットテストで縛っています。
 
+TOML 1.1 で追加された構文は、一般的な構文エラーにせず位置付きの
+`ParseErrorKind::Unsupported(TomlV11)` として返します。「書き間違い」ではなく
+「新しい版の記法」だと伝えるためで、`yuzu.toml` では 1.0 での書き方を添えて
+報告します。対象は `\e` と `\xHH` のエスケープ、インラインテーブルの中の
+改行・コメント・末尾カンマ、秒を省略した時刻、引用符なしの非 ASCII キーです。
+
 date-time は依存ゼロを保つため独自型（`Datetime` / `Date` / `Time` / `Offset`）で
 表します。時刻演算・タイムゾーン変換・他の日時 crate への変換は持ちません。
 `Datetime` は参照実装と同じく date / time / offset の組み合わせ 1 型で 4 種を表し、
@@ -73,8 +79,11 @@ date-time は依存ゼロを保つため独自型（`Datetime` / `Date` / `Time`
 分単位の数値だけを持つので、`Z` と `+00:00` は同じ値になり、正規化ではどちらも
 `Z` で出力されます。
 
-0.x で対応範囲を段階的に広げ、TOML 1.0 の公式 toml-test の valid、invalid、
-encoder テストをすべて通過することを `1.0.0` の条件にします。
+0.2 で公式 toml-test（TOML 1.0.0 が対象とする valid 205 ケース、invalid 474
+ケース）を全通過しました。テストスイートは `scripts/vendor-toml-test.sh` が
+タグとアーカイブの sha256 を固定して取り込み、`crates/kabosu/tests/toml_test.rs`
+が回します。仕様の網羅はこちらが担当し、自作コーパスは kabosu 固有の挙動
+（診断の種別、正規化出力、参照実装との値一致）を縛る役割に変えました。
 
 ## データモデル
 
@@ -164,7 +173,7 @@ to_string<T>(&T) -> Result<String, EncodeError>
 - value → TOML → value の round-trip
 - 正規化出力の snapshot
 - dev 依存の `toml` crate との対応範囲内の差分テスト
-- 公式 toml-test と、v0.1 で未対応にするケースの明示的な一覧
+- 公式 toml-test（vendor）の valid と invalid の全件
 - panic、hang、不正な UTF-8 境界を検出する fuzzing
 - Rust 1.85 と現在の stable の CI
 - `no_std + alloc` ビルド

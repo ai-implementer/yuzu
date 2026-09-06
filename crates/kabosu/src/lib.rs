@@ -42,7 +42,7 @@ pub use decode::{
     TableDecoder, UnknownKeys,
 };
 pub use encode::{ArrayEncoder, Encode, EncodeError, EncodeErrorKind, Encoder, TableEncoder};
-pub use error::{ParseError, ParseErrorKind};
+pub use error::{ParseError, ParseErrorKind, TomlV11};
 pub use model::{
     Comment, Document, Entry, KeyPath, KeySegment, LineCol, Node, Span, Table, Value, ValueKind,
     line_col_of,

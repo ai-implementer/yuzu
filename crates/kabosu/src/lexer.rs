@@ -12,7 +12,7 @@
 use alloc::string::String;
 
 use crate::datetime::{Date, Datetime, Offset, Time};
-use crate::error::{ParseError, ParseErrorKind};
+use crate::error::{ParseError, ParseErrorKind, TomlV11};
 use crate::model::{KeySegment, Span};
 
 pub(crate) struct Cursor<'a> {
@@ -66,20 +66,28 @@ impl<'a> Cursor<'a> {
         self.peek() == Some(b'#')
     }
 
-    /// コメントを行末（改行の手前）まで読み、span を返す。CR は含めない
-    pub fn read_comment(&mut self) -> Span {
+    /// コメントを行末（改行の手前）まで読み、span を返す。CR は含めない。
+    /// **タブ以外の制御文字はコメントの中にも書けない**（TOML 1.0）
+    pub fn read_comment(&mut self) -> Result<Span, ParseError> {
         let start = self.pos;
         while let Some(c) = self.peek() {
-            if c == b'\n' {
-                break;
+            match c {
+                b'\n' => break,
+                // CRLF の CR はコメントの終わり。単独の CR は制御文字なので不可
+                b'\r' if self.peek_at(1) == Some(b'\n') => break,
+                0x00..=0x08 | 0x0A..=0x1F | 0x7F => {
+                    return Err(ParseError::new(
+                        ParseErrorKind::ControlCharInComment,
+                        Span::point(self.pos),
+                    ));
+                }
+                _ => self.bump(),
             }
-            self.bump();
         }
-        let mut end = self.pos;
-        if end > start && self.src.as_bytes()[end - 1] == b'\r' {
-            end -= 1;
-        }
-        Span { start, end }
+        Ok(Span {
+            start,
+            end: self.pos,
+        })
     }
 
     /// 改行（LF / CRLF）を 1 つ消費する。EOF も改行相当として受理する
@@ -128,10 +136,15 @@ impl<'a> Cursor<'a> {
                     }
                 }
                 if self.pos == start {
-                    return Err(ParseError::new(
-                        ParseErrorKind::ExpectedKey,
-                        Span::point(start),
-                    ));
+                    // 非 ASCII の英数字で始まっていれば「書き間違い」ではなく
+                    // TOML 1.1 の Unicode bare key（`サーバ = 1`）
+                    let kind = match self.src[start..].chars().next() {
+                        Some(c) if !c.is_ascii() && c.is_alphanumeric() => {
+                            ParseErrorKind::Unsupported(TomlV11::UnicodeBareKey)
+                        }
+                        _ => ParseErrorKind::ExpectedKey,
+                    };
+                    return Err(ParseError::new(kind, Span::point(start)));
                 }
                 let span = Span {
                     start,
@@ -353,6 +366,16 @@ impl<'a> Cursor<'a> {
             b'\\' => out.push('\\'),
             b'u' => out.push(self.read_unicode_escape(esc_start, 4)?),
             b'U' => out.push(self.read_unicode_escape(esc_start, 8)?),
+            // TOML 1.1 で追加されたエスケープ。書き間違いではないので区別する
+            b'e' | b'x' => {
+                return Err(ParseError::new(
+                    ParseErrorKind::Unsupported(TomlV11::Escape),
+                    Span {
+                        start: esc_start,
+                        end: self.pos,
+                    },
+                ));
+            }
             _ => {
                 return Err(ParseError::new(
                     ParseErrorKind::InvalidEscape,
@@ -584,6 +607,8 @@ pub(crate) enum ScalarClass {
     Float,
     /// date-time として妥当（値は `parse_datetime` で得る）
     Datetime,
+    /// TOML 1.1 でだけ妥当な記法（書き間違いと区別して案内する）
+    TomlV11(TomlV11),
     /// 整数系の書き間違い（先頭ゼロ・アンダースコア位置違反など）
     InvalidInteger,
     /// float / date-time / 進数整数の形はしているが TOML として不正
@@ -636,11 +661,16 @@ pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
     let looks_time =
         bytes.len() > 2 && bytes[..2].iter().all(u8::is_ascii_digit) && bytes[2] == b':';
     if looks_date || looks_time {
-        return if !signed && parse_datetime_str(body).is_some() {
-            ScalarClass::Datetime
-        } else {
-            ScalarClass::InvalidLiteral
-        };
+        if signed {
+            return ScalarClass::InvalidLiteral;
+        }
+        if parse_datetime_str(body).is_some() {
+            return ScalarClass::Datetime;
+        }
+        if is_time_without_seconds(body) {
+            return ScalarClass::TomlV11(TomlV11::TimeWithoutSeconds);
+        }
+        return ScalarClass::InvalidLiteral;
     }
     if body.contains(['.', 'e', 'E']) {
         return if is_valid_float(body) {
@@ -784,10 +814,16 @@ fn parse_fraction(s: &str) -> Option<u32> {
     )
 }
 
-/// time ＋ 任意の offset（`Z` / `z` / `±HH:MM`）。`-00:00` は `+00:00` と同じ値
+/// time ＋ 任意の offset（`Z` / `z` / `±HH:MM`）
 fn parse_time_with_offset(s: &str) -> Option<(Time, Option<Offset>)> {
+    let (clock, offset) = split_offset(s)?;
+    Some((parse_time(clock)?, offset))
+}
+
+/// 末尾の offset（`Z` / `z` / `±HH:MM`）を切り離す。`-00:00` は `+00:00` と同じ値
+fn split_offset(s: &str) -> Option<(&str, Option<Offset>)> {
     if let Some(t) = s.strip_suffix(['Z', 'z']) {
-        return Some((parse_time(t)?, Some(Offset::UTC)));
+        return Some((t, Some(Offset::UTC)));
     }
     if s.len() > 6 {
         let (t, off) = s.split_at(s.len() - 6);
@@ -800,10 +836,33 @@ fn parse_time_with_offset(s: &str) -> Option<(Time, Option<Offset>)> {
             }
             let minutes = i16::from(hour) * 60 + i16::from(minute);
             let offset = Offset::from_minutes(if b[0] == b'-' { -minutes } else { minutes })?;
-            return Some((parse_time(t)?, Some(offset)));
+            return Some((t, Some(offset)));
         }
     }
-    Some((parse_time(s)?, None))
+    Some((s, None))
+}
+
+/// **秒の省略だけ**が理由で TOML 1.0 として読めない時刻か（`07:32`）。
+/// TOML 1.1 で許される記法なので、書き間違いと区別して案内する
+fn is_time_without_seconds(body: &str) -> bool {
+    let clock = match body.split_once(['T', 't', ' ']) {
+        Some((date, rest)) => {
+            if parse_date(date).is_none() {
+                return false;
+            }
+            match split_offset(rest) {
+                Some((clock, _)) => clock,
+                None => return false,
+            }
+        }
+        None => body,
+    };
+    let b = clock.as_bytes();
+    // 秒が無いのに小数秒だけある形は 1.1 でも不正
+    b.len() == 5
+        && b[2] == b':'
+        && two_digits(&b[0..2]).is_some_and(|h| h <= 23)
+        && two_digits(&b[3..5]).is_some_and(|m| m <= 59)
 }
 
 /// 2 桁の ASCII 数字を数値へ（それ以外は None）
@@ -982,14 +1041,12 @@ mod tests {
             "1979-5-27",
             "07:60:00",
             "24:00:00",
-            "07:32",
             "07:32:00.",
             "1979-05-27T",
             "1979-05-27T07:32:00+9:00",
             "1979-05-27T07:32:00-24:00",
             "1979-05-27T07:32:00+25:00",
             "1979-05-27T07:32:00.",
-            "1979-05-27 07:32",
             "07:32:00Z",
             "2024-02-30",
             "-1979-05-27",
@@ -1007,6 +1064,33 @@ mod tests {
         }
         // 数字で始まらないものは従来どおり NotAValue（= ExpectedValue）
         assert_eq!(classify_scalar(".5"), ScalarClass::NotAValue);
+    }
+
+    /// 秒の省略は TOML 1.1 の記法。書き間違いと区別して案内する
+    #[test]
+    fn 秒を省略した時刻は_toml_1_1_として区別される() {
+        for src in [
+            "07:32",
+            "1979-05-27T07:32",
+            "1979-05-27t07:32",
+            "1979-05-27 07:32",
+            "1979-05-27T07:32Z",
+            "1979-05-27T07:32+09:00",
+            "00:00",
+            "23:59",
+        ] {
+            assert_eq!(
+                classify_scalar(src),
+                ScalarClass::TomlV11(TomlV11::TimeWithoutSeconds),
+                "{src}"
+            );
+        }
+        // 「秒の省略」以外の理由で読めないものは従来どおり書き間違い
+        for src in ["24:32", "07:60", "07:32.5", "1979-13-01T07:32", "07:32Z"] {
+            assert_eq!(classify_scalar(src), ScalarClass::InvalidLiteral, "{src}");
+        }
+        // 時が 1 桁のものは時刻の形にすら見えない（整数の書き間違い扱い）
+        assert_eq!(classify_scalar("7:32"), ScalarClass::InvalidInteger);
     }
 
     #[test]

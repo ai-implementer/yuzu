@@ -12,7 +12,15 @@ TOML 1.0 仕様（https://toml.io/ja/v1.0.0）の例文を基に作成した自�
 **参照実装は `toml 0.9+spec-1.1.0` = TOML 1.1 の構文も受理する**ので、
 kabosu が TOML 1.0 どおり拒否するもの（秒を省略した `07:32`・インラインテーブルの
 改行と末尾カンマ）は `invalid/` に置けない（「invalid は参照実装でもエラー」の
-照合が落ちる）。これらは crate 内のユニットテストで縛る。
+照合が落ちる）。これらは crate 内のユニットテストで縛り、
+`ParseErrorKind::Unsupported(TomlV11)` として一般の構文エラーと区別する。
+
+## 公式 toml-test との関係
+
+0.2 から `../toml-test/`（vendor）を `../toml_test.rs` が回している。
+仕様の網羅はそちらが担当するので、この自作コーパスは**役割を変えた**:
+kabosu 固有の挙動（診断の種別・正規化出力・参照実装との値一致）を
+少数の読みやすいケースで縛る。
 
 `1.0.0` の条件は公式 [toml-test](https://github.com/toml-lang/toml-test) の
 valid / invalid / encoder テスト完全通過（kabosu.md「v0.1 の TOML 対応範囲」）。

@@ -2,7 +2,8 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use kabosu::{
-    DecodeOptions, DiagnosticCode, Document, ParseError, ParseErrorKind, UnknownKeys, ValueKind,
+    DecodeOptions, DiagnosticCode, Document, ParseError, ParseErrorKind, TomlV11, UnknownKeys,
+    ValueKind,
 };
 
 use crate::error::ConfigIssue;
@@ -204,6 +205,32 @@ fn issue_of(doc: &Document, d: &kabosu::Diagnostic) -> ConfigIssue {
     }
 }
 
+/// TOML 1.1 で追加された構文（kabosu は TOML 1.0）。
+/// 「書き間違い」ではなく「新しい版の記法」だと伝え、1.0 での書き方を案内する
+fn toml_v11_message(feature: TomlV11) -> String {
+    let (name, hint) = match feature {
+        TomlV11::Escape => (
+            "`\\e` と `\\xHH` のエスケープ",
+            "`\\u001B` のような `\\u` エスケープで書いてください",
+        ),
+        TomlV11::InlineTable => (
+            "インラインテーブル（`{ ... }`）の中の改行・コメント・末尾カンマ",
+            "1 行に収めるか、`[lint.terms]` のようなテーブルヘッダーで書いてください",
+        ),
+        TomlV11::TimeWithoutSeconds => (
+            "秒を省略した時刻",
+            "`07:32:00` のように秒まで書いてください",
+        ),
+        TomlV11::UnicodeBareKey => (
+            "引用符なしの非 ASCII キー",
+            "`\"サーバ\" = ...` のように引用してください",
+        ),
+        // TomlV11 は non_exhaustive（kabosu 側で 1.1 の構文が増えうる）
+        _ => ("この記法", "TOML 1.0 の書き方にしてください"),
+    };
+    format!("{name}は TOML 1.1 の記法です（kabosu は TOML 1.0）。{hint}")
+}
+
 /// 値種別の日本語名（型不一致の文言用）
 fn kind_name(kind: ValueKind) -> &'static str {
     match kind {
@@ -243,6 +270,10 @@ fn syntax_message(text: &str, e: &ParseError) -> String {
             "`\\u` / `\\U` エスケープが Unicode スカラー値ではありません".to_string()
         }
         ParseErrorKind::ControlCharInString => "文字列に制御文字は書けません".to_string(),
+        ParseErrorKind::ControlCharInComment => {
+            "コメントに制御文字は書けません（タブは可）".to_string()
+        }
+        ParseErrorKind::Unsupported(feature) => toml_v11_message(*feature),
         ParseErrorKind::ExpectedKey => "キーが必要です".to_string(),
         ParseErrorKind::ExpectedValue => "値が必要です".to_string(),
         ParseErrorKind::ExpectedEquals => "キーの後に `=` が必要です".to_string(),
@@ -540,12 +571,20 @@ mod tests {
     }
 
     #[test]
-    fn インラインテーブルの閉じ忘れは位置付きの構文エラー() {
+    fn toml_1_1_の記法は書き方の案内付きで報告される() {
         // TOML 1.0 では `{ ... }` の中に改行を書けない
         match parse("[lint]\nterms = {\n\"サーバ\" = [\"サーバー\"] }\n") {
             Err(ConfigError::Syntax { line, message, .. }) => {
                 assert_eq!(line, 2);
-                assert!(message.contains("インラインテーブル"), "{message}");
+                assert!(message.contains("TOML 1.1 の記法"), "{message}");
+                assert!(message.contains("1 行に収める"), "{message}");
+            }
+            other => panic!("Syntax を期待: {other:?}"),
+        }
+        // 引用符なしの日本語キーも 1.1 の記法
+        match parse("[lint.terms]\nサーバ = [\"サーバー\"]\n") {
+            Err(ConfigError::Syntax { message, .. }) => {
+                assert!(message.contains("引用"), "{message}");
             }
             other => panic!("Syntax を期待: {other:?}"),
         }
