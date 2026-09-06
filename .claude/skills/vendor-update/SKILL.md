@@ -50,6 +50,20 @@ scripts/vendor-vaporetto-model.sh
 - 現行: bccwj-suw_c1.0（圧縮 372KB、MIT OR Apache-2.0）。ライセンスが再配布可能なものだけを使う。
 - **モデルのバイト列が変わると索引（index 時）と検索（query 時）の整合が崩れる**。更新後は必ずサイトを再ビルドし、`yuzu search`（誤字クエリ込み）で確認する。ブラウザは初回検索時にモデルを遅延ダウンロードする設計。
 
+## 5. 公式 toml-test（crates/kabosu/tests/toml-test/）
+
+```bash
+scripts/vendor-toml-test.sh
+```
+
+- 現行: `v2.2.0`（MIT）。884 ファイル・実バイト 190KB。`crates/kabosu/Cargo.toml` の
+  `exclude` で配布物からは外している。
+- **タグはテストスイートの版であって TOML 仕様の版ではない**。仕様の版で選ぶのは上流の
+  `tests/files-toml-1.0.0` で、スクリプトはここに載っているファイルだけを取り込む。
+  TOML 1.1 専用のケースを入れると「仕様どおり拒否したのに落ちる」テストになる。
+- 更新後は `cargo test -p kabosu --test toml_test` を回す。落ちたケースは
+  kabosu 側のバグか、上流がケースを追加したかのどちらか（差分を読んで判断する）。
+
 ## いつ再 vendor するか
 
 - **`mikan` / `mikan-wasm` に手を入れたら検索 wasm を必ず再生成する**。索引側（ネイティブ）と

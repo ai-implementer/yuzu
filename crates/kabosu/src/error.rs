@@ -56,6 +56,9 @@ impl core::fmt::Display for ParseError {
             ParseErrorKind::ControlCharInString => {
                 f.write_str("control character is not allowed in a string")
             }
+            ParseErrorKind::ControlCharInComment => {
+                f.write_str("control character is not allowed in a comment")
+            }
             ParseErrorKind::TooManyQuotes => f.write_str(
                 "three or more adjacent quotation marks inside a multi-line string must be escaped",
             ),
@@ -84,6 +87,11 @@ impl core::fmt::Display for ParseError {
                 f.write_str("table conflicts with a previously defined key or table")
             }
             ParseErrorKind::DepthExceeded => f.write_str("nesting depth exceeds the limit (128)"),
+            ParseErrorKind::Unsupported(feature) => write!(
+                f,
+                "{} is TOML 1.1 syntax (kabosu parses TOML 1.0)",
+                feature.as_str()
+            ),
         }
     }
 }
@@ -99,6 +107,8 @@ pub enum ParseErrorKind {
     /// `\u` / `\U` がスカラー値にならない
     InvalidUnicodeEscape,
     ControlCharInString,
+    /// コメントの中のタブ以外の制御文字
+    ControlCharInComment,
     /// 複数行文字列の中に閉じ区切り文字が 3 つ以上連続した（`""""""` 等。
     /// 閉じ区切りの直前に置ける引用符は 2 つまで）
     TooManyQuotes,
@@ -124,4 +134,39 @@ pub enum ParseErrorKind {
     TableConflict,
     /// 配列・テーブル・dotted key の深さが上限 128 を超えた
     DepthExceeded,
+    /// TOML 1.1 で追加された構文（kabosu は TOML 1.0）。
+    /// 一般的な構文エラーと区別して「1.0 には無い記法」と案内できるようにする
+    Unsupported(TomlV11),
+}
+
+/// TOML 1.1 で追加された構文。kabosu は TOML 1.0 のパーサなので受理しないが、
+/// 「書き間違い」ではなく「新しい版の記法」だと位置付きで伝える。
+///
+/// **variant を足すときは「1.0 では invalid・1.1 では valid」であることを
+/// 公式 toml-test で裏付けること**（`files-toml-1.0.0` の invalid 一覧にあり、
+/// `files-toml-1.1.0` の invalid 一覧に無いケース）。引用符なしの非 ASCII キーは
+/// 1.1 でも許されないため、ここには入らない
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TomlV11 {
+    /// `\e`（ESC）と `\xHH` のエスケープ。
+    /// toml-test: `invalid/string/basic-byte-escapes`
+    Escape,
+    /// インラインテーブルの中の改行・コメント・末尾カンマ。
+    /// toml-test: `invalid/inline-table/linebreak-01..04`・`trailing-comma`
+    InlineTable,
+    /// 秒を省略した時刻（`07:32`）。
+    /// toml-test: `invalid/{datetime,local-datetime,local-time}/no-secs`
+    TimeWithoutSeconds,
+}
+
+impl TomlV11 {
+    /// 英語の構文名（エラー文言用）
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Escape => "the `\\e` and `\\xHH` escapes",
+            Self::InlineTable => "newlines, comments and trailing commas in inline tables",
+            Self::TimeWithoutSeconds => "a time without seconds",
+        }
+    }
 }

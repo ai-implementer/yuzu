@@ -28,8 +28,8 @@ cargo add kabosu
 3. **決定的出力**: `to_string` は同じ値から常に同じバイト列を生成し、
    その出力は必ず再パースできる（round-trip / fuzzing で担保）
 
-`1.0.0` の条件は公式 [toml-test](https://github.com/toml-lang/toml-test) の
-valid / invalid / encoder テストの完全通過。
+0.2 で TOML 1.0 の全構文に対応し、公式 [toml-test](https://github.com/toml-lang/toml-test)
+の TOML 1.0.0 対象ケースを全通過した。
 
 ## 対応状況
 
@@ -46,6 +46,8 @@ valid / invalid / encoder テストの完全通過。
 | date-time（offset / local × date / time の 4 種） | ✅（`T` / `t` / 空白区切り・小数秒は 9 桁まで・オフセット 0 は `Z` へ正規化） |
 | インラインテーブル `{ ... }` | ✅（TOML 1.0 どおり 1 行・末尾カンマ不可。作られたテーブルは閉じている） |
 | テーブルの配列 `[[a]]` | ✅（正規化では要素が全部テーブルの配列を `[[a]]` へ展開する） |
+| 公式 [toml-test](https://github.com/toml-lang/toml-test) | ✅ TOML 1.0.0 対象の valid 205 / invalid 474 を全通過 |
+| TOML 1.1 の構文 | 位置付きの [`ParseErrorKind::Unsupported`]（`\e` / `\xHH`・インラインテーブルの改行と末尾カンマ・秒を省略した時刻） |
 
 ## 使い方
 

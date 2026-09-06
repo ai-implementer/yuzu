@@ -169,7 +169,41 @@ lexer の「TOML として妥当なリテラルか」の判定（`is_valid_float
     `[lint.terms]` を `lint.terms = { ... }` と書いても同じ結果（config_test に 1 件足す）
   - docs `reference/config.md` の「サブセット」段落と `development/kabosu.md` の対応範囲を更新
 
-### 71 toml-test による検証と kabosu 0.2.0 公開 ⬜
+### 71 toml-test による検証と kabosu 0.2.0 公開 ✅（公開待ち）
+
+判断は 3 点とも推奨案: 公式 toml-test を vendor / 期待値 JSON は dev 依存の
+serde_json で読む / `Unsupported` は TOML 1.1 の案内へ転用。
+**crates.io への publish だけ残っている**（`publish-crate` スキル）。
+
+- 実装メモ
+  - `scripts/vendor-toml-test.sh` — v2.2.0 をタグ＋アーカイブ sha256 固定で取得。
+    **タグはスイートの版で仕様の版ではない**ので、1.0 の選別は上流の
+    `files-toml-1.0.0` で行う（884 ファイル・実バイト 190KB）。
+    `Cargo.toml` の `exclude` で配布物からは外す
+  - `tests/toml_test.rs` — valid 205 / invalid 474。期待値との比較は**文字列ではなく値**
+    （float は `5e+22` と `5e22`、date-time は区切りやオフセットの表記が揺れる）。
+    期待値の日付も kabosu に読ませて正規形へ揃える
+  - **見つかったバグは 1 件**: コメントの中のタブ以外の制御文字を受理していた
+    （`read_comment` が行末まで素通ししていた）。`ControlCharInComment` を追加。
+    単独の CR も不可で、CRLF の CR だけコメントの終わりとして扱う
+  - `ParseErrorKind::Unsupported(TomlV11)` を復活。対象は `\e` / `\xHH`・
+    インラインテーブルの改行とコメントと末尾カンマ・秒を省略した時刻・
+    秒を省略した時刻の 3 つ。yuzu-config は 1.0 での書き方を添えて報告する
+  - **レビュー指摘（PR #13）**: 引用符なしの非 ASCII キーを `TomlV11` に入れていたが、
+    **1.1 でも bare key は `A-Za-z0-9_-` に限られる**（参照実装も拒否し、toml-test の
+    1.1 一覧にも valid ケースが無い）。「1.1 なら書ける」と誤案内していたので外し、
+    引用を促す普通のキー構文エラーに戻した。`TomlV11` に variant を足すときは
+    **toml-test の「1.0 では invalid・1.1 では valid」で裏付ける**（doc コメントに
+    対応する toml-test のパスを書いてある）
+  - kabosu 0.1.0 → **0.2.0**（`UnsupportedFeature` と `EncodeErrorKind::TableInArray` の
+    削除、`Value` / `ValueKind` の variant 追加、`Datetime` 型の追加）
+  - **fuzz が 1 件見つけた**（roundtrip ターゲット）: `[[a]]` は「配列」と
+    「その要素テーブル」で**エンコーダ側は 2 段**だが、パーサは現在セクションの
+    深さを経路のセグメント数（1 段）で代用していた。`[[a]]` の下に深い dotted key
+    を書くと「パースできたのにエンコードできない」木が作れる。`section_depth` を
+    足して両者を揃えた
+
+以下は策定時のメモ。
 
 - 判断点: 公式 toml-test の取り込み方
   - (a) `scripts/vendor-toml-test.sh` で **TOML 1.0.0 のタグ**を

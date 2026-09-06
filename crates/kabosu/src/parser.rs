@@ -12,7 +12,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::error::{ParseError, ParseErrorKind};
+use crate::error::{ParseError, ParseErrorKind, TomlV11};
 use crate::lexer::{
     Cursor, ScalarClass, classify_scalar, parse_datetime, parse_float, parse_integer,
     parse_radix_integer,
@@ -40,7 +40,7 @@ pub(crate) fn parse(src: &str) -> Result<(Node, Vec<Span>), ParseError> {
             continue;
         }
         if cur.at_comment() {
-            comments.push(cur.read_comment());
+            comments.push(cur.read_comment()?);
             cur.eat_newline()?;
             continue;
         }
@@ -118,10 +118,14 @@ fn parse_header(
         define_header_table(root, &segments)?;
     }
     *current_path = segments.iter().map(|s| String::from(s.name())).collect();
+    // 定義したあとの実際の深さで見る（`[[a]]` は 2 段なのでセグメント数では足りない）
+    if section_depth(root, current_path) > MAX_DEPTH {
+        return Err(ParseError::new(ParseErrorKind::DepthExceeded, header_span));
+    }
 
     cur.skip_ws();
     if cur.at_comment() {
-        comments.push(cur.read_comment());
+        comments.push(cur.read_comment()?);
     }
     cur.eat_newline()
 }
@@ -295,7 +299,7 @@ fn parse_keyval(
     }
     cur.skip_ws();
 
-    let depth = current_path.len() + segments.len();
+    let depth = section_depth(root, current_path) + segments.len();
     if depth > MAX_DEPTH {
         let span = Span {
             start: segments.first().expect("1 つ以上ある").span().start,
@@ -308,7 +312,7 @@ fn parse_keyval(
 
     cur.skip_ws();
     if cur.at_comment() {
-        comments.push(cur.read_comment());
+        comments.push(cur.read_comment()?);
     }
     cur.eat_newline()?;
 
@@ -352,6 +356,37 @@ fn insert_dotted(table: &mut Table, segments: &[KeySegment], node: Node) -> Resu
     }
     t.insert(last.clone(), node);
     Ok(())
+}
+
+/// 現在のセクションの入れ子の深さ。
+///
+/// **`[[a]]` は「配列」と「その要素テーブル」で 2 段**になる。
+/// エンコーダ（`TableEncoder::field` と `ArrayEncoder::element` が 1 段ずつ）も
+/// そう数えるので、ここを経路のセグメント数（1 段）で代用すると
+/// **「パースできたのにエンコードできない」木が作れる**（fuzz が見つけた）
+fn section_depth(root: &Table, path: &[String]) -> usize {
+    let mut depth = 0;
+    let mut table = root;
+    for name in path {
+        let Some(entry) = table.get(name) else {
+            return depth;
+        };
+        match entry.node().value() {
+            Value::Table(sub) => {
+                depth += 1;
+                table = sub;
+            }
+            Value::Array(items) => {
+                depth += 2;
+                match items.last().map(Node::value) {
+                    Some(Value::Table(sub)) => table = sub,
+                    _ => return depth,
+                }
+            }
+            _ => return depth,
+        }
+    }
+    depth
 }
 
 /// ヘッダ確定済みの経路を辿る（配列は最後の要素へ降りる）
@@ -398,6 +433,9 @@ fn parse_value(
                     Value::Datetime(parse_datetime(blob, span)?),
                     span,
                 )),
+                ScalarClass::TomlV11(feature) => {
+                    Err(ParseError::new(ParseErrorKind::Unsupported(feature), span))
+                }
                 ScalarClass::InvalidInteger => {
                     Err(ParseError::new(ParseErrorKind::InvalidInteger, span))
                 }
@@ -497,13 +535,27 @@ fn parse_inline_table(
             },
         )
     };
+    // 改行・コメント・末尾カンマは TOML 1.1 の記法。書き間違いと区別して案内する
+    let v11 = |cur: &Cursor<'_>| {
+        ParseError::new(
+            ParseErrorKind::Unsupported(TomlV11::InlineTable),
+            Span::point(cur.pos()),
+        )
+    };
     let mut table = Table::new(TableOrigin::Inline);
     cur.skip_ws();
     if !cur.eat(b'}') {
         loop {
             cur.skip_ws();
-            if cur.at_newline() || cur.is_eof() || cur.at_comment() {
+            if cur.at_newline() || cur.at_comment() {
+                return Err(v11(cur));
+            }
+            if cur.is_eof() {
                 return Err(unclosed(cur));
+            }
+            // ここへ来るのはカンマの後だけ（空の `{}` は上で処理済み）
+            if cur.peek() == Some(b'}') {
+                return Err(v11(cur));
             }
             // キー（dotted 可）
             let mut segments: Vec<KeySegment> = Vec::new();
@@ -543,6 +595,9 @@ fn parse_inline_table(
             if cur.eat(b'}') {
                 break;
             }
+            if cur.at_newline() || cur.at_comment() {
+                return Err(v11(cur));
+            }
             return Err(unclosed(cur));
         }
     }
@@ -559,7 +614,7 @@ fn skip_trivia(cur: &mut Cursor<'_>, comments: &mut Vec<Span>) -> Result<(), Par
     loop {
         cur.skip_ws();
         if cur.at_comment() {
-            comments.push(cur.read_comment());
+            comments.push(cur.read_comment()?);
             continue;
         }
         if cur.at_newline() {
@@ -575,7 +630,7 @@ mod tests {
     use alloc::string::ToString;
 
     use crate::datetime::DatetimeKind;
-    use crate::error::ParseErrorKind;
+    use crate::error::{ParseErrorKind, TomlV11};
     use crate::model::Document;
 
     fn parse(src: &str) -> Document {
@@ -833,30 +888,58 @@ mod tests {
 
     #[test]
     fn インラインテーブルは_1_行で閉じている() {
-        // 改行・コメント・末尾カンマは TOML 1.0 では不可
-        assert_eq!(
-            err_kind("x = {\n a = 1 }\n"),
-            ParseErrorKind::UnclosedInlineTable
-        );
-        assert_eq!(
-            err_kind("x = { a = 1,\n b = 2 }\n"),
-            ParseErrorKind::UnclosedInlineTable
-        );
-        assert_eq!(
-            err_kind("x = { a = 1 # c\n }\n"),
-            ParseErrorKind::UnclosedInlineTable
-        );
+        // 改行・コメント・末尾カンマは TOML 1.1 の記法（1.0 では不可）。
+        // 書き間違いではないので Unsupported として区別する
+        let v11 = ParseErrorKind::Unsupported(TomlV11::InlineTable);
+        assert_eq!(err_kind("x = {\n a = 1 }\n"), v11);
+        assert_eq!(err_kind("x = { a = 1,\n b = 2 }\n"), v11);
+        assert_eq!(err_kind("x = { a = 1 # c\n }\n"), v11);
+        assert_eq!(err_kind("x = { a = 1, }\n"), v11);
+        // 閉じ忘れ（EOF）と区切り忘れは素直に構文エラー
         assert_eq!(
             err_kind("x = { a = 1 "),
             ParseErrorKind::UnclosedInlineTable
         );
-        // 末尾カンマの後はキーが必要
-        assert_eq!(err_kind("x = { a = 1, }\n"), ParseErrorKind::ExpectedKey);
+        assert_eq!(
+            err_kind("x = { a = 1 b = 2 }\n"),
+            ParseErrorKind::UnclosedInlineTable
+        );
         // 重複キーは中でも検出する
         assert_eq!(
             err_kind("x = { a = 1, a = 2 }\n"),
             ParseErrorKind::DuplicateKey
         );
+    }
+
+    #[test]
+    fn toml_1_1_の記法は書き間違いと区別される() {
+        assert_eq!(
+            err_kind("x = \"\\e\"\n"),
+            ParseErrorKind::Unsupported(TomlV11::Escape)
+        );
+        assert_eq!(
+            err_kind("x = \"\\x41\"\n"),
+            ParseErrorKind::Unsupported(TomlV11::Escape)
+        );
+        assert_eq!(
+            err_kind("x = 07:32\n"),
+            ParseErrorKind::Unsupported(TomlV11::TimeWithoutSeconds)
+        );
+        // 未知のエスケープは書き間違いのまま
+        assert_eq!(err_kind("x = \"\\q\"\n"), ParseErrorKind::InvalidEscape);
+    }
+
+    /// 引用符なしのキーは TOML 1.0 / 1.1 とも `A-Za-z0-9_-` だけ。
+    /// **1.1 でも許されない**ので「1.1 の記法」として案内してはいけない
+    #[test]
+    fn 引用符なしの非_ascii_キーは普通のキー構文エラー() {
+        assert_eq!(err_kind("サーバ = 1\n"), ParseErrorKind::ExpectedKey);
+        assert_eq!(err_kind("[サーバ]\n"), ParseErrorKind::ExpectedKey);
+        assert_eq!(err_kind("a.サーバ = 1\n"), ParseErrorKind::ExpectedKey);
+        assert_eq!(err_kind("= 1\n"), ParseErrorKind::ExpectedKey);
+        // 引用すればどちらの版でも書ける
+        assert!(Document::parse("\"サーバ\" = 1\n").is_ok());
+        assert!(Document::parse("[\"サーバ\"]\n").is_ok());
     }
 
     #[test]

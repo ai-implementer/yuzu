@@ -33,7 +33,7 @@ cargo build -p yuzu-cli
 ```
 
 - **insta スナップショット**: 差分が出たら内容を必ず目視してから更新する。`cargo insta review` は cargo-insta が要る（**ホストに入っていないことがある**。開発コンテナには同梱）ので、無ければ `INSTA_UPDATE=always cargo test -p <crate>` で直接更新して `git diff` で確認する。CI は `INSTA_UPDATE=no` で未承認を失敗にする
-- **vendor 更新スクリプト**: `scripts/build-search-wasm.sh`（wasm-bindgen-cli は workspace の `wasm-bindgen = "=x.y.z"` と完全同一バージョン必須）/ `scripts/vendor-mermaid.sh` / `scripts/vendor-katex.sh` / `scripts/vendor-vaporetto-model.sh`
+- **vendor 更新スクリプト**: `scripts/build-search-wasm.sh`（wasm-bindgen-cli は workspace の `wasm-bindgen = "=x.y.z"` と完全同一バージョン必須）/ `scripts/vendor-mermaid.sh` / `scripts/vendor-katex.sh` / `scripts/vendor-vaporetto-model.sh` / `scripts/vendor-toml-test.sh`（kabosu のテスト。**タグはスイートの版で仕様の版ではない** = 1.0 の選別は上流の `files-toml-1.0.0`）
 - CLI の終了コード規約: 0 = 成功 / 1 = 違反あり（lint・check・fmt --check）/ 2 = 実行エラー
 
 ## アーキテクチャ
