@@ -28,8 +28,9 @@ ARG DEV_WORKSPACE=/workspaces/yuzu
 # curl/xz-utils: scripts/*.sh（vendor 系）と各種インストーラ用
 # sudo: post-create.sh が named volume マウント点の所有権を直すため（DEV_USER に NOPASSWD）
 # openssh-client: `container run --ssh` の agent フォワードでの git push/fetch 用
+# jq: JSON の整形・取り出し（gh api の結果確認、scripts/*.sh やエージェントの作業用）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl git gcc libc6-dev make openssh-client procps sudo xz-utils \
+        ca-certificates curl git gcc jq libc6-dev make openssh-client procps sudo xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # GitHub の公式 SSH ホスト鍵（https://api.github.com/meta の ssh_keys）を焼き込み。
