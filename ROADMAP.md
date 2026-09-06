@@ -3,232 +3,12 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在: v0.16（Phase 68〜71）
+## 現在
 
-**v0.15 まで公開済み**（kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 も crates.io で公開済み。
-yuzu のリリースとは非同期）。
-
-軸は「**kabosu の TOML 1.0 完全対応**」。
-
-- 動機: v0.14 で「設定ファイル用途のサブセット」として切り出したまま crates.io へ公開した。
-  TOML 1.0 全体を受理できないパーサは利用側で「書ける TOML が分からない」摩擦になる
-- ゴール: 未対応 6 構文（float / date-time / 16,8,2 進整数 / 複数行文字列 / inline table /
-  array of tables）を実装し、公式 toml-test を通して **kabosu 0.2.0 を公開**する
-- yuzu 本体の機能追加はしない（公開サイトの仕上げ候補は「v0.17 以降の候補」へ据え置き）
-- Phase は lexer → 値型 → 構造 → 検証・公開の依存順。着手時に判断点を決めてから実装する
-
-### 68 数値と文字列の完全対応 ✅
-
-lexer の「TOML として妥当なリテラルか」の判定（`is_valid_float` 等）を値の構築へ昇格させた。
-判断は 2 点とも推奨案: `Decode for f64` は整数リテラルを受けない（型厳格）/ 正規化は
-`{:?}` の最短表現に `.0` を補い、`nan` の符号は落とす。
-
-- 実装メモ
-  - `Value::Float(f64)` / `ValueKind::Float` / `Node::as_float` / `Decode` `Encode` for `f64` /
-    `Encoder::float` / `normalize::render_float`。進数整数は `Value::Integer` に畳む
-  - 文字列は `read_string_value` が単行 / 複数行 × basic / literal を振り分ける。キー位置の
-    `"""` / `'''` は新しい `MultilineStringAsKey`、閉じ直前の引用符 3 個以上は `TooManyQuotes`
-  - `UnsupportedFeature` は DateTime / InlineTable / ArrayOfTables の 3 つに縮小（yuzu-config の
-    `unsupported_message` から 3 分岐を削除）
-  - corpus: `unsupported/01,03,04` → `valid/07〜09`（TOML 仕様の例文で拡充）、`invalid/12〜15`
-    （複数行文字列のキー・引用符 6 個・行末 `\` の後の非空白・16 進の範囲外）
-  - 差分テストは `nan` を文字列に正規化してから比較。round-trip に float（特殊値と乱数ビット列。
-    nan は別テスト）、正規化 snapshot に `normalize_floats` を追加
-
-以下は策定時のメモ。
-
-
-- **float**
-  - 小数・指数・`_` 区切り・`inf` / `nan`（符号付き）
-  - `Value::Float(f64)` / `ValueKind::Float` を追加（`#[non_exhaustive]` なので非破壊）
-  - `Decode for f64`、`TableEncoder` / `ArrayEncoder` の float 出力
-  - 判断点: 整数リテラルを f64 フィールドに受けるか（参照実装の serde は受ける。
-    kabosu は型厳格が方針 = 受けずに診断にする案）
-  - 判断点: 正規化の表現（`{:?}` の最短表現を基本に、`.` も `e` も無ければ `.0` を補う・
-    `inf` / `-inf` / `nan`・`-0.0` は温存・`nan` の符号は落とす）
-  - `toml` crate との差分テストは `nan` を等値比較できないので特別扱い
-- **16 / 8 / 2 進整数**
-  - `0x` / `0o` / `0b`・`_` 区切り・符号なし・i64 範囲（範囲外はエラー）
-  - 値は `Value::Integer` のまま、正規化は 10 進（原文の表現は保持しない = 非破壊編集の範疇）
-- **複数行文字列**
-  - basic `"""`: 開始直後の改行削除・行末 `\` で空白と改行をトリム・閉じ直前の `"` は
-    最大 2 個・エスケープ集合は単行と同じ・タブ以外の制御文字は不可
-  - literal `'''`: エスケープなし・閉じ直前の `'` は最大 2 個
-  - CRLF は原文どおり保持（参照実装との差分テストで縛る。正規化出力は LF）
-- 追随
-  - `UnsupportedFeature::{Float, RadixInteger, MultilineString}` を削除
-  - corpus: `unsupported/01,03,04` を `valid/` へ移してケース拡充（inf / nan / 指数 /
-    `_` / `0x` の範囲外 / `""""` / 行末 `\`）、`invalid/` に `1.`・`.5`・`1e`・`0x`・
-    `1__0`・`_1`・`"""` 内の不正エスケープ
-  - round-trip と正規化 snapshot に新しい値種別を足す
-
-### 69 日時（date-time） ✅
-
-依存ゼロを維持するため独自の日時型（`Datetime` / `Date` / `Time` / `Offset`）を持つ。
-時刻演算・タイムゾーン変換・`chrono` / `time` への変換は持たない。
-判断は 3 点とも推奨案: 参照実装と同型の 1 型 / 小数秒は 9 桁で切り捨て /
-オフセット 0 は `Z` に統一。
-
-- 実装メモ
-  - `datetime.rs` を新設。フィールドは非公開で、`Date::new` / `Time::new` /
-    `Offset::from_minutes` が範囲を検証する（**暦として存在しない日付を組み立てて
-    不正な TOML を出力できない**）。4 種の区別は `Datetime::kind`、正規形は `Display`
-  - `ScalarClass::Unsupported` を `Datetime` に置き換え、`is_valid_datetime` は
-    `parse_datetime_str` へ統合した（妥当性判定と値の構築を 1 実装で兼ねる）
-  - 空白区切り（`1979-05-27 07:32:00`）は `read_scalar_blob` が空白 1 個をまたいで
-    1 塊にする。**前が妥当な日付で後ろが `HH:` のときだけ**繋げる
-    （`x = 1979-05-27 # コメント` を巻き込まない）
-  - `UnsupportedFeature` は InlineTable / ArrayOfTables に縮小（yuzu-config の
-    `unsupported_message` から日時の分岐を削除）。`kind_name` に日付・時刻と小数を
-    足した（Phase 68 の Float も `_ => "値"` に落ちていた）
-  - corpus: `unsupported/02,07,08,09` → `valid/10,11`、`invalid/16〜18`
-    （`24:00:00`・`+25:00`・`2024-02-30`）。snapshot に `normalize_datetimes`
-  - 差分テストは **`Z` と `+00:00` の違いだけ意図的に潰す**（参照実装は
-    `Offset::Custom { minutes: 0 }` で区別するが kabosu は分単位の数値しか持たない）
-  - **秒の省略（`07:32`）は invalid corpus に入れない** — 参照実装が
-    `toml 0.9+spec-1.1.0` で TOML 1.1 として受理するため、「invalid は参照実装でも
-    エラー」の照合が通らない。Phase 71 の `Unsupported(TomlV11)` 転用で扱う
-
-以下は策定時のメモ。
-
-- 4 種: offset date-time / local date-time / local date / local time
-  - 区切りは `T` / `t` / 空白、小数秒は任意桁、オフセットは `Z` / `z` / `±HH:MM`
-  - 検証: 月日（閏年。`09-leap-day` は corpus 済み）・時 0〜23・分 0〜59・秒 0〜60
-    （うるう秒）・オフセットの範囲。既存 `is_valid_datetime` を値の構築へ昇格
-- 判断点: 値型の形。参照実装 `toml::value::Datetime { date, time, offset }`（各 Option）と
-  同型の 1 型 `Value::DateTime` にするか、4 variant に分けるか（差分テストとの相性は前者）
-- 判断点: 小数秒は `nanos: u32` で 9 桁まで保持し、超過桁は切り捨て（参照実装と同じ）か
-  エラーか
-- 判断点: 正規化の形。RFC 3339 の正規形（`T` 大文字・小数秒の末尾ゼロ除去）に加え、
-  オフセット 0 を `Z` に統一するか `+00:00` を保持するか（「同じ値 → 同じバイト列」なら `Z`）
-- 追随: `Decode` / `Encode` impl と `Display`（正規形）。corpus は `unsupported/02,07,08,09`
-  を `valid/` へ、`invalid/` に `2024-02-30`・`24:00:00`・`+25:00`・秒の省略 `07:32`。
-  `UnsupportedFeature::DateTime` を削除
-
-### 70 inline table と array of tables ✅
-
-これで **TOML 1.0 の全構文が揃った**（公式 toml-test での検証は Phase 71）。
-判断は 2 点とも推奨案: 要素が全部テーブルの配列は `[[a]]` へ展開 /
-到達不能になる `EncodeErrorKind::TableInArray` は削除。
-
-- 実装メモ
-  - `TableOrigin` に `Inline`（閉じている）と `ArrayHeader`（`[[a]]` の要素）を追加。
-    **配列が `[[...]]` 由来かは「最後の要素が `ArrayHeader` 起源のテーブルか」で見る**
-    （`Value::Array` に印を足さずに済み、`a = [{...}]` が静的配列のままになる）
-  - ヘッダ経路の走査を `walk_intermediates` / `can_descend` / `descend_mut` に分けた。
-    `descend_mut` が**配列なら最後の要素へ降りる**ので `[a.b]` も `[[a.b]]` も
-    「直前の要素の中」に入る
-  - 正規化は「そのテーブル自身の値 → ヘッダ形式（`[a]` と `[[a]]`）」の 2 パス。
-    **インラインテーブルはヘッダ形式で書けない位置でだけ使う**
-    （スカラと混在した配列・配列の中の配列）。ここを error にすると
-    `a = [1, { b = 2 }]` が再エンコードできず fuzz の roundtrip が落ちる
-  - `UnsupportedFeature` と `ParseErrorKind::Unsupported` は**中身が空になるので削除**した
-    （Phase 71 の「TOML 1.1 構文へ転用するか」という判断はそのまま残る）。
-    yuzu-config の `unsupported_message` も削除
-  - 新しいエラー種別は `UnclosedInlineTable`（`}` 無し・改行・末尾カンマ）
-  - corpus: `unsupported/` は役目を終えて削除、`valid/12,13` と `invalid/19〜21` を追加。
-    **参照実装が TOML 1.1 として受理するもの**（インラインテーブルの改行・末尾カンマ・
-    コメント）は `invalid/` に置けないのでユニットテストで縛る
-  - round-trip の乱数生成にテーブルと「テーブルだけの配列」を追加。
-    snapshot に `normalize_tables`
-- レビュー指摘（PR #12）で直した 2 件
-  - **dotted key で作られたテーブルは中間経路としては通れる**（TOML 1.0 の
-    `apple.color = "red"` の後に `[fruit.apple.texture]` を足せる例）。
-    v0.14 から終端も中間も一律に拒否していた回帰。禁止は終端の再定義だけ
-  - **インラインテーブルの深度計算をエンコーダと揃えた**。キー 1 段につき 1
-    （`parse_keyval` と同じ）。2 段ぶん数えていたため「`to_string` は通るのに
-    その出力が `DepthExceeded` で再パースできない」入力が作れた
-  - **空のコンテナ（`{}` / `[]`）で深度を消費しないようにした**。深さの検査を
-    入口から「キーごと / 要素ごと」へ移した。エンコーダは空のときフィールドも
-    要素も書かない = 深度を消費しないので、入口で 1 段数えると同じく
-    「再パースできない出力」が作れる（**空配列 `[]` は v0.1 からの同じ穴**）
-
-以下は策定時のメモ。
-
-**テーブル状態機械（`TableOrigin` = Root / Header / HeaderImplicit / Dotted）の拡張が核。**
-
-- **inline table** `{ k = v, a.b = 1 }`
-  - 1 行・末尾カンマ不可・改行不可（TOML 1.0）・空 `{}` 可・ネスト可・dotted key 可
-  - 生成した Table は closed = 後続の `[a.b]` ヘッダや `a.c = 1` での拡張は競合エラー。
-    `TableOrigin::Inline` を追加して既存の競合検査へ組み込む
-- **array of tables** `[[a]]`
-  - 配列末尾に新テーブル。続く `[a.b]` は最後の要素配下、`[[a.b]]` は最後の要素の配列
-  - 競合規則: 静的配列 `a = [...]` への `[[a]]` は不可（逆も）・`[a]` を `[[a]]` の後に
-    書くのは不可（逆も）・inline table の配列 `a = [{...}]` は静的扱い
-  - `TableOrigin::ArrayHeader` を追加し、「最後の要素に追記」する経路を parser に足す。
-    `[[a]]` ヘッダの span を要素 Table の span にする（診断位置）
-- 判断点: 正規化出力。inline table は出さない（常にヘッダ形式へ展開。compact 出力は
-  非スコープ）。テーブルだけの配列は `[[a]]` で出すか `a = [{...}]` にするか
-  （参照実装のエンコーダは `[[a]]`。「要素が全部テーブルなら `[[...]]`」に決める案）
-- 確認事項: `Decode for Vec<T>` は配列要素ノードから decode するので array of tables は
-  無改造で通るはず
-- 追随
-  - `UnsupportedFeature::{InlineTable, ArrayOfTables}` を削除
-  - yuzu-config の `unsupported_message`（`resolve.rs`）は variant の削除で消える
-  - `yuzu.toml` は inline table や `[[...]]` を受理する。`table_codec!` は node 種別で見るので
-    `[lint.terms]` を `lint.terms = { ... }` と書いても同じ結果（config_test に 1 件足す）
-  - docs `reference/config.md` の「サブセット」段落と `development/kabosu.md` の対応範囲を更新
-
-### 71 toml-test による検証と kabosu 0.2.0 公開 ✅
-
-判断は 3 点とも推奨案: 公式 toml-test を vendor / 期待値 JSON は dev 依存の
-serde_json で読む / `Unsupported` は TOML 1.1 の案内へ転用。
-**kabosu 0.2.0 は 2026-09-06 に crates.io へ公開済み**。
-
-- 実装メモ
-  - `scripts/vendor-toml-test.sh` — v2.2.0 をタグ＋アーカイブ sha256 固定で取得。
-    **タグはスイートの版で仕様の版ではない**ので、1.0 の選別は上流の
-    `files-toml-1.0.0` で行う（884 ファイル・実バイト 190KB）。
-    `Cargo.toml` の `exclude` で配布物からは外す
-  - `tests/toml_test.rs` — valid 205 / invalid 474。期待値との比較は**文字列ではなく値**
-    （float は `5e+22` と `5e22`、date-time は区切りやオフセットの表記が揺れる）。
-    期待値の日付も kabosu に読ませて正規形へ揃える
-  - **見つかったバグは 1 件**: コメントの中のタブ以外の制御文字を受理していた
-    （`read_comment` が行末まで素通ししていた）。`ControlCharInComment` を追加。
-    単独の CR も不可で、CRLF の CR だけコメントの終わりとして扱う
-  - `ParseErrorKind::Unsupported(TomlV11)` を復活。対象は `\e` / `\xHH`・
-    インラインテーブルの改行とコメントと末尾カンマ・秒を省略した時刻・
-    秒を省略した時刻の 3 つ。yuzu-config は 1.0 での書き方を添えて報告する
-  - **レビュー指摘（PR #13）**: 引用符なしの非 ASCII キーを `TomlV11` に入れていたが、
-    **1.1 でも bare key は `A-Za-z0-9_-` に限られる**（参照実装も拒否し、toml-test の
-    1.1 一覧にも valid ケースが無い）。「1.1 なら書ける」と誤案内していたので外し、
-    引用を促す普通のキー構文エラーに戻した。`TomlV11` に variant を足すときは
-    **toml-test の「1.0 では invalid・1.1 では valid」で裏付ける**（doc コメントに
-    対応する toml-test のパスを書いてある）
-  - kabosu 0.1.0 → **0.2.0**（`UnsupportedFeature` と `EncodeErrorKind::TableInArray` の
-    削除、`Value` / `ValueKind` の variant 追加、`Datetime` 型の追加）
-  - **fuzz が 1 件見つけた**（roundtrip ターゲット）: `[[a]]` は「配列」と
-    「その要素テーブル」で**エンコーダ側は 2 段**だが、パーサは現在セクションの
-    深さを経路のセグメント数（1 段）で代用していた。`[[a]]` の下に深い dotted key
-    を書くと「パースできたのにエンコードできない」木が作れる。`section_depth` を
-    足して両者を揃えた
-
-以下は策定時のメモ。
-
-- 判断点: 公式 toml-test の取り込み方
-  - (a) `scripts/vendor-toml-test.sh` で **TOML 1.0.0 のタグ**を
-    `crates/kabosu/tests/toml-test/` へ vendor（他の vendor 資産と同じ規律 = タグと
-    チェックサム固定。MIT）← 推奨
-  - (b) 自作 corpus を手で拡充し続ける
-  - (a) なら valid の期待値 `.json`（`{"type":"integer","value":"1"}` 形式）を kabosu の
-    値木から生成して比較するハーネス `toml_test.rs` を書き、自作 corpus は公式ハーネスへ
-    置き換える（corpus README の宣言どおり）。1.1 のケースは混ぜない
-- 判断点: `Unsupported` の行き先。TOML 1.0 を全部実装すると `UnsupportedFeature` は空になる
-  - enum ごと削除する
-  - TOML 1.1 の構文（`\e`・`\xHH`・inline table の改行と末尾カンマ・秒の省略・Unicode
-    bare key）を `Unsupported(TomlV11)` として位置付きで返す仕組みへ転用する ← 推奨
-    （「1.1 で書いたが 1.0 パーサ」の事故を親切に伝えられる。yuzu-config の文言も合わせる）
-- 判断点: encoder 側の toml-test。kabosu の出力は正規化専用（compact 無し）なので
-  「decoder 側の再パース一致」で読む
-- 検証: 差分テスト `to_toml_value` を Float / Datetime に拡張（`nan` は特別扱い）・fuzz
-  3 ターゲット（parse / roundtrip / decode）を新しい値種別込みで回す（publish 前の規律）
-- 公開
-  - README「対応状況」表・`docs/development/kabosu.md`（「v0.1 の対応範囲」→「TOML 1.0 の
-    対応範囲」）・corpus README を更新
-  - kabosu **0.1.0 → 0.2.0**（`Value` の variant 追加は非破壊だが、`UnsupportedFeature` の
-    削除と `Decode` / `Encode` の追加があるため minor bump）
-  - `cargo publish --dry-run` → `cargo publish -p kabosu`。yuzu 側の `Cargo.lock` 追随と
-    `unsupported_message` の整理は Phase 70 で済ませ、ここは公開作業だけ
+**v0.16 まで公開済み**。次の版（v0.17）は未策定で、候補は下の
+「[v0.17 以降の候補](#v017-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
+kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 は crates.io で公開済み（yuzu のリリースとは
+非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある）。
 
 ## v0.10.1 レビューの持ち越し
 
@@ -366,12 +146,89 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   拒否・非 ASCII を含む URL がパーセントエンコード形になる（本文リンクは従来どおり）・
   `highlight.enabled = false` で `syntect.css` を出力しない（`base.jinja` を上書きしている
   利用者は追随が要る）・preview / dev がシンボリックリンクを辿らない
+- **v0.16**（Phase 68〜71）kabosu の TOML 1.0 完全対応 — 未対応だった 6 構文
+  （float / date-time / 16,8,2 進整数 / 複数行文字列 / インラインテーブル /
+  テーブルの配列）を実装し、公式 [toml-test](https://github.com/toml-lang/toml-test) の
+  TOML 1.0.0 対象ケース（valid 205 / invalid 474）を全通過して
+  [kabosu 0.2.0](https://crates.io/crates/kabosu) を公開。TOML 1.1 でだけ妥当な記法
+  （`\e` / `\xHH`・インラインテーブルの改行と末尾カンマ・秒を省略した時刻）は
+  `Unsupported(TomlV11)` として「1.0 には無い記法」と案内する。**yuzu 本体の機能追加は
+  無し**で、`yuzu.toml` に書ける構文が増えるだけ（インラインテーブル・テーブルの配列・
+  日時・小数・複数行文字列が「未対応の構文」エラーにならなくなった）
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、
 mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
 
 各版の Phase 内訳:
+
+<details>
+<summary>完了済み: v0.16（Phase 68〜71）の内訳</summary>
+
+軸は「**kabosu の TOML 1.0 完全対応**」。v0.14 で「設定ファイル用途のサブセット」として
+切り出したまま crates.io へ公開していたが、TOML 1.0 全体を受理できないパーサは利用側で
+「書ける TOML が分からない」摩擦になる。未対応 6 構文を実装し、公式 toml-test を通して
+kabosu 0.2.0 を公開した。yuzu 本体の機能追加はしていない。Phase は lexer → 値型 →
+構造 → 検証・公開の依存順で、各 Phase は着手時に判断点を決めてから実装し、
+レビュー指摘（計 4 件）と fuzz の検出（1 件）を同じ PR で取り込んだ。
+
+- **68 数値と文字列** — lexer が持っていた「TOML として妥当なリテラルか」の判定
+  （`is_valid_float` 等）を値の構築へ昇格させ、float / 16,8,2 進整数 / 複数行文字列を
+  受理する。判断は 2 点とも推奨案: `Decode for f64` は整数リテラルを受けない
+  （型厳格。`String` / `bool` / `i64` と同じ規律）/ 正規化は `{:?}` の最短表現に `.` も
+  `e` も無ければ `.0` を補い、`inf` / `-inf` / `nan`（符号は落とす）・`-0.0` は保持。
+  進数整数は `Value::Integer` へ畳んで表記を保持しない。複数行文字列は
+  `read_string_value` が単行 / 複数行 × basic / literal を振り分け、キー位置の `"""` は
+  `MultilineStringAsKey`、閉じ直前の引用符 3 個以上は `TooManyQuotes`
+- **69 日時** — 依存ゼロを保つため独自型（`Datetime` / `Date` / `Time` / `Offset`）を持ち、
+  時刻演算・タイムゾーン変換・他の日時 crate への変換は持たない。判断は 3 点とも推奨案:
+  参照実装と同型の 1 型で 4 種を表す（区別は `Datetime::kind`）/ 小数秒は 9 桁まで保持し
+  10 桁目以降は切り捨て / オフセットは分単位の数値だけを持ち 0 は `Z` へ正規化。
+  **フィールドは非公開でコンストラクタが範囲を検証する**ため、暦として存在しない日付を
+  組み立てて不正な TOML を出力できない。妥当性の判定と値の構築は `parse_datetime_str` の
+  1 実装で兼ねる（文法を 2 箇所に書くとズレる）。空白区切り（`1979-05-27 07:32:00`）は
+  `read_scalar_blob` が「前が妥当な日付で後ろが `HH:`」のときだけ空白 1 個をまたぐ
+- **70 インラインテーブルとテーブルの配列** — これで TOML 1.0 の全構文が揃った。
+  判断は 2 点とも推奨案: 要素が全部テーブルの配列は `[[a]]` へ展開 / 到達不能になる
+  `EncodeErrorKind::TableInArray` は削除。`TableOrigin` に `Inline`（閉じている）と
+  `ArrayHeader` を追加し、**配列が `[[...]]` 由来かは「最後の要素が `ArrayHeader` 起源の
+  テーブルか」で判定**する（`Value::Array` に印を足さずに済み、`a = [{...}]` は静的配列の
+  まま）。ヘッダー経路は `walk_intermediates` / `can_descend` / `descend_mut` に分け、
+  配列なら最後の要素へ降りるので `[a.b]` も `[[a.b]]` も直前の要素の中に入る。正規化は
+  「自身の値 → ヘッダー形式」の 2 パスで、インラインテーブルはヘッダー形式で書けない位置
+  （スカラーと混在した配列・配列の中の配列）だけで使う（ここを error にすると
+  `a = [1, { b = 2 }]` が再エンコードできず fuzz の roundtrip が落ちる）。
+  `UnsupportedFeature` と `ParseErrorKind::Unsupported` は中身が空になるので削除。
+  レビュー指摘 3 件: dotted key で作ったテーブルは中間経路としては通れる
+  （TOML 1.0 の `[fruit.apple.texture]` の例。v0.14 からの回帰で終端も中間も一律拒否して
+  いた）/ インラインテーブルの深度はキー 1 段につき 1 / 空の `{}` `[]` で深度を消費しない
+- **71 toml-test による検証と kabosu 0.2.0 公開** — 公式 toml-test の
+  **valid 205 / invalid 474 を全通過**した。判断は 3 点とも推奨案:
+  `scripts/vendor-toml-test.sh` で vendor（タグ＋アーカイブ sha256 固定。**タグはテスト
+  スイートの版であって仕様の版ではない**ので、1.0 の選別は上流の `files-toml-1.0.0`）/
+  期待値の tagged JSON は dev 依存の `serde_json` で読む / `Unsupported` は TOML 1.1 の
+  案内へ転用。期待値との比較は**文字列ではなく値**で行う（float は `5e+22` と `5e22`、
+  date-time は区切りやオフセットの表記が揺れる）。**toml-test が見つけたバグは 1 件** =
+  コメントの中のタブ以外の制御文字を受理していた（`ControlCharInComment` を追加。
+  単独の CR も不可で、CRLF の CR だけコメントの終わりとして扱う）。
+  `Unsupported(TomlV11)` の対象は `\e` / `\xHH`・インラインテーブルの改行とコメントと
+  末尾カンマ・秒を省略した時刻の 3 つで、**toml-test の「1.0 では invalid・1.1 では valid」
+  で裏付けたものだけ**を入れる（引用符なしの非 ASCII キーは 1.1 でも許されないため、
+  レビュー指摘で外した）。**fuzz が実バグを 1 件検出** = `[[a]]` はエンコーダ側で
+  「配列＋要素テーブル」の 2 段なのに、パーサが現在セクションの深さを経路のセグメント数
+  （1 段）で代用していて「パースできたのにエンコードできない」入力が作れた
+  （`section_depth` で解決）
+
+**教訓**: Phase 70〜71 で「パーサとエンコーダで深さの数え方がズレる」バグが 3 件出た
+（インラインテーブル / 空のコンテナ / 配列ヘッダー）。うち 2 件はレビュー、1 件は fuzz が
+見つけた。読み側と書き側で同じ量を別に数えている箇所は、必ず「出力できたのに読めない」
+入力が作れる。
+
+**非互換**は kabosu の API だけ（`UnsupportedFeature` と `EncodeErrorKind::TableInArray` の
+削除、`Value` / `ValueKind` への variant 追加、`Datetime` 型の追加）。yuzu の利用者には
+`yuzu.toml` に書ける構文が増えるだけで、既存の設定はそのまま読める。
+
+</details>
 
 <details>
 <summary>完了済み: v0.15（Phase 64〜67）の内訳</summary>
