@@ -118,6 +118,10 @@ fn parse_header(
         define_header_table(root, &segments)?;
     }
     *current_path = segments.iter().map(|s| String::from(s.name())).collect();
+    // 定義したあとの実際の深さで見る（`[[a]]` は 2 段なのでセグメント数では足りない）
+    if section_depth(root, current_path) > MAX_DEPTH {
+        return Err(ParseError::new(ParseErrorKind::DepthExceeded, header_span));
+    }
 
     cur.skip_ws();
     if cur.at_comment() {
@@ -295,7 +299,7 @@ fn parse_keyval(
     }
     cur.skip_ws();
 
-    let depth = current_path.len() + segments.len();
+    let depth = section_depth(root, current_path) + segments.len();
     if depth > MAX_DEPTH {
         let span = Span {
             start: segments.first().expect("1 つ以上ある").span().start,
@@ -352,6 +356,37 @@ fn insert_dotted(table: &mut Table, segments: &[KeySegment], node: Node) -> Resu
     }
     t.insert(last.clone(), node);
     Ok(())
+}
+
+/// 現在のセクションの入れ子の深さ。
+///
+/// **`[[a]]` は「配列」と「その要素テーブル」で 2 段**になる。
+/// エンコーダ（`TableEncoder::field` と `ArrayEncoder::element` が 1 段ずつ）も
+/// そう数えるので、ここを経路のセグメント数（1 段）で代用すると
+/// **「パースできたのにエンコードできない」木が作れる**（fuzz が見つけた）
+fn section_depth(root: &Table, path: &[String]) -> usize {
+    let mut depth = 0;
+    let mut table = root;
+    for name in path {
+        let Some(entry) = table.get(name) else {
+            return depth;
+        };
+        match entry.node().value() {
+            Value::Table(sub) => {
+                depth += 1;
+                table = sub;
+            }
+            Value::Array(items) => {
+                depth += 2;
+                match items.last().map(Node::value) {
+                    Some(Value::Table(sub)) => table = sub,
+                    _ => return depth,
+                }
+            }
+            _ => return depth,
+        }
+    }
+    depth
 }
 
 /// ヘッダ確定済みの経路を辿る（配列は最後の要素へ降りる）

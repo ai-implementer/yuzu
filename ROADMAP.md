@@ -197,6 +197,11 @@ serde_json で読む / `Unsupported` は TOML 1.1 の案内へ転用。
     対応する toml-test のパスを書いてある）
   - kabosu 0.1.0 → **0.2.0**（`UnsupportedFeature` と `EncodeErrorKind::TableInArray` の
     削除、`Value` / `ValueKind` の variant 追加、`Datetime` 型の追加）
+  - **fuzz が 1 件見つけた**（roundtrip ターゲット）: `[[a]]` は「配列」と
+    「その要素テーブル」で**エンコーダ側は 2 段**だが、パーサは現在セクションの
+    深さを経路のセグメント数（1 段）で代用していた。`[[a]]` の下に深い dotted key
+    を書くと「パースできたのにエンコードできない」木が作れる。`section_depth` を
+    足して両者を揃えた
 
 以下は策定時のメモ。
 

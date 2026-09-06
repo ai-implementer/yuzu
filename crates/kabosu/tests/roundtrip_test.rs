@@ -297,6 +297,27 @@ fn 乱数生成の_round_trip_と正規化の恒等() {
     }
 }
 
+/// `[[x]]` は「配列」と「その要素テーブル」で 2 段。経路のセグメント数で
+/// 代用すると「パースできたのにエンコードできない」木が作れる（fuzz が見つけた）
+#[test]
+fn 配列ヘッダーの下の深いキーも読み書きの上限が一致する() {
+    for header in ["[[x]]", "[x]", "[[x.y]]", "[[x]]\n[[x.y]]"] {
+        for n in 118..=132 {
+            let key = std::iter::repeat_n("k", n).collect::<Vec<_>>().join(".");
+            let src = format!("{header}\n{key} = 1\n");
+            let Ok(report) = kabosu::from_str::<BTreeMap<String, Rand>>(&src) else {
+                continue; // パースが上限で断ったぶんは対象外
+            };
+            let Some(value) = report.value() else {
+                continue;
+            };
+            kabosu::to_string(value).unwrap_or_else(|e| {
+                panic!("{header:?} n={n}: パースできたのに再エンコードできない: {e}")
+            });
+        }
+    }
+}
+
 #[test]
 fn テーブルだけの配列はヘッダ形式_混在はインラインになる() {
     let table = |pairs: &[(&str, &str)]| {
