@@ -1,0 +1,18 @@
+---
+source: crates/kabosu/tests/normalize_snapshot.rs
+expression: "kabosu::to_string(&Doc).unwrap()"
+---
+title = "在庫"
+mixed = [1, { name = "Nail", sku = 2 }, {}]
+empty = []
+
+[[products]]
+name = "Hammer"
+sku = 738594937
+
+[[products]]
+name = "Nail"
+sku = 284758393
+
+[owner]
+name = "柚子"

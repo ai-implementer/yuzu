@@ -1,0 +1,17 @@
+# インラインテーブル（TOML 1.0 仕様の例文）
+name = { first = "Tom", last = "Preston-Werner" }
+point = { x = 1, y = 2 }
+animal = { type.name = "pug" }
+
+# 空・ネスト・値の種別混在
+empty = {}
+nested = { a = { b = { c = 1 } } }
+values = { s = "文字列", i = 0x10, f = 1.5, b = true, d = 1979-05-27, a = [1, 2] }
+
+# 配列の要素としてのインラインテーブル（全部テーブル / スカラと混在）
+tables = [{ id = 1 }, { id = 2 }]
+mixed = [1, { b = 2 }, "x"]
+deep = [[{ b = 1 }]]
+
+[owner]
+info = { name = "柚子", tags = ["docs", "静的サイト"] }

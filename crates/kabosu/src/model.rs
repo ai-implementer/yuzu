@@ -236,6 +236,10 @@ pub(crate) enum TableOrigin {
     HeaderImplicit,
     /// dotted key（`a.b = 1`）の中間として作られた（ヘッダでの再定義は不可）
     Dotted,
+    /// インラインテーブル `{ ... }`（閉じている = 後から拡張できない）
+    Inline,
+    /// `[[a]]` が作った配列の要素（ヘッダ経路は最後の要素へ降りる）
+    ArrayHeader,
 }
 
 /// キーと値のペア。入力順を保持する

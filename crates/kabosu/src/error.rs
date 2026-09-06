@@ -1,8 +1,6 @@
 //! パースエラー。
 //!
 //! 構文エラーは最初の 1 件で停止する（kabosu.md「型変換と診断」）。
-//! まだ未対応の構文（inline table / array of tables）は一般的な
-//! 構文エラーにせず、`Unsupported` として区別できる形で返す。
 //! エラー文は英語（利用側で `kind` から翻訳できる）。
 
 use crate::model::Span;
@@ -69,6 +67,9 @@ impl core::fmt::Display for ParseError {
             ParseErrorKind::ExpectedEquals => f.write_str("expected `=` after the key"),
             ParseErrorKind::ExpectedNewline => f.write_str("expected a newline"),
             ParseErrorKind::UnclosedArray => f.write_str("unclosed array (missing `]`)"),
+            ParseErrorKind::UnclosedInlineTable => f.write_str(
+                "unclosed inline table (missing `}`; TOML 1.0 allows neither newlines nor a trailing comma inside `{ }`)",
+            ),
             ParseErrorKind::UnclosedTableHeader => {
                 f.write_str("unclosed table header (missing `]`)")
             }
@@ -83,9 +84,6 @@ impl core::fmt::Display for ParseError {
                 f.write_str("table conflicts with a previously defined key or table")
             }
             ParseErrorKind::DepthExceeded => f.write_str("nesting depth exceeds the limit (128)"),
-            ParseErrorKind::Unsupported(feature) => {
-                write!(f, "{} is not supported by kabosu yet", feature.as_str())
-            }
         }
     }
 }
@@ -111,6 +109,8 @@ pub enum ParseErrorKind {
     ExpectedEquals,
     ExpectedNewline,
     UnclosedArray,
+    /// インラインテーブルが閉じていない（`}` が無い・改行が入った・末尾カンマ）
+    UnclosedInlineTable,
     UnclosedTableHeader,
     EmptyKey,
     IntegerOutOfRange,
@@ -124,25 +124,4 @@ pub enum ParseErrorKind {
     TableConflict,
     /// 配列・テーブル・dotted key の深さが上限 128 を超えた
     DepthExceeded,
-    /// TOML としては正しいがまだ未対応の構文
-    Unsupported(UnsupportedFeature),
-}
-
-/// まだ未対応の TOML 構文（位置付きで報告し、一般構文エラーと区別する）。
-/// float / 16,8,2 進整数 / 複数行文字列 / date-time は 0.2 で対応した
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedFeature {
-    InlineTable,
-    ArrayOfTables,
-}
-
-impl UnsupportedFeature {
-    /// 英語の構文名（エラー文言用）
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::InlineTable => "inline table",
-            Self::ArrayOfTables => "array of tables",
-        }
-    }
 }

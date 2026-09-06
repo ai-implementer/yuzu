@@ -1,14 +1,12 @@
 //! corpus のテーブル駆動テスト（tests/corpus/README.md 参照）。
 //!
 //! - valid/: 全件受理される
-//! - invalid/: 全件エラーになり、かつ Unsupported ではない（= 書き間違い扱い）
-//! - unsupported/: 全件 `ParseErrorKind::Unsupported` になる
-//!   （「v0.1 で未対応にするケースの明示的な一覧」の実体）
+//! - invalid/: 全件エラーになる（書き間違い）
 
 use std::fs;
 use std::path::PathBuf;
 
-use kabosu::{Document, ParseErrorKind};
+use kabosu::Document;
 
 fn corpus(dir: &str) -> Vec<(String, String)> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/corpus/{dir}"));
@@ -44,27 +42,9 @@ fn valid_corpus_を全件受理する() {
 }
 
 #[test]
-fn invalid_corpus_は全件書き間違いとしてエラーになる() {
+fn invalid_corpus_は全件エラーになる() {
     for (name, src) in corpus("invalid") {
-        let e = Document::parse(&src).unwrap_err_or_panic(&name);
-        assert!(
-            !matches!(e.kind(), ParseErrorKind::Unsupported(_)),
-            "{name}: 書き間違いが Unsupported に分類された: {e}"
-        );
-    }
-}
-
-#[test]
-fn unsupported_corpus_は全件_unsupported_として区別される() {
-    for (name, src) in corpus("unsupported") {
-        let e = match Document::parse(&src) {
-            Err(e) => e,
-            Ok(_) => panic!("{name}: 未対応のはずの入力が受理された"),
-        };
-        assert!(
-            matches!(e.kind(), ParseErrorKind::Unsupported(_)),
-            "{name}: 未対応構文が一般構文エラーに分類された: {e}"
-        );
+        let _ = Document::parse(&src).unwrap_err_or_panic(&name);
     }
 }
 

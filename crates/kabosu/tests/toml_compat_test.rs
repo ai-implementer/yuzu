@@ -124,18 +124,6 @@ fn invalid_corpus_は参照実装でもエラーになる() {
 }
 
 #[test]
-fn unsupported_corpus_は参照実装では受理される() {
-    // 「TOML として正しいが v0.1 では未対応」の裏取り:
-    // 参照実装が受理することで、invalid（書き間違い）との区別が正しいことを縛る
-    for (name, src) in corpus("unsupported") {
-        assert!(
-            src.parse::<toml::Table>().is_ok(),
-            "{name}: 参照実装が受理しない = これは unsupported ではなく invalid"
-        );
-    }
-}
-
-#[test]
 fn 正規化出力は参照実装でも同じ値に読める() {
     for (name, src) in corpus("valid") {
         let doc = Document::parse(&src).unwrap();

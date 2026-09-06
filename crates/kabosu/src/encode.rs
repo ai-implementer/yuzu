@@ -67,11 +67,6 @@ impl core::fmt::Display for EncodeError {
                     self.path
                 )
             }
-            EncodeErrorKind::TableInArray => write!(
-                f,
-                "a table inside an array cannot be encoded (v0.1 has no inline tables) at `{}`",
-                self.path
-            ),
         }
     }
 }
@@ -85,8 +80,6 @@ pub enum EncodeErrorKind {
     DuplicateKey,
     RootNotTable,
     DepthExceeded,
-    /// 配列の中のテーブル（inline table 非対応の v0.1 では表現できない）
-    TableInArray,
 }
 
 const MAX_DEPTH: usize = 128;
@@ -227,17 +220,11 @@ impl ArrayEncoder<'_> {
             path: self.path,
             depth: self.depth + 1,
         })?;
-        match slot {
-            Some(EncValue::Table(_)) => Err(EncodeError::new(
-                EncodeErrorKind::TableInArray,
-                self.path.clone(),
-            )),
-            Some(v) => {
-                self.items.push(v);
-                Ok(())
-            }
-            None => Ok(()),
+        // 配列の中のテーブルは正規化で `[[a]]` かインラインテーブルとして出力する
+        if let Some(v) = slot {
+            self.items.push(v);
         }
+        Ok(())
     }
 }
 

@@ -105,7 +105,34 @@ lexer の「TOML として妥当なリテラルか」の判定（`is_valid_float
   を `valid/` へ、`invalid/` に `2024-02-30`・`24:00:00`・`+25:00`・秒の省略 `07:32`。
   `UnsupportedFeature::DateTime` を削除
 
-### 70 inline table と array of tables ⬜
+### 70 inline table と array of tables ✅
+
+これで **TOML 1.0 の全構文が揃った**（公式 toml-test での検証は Phase 71）。
+判断は 2 点とも推奨案: 要素が全部テーブルの配列は `[[a]]` へ展開 /
+到達不能になる `EncodeErrorKind::TableInArray` は削除。
+
+- 実装メモ
+  - `TableOrigin` に `Inline`（閉じている）と `ArrayHeader`（`[[a]]` の要素）を追加。
+    **配列が `[[...]]` 由来かは「最後の要素が `ArrayHeader` 起源のテーブルか」で見る**
+    （`Value::Array` に印を足さずに済み、`a = [{...}]` が静的配列のままになる）
+  - ヘッダ経路の走査を `walk_intermediates` / `can_descend` / `descend_mut` に分けた。
+    `descend_mut` が**配列なら最後の要素へ降りる**ので `[a.b]` も `[[a.b]]` も
+    「直前の要素の中」に入る
+  - 正規化は「そのテーブル自身の値 → ヘッダ形式（`[a]` と `[[a]]`）」の 2 パス。
+    **インラインテーブルはヘッダ形式で書けない位置でだけ使う**
+    （スカラと混在した配列・配列の中の配列）。ここを error にすると
+    `a = [1, { b = 2 }]` が再エンコードできず fuzz の roundtrip が落ちる
+  - `UnsupportedFeature` と `ParseErrorKind::Unsupported` は**中身が空になるので削除**した
+    （Phase 71 の「TOML 1.1 構文へ転用するか」という判断はそのまま残る）。
+    yuzu-config の `unsupported_message` も削除
+  - 新しいエラー種別は `UnclosedInlineTable`（`}` 無し・改行・末尾カンマ）
+  - corpus: `unsupported/` は役目を終えて削除、`valid/12,13` と `invalid/19〜21` を追加。
+    **参照実装が TOML 1.1 として受理するもの**（インラインテーブルの改行・末尾カンマ・
+    コメント）は `invalid/` に置けないのでユニットテストで縛る
+  - round-trip の乱数生成にテーブルと「テーブルだけの配列」を追加。
+    snapshot に `normalize_tables`
+
+以下は策定時のメモ。
 
 **テーブル状態機械（`TableOrigin` = Root / Header / HeaderImplicit / Dotted）の拡張が核。**
 
