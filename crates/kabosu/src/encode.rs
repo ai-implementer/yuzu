@@ -14,6 +14,7 @@ use crate::model::{KeyPath, KeySegment, Span};
 pub(crate) enum EncValue {
     String(String),
     Integer(i64),
+    Float(f64),
     Boolean(bool),
     Array(Vec<EncValue>),
     Table(EncTable),
@@ -108,6 +109,11 @@ impl Encoder<'_> {
 
     pub fn integer(&mut self, value: i64) {
         *self.slot = Some(EncValue::Integer(value));
+    }
+
+    /// float。`nan` は符号を落として `nan`、無限大は `inf` / `-inf` で出力される
+    pub fn float(&mut self, value: f64) {
+        *self.slot = Some(EncValue::Float(value));
     }
 
     pub fn boolean(&mut self, value: bool) {
@@ -272,6 +278,13 @@ impl Encode for bool {
 impl Encode for i64 {
     fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
         encoder.integer(*self);
+        Ok(())
+    }
+}
+
+impl Encode for f64 {
+    fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+        encoder.float(*self);
         Ok(())
     }
 }

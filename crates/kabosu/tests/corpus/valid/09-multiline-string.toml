@@ -1,0 +1,38 @@
+# 複数行文字列
+str1 = """
+Roses are red
+Violets are blue"""
+
+# 行末 `\` は続く空白と改行をまとめて捨てる
+str2 = """
+The quick brown \
+
+
+  fox jumps over \
+    the lazy dog."""
+
+str3 = """\
+       The quick brown \
+       fox jumps over \
+       the lazy dog.\
+       """
+
+# 引用符は 1〜2 個なら中に書ける。閉じ直前も 2 個まで
+str4 = """Here are two quotation marks: "". Simple."""
+str5 = """Here are three quotation marks: ""\"."""
+str6 = """Here are fifteen quotation marks: ""\"""\"""\"""\"""\"."""
+str7 = """"This," she said, "is just a pointless statement.""""
+
+# literal はエスケープしない
+winpath = '''C:\Users\nodejs\templates'''
+regex2 = '''I [dw]on't need \d{2} apples'''
+lines = '''
+The first newline is
+trimmed in raw strings.
+   All other whitespace
+   is preserved.
+'''
+quot15 = '''Here are fifteen quotation marks: """""""""""""""'''
+apos15 = "Here are fifteen apostrophes: '''''''''''''''"
+str8 = ''''That,' she said, 'is still pointless.''''
+empty = """"""

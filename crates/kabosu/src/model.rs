@@ -90,12 +90,15 @@ impl core::fmt::Display for KeyPath {
     }
 }
 
-/// TOML の値（v0.1 対応範囲）
+/// TOML の値
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Value {
     String(String),
+    /// 10 進・16 / 8 / 2 進のどれで書かれても i64（表記は保持しない）
     Integer(i64),
+    /// `inf` / `nan` を含む。`nan` の符号は保持しない
+    Float(f64),
     Boolean(bool),
     Array(Vec<Node>),
     Table(Table),
@@ -107,6 +110,7 @@ pub enum Value {
 pub enum ValueKind {
     String,
     Integer,
+    Float,
     Boolean,
     Array,
     Table,
@@ -118,6 +122,7 @@ impl ValueKind {
         match self {
             Self::String => "string",
             Self::Integer => "integer",
+            Self::Float => "float",
             Self::Boolean => "boolean",
             Self::Array => "array",
             Self::Table => "table",
@@ -153,6 +158,7 @@ impl Node {
         match &self.value {
             Value::String(_) => ValueKind::String,
             Value::Integer(_) => ValueKind::Integer,
+            Value::Float(_) => ValueKind::Float,
             Value::Boolean(_) => ValueKind::Boolean,
             Value::Array(_) => ValueKind::Array,
             Value::Table(_) => ValueKind::Table,
@@ -169,6 +175,14 @@ impl Node {
     pub fn as_integer(&self) -> Option<i64> {
         match &self.value {
             Value::Integer(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    /// float だけを返す（整数リテラルは `None`。TOML は integer と float を区別する）
+    pub fn as_float(&self) -> Option<f64> {
+        match &self.value {
+            Value::Float(f) => Some(*f),
             _ => None,
         }
     }

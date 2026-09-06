@@ -406,6 +406,20 @@ impl Decode for i64 {
     }
 }
 
+impl Decode for f64 {
+    /// float リテラルだけを受ける。整数リテラル（`x = 1`）は型不一致
+    /// （TOML は integer と float を区別する。`String` / `bool` / `i64` と同じ型厳格の規律）
+    fn decode(node: &Node, cx: &mut DecodeContext<'_>) -> Option<Self> {
+        match node.value() {
+            Value::Float(f) => Some(*f),
+            _ => {
+                cx.type_mismatch(ValueKind::Float, node);
+                None
+            }
+        }
+    }
+}
+
 /// i64 から狭い整数型への変換（範囲外は IntegerOutOfRange の Error 診断）
 macro_rules! decode_int {
     ($($ty:ty),+) => {$(

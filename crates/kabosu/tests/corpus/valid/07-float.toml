@@ -1,0 +1,18 @@
+# float（小数・指数・区切り・特殊値）
+pi = 3.1415
+neg = -0.01
+plus = +1.0
+exp1 = 5e+22
+exp2 = 1e06
+exp3 = -2E-2
+both = 6.626e-34
+underscore = 224_617.445_991_228
+zero = 0.0
+neg_zero = -0.0
+sf1 = inf
+sf2 = +inf
+sf3 = -inf
+sf4 = nan
+sf5 = +nan
+sf6 = -nan
+in_array = [1.5, 2.0, -inf]

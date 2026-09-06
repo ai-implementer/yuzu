@@ -3,8 +3,11 @@
 //! - 改行は LF、末尾にも改行を付ける
 //! - 空配列は `[]`、スカラーだけの配列は 1 行、配列を含むネスト配列は
 //!   スペース 2 個のインデントと末尾カンマ（行幅による自動折り返しはしない）
-//! - 文字列は常に basic string。引用符・バックスラッシュ・制御文字だけを
-//!   エスケープし、表示可能な Unicode はそのまま出力する
+//! - 文字列は常に単行の basic string。引用符・バックスラッシュ・制御文字だけを
+//!   エスケープし、表示可能な Unicode はそのまま出力する（改行は `\n`。
+//!   複数行文字列の形では出力しない）
+//! - 整数は 10 進、float は往復可能な最短表現（`.` も `e` も無ければ `.0` を補う。
+//!   `inf` / `-inf` / `nan`。`nan` の符号は落とす）
 //! - `[A-Za-z0-9_-]+` に一致するキーは bare key、それ以外は basic string で引用
 //! - 親テーブルの値を子テーブルより先に出力し、各グループでは追加順を維持する
 
@@ -100,10 +103,27 @@ fn render_table(out: &mut String, table: &EncTable, path: &mut Vec<String>) {
     }
 }
 
+/// float の正規形。Rust の `{:?}`（往復可能な最短表現）を基本に、TOML の float に
+/// 必須の `.` か `e` が無ければ `.0` を補う。`-0.0` は温存、`nan` の符号は落とす
+pub(crate) fn render_float(f: f64) -> String {
+    if f.is_nan() {
+        return String::from("nan");
+    }
+    if f.is_infinite() {
+        return String::from(if f > 0.0 { "inf" } else { "-inf" });
+    }
+    let mut s = alloc::format!("{f:?}");
+    if !s.contains(['.', 'e', 'E']) {
+        s.push_str(".0");
+    }
+    s
+}
+
 fn render_value(out: &mut String, value: &EncValue, indent: usize) {
     match value {
         EncValue::String(s) => out.push_str(&quote_string(s)),
         EncValue::Integer(n) => out.push_str(&n.to_string()),
+        EncValue::Float(f) => out.push_str(&render_float(*f)),
         EncValue::Boolean(b) => out.push_str(if *b { "true" } else { "false" }),
         EncValue::Array(items) => render_array(out, items, indent),
         EncValue::Table(_) => unreachable!("テーブルは render_table 側で描画する"),
@@ -162,5 +182,22 @@ mod tests {
         assert_eq!(quote_string("a\"b\\c"), r#""a\"b\\c""#);
         assert_eq!(quote_string("改行\nタブ\t"), "\"改行\\nタブ\\t\"");
         assert_eq!(quote_string("\u{0001}"), "\"\\u0001\"");
+    }
+
+    #[test]
+    fn float_の正規形() {
+        assert_eq!(render_float(1.0), "1.0");
+        assert_eq!(render_float(2.5), "2.5");
+        assert_eq!(render_float(-0.0), "-0.0");
+        assert_eq!(render_float(1e21), "1e21");
+        assert_eq!(render_float(1e-7), "1e-7");
+        assert_eq!(render_float(0.1 + 0.2), "0.30000000000000004");
+        assert_eq!(render_float(f64::INFINITY), "inf");
+        assert_eq!(render_float(f64::NEG_INFINITY), "-inf");
+        assert_eq!(render_float(f64::NAN), "nan");
+        assert_eq!(render_float(-f64::NAN), "nan");
+        assert_eq!(render_float(f64::MAX), "1.7976931348623157e308");
+        assert_eq!(render_float(f64::MIN_POSITIVE), "2.2250738585072014e-308");
+        assert_eq!(render_float(5e-324), "5e-324");
     }
 }

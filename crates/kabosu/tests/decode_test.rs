@@ -258,3 +258,49 @@ fn 上限で省略された_error_も_has_errors_に反映される() {
     );
     assert_eq!(diags[0].severity(), Severity::Warning);
 }
+
+#[test]
+fn float_は_f64_に_decode_できて整数リテラルは受けない() {
+    let report =
+        kabosu::from_str::<BTreeMap<String, f64>>("a = 1.5\nb = -inf\nc = 0x10\n").unwrap();
+    assert!(
+        report.value().is_none(),
+        "0x10 は整数なので float 欄には入らない"
+    );
+    let d = &report.diagnostics()[0];
+    assert!(
+        matches!(
+            d.code(),
+            DiagnosticCode::TypeMismatch {
+                expected: kabosu::ValueKind::Float,
+                found: kabosu::ValueKind::Integer
+            }
+        ),
+        "{:?}",
+        d.code()
+    );
+    assert!(
+        d.message().contains("expected float, found integer"),
+        "{}",
+        d.message()
+    );
+
+    let report = kabosu::from_str::<BTreeMap<String, f64>>("a = 1.5\nb = -inf\nn = nan\n").unwrap();
+    let v = report.value().unwrap();
+    assert_eq!(v["a"], 1.5);
+    assert_eq!(v["b"], f64::NEG_INFINITY);
+    assert!(v["n"].is_nan());
+
+    // 逆方向: float を整数欄には入れない
+    let report = kabosu::from_str::<BTreeMap<String, i64>>("a = 1.0\n").unwrap();
+    assert!(report.value().is_none());
+    assert!(
+        report.diagnostics()[0]
+            .message()
+            .contains("expected integer, found float")
+    );
+
+    // 配列
+    let report = kabosu::from_str::<BTreeMap<String, Vec<f64>>>("xs = [1.0, 2.5e3]\n").unwrap();
+    assert_eq!(report.value().unwrap()["xs"], vec![1.0, 2500.0]);
+}

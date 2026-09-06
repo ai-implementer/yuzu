@@ -1,8 +1,9 @@
 //! パースエラー。
 //!
 //! 構文エラーは最初の 1 件で停止する（kabosu.md「型変換と診断」）。
-//! v0.1 で未対応の構文は一般的な構文エラーにせず、`Unsupported` として
-//! 区別できる形で返す。エラー文は英語（利用側で `kind` から翻訳できる）。
+//! まだ未対応の構文（date-time / inline table / array of tables）は一般的な
+//! 構文エラーにせず、`Unsupported` として区別できる形で返す。
+//! エラー文は英語（利用側で `kind` から翻訳できる）。
 
 use crate::model::Span;
 
@@ -57,6 +58,12 @@ impl core::fmt::Display for ParseError {
             ParseErrorKind::ControlCharInString => {
                 f.write_str("control character is not allowed in a string")
             }
+            ParseErrorKind::TooManyQuotes => f.write_str(
+                "three or more adjacent quotation marks inside a multi-line string must be escaped",
+            ),
+            ParseErrorKind::MultilineStringAsKey => {
+                f.write_str("a multi-line string cannot be used as a key")
+            }
             ParseErrorKind::ExpectedKey => f.write_str("expected a key"),
             ParseErrorKind::ExpectedValue => f.write_str("expected a value"),
             ParseErrorKind::ExpectedEquals => f.write_str("expected `=` after the key"),
@@ -77,7 +84,7 @@ impl core::fmt::Display for ParseError {
             }
             ParseErrorKind::DepthExceeded => f.write_str("nesting depth exceeds the limit (128)"),
             ParseErrorKind::Unsupported(feature) => {
-                write!(f, "{} is not supported in kabosu v0.1", feature.as_str())
+                write!(f, "{} is not supported by kabosu yet", feature.as_str())
             }
         }
     }
@@ -94,6 +101,11 @@ pub enum ParseErrorKind {
     /// `\u` / `\U` がスカラー値にならない
     InvalidUnicodeEscape,
     ControlCharInString,
+    /// 複数行文字列の中に閉じ区切り文字が 3 つ以上連続した（`""""""` 等。
+    /// 閉じ区切りの直前に置ける引用符は 2 つまで）
+    TooManyQuotes,
+    /// キー位置に複数行文字列（`"""` / `'''`）が書かれた
+    MultilineStringAsKey,
     ExpectedKey,
     ExpectedValue,
     ExpectedEquals,
@@ -104,7 +116,7 @@ pub enum ParseErrorKind {
     IntegerOutOfRange,
     InvalidInteger,
     /// float / date-time / 進数整数の**形はしているが TOML として不正**なリテラル
-    /// （`1e` / `0xGG` / `1979-bad` など）。妥当なリテラルだけが `Unsupported` になる
+    /// （`1e` / `0xGG` / `1979-bad` など）
     InvalidLiteral,
     /// 重複キー（`previous_span` に先行定義）
     DuplicateKey,
@@ -112,19 +124,16 @@ pub enum ParseErrorKind {
     TableConflict,
     /// 配列・テーブル・dotted key の深さが上限 128 を超えた
     DepthExceeded,
-    /// TOML としては正しいが v0.1 では未対応の構文
+    /// TOML としては正しいがまだ未対応の構文
     Unsupported(UnsupportedFeature),
 }
 
-/// v0.1 で未対応の TOML 構文（位置付きで報告し、一般構文エラーと区別する）
+/// まだ未対応の TOML 構文（位置付きで報告し、一般構文エラーと区別する）。
+/// float / 16,8,2 進整数 / 複数行文字列は 0.2 で対応した
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedFeature {
-    Float,
     DateTime,
-    /// 16 / 8 / 2 進整数（`0x` / `0o` / `0b`）
-    RadixInteger,
-    MultilineString,
     InlineTable,
     ArrayOfTables,
 }
@@ -133,10 +142,7 @@ impl UnsupportedFeature {
     /// 英語の構文名（エラー文言用）
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Float => "float",
             Self::DateTime => "date-time",
-            Self::RadixInteger => "hexadecimal/octal/binary integer",
-            Self::MultilineString => "multi-line string",
             Self::InlineTable => "inline table",
             Self::ArrayOfTables => "array of tables",
         }

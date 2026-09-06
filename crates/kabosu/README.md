@@ -21,9 +21,9 @@ cargo add kabosu
 
 ## 互換性の定義
 
-1. **構文互換**: v0.1 の対応範囲について TOML 1.0 の入力をエラーなく受理し、
+1. **構文互換**: 対応範囲について TOML 1.0 の入力をエラーなく受理し、
    値解釈は参照実装（`toml` crate）と一致する（差分テストで担保）
-2. **未対応の区別**: TOML として正しいが v0.1 で扱わない構文は、一般的な
+2. **未対応の区別**: TOML として正しいがまだ扱わない構文は、一般的な
    構文エラーにせず位置付きの `ParseErrorKind::Unsupported` として返す
 3. **決定的出力**: `to_string` は同じ値から常に同じバイト列を生成し、
    その出力は必ず再パースできる（round-trip / fuzzing で担保）
@@ -31,19 +31,19 @@ cargo add kabosu
 `1.0.0` の条件は公式 [toml-test](https://github.com/toml-lang/toml-test) の
 valid / invalid / encoder テストの完全通過。
 
-## 対応状況（v0.1）
+## 対応状況
 
 | 構文 | 状態 |
 |---|---|
 | UTF-8・LF / CRLF・`#` コメント | ✅ |
 | bare key・quoted key・dotted key | ✅ |
 | 標準テーブル・ネストテーブル | ✅（重複・競合は TOML 1.0 の規則で検出） |
-| 単行 basic string・単行 literal string | ✅（`\uXXXX` / `\UXXXXXXXX` 含む） |
-| 10 進整数（`_` 区切り・i64 範囲） | ✅ |
+| basic string・literal string（単行・複数行） | ✅（`\uXXXX` / `\UXXXXXXXX`・行末 `\`・閉じ直前の引用符 2 個まで） |
+| 整数（10 進・16 / 8 / 2 進・`_` 区切り・i64 範囲） | ✅（進数表記は保持せず i64 に畳む） |
+| float（小数・指数・`inf` / `nan`） | ✅（`Decode for f64` は整数リテラルを受けない。`nan` の符号は落とす） |
 | boolean | ✅ |
 | 配列（複数行・末尾カンマ・コメント・ネスト・型混在） | ✅ |
-| float / date-time / 16,8,2 進整数 | `Unsupported`（位置付き） |
-| 複数行文字列 / inline table / array of tables | `Unsupported`（位置付き） |
+| date-time / inline table / array of tables | `Unsupported`（位置付き。0.2 の残り） |
 
 ## 使い方
 

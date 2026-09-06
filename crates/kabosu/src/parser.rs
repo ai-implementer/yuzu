@@ -10,7 +10,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::error::{ParseError, ParseErrorKind, UnsupportedFeature};
-use crate::lexer::{Cursor, ScalarClass, classify_scalar, parse_integer};
+use crate::lexer::{
+    Cursor, ScalarClass, classify_scalar, parse_float, parse_integer, parse_radix_integer,
+};
 use crate::model::{KeySegment, Node, Span, Table, TableOrigin, Value};
 
 /// 解析深度の上限（テーブル・配列・dotted key の合算。kabosu.md「型変換と診断」）
@@ -268,7 +270,7 @@ fn table_at_mut<'t>(root: &'t mut Table, path: &[String]) -> &'t mut Table {
     t
 }
 
-/// 値（文字列・整数・真偽値・配列。未対応構文は位置付き Unsupported）
+/// 値（文字列・整数・float・真偽値・配列。未対応構文は位置付き Unsupported）
 fn parse_value(
     cur: &mut Cursor<'_>,
     comments: &mut Vec<Span>,
@@ -279,12 +281,8 @@ fn parse_value(
             ParseErrorKind::ExpectedValue,
             Span::point(cur.pos()),
         )),
-        Some(b'"') => {
-            let (s, span) = cur.read_basic_string()?;
-            Ok(Node::new(Value::String(s), span))
-        }
-        Some(b'\'') => {
-            let (s, span) = cur.read_literal_string()?;
+        Some(b'"' | b'\'') => {
+            let (s, span) = cur.read_string_value()?;
             Ok(Node::new(Value::String(s), span))
         }
         Some(b'[') => parse_array(cur, comments, depth),
@@ -303,6 +301,11 @@ fn parse_value(
                 ScalarClass::Integer => {
                     Ok(Node::new(Value::Integer(parse_integer(blob, span)?), span))
                 }
+                ScalarClass::RadixInteger(radix) => Ok(Node::new(
+                    Value::Integer(parse_radix_integer(blob, radix, span)?),
+                    span,
+                )),
+                ScalarClass::Float => Ok(Node::new(Value::Float(parse_float(blob, span)?), span)),
                 ScalarClass::Unsupported(feature) => {
                     Err(ParseError::new(ParseErrorKind::Unsupported(feature), span))
                 }
@@ -548,20 +551,8 @@ mod tests {
     #[test]
     fn 未対応構文は位置付きで区別される() {
         assert_eq!(
-            err_kind("x = 3.14\n"),
-            ParseErrorKind::Unsupported(UnsupportedFeature::Float)
-        );
-        assert_eq!(
             err_kind("x = 1979-05-27\n"),
             ParseErrorKind::Unsupported(UnsupportedFeature::DateTime)
-        );
-        assert_eq!(
-            err_kind("x = 0xFF\n"),
-            ParseErrorKind::Unsupported(UnsupportedFeature::RadixInteger)
-        );
-        assert_eq!(
-            err_kind("x = \"\"\"m\"\"\"\n"),
-            ParseErrorKind::Unsupported(UnsupportedFeature::MultilineString)
         );
         assert_eq!(
             err_kind("x = { a = 1 }\n"),
@@ -572,8 +563,56 @@ mod tests {
             ParseErrorKind::Unsupported(UnsupportedFeature::ArrayOfTables)
         );
         // span はエラー箇所を指す
-        let e = Document::parse("x = 3.14\n").unwrap_err();
-        assert_eq!((e.span().start, e.span().end), (4, 8));
+        let e = Document::parse("x = 1979-05-27\n").unwrap_err();
+        assert_eq!((e.span().start, e.span().end), (4, 14));
+    }
+
+    #[test]
+    fn float_と進数整数と複数行文字列を値として読める() {
+        let d = parse(
+            "pi = 2.5\nneg = -inf\nn = nan\nhex = 0xFF\noct = 0o17\nbin = 0b101\n\
+             ml = \"\"\"\nline 1\nline 2\"\"\"\nraw = '''\\n'''\n",
+        );
+        let root = d.root();
+        assert_eq!(root.get("pi").unwrap().node().as_float(), Some(2.5));
+        assert_eq!(
+            root.get("neg").unwrap().node().as_float(),
+            Some(f64::NEG_INFINITY)
+        );
+        assert!(root.get("n").unwrap().node().as_float().unwrap().is_nan());
+        // 進数整数は Integer（表記は保持しない）
+        assert_eq!(root.get("hex").unwrap().node().as_integer(), Some(255));
+        assert_eq!(root.get("oct").unwrap().node().as_integer(), Some(15));
+        assert_eq!(root.get("bin").unwrap().node().as_integer(), Some(5));
+        // float は整数として読めない（型は区別する）
+        assert_eq!(root.get("pi").unwrap().node().as_integer(), None);
+        assert_eq!(
+            root.get("ml").unwrap().node().as_str(),
+            Some("line 1\nline 2")
+        );
+        assert_eq!(root.get("raw").unwrap().node().as_str(), Some("\\n"));
+        // span は原文のリテラル全体
+        let ml = root.get("ml").unwrap().node().span();
+        assert_eq!(
+            &d.source()[ml.start..ml.end],
+            "\"\"\"\nline 1\nline 2\"\"\""
+        );
+    }
+
+    #[test]
+    fn 複数行文字列はキーになれない() {
+        assert_eq!(
+            err_kind("\"\"\"k\"\"\" = 1\n"),
+            ParseErrorKind::MultilineStringAsKey
+        );
+        assert_eq!(
+            err_kind("'''k''' = 1\n"),
+            ParseErrorKind::MultilineStringAsKey
+        );
+        assert_eq!(
+            err_kind("[\"\"\"t\"\"\"]\n"),
+            ParseErrorKind::MultilineStringAsKey
+        );
     }
 
     #[test]
@@ -590,6 +629,15 @@ mod tests {
             err_kind("a = 99999999999999999999\n"),
             ParseErrorKind::IntegerOutOfRange
         );
+        assert_eq!(
+            err_kind("a = 0xFFFF_FFFF_FFFF_FFFF\n"),
+            ParseErrorKind::IntegerOutOfRange
+        );
+        assert_eq!(err_kind("a = 1.\n"), ParseErrorKind::InvalidLiteral);
+        assert_eq!(err_kind("a = 1e\n"), ParseErrorKind::InvalidLiteral);
+        assert_eq!(err_kind("a = 0x\n"), ParseErrorKind::InvalidLiteral);
+        assert_eq!(err_kind("a = +0x1\n"), ParseErrorKind::InvalidLiteral);
+        assert_eq!(err_kind("a = .5\n"), ParseErrorKind::ExpectedValue);
     }
 
     #[test]

@@ -1,0 +1,2 @@
+# 16 進は i64 の正の範囲まで
+big = 0xFFFF_FFFF_FFFF_FFFF

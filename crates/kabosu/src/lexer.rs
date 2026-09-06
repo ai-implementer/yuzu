@@ -3,9 +3,9 @@
 //! TOML はキー位置と値位置で同じ字面の解釈が変わる（`123` は bare key でも
 //! 整数でもある）ため、トークン列を先に作らず、パーサが文脈に応じて
 //! 読み取りメソッドを呼ぶカーソル方式にする。
-//! 値位置のスカラーは一旦「blob」として切り出してから分類し、
-//! v0.1 未対応構文（float / date-time / 16,8,2 進整数）を
-//! 一般構文エラーと区別する（`classify_scalar`）。
+//! 値位置のスカラーは一旦「blob」として切り出してから分類し（`classify_scalar`）、
+//! 整数 / 16,8,2 進整数 / float はここで値へ変換する。まだ未対応の date-time は
+//! 一般構文エラーと区別して `Unsupported` にする。
 
 use alloc::string::String;
 
@@ -142,13 +142,38 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// 単行 basic string（`"..."`）。`"""` は v0.1 未対応として区別する
+    /// 現在位置から `b` が 3 つ連続しているか（複数行文字列の区切り）
+    fn at_triple(&self, b: u8) -> bool {
+        self.peek() == Some(b) && self.peek_at(1) == Some(b) && self.peek_at(2) == Some(b)
+    }
+
+    /// 現在位置から `b` が何個連続しているか
+    fn count_run(&self, b: u8) -> usize {
+        let mut n = 0;
+        while self.peek_at(n) == Some(b) {
+            n += 1;
+        }
+        n
+    }
+
+    /// 値位置の文字列（単行 / 複数行 × basic / literal の 4 種を振り分ける）
+    pub fn read_string_value(&mut self) -> Result<(String, Span), ParseError> {
+        match self.peek() {
+            Some(b'"') if self.at_triple(b'"') => self.read_multiline_basic_string(),
+            Some(b'"') => self.read_basic_string(),
+            Some(b'\'') if self.at_triple(b'\'') => self.read_multiline_literal_string(),
+            _ => self.read_literal_string(),
+        }
+    }
+
+    /// 単行 basic string（`"..."`）。キー位置でも使うので `"""` はエラー
+    /// （複数行文字列はキーになれない。値位置は `read_string_value` が先に振り分ける）
     pub fn read_basic_string(&mut self) -> Result<(String, Span), ParseError> {
         let start = self.pos;
         debug_assert_eq!(self.peek(), Some(b'"'));
-        if self.peek_at(1) == Some(b'"') && self.peek_at(2) == Some(b'"') {
+        if self.at_triple(b'"') {
             return Err(ParseError::new(
-                ParseErrorKind::Unsupported(UnsupportedFeature::MultilineString),
+                ParseErrorKind::MultilineStringAsKey,
                 Span {
                     start,
                     end: start + 3,
@@ -187,40 +212,7 @@ impl<'a> Cursor<'a> {
                         },
                     ));
                 }
-                b'\\' => {
-                    let esc_start = self.pos;
-                    self.bump();
-                    let Some(e) = self.peek() else {
-                        return Err(ParseError::new(
-                            ParseErrorKind::UnterminatedString,
-                            Span {
-                                start,
-                                end: self.pos,
-                            },
-                        ));
-                    };
-                    self.bump();
-                    match e {
-                        b'b' => out.push('\u{0008}'),
-                        b't' => out.push('\t'),
-                        b'n' => out.push('\n'),
-                        b'f' => out.push('\u{000C}'),
-                        b'r' => out.push('\r'),
-                        b'"' => out.push('"'),
-                        b'\\' => out.push('\\'),
-                        b'u' => out.push(self.read_unicode_escape(esc_start, 4)?),
-                        b'U' => out.push(self.read_unicode_escape(esc_start, 8)?),
-                        _ => {
-                            return Err(ParseError::new(
-                                ParseErrorKind::InvalidEscape,
-                                Span {
-                                    start: esc_start,
-                                    end: self.pos,
-                                },
-                            ));
-                        }
-                    }
-                }
+                b'\\' => self.read_escape(start, &mut out, false)?,
                 // タブ以外の制御文字は不可（TOML 1.0）
                 0x00..=0x08 | 0x0B | 0x0C | 0x0E..=0x1F | 0x7F => {
                     return Err(ParseError::new(
@@ -228,15 +220,155 @@ impl<'a> Cursor<'a> {
                         Span::point(self.pos),
                     ));
                 }
-                _ => {
-                    // UTF-8 マルチバイトはそのまま写す
-                    let ch_start = self.pos;
-                    let ch = self.src[ch_start..].chars().next().expect("境界は保証済み");
-                    self.pos += ch.len_utf8();
-                    out.push(ch);
-                }
+                _ => self.copy_char(&mut out),
             }
         }
+    }
+
+    /// 複数行 basic string（`"""..."""`）。
+    /// 開始直後の改行は捨てる・行末 `\` は続く空白と改行をまとめて捨てる・
+    /// 閉じ区切りの直前に `"` を 2 つまで置ける（`""""` / `"""""`）
+    fn read_multiline_basic_string(&mut self) -> Result<(String, Span), ParseError> {
+        let start = self.pos;
+        self.pos += 3;
+        if self.at_newline() {
+            self.eat_newline()?;
+        }
+        let mut out = String::new();
+        loop {
+            let Some(c) = self.peek() else {
+                return Err(ParseError::new(
+                    ParseErrorKind::UnterminatedString,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                ));
+            };
+            match c {
+                b'"' => {
+                    let run = self.count_run(b'"');
+                    if run < 3 {
+                        for _ in 0..run {
+                            out.push('"');
+                        }
+                        self.pos += run;
+                        continue;
+                    }
+                    if run > 5 {
+                        return Err(ParseError::new(
+                            ParseErrorKind::TooManyQuotes,
+                            Span {
+                                start: self.pos,
+                                end: self.pos + run,
+                            },
+                        ));
+                    }
+                    for _ in 0..run - 3 {
+                        out.push('"');
+                    }
+                    self.pos += run;
+                    return Ok((
+                        out,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    ));
+                }
+                b'\\' => self.read_escape(start, &mut out, true)?,
+                b'\n' => {
+                    out.push('\n');
+                    self.bump();
+                }
+                // CRLF は原文どおり保持する（正規化出力は LF で書き出す）
+                b'\r' if self.peek_at(1) == Some(b'\n') => {
+                    out.push_str("\r\n");
+                    self.pos += 2;
+                }
+                0x00..=0x08 | 0x0B..=0x1F | 0x7F => {
+                    return Err(ParseError::new(
+                        ParseErrorKind::ControlCharInString,
+                        Span::point(self.pos),
+                    ));
+                }
+                _ => self.copy_char(&mut out),
+            }
+        }
+    }
+
+    /// `\` の直後から 1 エスケープを読む（`\` は消費済みでない = 現在位置が `\`）。
+    /// `multiline` なら行末 `\`（続く空白と改行をすべて捨てる）も受理する
+    fn read_escape(
+        &mut self,
+        string_start: usize,
+        out: &mut String,
+        multiline: bool,
+    ) -> Result<(), ParseError> {
+        let esc_start = self.pos;
+        self.bump(); // `\`
+        let Some(e) = self.peek() else {
+            return Err(ParseError::new(
+                ParseErrorKind::UnterminatedString,
+                Span {
+                    start: string_start,
+                    end: self.pos,
+                },
+            ));
+        };
+        if multiline && matches!(e, b' ' | b'\t' | b'\n' | b'\r') {
+            // 行末のバックスラッシュ: 改行までは空白だけが許される
+            self.skip_ws();
+            if !self.at_newline() {
+                return Err(ParseError::new(
+                    ParseErrorKind::InvalidEscape,
+                    Span {
+                        start: esc_start,
+                        end: self.pos,
+                    },
+                ));
+            }
+            loop {
+                if self.at_newline() {
+                    self.eat_newline()?;
+                } else if matches!(self.peek(), Some(b' ' | b'\t')) {
+                    self.bump();
+                } else {
+                    break;
+                }
+            }
+            return Ok(());
+        }
+        self.bump();
+        match e {
+            b'b' => out.push('\u{0008}'),
+            b't' => out.push('\t'),
+            b'n' => out.push('\n'),
+            b'f' => out.push('\u{000C}'),
+            b'r' => out.push('\r'),
+            b'"' => out.push('"'),
+            b'\\' => out.push('\\'),
+            b'u' => out.push(self.read_unicode_escape(esc_start, 4)?),
+            b'U' => out.push(self.read_unicode_escape(esc_start, 8)?),
+            _ => {
+                return Err(ParseError::new(
+                    ParseErrorKind::InvalidEscape,
+                    Span {
+                        start: esc_start,
+                        end: self.pos,
+                    },
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// 現在位置の UTF-8 文字を 1 つ写す
+    fn copy_char(&mut self, out: &mut String) {
+        let ch_start = self.pos;
+        let ch = self.src[ch_start..].chars().next().expect("境界は保証済み");
+        self.pos += ch.len_utf8();
+        out.push(ch);
     }
 
     fn read_unicode_escape(&mut self, esc_start: usize, digits: usize) -> Result<char, ParseError> {
@@ -268,13 +400,82 @@ impl<'a> Cursor<'a> {
         })
     }
 
-    /// 単行 literal string（`'...'`）。`'''` は v0.1 未対応として区別する
+    /// 複数行 literal string（`'''...'''`）。エスケープなし・開始直後の改行は捨てる・
+    /// 閉じ区切りの直前に `'` を 2 つまで置ける
+    fn read_multiline_literal_string(&mut self) -> Result<(String, Span), ParseError> {
+        let start = self.pos;
+        self.pos += 3;
+        if self.at_newline() {
+            self.eat_newline()?;
+        }
+        let mut out = String::new();
+        loop {
+            let Some(c) = self.peek() else {
+                return Err(ParseError::new(
+                    ParseErrorKind::UnterminatedString,
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                ));
+            };
+            match c {
+                b'\'' => {
+                    let run = self.count_run(b'\'');
+                    if run < 3 {
+                        for _ in 0..run {
+                            out.push('\'');
+                        }
+                        self.pos += run;
+                        continue;
+                    }
+                    if run > 5 {
+                        return Err(ParseError::new(
+                            ParseErrorKind::TooManyQuotes,
+                            Span {
+                                start: self.pos,
+                                end: self.pos + run,
+                            },
+                        ));
+                    }
+                    for _ in 0..run - 3 {
+                        out.push('\'');
+                    }
+                    self.pos += run;
+                    return Ok((
+                        out,
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    ));
+                }
+                b'\n' => {
+                    out.push('\n');
+                    self.bump();
+                }
+                b'\r' if self.peek_at(1) == Some(b'\n') => {
+                    out.push_str("\r\n");
+                    self.pos += 2;
+                }
+                0x00..=0x08 | 0x0B..=0x1F | 0x7F => {
+                    return Err(ParseError::new(
+                        ParseErrorKind::ControlCharInString,
+                        Span::point(self.pos),
+                    ));
+                }
+                _ => self.copy_char(&mut out),
+            }
+        }
+    }
+
+    /// 単行 literal string（`'...'`）。キー位置でも使うので `'''` はエラー
     pub fn read_literal_string(&mut self) -> Result<(String, Span), ParseError> {
         let start = self.pos;
         debug_assert_eq!(self.peek(), Some(b'\''));
-        if self.peek_at(1) == Some(b'\'') && self.peek_at(2) == Some(b'\'') {
+        if self.at_triple(b'\'') {
             return Err(ParseError::new(
-                ParseErrorKind::Unsupported(UnsupportedFeature::MultilineString),
+                ParseErrorKind::MultilineStringAsKey,
                 Span {
                     start,
                     end: start + 3,
@@ -353,20 +554,24 @@ pub(crate) enum ScalarClass {
     False,
     /// TOML の 10 進整数として妥当（値は `parse_integer` で得る）
     Integer,
+    /// 16 / 8 / 2 進整数として妥当（値は `parse_radix_integer` で得る）
+    RadixInteger(u32),
+    /// float として妥当（`inf` / `nan` 含む。値は `parse_float` で得る）
+    Float,
+    /// TOML として妥当だがまだ未対応（date-time）
     Unsupported(UnsupportedFeature),
     /// 整数系の書き間違い（先頭ゼロ・アンダースコア位置違反など）
     InvalidInteger,
     /// float / date-time / 進数整数の形はしているが TOML として不正
-    /// （`1e` / `0xGG` / `1979-bad` など。`Unsupported` にすると誤った書き換え案内になる）
+    /// （`1e` / `0xGG` / `1979-bad` など）
     InvalidLiteral,
     /// 値として解釈できない（英字始まりの未知語など）
     NotAValue,
 }
 
-/// blob を分類する。v0.1 未対応（float / date-time / 16,8,2 進）を
-/// 一般構文エラーと区別するのが目的。**`Unsupported` は TOML 1.0 として妥当な
-/// リテラルに限る** — 形で当たりを付けたあと字句全体を検証し、不正なら
-/// `InvalidLiteral`（参照実装が構文エラーにする入力を未対応と案内しない）
+/// blob を分類する。形で当たりを付けたあと字句全体を検証し、妥当なものだけを
+/// 値の種別（Integer / RadixInteger / Float）か `Unsupported`（date-time）にする。
+/// 不正なら `InvalidLiteral`（参照実装が構文エラーにする入力を未対応と案内しない）
 pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
     match blob {
         "true" => return ScalarClass::True,
@@ -386,14 +591,14 @@ pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
         };
         if let Some(radix) = radix {
             return if !signed && is_digit_run(rest, radix) {
-                ScalarClass::Unsupported(UnsupportedFeature::RadixInteger)
+                ScalarClass::RadixInteger(radix)
             } else {
                 ScalarClass::InvalidLiteral
             };
         }
     }
     if matches!(body, "inf" | "nan") {
-        return ScalarClass::Unsupported(UnsupportedFeature::Float);
+        return ScalarClass::Float;
     }
     if !body.starts_with(|c: char| c.is_ascii_digit()) {
         return ScalarClass::NotAValue;
@@ -416,7 +621,7 @@ pub(crate) fn classify_scalar(blob: &str) -> ScalarClass {
     }
     if body.contains(['.', 'e', 'E']) {
         return if is_valid_float(body) {
-            ScalarClass::Unsupported(UnsupportedFeature::Float)
+            ScalarClass::Float
         } else {
             ScalarClass::InvalidLiteral
         };
@@ -584,32 +789,53 @@ pub(crate) fn parse_integer(blob: &str, span: Span) -> Result<i64, ParseError> {
         .map_err(|_| ParseError::new(ParseErrorKind::IntegerOutOfRange, span))
 }
 
+/// 分類済みの 16 / 8 / 2 進整数 blob（`0x` 等の接頭辞付き・符号なし）を i64 へ変換する。
+/// i64 の正の範囲を超えるもの（`0xFFFF_FFFF_FFFF_FFFF` 等）は `IntegerOutOfRange`
+pub(crate) fn parse_radix_integer(blob: &str, radix: u32, span: Span) -> Result<i64, ParseError> {
+    let digits: String = blob[2..].chars().filter(|&c| c != '_').collect();
+    i64::from_str_radix(&digits, radix)
+        .map_err(|_| ParseError::new(ParseErrorKind::IntegerOutOfRange, span))
+}
+
+/// 分類済みの float blob を f64 へ変換する。
+/// `inf` / `nan` は符号付きで受理し、`nan` の符号は落とす（`Value::Float` は符号を
+/// 保持しない）。指数が大きすぎる値（`1e400`）は Rust の `f64` パーサと同じく無限大になる
+pub(crate) fn parse_float(blob: &str, span: Span) -> Result<f64, ParseError> {
+    let (negative, body) = match blob.strip_prefix('-') {
+        Some(b) => (true, b),
+        None => (false, blob.strip_prefix('+').unwrap_or(blob)),
+    };
+    let value = match body {
+        "inf" => f64::INFINITY,
+        "nan" => f64::NAN,
+        _ => {
+            let cleaned: String = body.chars().filter(|&c| c != '_').collect();
+            cleaned
+                .parse::<f64>()
+                .map_err(|_| ParseError::new(ParseErrorKind::InvalidLiteral, span))?
+        }
+    };
+    Ok(if negative && !value.is_nan() {
+        -value
+    } else {
+        value
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn スカラー分類が_v0_1_未対応を区別する() {
+    fn スカラー分類() {
         assert_eq!(classify_scalar("true"), ScalarClass::True);
         assert_eq!(classify_scalar("42"), ScalarClass::Integer);
         assert_eq!(classify_scalar("-17"), ScalarClass::Integer);
         assert_eq!(classify_scalar("1_000_000"), ScalarClass::Integer);
-        assert_eq!(
-            classify_scalar("3.14"),
-            ScalarClass::Unsupported(UnsupportedFeature::Float)
-        );
-        assert_eq!(
-            classify_scalar("1e6"),
-            ScalarClass::Unsupported(UnsupportedFeature::Float)
-        );
-        assert_eq!(
-            classify_scalar("inf"),
-            ScalarClass::Unsupported(UnsupportedFeature::Float)
-        );
-        assert_eq!(
-            classify_scalar("0xFF"),
-            ScalarClass::Unsupported(UnsupportedFeature::RadixInteger)
-        );
+        assert_eq!(classify_scalar("3.14"), ScalarClass::Float);
+        assert_eq!(classify_scalar("1e6"), ScalarClass::Float);
+        assert_eq!(classify_scalar("inf"), ScalarClass::Float);
+        assert_eq!(classify_scalar("0xFF"), ScalarClass::RadixInteger(16));
         assert_eq!(
             classify_scalar("1979-05-27"),
             ScalarClass::Unsupported(UnsupportedFeature::DateTime)
@@ -624,41 +850,65 @@ mod tests {
         assert_eq!(classify_scalar("hello"), ScalarClass::NotAValue);
     }
 
-    /// `Unsupported` は TOML として妥当なリテラルに限る（参照実装が構文エラーに
-    /// する入力を「未対応」と案内しない）
+    /// 妥当なリテラルだけが値種別 / `Unsupported` になる（参照実装が構文エラーに
+    /// する入力を受理したり「未対応」と案内したりしない）
     #[test]
-    fn 不正なリテラルは_unsupported_にならない() {
+    fn 不正なリテラルは_invalid_literal_になる() {
         // 妥当側（参照実装が受理する）
-        for (src, feature) in [
-            ("6.02e23", UnsupportedFeature::Float),
-            ("1_000.5", UnsupportedFeature::Float),
-            ("-0.0", UnsupportedFeature::Float),
-            ("1e-3", UnsupportedFeature::Float),
-            ("1E+00", UnsupportedFeature::Float),
-            ("+inf", UnsupportedFeature::Float),
-            ("0xDEAD_BEEF", UnsupportedFeature::RadixInteger),
-            ("0o755", UnsupportedFeature::RadixInteger),
-            ("0b1010", UnsupportedFeature::RadixInteger),
-            ("1979-05-27T07:32:00Z", UnsupportedFeature::DateTime),
+        for (src, class) in [
+            ("6.02e23", ScalarClass::Float),
+            ("1_000.5", ScalarClass::Float),
+            ("-0.0", ScalarClass::Float),
+            ("1e-3", ScalarClass::Float),
+            ("1E+00", ScalarClass::Float),
+            ("+inf", ScalarClass::Float),
+            ("-nan", ScalarClass::Float),
+            ("0xDEAD_BEEF", ScalarClass::RadixInteger(16)),
+            ("0o755", ScalarClass::RadixInteger(8)),
+            ("0b1010", ScalarClass::RadixInteger(2)),
+            (
+                "1979-05-27T07:32:00Z",
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
+            ),
             (
                 "1979-05-27T00:32:00.999999-07:00",
-                UnsupportedFeature::DateTime,
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
             ),
-            ("1979-05-27t07:32:00+09:00", UnsupportedFeature::DateTime),
-            ("07:32:00.5", UnsupportedFeature::DateTime),
-            ("23:59:60", UnsupportedFeature::DateTime),
+            (
+                "1979-05-27t07:32:00+09:00",
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
+            ),
+            (
+                "07:32:00.5",
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
+            ),
+            (
+                "23:59:60",
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
+            ),
             // 暦として存在する日付（閏年は 4 の倍数、100 の倍数は 400 の倍数のときだけ）
-            ("2000-02-29", UnsupportedFeature::DateTime),
-            ("2024-02-29", UnsupportedFeature::DateTime),
-            ("1979-04-30", UnsupportedFeature::DateTime),
-            ("1979-01-31", UnsupportedFeature::DateTime),
-            ("0000-02-29", UnsupportedFeature::DateTime),
+            (
+                "2000-02-29",
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
+            ),
+            (
+                "2024-02-29",
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
+            ),
+            (
+                "1979-04-30",
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
+            ),
+            (
+                "1979-01-31",
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
+            ),
+            (
+                "0000-02-29",
+                ScalarClass::Unsupported(UnsupportedFeature::DateTime),
+            ),
         ] {
-            assert_eq!(
-                classify_scalar(src),
-                ScalarClass::Unsupported(feature),
-                "{src}"
-            );
+            assert_eq!(classify_scalar(src), class, "{src}");
         }
         // 不正側（参照実装も構文エラー）
         for src in [
@@ -747,11 +997,167 @@ mod tests {
     }
 
     #[test]
-    fn 三連引用符は未対応として区別される() {
+    fn 三連引用符はキー位置では使えない() {
         let mut c = Cursor::new(r#""""multi""""#);
-        assert!(matches!(
-            c.read_basic_string().unwrap_err().kind(),
-            ParseErrorKind::Unsupported(UnsupportedFeature::MultilineString)
-        ));
+        assert_eq!(
+            *c.read_basic_string().unwrap_err().kind(),
+            ParseErrorKind::MultilineStringAsKey
+        );
+        let mut c = Cursor::new("'''multi'''");
+        assert_eq!(
+            *c.read_literal_string().unwrap_err().kind(),
+            ParseErrorKind::MultilineStringAsKey
+        );
+    }
+
+    fn value(src: &str) -> String {
+        let mut c = Cursor::new(src);
+        let (s, span) = c.read_string_value().unwrap();
+        assert_eq!(span.start, 0);
+        assert_eq!(span.end, src.len(), "文字列全体を消費する: {src:?}");
+        s
+    }
+
+    fn value_err(src: &str) -> ParseErrorKind {
+        Cursor::new(src)
+            .read_string_value()
+            .unwrap_err()
+            .kind()
+            .clone()
+    }
+
+    #[test]
+    fn 複数行_basic_string() {
+        // 開始直後の改行は捨てる。途中の改行は保持
+        assert_eq!(
+            value("\"\"\"\nRoses are red\nViolets are blue\"\"\""),
+            "Roses are red\nViolets are blue"
+        );
+        assert_eq!(value("\"\"\"a\nb\"\"\""), "a\nb");
+        // CRLF は原文どおり
+        assert_eq!(value("\"\"\"\r\na\r\nb\"\"\""), "a\r\nb");
+        // 行末 `\` は続く空白と改行をすべて捨てる
+        assert_eq!(
+            value("\"\"\"\nThe quick brown \\\n\n\n  fox jumps over \\\n    the lazy dog.\"\"\""),
+            "The quick brown fox jumps over the lazy dog."
+        );
+        assert_eq!(value("\"\"\"a \\   \n   b\"\"\""), "a b");
+        // 引用符は 1〜2 個なら中に書ける。閉じ直前も 2 個まで
+        assert_eq!(
+            value("\"\"\"Here are two quotation marks: \"\". Simple.\"\"\""),
+            "Here are two quotation marks: \"\". Simple."
+        );
+        assert_eq!(
+            value("\"\"\"\"This,\" she said, \"is just a pointless statement.\"\"\"\""),
+            "\"This,\" she said, \"is just a pointless statement.\""
+        );
+        assert_eq!(value("\"\"\"a\"\"\"\"\""), "a\"\"");
+        // エスケープは単行と同じ
+        assert_eq!(value("\"\"\"a\\tb\\u3042\\\"\"\"\""), "a\tbあ\"");
+        // 空
+        assert_eq!(value("\"\"\"\"\"\""), "");
+    }
+
+    #[test]
+    fn 複数行_basic_string_のエラー() {
+        assert_eq!(
+            value_err("\"\"\"a\"\"\"\"\"\""),
+            ParseErrorKind::TooManyQuotes
+        );
+        assert_eq!(value_err("\"\"\"a"), ParseErrorKind::UnterminatedString);
+        assert_eq!(
+            value_err("\"\"\"a\\ b\"\"\""),
+            ParseErrorKind::InvalidEscape
+        );
+        assert_eq!(
+            value_err("\"\"\"a\\qb\"\"\""),
+            ParseErrorKind::InvalidEscape
+        );
+        assert_eq!(
+            value_err("\"\"\"a\u{0007}\"\"\""),
+            ParseErrorKind::ControlCharInString
+        );
+        // 単独の CR は制御文字
+        assert_eq!(
+            value_err("\"\"\"a\rb\"\"\""),
+            ParseErrorKind::ControlCharInString
+        );
+    }
+
+    #[test]
+    fn 複数行_literal_string() {
+        assert_eq!(
+            value("'''\nThe first newline is\ntrimmed in raw strings.\n'''"),
+            "The first newline is\ntrimmed in raw strings.\n"
+        );
+        // エスケープしない
+        assert_eq!(
+            value("'''C:\\Users\\nodejs\\templates'''"),
+            "C:\\Users\\nodejs\\templates"
+        );
+        assert_eq!(value("'''\\ \n  x'''"), "\\ \n  x");
+        // 引用符は 1〜2 個なら中に書ける。閉じ直前も 2 個まで
+        assert_eq!(
+            value("''''That,' she said, 'is still pointless.''''"),
+            "'That,' she said, 'is still pointless.'"
+        );
+        assert_eq!(value("'''a'''''"), "a''");
+        assert_eq!(value("'''\r\na\r\n'''"), "a\r\n");
+        assert_eq!(value_err("'''a''''''"), ParseErrorKind::TooManyQuotes);
+        assert_eq!(value_err("'''a"), ParseErrorKind::UnterminatedString);
+        assert_eq!(
+            value_err("'''a\u{0001}'''"),
+            ParseErrorKind::ControlCharInString
+        );
+    }
+
+    #[test]
+    fn float_の変換() {
+        let span = Span { start: 0, end: 1 };
+        let f = |s: &str| parse_float(s, span).unwrap();
+        assert_eq!(f("2.5"), 2.5);
+        assert_eq!(f("+1.0"), 1.0);
+        assert_eq!(f("-0.01"), -0.01);
+        assert_eq!(f("5e+22"), 5e22);
+        assert_eq!(f("1e06"), 1e6);
+        assert_eq!(f("-2E-2"), -2e-2);
+        assert_eq!(f("6.626e-34"), 6.626e-34);
+        assert_eq!(f("224_617.445_991_228"), 224617.445991228);
+        assert_eq!(f("inf"), f64::INFINITY);
+        assert_eq!(f("+inf"), f64::INFINITY);
+        assert_eq!(f("-inf"), f64::NEG_INFINITY);
+        assert!(f("nan").is_nan());
+        assert!(f("+nan").is_nan());
+        // nan の符号は落とす
+        assert!(f("-nan").is_nan() && !f("-nan").is_sign_negative());
+        // -0.0 は温存
+        assert!(f("-0.0").is_sign_negative());
+        // 指数が大きすぎる値は無限大（Rust の f64 パーサと同じ）
+        assert_eq!(f("1e400"), f64::INFINITY);
+    }
+
+    #[test]
+    fn 進数整数の変換() {
+        let span = Span { start: 0, end: 1 };
+        assert_eq!(
+            parse_radix_integer("0xDEADBEEF", 16, span).unwrap(),
+            0xDEAD_BEEF
+        );
+        assert_eq!(
+            parse_radix_integer("0xdead_beef", 16, span).unwrap(),
+            0xDEAD_BEEF
+        );
+        assert_eq!(parse_radix_integer("0o755", 8, span).unwrap(), 0o755);
+        assert_eq!(
+            parse_radix_integer("0b1101_0110", 2, span).unwrap(),
+            0b1101_0110
+        );
+        assert_eq!(
+            parse_radix_integer("0x7FFF_FFFF_FFFF_FFFF", 16, span).unwrap(),
+            i64::MAX
+        );
+        // i64 の正の範囲を超える
+        assert!(parse_radix_integer("0x8000_0000_0000_0000", 16, span).is_err());
+        assert!(parse_radix_integer("0xFFFF_FFFF_FFFF_FFFF", 16, span).is_err());
     }
 }

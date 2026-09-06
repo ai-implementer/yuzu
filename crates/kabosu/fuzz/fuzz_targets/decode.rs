@@ -13,6 +13,8 @@ enum Dyn {
     #[allow(dead_code)]
     Int(i64),
     #[allow(dead_code)]
+    Float(f64),
+    #[allow(dead_code)]
     Bool(bool),
     #[allow(dead_code)]
     List(Vec<Dyn>),
@@ -25,6 +27,7 @@ impl Decode for Dyn {
         match node.value() {
             Value::String(s) => Some(Dyn::Str(s.clone())),
             Value::Integer(n) => Some(Dyn::Int(*n)),
+            Value::Float(f) => Some(Dyn::Float(*f)),
             Value::Boolean(b) => Some(Dyn::Bool(*b)),
             Value::Array(_) => Vec::<Dyn>::decode(node, cx).map(Dyn::List),
             Value::Table(_) => BTreeMap::<String, Dyn>::decode(node, cx).map(Dyn::Table),
