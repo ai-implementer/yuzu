@@ -5,7 +5,7 @@ yuzu の開発計画と、これまでのリリースの内訳。**このファ�
 
 ## 現在: v0.16（Phase 68〜71）
 
-**v0.15 まで公開済み**（kabosu 0.1.0 / tankan 0.2.0 / mikan 0.2.0 も crates.io で公開済み。
+**v0.15 まで公開済み**（kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 も crates.io で公開済み。
 yuzu のリリースとは非同期）。
 
 軸は「**kabosu の TOML 1.0 完全対応**」。
@@ -169,11 +169,11 @@ lexer の「TOML として妥当なリテラルか」の判定（`is_valid_float
     `[lint.terms]` を `lint.terms = { ... }` と書いても同じ結果（config_test に 1 件足す）
   - docs `reference/config.md` の「サブセット」段落と `development/kabosu.md` の対応範囲を更新
 
-### 71 toml-test による検証と kabosu 0.2.0 公開 ✅（公開待ち）
+### 71 toml-test による検証と kabosu 0.2.0 公開 ✅
 
 判断は 3 点とも推奨案: 公式 toml-test を vendor / 期待値 JSON は dev 依存の
 serde_json で読む / `Unsupported` は TOML 1.1 の案内へ転用。
-**crates.io への publish だけ残っている**（`publish-crate` スキル）。
+**kabosu 0.2.0 は 2026-09-06 に crates.io へ公開済み**。
 
 - 実装メモ
   - `scripts/vendor-toml-test.sh` — v2.2.0 をタグ＋アーカイブ sha256 固定で取得。
