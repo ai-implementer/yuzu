@@ -5,156 +5,192 @@ yuzu の開発計画と、これまでのリリースの内訳。**このファ�
 
 ## 現在
 
-**v0.16 まで公開済み**。次の版（v0.17）は未策定で、候補は下の
-「[v0.17 以降の候補](#v017-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
-kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 は crates.io で公開済み（yuzu のリリースとは
-非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある）。
+- **v0.16 まで公開済み**
+- **v0.17 は未策定** — 候補は下の「[v0.17 以降の候補](#v017-以降の候補)」。
+  着手時に軸を 1 つ選んで Phase を切る
+- 汎用ライブラリは crates.io へ単独公開済み（yuzu のリリースとは非同期）
+  - kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0
+  - kabosu は publish 前に fuzz を回す（規律は CLAUDE.md）
 
 ## v0.10.1 レビューの持ち越し
 
 v0.10.1（外部コードレビュー対応）で「今回は入れない」と判断したもの。
 **判断の根拠ごと残す**（同じ検討を繰り返さないため）。
 
-- **URL のパーセントエンコード全面対応** — v0.15 の Phase 64 で実装済み（内訳は下の「完了済み: v0.15」）
-- **キャッシュ保存の原子性** — Phase 53（v0.11）で実装済み（`write_atomic_under`
-  が global.json のみ tmp → rename = 当時の見積もりどおり安価な側だけ。詳細は
-  v0.11 の内訳を参照）
-- **`syntect.css` の無条件出力** / **`ServeDir` が dist 内のリンクを辿る** — v0.15 の
-  Phase 65 で実装済み
-- **`.devcontainer/post-create.sh` の Claude Code インストーラ** — 取得した
-  `install.sh` を検証せず bash へ渡している。ただし**インストーラ自身が
-  ダウンロードしたバイナリを SHA-256 検証している**（バージョンごとの
-  `manifest.json` の値と照合し、不一致なら削除して終了）ので、残るギャップは
-  スクリプトの TOFU のみ。`install.sh` に公開チェックサムが無く、ベンダ更新のたびに
-  devcontainer のビルドが壊れるため固定は見送った。バージョン指定
-  （`bash -s -- <version>`）は可能なので、必要になったらそこから
+- ✅ **URL のパーセントエンコード全面対応** — v0.15 Phase 64 で実装済み
+  （内訳は下の「完了済み: v0.15」）
+- ✅ **`syntect.css` の無条件出力** / **`ServeDir` が dist 内のリンクを辿る** —
+  v0.15 Phase 65 で実装済み
+- ✅ **キャッシュ保存の原子性** — v0.11 Phase 53 で実装済み
+  - `write_atomic_under` が global.json のみ tmp → rename = 当時の見積もりどおり
+    安価な側だけ（詳細は v0.11 の内訳）
+- ⬜ **`.devcontainer/post-create.sh` の Claude Code インストーラ** — 取得した
+  `install.sh` を検証せず bash へ渡している
+  - 緩和されている点: **インストーラ自身がダウンロードしたバイナリを SHA-256 検証する**
+    （バージョンごとの `manifest.json` の値と照合し、不一致なら削除して終了）
+  - 残るギャップ: スクリプトの TOFU のみ
+  - 固定を見送った理由: `install.sh` に公開チェックサムが無く、ベンダ更新のたびに
+    devcontainer のビルドが壊れる
+  - 着手するなら: バージョン指定（`bash -s -- <version>`）は可能なのでそこから
 
 ## v0.17 以降の候補
 
-- **dogfooding 候補（v0.13 Phase 61 からの持ち越し。判断根拠ごと残す）**:
-  - `theme.dark: false`・JS 無効時の OS ダーク追従 — base.jinja が
-    `data-theme="light"` を無条件ハードコードしており CSS フォールバックの前提から
-    崩す必要がある。ダーク定義が 3 箇所（theme.css / syntect 生成 / css_vars_dark
-    生成）に散りフォールバック追加で全部 2 系統化（21K の syntect.css が倍増）、
-    さらに「dark: false でもダークになる」= 設定キーの意味の再定義（3 値化等）を
-    伴う。候補中最重量で単独 Phase 相当
-  - 見出しパーマリンクのキーボード到達性 — `<a aria-hidden class="anchor">` は
-    comrak のハードコード出力で、完全対応（aria-hidden 除去＋ラベル付与）は
-    yuzu-core の後処理 = 本文 HTML 変更で CACHE bump ＋全スナップショット更新。
-    CSS だけの部分対応は「aria-hidden 内のフォーカス可能要素」という別の違反を生む
-  - ページメタの拡充（読了時間・文字数）/ `<head>` メタ — canonical / og:url は
-    sitemap と同じ「baseUrl がフル URL のときだけ」ゲート（pipeline.rs）に乗せれば
-    新キーゼロで実装可能と調査済み（og:image だけ素材不足）。読了時間・文字数は
-    extract_meta で数えて CachedMeta へ載せる = CACHE bump を伴う
-  - `--root` グローバルオプションと shell 補完 — 探索・読み込みは Phase 63 で
-    `commands::load_project` に一本化済み（`--root` はここ 1 箇所に足せば全コマンドに
-    効く）。残るのは clap_complete の新規依存＋ 8 つの run() シグネチャ変更と、
-    build / dev だけが load_config（上書き適用・`.yuzu` のリンク検査）を通る
-    非対称を揃えるかの設計判断。着手時は MarkdownOptions 構築の 8 箇所コピーの
-    解消と抱き合わせると割が良い
-- **i18n** — テーマ UI 文字列の多言語化。実測で jinja 18 ＋ テーマ JS 19 ＋
-  apispec 35 ＋ crossref 3 文字列。`site.lang` は `<html lang>` の 2 箇所でしか
-  使われていない。判断材料:
-  - **検索（vaporetto の分かち書き）と `lint.rules`（全角英数・半角カナ・長音符）は
-    日本語固有**なので、UI だけ多言語化しても半端になる
-  - テーマ上書き（`theme/templates/`）で文言は今でも変えられるが、粒度がファイル単位で
-    アップストリームから fork するため代替にならない（`search-ui.js` は 470 行）
-  - 最小案は `theme.strings` の部分上書き辞書（`theme.css_vars` / `glossary.terms` と同型）。
-    既定を日本語のまま据え置けばスナップショットは動かない
-  - apispec の文言は**描画のエラーボックスと `yuzu check` の診断で共有**しているので、
-    翻訳すると `--format json` の出力も言語で変わる（CLI を含めるかの線引きが要る）
+### dogfooding 候補（v0.13 Phase 61 からの持ち越し）
+
+- **OS ダーク追従**（`theme.dark: false`・JS 無効時）— **候補中最重量で単独 Phase 相当**
+  - 障害: `base.jinja` が `data-theme="light"` を無条件ハードコードしており、
+    CSS フォールバックの前提から崩す必要がある
+  - 波及: ダーク定義が 3 箇所（theme.css / syntect 生成 / css_vars_dark 生成）に散り、
+    フォールバック追加で全部 2 系統化（21K の syntect.css が倍増）
+  - 論点: 「dark: false でもダークになる」= 設定キーの意味の再定義（3 値化等）を伴う
+- **見出しパーマリンクのキーボード到達性**
+  - 障害: `<a aria-hidden class="anchor">` は comrak のハードコード出力
+  - 完全対応（aria-hidden 除去＋ラベル付与）は yuzu-core の後処理 = 本文 HTML の変更
+    なので CACHE bump ＋全スナップショット更新を伴う
+  - CSS だけの部分対応は「aria-hidden 内のフォーカス可能要素」という別の違反を生む
+- **`<head>` メタ** — 新キーゼロで実装可能と調査済み
+  - canonical / og:url は sitemap と同じ「baseUrl がフル URL のときだけ」ゲート
+    （`pipeline.rs`）に乗せられる
+  - og:image だけ素材不足
+- **ページメタの拡充（読了時間・文字数）** — extract_meta で数えて CachedMeta へ載せる
+  = CACHE bump を伴う
+- **`--root` グローバルオプションと shell 補完**
+  - 済: 探索・読み込みは Phase 63 で `commands::load_project` に一本化（`--root` は
+    ここ 1 箇所に足せば全コマンドに効く）
+  - 残: clap_complete の新規依存 ＋ 8 つの `run()` シグネチャ変更
+  - 設計判断: build / dev だけが load_config（上書き適用・`.yuzu` のリンク検査）を
+    通る非対称を揃えるか
+  - 抱き合わせると割が良い: MarkdownOptions 構築の 8 箇所コピーの解消
+
+### その他の候補
+
+- **i18n** — テーマ UI 文字列の多言語化
+  - 規模（実測）: jinja 18 ＋ テーマ JS 19 ＋ apispec 35 ＋ crossref 3 文字列。
+    `site.lang` は `<html lang>` の 2 箇所でしか使われていない
+  - 半端になる懸念: **検索（vaporetto の分かち書き）と `lint.rules`（全角英数・
+    半角カナ・長音符）は日本語固有**なので、UI だけ多言語化しても中途半端
+  - 代替にならない: テーマ上書き（`theme/templates/`）で文言は今でも変えられるが、
+    粒度がファイル単位でアップストリームから fork することになる
+    （`search-ui.js` は 470 行）
+  - 最小案: `theme.strings` の部分上書き辞書（`theme.css_vars` / `glossary.terms` と
+    同型）。既定を日本語のまま据え置けばスナップショットは動かない
+  - 線引きが要る: apispec の文言は**描画のエラーボックスと `yuzu check` の診断で共有**
+    しているので、翻訳すると `--format json` の出力も言語で変わる
 - **ドキュメントバージョニング** — 要否含め保留中
-- **VS Code 拡張** — wasm プレビュー。`yuzu-core` / `yuzu-render` が 9 ファイルで
-  `std::fs` に依存しており I/O 抽象化が前提
-- **yuzu 本体の crates.io 公開** — 汎用ライブラリ層は tankan・mikan まで公開済み。
-  名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済みのため、単一パッケージ化するか
-  名称を再検討する必要がある（Phase 37 の決定事項）
+- **VS Code 拡張** — wasm プレビュー
+  - 前提: `yuzu-core` / `yuzu-render` が 9 ファイルで `std::fs` に依存しており
+    I/O 抽象化が要る
+- **yuzu 本体の crates.io 公開** — 汎用ライブラリ層は tankan・mikan まで公開済み
+  - 障害: 名前 `yuzu`・`yuzu-core` が別プロジェクトに取得済み
+  - 単一パッケージ化するか名称を再検討する必要がある（Phase 37 の決定事項）
 
 ## これまでのリリース
 
-- **v0.1**（Phase 1〜6）build / dev サーバ / 日本語検索 / llms.txt / tankan SSR / fmt・lint・check
-- **v0.2**（Phase 7〜12）執筆表現 / 数式 / ページナビ / 検索のセクション単位化 /
-  デプロイ雛形 / インクリメンタルビルド
-- **v0.3**（Phase 13〜18）執筆の即効改善 / ページ Markdown 配信とコピー / 用語統一 lint /
-  tankan class・pie / git 連携メタ / dogfooding 改善
-- **v0.4**（Phase 19〜23）表記ゆれの組み込み lint / 検索の同義語・タイポ改善 /
-  OpenAPI・JSON Schema SSR / flowchart スタイル構文
-  （v0.4.1 で content 同伴アセットの自動コピーを追加）
-- **v0.5**（Phase 24〜29）tankan スタイル構文の全図種展開 / コードブロックの opt-in 索引 /
-  OpenAPI Swagger 2.0・スキーマ一覧 / tankan mindmap・timeline /
-  形態素トークナイザ PoC は実測見送り / dogfooding 改善＝404 ページと `lint --fix`
-- **v0.6**（Phase 30〜35）検索インデックスの位置情報化（フォーマット v3） / フレーズ検索 /
-  ビルドのページ並列化（render・index） / dogfooding 改善＝近接ブースト・フレーズヒント・
-  ビルド時間表示 / 検索スタックのライブラリ化と OPFS キャッシュ
-- **v0.7**（Phase 36〜38）公開・配布の整備 —
-  [ドキュメントサイト](https://ai.implementer.net/yuzu/)を GitHub Pages へ公開 /
-  tag push で 4 プラットフォームのバイナリを配布する release.yml /
-  [tankan の crates.io 単独公開](https://crates.io/crates/tankan)。
-  名前 `yuzu`・`yuzu-core` の取得済み判明により本体の crates.io 公開は将来構想へ再定義
-- **v0.8**（Phase 39〜41）執筆機能の拡充 — コードブロックの表示メタ（title / 行ハイライト /
-  行番号。JS ゼロ維持） / リダイレクト・エイリアス / dogfooding 改善＝エイリアス診断の行番号・
-  コードメタ lint・sitemap.xml・`git.lastUpdated` のサブディレクトリ運用バグ修正
-- **v0.9**（Phase 42〜45）執筆機能の拡充 第 2 弾 — コンテンツインクルード（`file=`） /
-  図表番号と相互参照 / 折りたたみ（`> [!NOTE]-`） / dogfooding 改善＝折りたたみの自動展開・
-  fmt の独自記法温存・図表番号のサイト全体通し番号
-  （v0.9.1 でサイドバーのスクロール位置維持を追加）
-- **v0.10**（Phase 46〜49）実運用の質を上げる — 診断の機械可読出力
-  （`--format {human,json,github}`） / 検証の網羅性（API 仕様の `file:` 参照・
-  `yuzu.jsonc` のキー診断） / watch・キャッシュの正しさ / dogfooding 改善＝検索の
-  追加読み込み・`yuzu fmt --diff`・scaffold 刷新・SIGPIPE 対応
-  （v0.10.1 でコードレビュー指摘の修正を追加＝出力先の境界検証・ページ URL の検証・
-  エイリアス `.` の拒否・ハイライト無効時のインクルード欠落修正・走査エラーの伝播・
-  URL エスケープ・vendor 取得のバージョンとアーカイブのチェックサム固定。**非互換**:
-  `output.dir` がルート外・ルート自身・`input.dir` / `public/` / `theme/` / `.yuzu` と
-  重なる場合はエラー、ルートから出力先（と `.yuzu`）までの経路に
-  シンボリックリンクがあればエラー、`x.md` と `x/index.md` の共存・
-  エイリアス `"."`・ファイル名の URL 危険文字（`#` `?` `%` `"` 等）もエラーになる）
-- **v0.11**（Phase 50〜53）執筆機能の拡充 第 3 弾 — タブ / コードグループ（JS ゼロ）/
-  Markdown 断片のインクルード（` ```include `）/ 用語集・略語（設定の辞書から
-  `<abbr>` 化とページ自動生成）/ dogfooding 改善＝約物に隣接した強調・定義リスト・
-  検索結果のセクション絞り込み（エンジン側）・ポート衝突の案内と
-  `build --watch` のポート指定・キャッシュ保存の原子化
-- **v0.12**（Phase 54〜57）読む体験の完成 — 全文検索の結果専用ページ
-  （`?q=` / `?section=` を URL で共有。ドロップダウンはサジェストへ格下げ）/
-  印刷・PDF 対応（画面 UI 非表示・常にライト配色・折りたたみとタブの全展開・
-  thead 再掲）/ ナビと目次の規模対応（サイドバー折りたたみ・入れ子 TOC・
-  `theme.toc.levels`・scrollspy の基準線修正）/ dogfooding 改善＝サイト URL 更新
-- **v0.13**（Phase 58〜61）lint の制御性 — ページ単位の抑制（frontmatter
-  `lintDisable`）/ 行単位の抑制（`<!-- yuzu-lint-disable-next-line -->` コメント）/
-  `lint.rules` の「ルール ID → bool」化による全ルールの enable/disable /
-  dogfooding 改善＝抑制記法を docs・scaffold で実運用・SSR 図のモバイル対応。
-  Phase 外でビルド進捗ログ（処理中ページ・watch の変更ファイル表示）と
-  comrak 整形パニックの防御（該当ページを原文へ縮退）も追加
-- **v0.14**（Phase 62〜63）設定基盤の刷新 = TOML 化 — 依存ゼロ・`no_std + alloc` の
-  TOML ライブラリ **kabosu** を新設（設計は
-  [docs/content/development/kabosu.md](docs/content/development/kabosu.md)。
-  [crates.io で単独公開](https://crates.io/crates/kabosu)）/ 設定を `yuzu.jsonc`（JSONC）から `yuzu.toml`（snake_case
-  キー）へ全面移行。**非互換**: JSONC の互換読み込み・変換コマンドは無し・
-  未知キー / 型違い / 重複キーは設定エラー（exit 2）で停止・`config-unknown-key` /
-  `config-duplicate-key` ルールは廃止・`.yuzu/settings.json` は廃止・envKey が
-  変わるため移行後の初回ビルドはフルビルド
-- **v0.15**（Phase 64〜67）正しさ・堅牢性 — URL のパーセントエンコード
-  （route → URL の変換点を 1 つに決め、非 ASCII も含めて本文・ナビ・llms・sitemap・
-  検索索引で同じ表記。著者のエンコード済み参照と aliases はデコードして照合）/
-  配信のシンボリックリンク遮断と `syntect.css` の条件出力（テーマ上書きは
-  デフォルトテーマの変更へ追随する契約を明文化）/ 外部リンク切れ検査の opt-in
-  （`yuzu check --external-links`。HTTP は curl へ委譲し、4xx だけ warning・環境要因は
-  `summary.skipped` へ）/ dogfooding 改善＝docs の外部リンク検査を週次実行・
-  preview のリンク遮断 e2e。**非互換**: `unsafe-page-path` はファイル名では
-  `\` と制御文字だけに縮小（`#` `?` `%` 等を含むファイル名が受理される）一方、
-  `markdown.glossary.page` / `search.page` / `aliases` は Windows 予約文字を全 OS で
-  拒否・非 ASCII を含む URL がパーセントエンコード形になる（本文リンクは従来どおり）・
-  `highlight.enabled = false` で `syntect.css` を出力しない（`base.jinja` を上書きしている
-  利用者は追随が要る）・preview / dev がシンボリックリンクを辿らない
-- **v0.16**（Phase 68〜71）kabosu の TOML 1.0 完全対応 — 未対応だった 6 構文
-  （float / date-time / 16,8,2 進整数 / 複数行文字列 / インラインテーブル /
-  テーブルの配列）を実装し、公式 [toml-test](https://github.com/toml-lang/toml-test) の
-  TOML 1.0.0 対象ケース（valid 205 / invalid 474）を全通過して
-  [kabosu 0.2.0](https://crates.io/crates/kabosu) を公開。TOML 1.1 でだけ妥当な記法
-  （`\e` / `\xHH`・インラインテーブルの改行と末尾カンマ・秒を省略した時刻）は
-  `Unsupported(TomlV11)` として「1.0 には無い記法」と案内する。**yuzu 本体の機能追加は
-  無し**で、`yuzu.toml` に書ける構文が増えるだけ（インラインテーブル・テーブルの配列・
-  日時・小数・複数行文字列が「未対応の構文」エラーにならなくなった）
+- **v0.1**（Phase 1〜6）
+  - build / dev サーバ / 日本語検索 / llms.txt / tankan SSR / fmt・lint・check
+- **v0.2**（Phase 7〜12）
+  - 執筆表現 / 数式 / ページナビ / 検索のセクション単位化
+  - デプロイ雛形 / インクリメンタルビルド
+- **v0.3**（Phase 13〜18）
+  - 執筆の即効改善 / ページ Markdown 配信とコピー / 用語統一 lint
+  - tankan class・pie / git 連携メタ / dogfooding 改善
+- **v0.4**（Phase 19〜23）
+  - 表記ゆれの組み込み lint / 検索の同義語・タイポ改善
+  - OpenAPI・JSON Schema SSR / flowchart スタイル構文
+  - **v0.4.1**: content 同伴アセットの自動コピー
+- **v0.5**（Phase 24〜29）
+  - tankan スタイル構文の全図種展開 / コードブロックの opt-in 索引
+  - OpenAPI Swagger 2.0・スキーマ一覧 / tankan mindmap・timeline
+  - 形態素トークナイザ PoC は実測の結果見送り
+  - dogfooding 改善 — 404 ページと `lint --fix`
+- **v0.6**（Phase 30〜35）
+  - 検索インデックスの位置情報化（フォーマット v3）/ フレーズ検索
+  - ビルドのページ並列化（render・index）
+  - 検索スタックのライブラリ化と OPFS キャッシュ
+  - dogfooding 改善 — 近接ブースト・フレーズヒント・ビルド時間表示
+- **v0.7**（Phase 36〜38）公開・配布の整備
+  - [ドキュメントサイト](https://ai.implementer.net/yuzu/)を GitHub Pages へ公開
+  - tag push で 4 プラットフォームのバイナリを配布する release.yml
+  - [tankan の crates.io 単独公開](https://crates.io/crates/tankan)
+  - 名前 `yuzu`・`yuzu-core` の取得済み判明により、本体の crates.io 公開は将来構想へ再定義
+- **v0.8**（Phase 39〜41）執筆機能の拡充
+  - コードブロックの表示メタ（title / 行ハイライト / 行番号。JS ゼロ維持）
+  - リダイレクト・エイリアス
+  - dogfooding 改善 — エイリアス診断の行番号・コードメタ lint・sitemap.xml・
+    `git.lastUpdated` のサブディレクトリ運用バグ修正
+- **v0.9**（Phase 42〜45）執筆機能の拡充 第 2 弾
+  - コンテンツインクルード（`file=`）/ 図表番号と相互参照 / 折りたたみ（`> [!NOTE]-`）
+  - dogfooding 改善 — 折りたたみの自動展開・fmt の独自記法温存・
+    図表番号のサイト全体通し番号
+  - **v0.9.1**: サイドバーのスクロール位置維持
+- **v0.10**（Phase 46〜49）実運用の質を上げる
+  - 診断の機械可読出力（`--format {human,json,github}`）
+  - 検証の網羅性 — API 仕様の `file:` 参照・`yuzu.jsonc` のキー診断
+  - watch・キャッシュの正しさ
+  - dogfooding 改善 — 検索の追加読み込み・`yuzu fmt --diff`・scaffold 刷新・SIGPIPE 対応
+  - **v0.10.1**: 外部コードレビュー指摘の修正 — 出力先の境界検証・ページ URL の検証・
+    エイリアス `.` の拒否・ハイライト無効時のインクルード欠落修正・走査エラーの伝播・
+    URL エスケープ・vendor 取得のバージョンとアーカイブのチェックサム固定
+    - **非互換**: `output.dir` がルート外・ルート自身・`input.dir` / `public/` /
+      `theme/` / `.yuzu` と重なる場合はエラー / ルートから出力先（と `.yuzu`）までの
+      経路にシンボリックリンクがあればエラー / `x.md` と `x/index.md` の共存・
+      エイリアス `"."`・ファイル名の URL 危険文字（`#` `?` `%` `"` 等）もエラー
+- **v0.11**（Phase 50〜53）執筆機能の拡充 第 3 弾
+  - タブ / コードグループ（JS ゼロ）
+  - Markdown 断片のインクルード（` ```include `）
+  - 用語集・略語 — 設定の辞書から `<abbr>` 化とページ自動生成
+  - dogfooding 改善 — 約物に隣接した強調・定義リスト・検索結果のセクション絞り込み
+    （エンジン側）・ポート衝突の案内と `build --watch` のポート指定・
+    キャッシュ保存の原子化
+- **v0.12**（Phase 54〜57）読む体験の完成
+  - 全文検索の結果専用ページ — `?q=` / `?section=` を URL で共有。
+    ドロップダウンはサジェストへ格下げ
+  - 印刷・PDF 対応 — 画面 UI 非表示・常にライト配色・折りたたみとタブの全展開・thead 再掲
+  - ナビと目次の規模対応 — サイドバー折りたたみ・入れ子 TOC・`theme.toc.levels`・
+    scrollspy の基準線修正
+  - dogfooding 改善 — サイト URL 更新
+- **v0.13**（Phase 58〜61）lint の制御性
+  - ページ単位の抑制（frontmatter `lintDisable`）
+  - 行単位の抑制（`<!-- yuzu-lint-disable-next-line -->` コメント）
+  - `lint.rules` の「ルール ID → bool」化による全ルールの enable/disable
+  - dogfooding 改善 — 抑制記法を docs・scaffold で実運用・SSR 図のモバイル対応
+  - Phase 外 — ビルド進捗ログ（処理中ページ・watch の変更ファイル表示）と
+    comrak 整形パニックの防御（該当ページを原文へ縮退）
+- **v0.14**（Phase 62〜63）設定基盤の刷新 = TOML 化
+  - 依存ゼロ・`no_std + alloc` の TOML ライブラリ **kabosu** を新設（設計は
+    [docs/content/development/kabosu.md](docs/content/development/kabosu.md)。
+    [crates.io で単独公開](https://crates.io/crates/kabosu)）
+  - 設定を `yuzu.jsonc`（JSONC）から `yuzu.toml`（snake_case キー）へ全面移行
+  - **非互換**: JSONC の互換読み込み・変換コマンドは無し / 未知キー・型違い・重複キーは
+    設定エラー（exit 2）で停止 / `config-unknown-key`・`config-duplicate-key` ルールは
+    廃止 / `.yuzu/settings.json` は廃止 / envKey が変わるため移行後の初回ビルドは
+    フルビルド
+- **v0.15**（Phase 64〜67）正しさ・堅牢性
+  - URL のパーセントエンコード — route → URL の変換点を 1 つに決め、非 ASCII も含めて
+    本文・ナビ・llms・sitemap・検索索引で同じ表記。著者のエンコード済み参照と
+    aliases はデコードして照合
+  - 配信のシンボリックリンク遮断と `syntect.css` の条件出力 — テーマ上書きは
+    デフォルトテーマの変更へ追随する契約を明文化
+  - 外部リンク切れ検査の opt-in（`yuzu check --external-links`）— HTTP は curl へ委譲し、
+    4xx だけ warning・環境要因は `summary.skipped` へ
+  - dogfooding 改善 — docs の外部リンク検査を週次実行・preview のリンク遮断 e2e
+  - **非互換**: `unsafe-page-path` はファイル名では `\` と制御文字だけに縮小
+    （`#` `?` `%` 等を含むファイル名が受理される）/ 一方
+    `markdown.glossary.page`・`search.page`・`aliases` は Windows 予約文字を全 OS で拒否 /
+    非 ASCII を含む URL がパーセントエンコード形になる（本文リンクは従来どおり）/
+    `highlight.enabled = false` で `syntect.css` を出力しない（`base.jinja` を
+    上書きしている利用者は追随が要る）/ preview・dev がシンボリックリンクを辿らない
+- **v0.16**（Phase 68〜71）kabosu の TOML 1.0 完全対応
+  - 未対応だった 6 構文（float / date-time / 16,8,2 進整数 / 複数行文字列 /
+    インラインテーブル / テーブルの配列）を実装
+  - 公式 [toml-test](https://github.com/toml-lang/toml-test) の TOML 1.0.0 対象ケース
+    （valid 205 / invalid 474）を全通過して
+    [kabosu 0.2.0](https://crates.io/crates/kabosu) を公開
+  - TOML 1.1 でだけ妥当な記法（`\e` / `\xHH`・インラインテーブルの改行と末尾カンマ・
+    秒を省略した時刻）は `Unsupported(TomlV11)` として「1.0 には無い記法」と案内する
+  - **yuzu 本体の機能追加は無し** — `yuzu.toml` に書ける構文が増えるだけ
+    （インラインテーブル・テーブルの配列・日時・小数・複数行文字列が
+    「未対応の構文」エラーにならなくなった）
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、
