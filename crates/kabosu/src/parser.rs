@@ -4,12 +4,15 @@
 //! 挿入時に検出し、最初の 1 件で `ParseError` として停止する。
 //! テーブルの再定義規則は TOML 1.0 に従う:
 //! - ヘッダ経路の中間として暗黙に作られたテーブルは、後から `[a]` で定義できる
-//! - dotted key で作られたテーブルをヘッダで再定義することはできない（逆も同じ）
+//! - dotted key で作られたテーブルをヘッダで再定義することはできない（逆も同じ）。
+//!   ただし**子テーブルを足すのは可**（`apple.color = "red"` の後の
+//!   `[fruit.apple.texture]`）。禁止は終端の再定義だけで、中間経路としては通れる
+//! - インラインテーブルは自己完結していて、子テーブルも足せない
 
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::error::{ParseError, ParseErrorKind, UnsupportedFeature};
+use crate::error::{ParseError, ParseErrorKind};
 use crate::lexer::{
     Cursor, ScalarClass, classify_scalar, parse_datetime, parse_float, parse_integer,
     parse_radix_integer,
@@ -58,7 +61,7 @@ pub(crate) fn parse(src: &str) -> Result<(Node, Vec<Span>), ParseError> {
     Ok((Node::new(Value::Table(root), root_span), comments))
 }
 
-/// `[a.b.c]` ヘッダ行
+/// `[a.b.c]` ヘッダ行と `[[a.b.c]]` 配列ヘッダ行
 fn parse_header(
     cur: &mut Cursor<'_>,
     root: &mut Table,
@@ -70,15 +73,7 @@ fn parse_header(
     table_at_mut(root, current_path).set_end_span(Span::point(start));
 
     cur.eat(b'[');
-    if cur.peek() == Some(b'[') {
-        return Err(ParseError::new(
-            ParseErrorKind::Unsupported(UnsupportedFeature::ArrayOfTables),
-            Span {
-                start,
-                end: start + 2,
-            },
-        ));
-    }
+    let is_array = cur.eat(b'[');
 
     let mut segments: Vec<KeySegment> = Vec::new();
     loop {
@@ -97,6 +92,12 @@ fn parse_header(
             Span::point(cur.pos()),
         ));
     }
+    if is_array && !cur.eat(b']') {
+        return Err(ParseError::new(
+            ParseErrorKind::UnclosedTableHeader,
+            Span::point(cur.pos()),
+        ));
+    }
     if segments.len() > MAX_DEPTH {
         return Err(ParseError::new(
             ParseErrorKind::DepthExceeded,
@@ -107,7 +108,15 @@ fn parse_header(
         ));
     }
 
-    define_header_table(root, &segments)?;
+    let header_span = Span {
+        start,
+        end: cur.pos(),
+    };
+    if is_array {
+        define_array_table(root, &segments, header_span)?;
+    } else {
+        define_header_table(root, &segments)?;
+    }
     *current_path = segments.iter().map(|s| String::from(s.name())).collect();
 
     cur.skip_ws();
@@ -117,59 +126,146 @@ fn parse_header(
     cur.eat_newline()
 }
 
-/// ヘッダ経路をルートから辿り、終端テーブルを定義する
-fn define_header_table(root: &mut Table, segments: &[KeySegment]) -> Result<(), ParseError> {
+/// ヘッダ経路の中間として降りられるノードか。
+///
+/// **dotted key で作られたテーブルも中間としては通れる**（TOML 1.0 の
+/// `apple.color = "red"` の後に `[fruit.apple.texture]` を足せる例）。
+/// 禁じられているのは終端での再定義（`[fruit.apple]`）だけなので、
+/// そちらは `define_header_table` の終端判定で見る。
+/// インラインテーブルは自己完結していて子テーブルも足せないので不可、
+/// 配列は `[[...]]` が作ったもの（最後の要素が `ArrayHeader`）だけ可
+fn can_descend(node: &Node) -> bool {
+    match node.value() {
+        Value::Table(t) => t.origin() != TableOrigin::Inline,
+        Value::Array(items) => is_array_of_tables(items),
+        _ => false,
+    }
+}
+
+/// `[[...]]` が作った配列か（最後の要素が `ArrayHeader` 起源のテーブル）
+fn is_array_of_tables(items: &[Node]) -> bool {
+    matches!(
+        items.last().map(Node::value),
+        Some(Value::Table(t)) if t.origin() == TableOrigin::ArrayHeader
+    )
+}
+
+/// ヘッダ経路の 1 段を降りる（配列なら**最後の要素**へ）
+fn descend_mut(node: &mut Node) -> Option<&mut Table> {
+    match node.value_mut() {
+        Value::Table(t) => Some(t),
+        Value::Array(items) => match items.last_mut()?.value_mut() {
+            Value::Table(t) if t.origin() == TableOrigin::ArrayHeader => Some(t),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// ヘッダ経路の中間セグメントを辿る（無ければ `HeaderImplicit` で作る）
+fn walk_intermediates<'t>(
+    root: &'t mut Table,
+    segments: &[KeySegment],
+) -> Result<&'t mut Table, ParseError> {
     let mut t = root;
-    for (i, seg) in segments.iter().enumerate() {
-        let last = i == segments.len() - 1;
-        if t.get(seg.name()).is_none() {
-            let origin = if last {
-                TableOrigin::Header
-            } else {
-                TableOrigin::HeaderImplicit
-            };
-            let mut table = Table::new(origin);
-            table.set_end_span(Span::point(seg.span().end));
-            t.insert(seg.clone(), Node::new(Value::Table(table), seg.span()));
-            let entry = t.get_mut(seg.name()).expect("直前に挿入した");
-            let Value::Table(sub) = entry.node_mut().value_mut() else {
-                unreachable!("直前にテーブルを挿入した");
-            };
-            t = sub;
-            continue;
-        }
-        let prev_span = t.get(seg.name()).expect("存在確認済み").key_span();
-        let entry = t.get_mut(seg.name()).expect("存在確認済み");
-        let Value::Table(sub) = entry.node_mut().value_mut() else {
-            // 値が入っているキーへのテーブル定義
-            return Err(ParseError::with_previous(
-                ParseErrorKind::TableConflict,
-                seg.span(),
-                prev_span,
-            ));
-        };
-        if sub.origin() == TableOrigin::Dotted {
-            // dotted key で作られたテーブルはヘッダで再定義できない
-            return Err(ParseError::with_previous(
-                ParseErrorKind::TableConflict,
-                seg.span(),
-                prev_span,
-            ));
-        }
-        if last {
-            if sub.origin() == TableOrigin::HeaderImplicit {
-                sub.set_origin(TableOrigin::Header);
-            } else {
-                // `[a]` の再定義
-                return Err(ParseError::with_previous(
-                    ParseErrorKind::DuplicateKey,
-                    seg.span(),
-                    prev_span,
-                ));
+    for seg in segments {
+        match t.get(seg.name()) {
+            None => {
+                let mut sub = Table::new(TableOrigin::HeaderImplicit);
+                sub.set_end_span(Span::point(seg.span().end));
+                t.insert(seg.clone(), Node::new(Value::Table(sub), seg.span()));
+            }
+            Some(entry) => {
+                if !can_descend(entry.node()) {
+                    return Err(ParseError::with_previous(
+                        ParseErrorKind::TableConflict,
+                        seg.span(),
+                        entry.key_span(),
+                    ));
+                }
             }
         }
-        t = sub;
+        let entry = t.get_mut(seg.name()).expect("直前に作ったか検査済み");
+        t = descend_mut(entry.node_mut()).expect("直前に検査済み");
     }
+    Ok(t)
+}
+
+/// `[a.b]` の終端テーブルを定義する
+fn define_header_table(root: &mut Table, segments: &[KeySegment]) -> Result<(), ParseError> {
+    let (last, intermediates) = segments.split_last().expect("1 つ以上ある");
+    let t = walk_intermediates(root, intermediates)?;
+    if t.get(last.name()).is_none() {
+        let mut table = Table::new(TableOrigin::Header);
+        table.set_end_span(Span::point(last.span().end));
+        t.insert(last.clone(), Node::new(Value::Table(table), last.span()));
+        return Ok(());
+    }
+    let prev_span = t.get(last.name()).expect("存在確認済み").key_span();
+    let entry = t.get_mut(last.name()).expect("存在確認済み");
+    let Value::Table(sub) = entry.node_mut().value_mut() else {
+        // 値・配列が入っているキーへのテーブル定義（`[[a]]` の後の `[a]` を含む）
+        return Err(ParseError::with_previous(
+            ParseErrorKind::TableConflict,
+            last.span(),
+            prev_span,
+        ));
+    };
+    match sub.origin() {
+        // ヘッダ経路の中間として暗黙に作られたテーブルは後から明示定義できる
+        TableOrigin::HeaderImplicit => {
+            sub.set_origin(TableOrigin::Header);
+            Ok(())
+        }
+        // `[a]` の再定義
+        TableOrigin::Header | TableOrigin::Root | TableOrigin::ArrayHeader => Err(
+            ParseError::with_previous(ParseErrorKind::DuplicateKey, last.span(), prev_span),
+        ),
+        // dotted key・インラインテーブルで作られたテーブルは閉じている
+        TableOrigin::Dotted | TableOrigin::Inline => Err(ParseError::with_previous(
+            ParseErrorKind::TableConflict,
+            last.span(),
+            prev_span,
+        )),
+    }
+}
+
+/// `[[a.b]]` の要素テーブルを配列末尾に追加する。
+/// 配列が無ければ作り、`[[...]]` 以外で作られたキーとは衝突させる
+fn define_array_table(
+    root: &mut Table,
+    segments: &[KeySegment],
+    header_span: Span,
+) -> Result<(), ParseError> {
+    let (last, intermediates) = segments.split_last().expect("1 つ以上ある");
+    let t = walk_intermediates(root, intermediates)?;
+    let mut element = Table::new(TableOrigin::ArrayHeader);
+    element.set_end_span(Span::point(header_span.end));
+    let element = Node::new(Value::Table(element), header_span);
+
+    let Some(entry) = t.get(last.name()) else {
+        t.insert(
+            last.clone(),
+            Node::new(Value::Array(alloc::vec![element]), last.span()),
+        );
+        return Ok(());
+    };
+    let prev_span = entry.key_span();
+    let extendable =
+        matches!(entry.node().value(), Value::Array(items) if is_array_of_tables(items));
+    if !extendable {
+        // 静的配列・テーブル・値への `[[a]]`
+        return Err(ParseError::with_previous(
+            ParseErrorKind::TableConflict,
+            last.span(),
+            prev_span,
+        ));
+    }
+    let entry = t.get_mut(last.name()).expect("存在確認済み");
+    let Value::Array(items) = entry.node_mut().value_mut() else {
+        unreachable!("直前に検査済み");
+    };
+    items.push(element);
     Ok(())
 }
 
@@ -258,15 +354,12 @@ fn insert_dotted(table: &mut Table, segments: &[KeySegment], node: Node) -> Resu
     Ok(())
 }
 
-/// ヘッダ確定済みの経路を辿る
+/// ヘッダ確定済みの経路を辿る（配列は最後の要素へ降りる）
 fn table_at_mut<'t>(root: &'t mut Table, path: &[String]) -> &'t mut Table {
     let mut t = root;
     for name in path {
         let entry = t.get_mut(name).expect("ヘッダ確定済みの経路");
-        let Value::Table(sub) = entry.node_mut().value_mut() else {
-            unreachable!("ヘッダ経路は常にテーブル");
-        };
-        t = sub;
+        t = descend_mut(entry.node_mut()).expect("ヘッダ経路は常にテーブルか配列の要素");
     }
     t
 }
@@ -287,13 +380,7 @@ fn parse_value(
             Ok(Node::new(Value::String(s), span))
         }
         Some(b'[') => parse_array(cur, comments, depth),
-        Some(b'{') => Err(ParseError::new(
-            ParseErrorKind::Unsupported(UnsupportedFeature::InlineTable),
-            Span {
-                start: cur.pos(),
-                end: cur.pos() + 1,
-            },
-        )),
+        Some(b'{') => parse_inline_table(cur, comments, depth),
         Some(_) => {
             let (blob, span) = cur.read_scalar_blob();
             match classify_scalar(blob) {
@@ -338,12 +425,6 @@ fn parse_array(
 ) -> Result<Node, ParseError> {
     let start = cur.pos();
     cur.eat(b'[');
-    if depth + 1 > MAX_DEPTH {
-        return Err(ParseError::new(
-            ParseErrorKind::DepthExceeded,
-            Span::point(start),
-        ));
-    }
     let mut items: Vec<Node> = Vec::new();
     loop {
         skip_trivia(cur, comments)?;
@@ -357,6 +438,14 @@ fn parse_array(
                     start,
                     end: cur.pos(),
                 },
+            ));
+        }
+        // 深さの検査は**要素ごと**に行う。空の `[]` は入れ子を 1 段も増やさない
+        // ので、入口で弾くと空テーブルと同じ「再パースできない出力」が作れる
+        if depth + 1 > MAX_DEPTH {
+            return Err(ParseError::new(
+                ParseErrorKind::DepthExceeded,
+                Span::point(cur.pos()),
             ));
         }
         items.push(parse_value(cur, comments, depth + 1)?);
@@ -384,6 +473,87 @@ fn parse_array(
     ))
 }
 
+/// インラインテーブル `{ k = v, a.b = 1 }`。
+/// TOML 1.0 では 1 行に収める（改行・コメント・末尾カンマは不可）。
+/// 作ったテーブルは `TableOrigin::Inline` = 閉じていて、後から
+/// `[x.y]` ヘッダや `x.z = 1` で拡張できない
+fn parse_inline_table(
+    cur: &mut Cursor<'_>,
+    comments: &mut Vec<Span>,
+    depth: usize,
+) -> Result<Node, ParseError> {
+    let start = cur.pos();
+    cur.eat(b'{');
+    // 深さの検査は**キーごと**に行う（下の `value_depth`）。
+    // 空の `{}` は入れ子を 1 段も増やさないので、ここで弾いてはいけない
+    // （エンコーダも空テーブルでは深度を消費しないため、
+    // 弾くと「to_string は通るのに再パースできない」出力が作れる）
+    let unclosed = |cur: &Cursor<'_>| {
+        ParseError::new(
+            ParseErrorKind::UnclosedInlineTable,
+            Span {
+                start,
+                end: cur.pos(),
+            },
+        )
+    };
+    let mut table = Table::new(TableOrigin::Inline);
+    cur.skip_ws();
+    if !cur.eat(b'}') {
+        loop {
+            cur.skip_ws();
+            if cur.at_newline() || cur.is_eof() || cur.at_comment() {
+                return Err(unclosed(cur));
+            }
+            // キー（dotted 可）
+            let mut segments: Vec<KeySegment> = Vec::new();
+            loop {
+                segments.push(cur.read_key_segment()?);
+                cur.skip_ws();
+                if cur.eat(b'.') {
+                    cur.skip_ws();
+                    continue;
+                }
+                break;
+            }
+            if !cur.eat(b'=') {
+                return Err(ParseError::new(
+                    ParseErrorKind::ExpectedEquals,
+                    Span::point(cur.pos()),
+                ));
+            }
+            cur.skip_ws();
+            // 深度はキーのセグメント 1 つにつき 1（`parse_keyval` と同じ数え方）。
+            // **エンコーダの `TableEncoder::field` も 1 段につき 1 なので、
+            // ここを 2 段ぶん数えると「to_string は通るのに再パースで
+            // DepthExceeded」になる**
+            let value_depth = depth + segments.len();
+            if value_depth > MAX_DEPTH {
+                return Err(ParseError::new(
+                    ParseErrorKind::DepthExceeded,
+                    Span::point(cur.pos()),
+                ));
+            }
+            let node = parse_value(cur, comments, value_depth)?;
+            insert_dotted(&mut table, &segments, node)?;
+            cur.skip_ws();
+            if cur.eat(b',') {
+                continue;
+            }
+            if cur.eat(b'}') {
+                break;
+            }
+            return Err(unclosed(cur));
+        }
+    }
+    let span = Span {
+        start,
+        end: cur.pos(),
+    };
+    table.set_end_span(Span::point(span.end));
+    Ok(Node::new(Value::Table(table), span))
+}
+
 /// 配列内の空白・改行・コメントを読み飛ばす
 fn skip_trivia(cur: &mut Cursor<'_>, comments: &mut Vec<Span>) -> Result<(), ParseError> {
     loop {
@@ -405,7 +575,7 @@ mod tests {
     use alloc::string::ToString;
 
     use crate::datetime::DatetimeKind;
-    use crate::error::{ParseErrorKind, UnsupportedFeature};
+    use crate::error::ParseErrorKind;
     use crate::model::Document;
 
     fn parse(src: &str) -> Document {
@@ -552,18 +722,223 @@ mod tests {
     }
 
     #[test]
-    fn 未対応構文は位置付きで区別される() {
+    fn dotted_key_で作ったテーブルにも子テーブルを足せる() {
+        // TOML 1.0 の例文: `[fruit.apple.texture]` は足せる
+        let d = parse(
+            "[fruit]\n\
+             apple.color = \"red\"\n\
+             apple.taste = \"sweet\"\n\
+             \n\
+             [fruit.apple.texture]\n\
+             smooth = true\n",
+        );
+        let apple = d
+            .root()
+            .get("fruit")
+            .unwrap()
+            .node()
+            .as_table()
+            .unwrap()
+            .get("apple")
+            .unwrap()
+            .node()
+            .as_table()
+            .unwrap();
+        assert_eq!(apple.get("color").unwrap().node().as_str(), Some("red"));
+        assert!(
+            apple
+                .get("texture")
+                .unwrap()
+                .node()
+                .as_table()
+                .unwrap()
+                .get("smooth")
+                .unwrap()
+                .node()
+                .as_boolean()
+                .unwrap()
+        );
+        // ヘッダ・配列ヘッダのどちらでも中間経路として通れる
+        assert!(Document::parse("a.b = 1\n[a.c]\nx = 1\n").is_ok());
+        assert!(Document::parse("a.b = 1\n[[a.c]]\nx = 1\n").is_ok());
+        // 終端での再定義は不可のまま
+        assert_eq!(err_kind("a.b = 1\n[a]\n"), ParseErrorKind::TableConflict);
         assert_eq!(
-            err_kind("x = { a = 1 }\n"),
-            ParseErrorKind::Unsupported(UnsupportedFeature::InlineTable)
+            err_kind("[fruit]\napple.color = \"red\"\n[fruit.apple]\n"),
+            ParseErrorKind::TableConflict
+        );
+        // dotted key が作った「値」は経路にできない
+        assert_eq!(
+            err_kind("a.b = 1\n[a.b.c]\n"),
+            ParseErrorKind::TableConflict
+        );
+    }
+
+    #[test]
+    fn インラインテーブルを読める() {
+        let d = parse(
+            "empty = {}\n\
+             point = { x = 1, y = 2 }\n\
+             dotted = { a.b = \"v\" }\n\
+             nested = { inner = { deep = true } }\n\
+             list = [{ id = 1 }, { id = 2 }]\n",
+        );
+        let root = d.root();
+        assert_eq!(
+            root.get("empty").unwrap().node().as_table().unwrap().len(),
+            0
+        );
+        let point = root.get("point").unwrap().node().as_table().unwrap();
+        assert_eq!(point.get("y").unwrap().node().as_integer(), Some(2));
+        let inner = root
+            .get("dotted")
+            .unwrap()
+            .node()
+            .as_table()
+            .unwrap()
+            .get("a")
+            .unwrap()
+            .node()
+            .as_table()
+            .unwrap();
+        assert_eq!(inner.get("b").unwrap().node().as_str(), Some("v"));
+        assert!(
+            root.get("nested")
+                .unwrap()
+                .node()
+                .as_table()
+                .unwrap()
+                .get("inner")
+                .unwrap()
+                .node()
+                .as_table()
+                .is_some()
+        );
+        let list = root.get("list").unwrap().node().as_array().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(
+            list[1]
+                .as_table()
+                .unwrap()
+                .get("id")
+                .unwrap()
+                .node()
+                .as_integer(),
+            Some(2)
+        );
+        // span は `{` から `}` まで
+        let span = root.get("point").unwrap().node().span();
+        assert_eq!(&d.source()[span.start..span.end], "{ x = 1, y = 2 }");
+    }
+
+    #[test]
+    fn インラインテーブルは_1_行で閉じている() {
+        // 改行・コメント・末尾カンマは TOML 1.0 では不可
+        assert_eq!(
+            err_kind("x = {\n a = 1 }\n"),
+            ParseErrorKind::UnclosedInlineTable
         );
         assert_eq!(
-            err_kind("[[x]]\n"),
-            ParseErrorKind::Unsupported(UnsupportedFeature::ArrayOfTables)
+            err_kind("x = { a = 1,\n b = 2 }\n"),
+            ParseErrorKind::UnclosedInlineTable
         );
-        // span はエラー箇所を指す
-        let e = Document::parse("x = { a = 1 }\n").unwrap_err();
-        assert_eq!((e.span().start, e.span().end), (4, 5));
+        assert_eq!(
+            err_kind("x = { a = 1 # c\n }\n"),
+            ParseErrorKind::UnclosedInlineTable
+        );
+        assert_eq!(
+            err_kind("x = { a = 1 "),
+            ParseErrorKind::UnclosedInlineTable
+        );
+        // 末尾カンマの後はキーが必要
+        assert_eq!(err_kind("x = { a = 1, }\n"), ParseErrorKind::ExpectedKey);
+        // 重複キーは中でも検出する
+        assert_eq!(
+            err_kind("x = { a = 1, a = 2 }\n"),
+            ParseErrorKind::DuplicateKey
+        );
+    }
+
+    #[test]
+    fn インラインテーブルは閉じていて後から拡張できない() {
+        assert_eq!(
+            err_kind("x = { a = 1 }\n[x.b]\n"),
+            ParseErrorKind::TableConflict
+        );
+        assert_eq!(
+            err_kind("x = { a = 1 }\nx.b = 2\n"),
+            ParseErrorKind::TableConflict
+        );
+        assert_eq!(
+            err_kind("x = { a = 1 }\n[x]\n"),
+            ParseErrorKind::TableConflict
+        );
+    }
+
+    #[test]
+    fn テーブルの配列を読める() {
+        let d = parse(
+            "[[products]]\n\
+             name = \"Hammer\"\n\
+             [products.spec]\n\
+             weight = 1\n\
+             [[products]]\n\
+             name = \"Nail\"\n\
+             [[products.tags]]\n\
+             label = \"metal\"\n",
+        );
+        let products = d.root().get("products").unwrap().node().as_array().unwrap();
+        assert_eq!(products.len(), 2);
+        let first = products[0].as_table().unwrap();
+        assert_eq!(first.get("name").unwrap().node().as_str(), Some("Hammer"));
+        // `[products.spec]` は直前の要素の中
+        assert_eq!(
+            first
+                .get("spec")
+                .unwrap()
+                .node()
+                .as_table()
+                .unwrap()
+                .get("weight")
+                .unwrap()
+                .node()
+                .as_integer(),
+            Some(1)
+        );
+        let second = products[1].as_table().unwrap();
+        assert_eq!(second.get("name").unwrap().node().as_str(), Some("Nail"));
+        // ネストした `[[products.tags]]` も最後の要素の中
+        let tags = second.get("tags").unwrap().node().as_array().unwrap();
+        assert_eq!(
+            tags[0]
+                .as_table()
+                .unwrap()
+                .get("label")
+                .unwrap()
+                .node()
+                .as_str(),
+            Some("metal")
+        );
+    }
+
+    #[test]
+    fn テーブルの配列と静的配列やテーブルは衝突する() {
+        // 静的配列への `[[a]]`（逆も）
+        assert_eq!(err_kind("a = [1]\n[[a]]\n"), ParseErrorKind::TableConflict);
+        assert_eq!(err_kind("a = []\n[[a]]\n"), ParseErrorKind::TableConflict);
+        assert_eq!(err_kind("a = 1\n[[a]]\n"), ParseErrorKind::TableConflict);
+        // `[[a]]` の後の `a = 1` は要素の中のキー（衝突しない）
+        assert!(Document::parse("[[a]]\na = 1\n").is_ok());
+        // インラインテーブルの配列は静的扱い
+        assert_eq!(
+            err_kind("a = [{ b = 1 }]\n[[a]]\n"),
+            ParseErrorKind::TableConflict
+        );
+        // `[a]` と `[[a]]` の混在
+        assert_eq!(err_kind("[a]\n[[a]]\n"), ParseErrorKind::TableConflict);
+        assert_eq!(err_kind("[[a]]\n[a]\n"), ParseErrorKind::TableConflict);
+        // 閉じ忘れ
+        assert_eq!(err_kind("[[a]\n"), ParseErrorKind::UnclosedTableHeader);
     }
 
     #[test]

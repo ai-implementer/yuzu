@@ -1,0 +1,20 @@
+# dotted key で作ったテーブルには「子テーブル」を足せる（TOML 1.0 仕様の例文）。
+# 足せないのはそのテーブル自身の再定義（`[fruit.apple]`）だけ
+[fruit]
+apple.color = "red"
+apple.taste = "sweet"
+
+[fruit.apple.texture]
+smooth = true
+
+# ルート直下の dotted key も同じ。ヘッダ・配列ヘッダのどちらでも通れる
+a.b = 1
+
+[a.c]
+x = 1
+
+[[a.d]]
+y = 2
+
+[[a.d]]
+y = 3

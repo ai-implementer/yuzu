@@ -1,0 +1,32 @@
+# テーブルの配列（TOML 1.0 仕様の例文）
+[[products]]
+name = "Hammer"
+sku = 738594937
+
+# 空の要素も書ける
+[[products]]
+
+[[products]]
+name = "Nail"
+sku = 284758393
+color = "gray"
+
+# サブテーブルとネストした配列は「直前の要素」の中に入る
+[[fruits]]
+name = "apple"
+
+[fruits.physical]
+color = "red"
+shape = "round"
+
+[[fruits.varieties]]
+name = "red delicious"
+
+[[fruits.varieties]]
+name = "granny smith"
+
+[[fruits]]
+name = "banana"
+
+[[fruits.varieties]]
+name = "plantain"

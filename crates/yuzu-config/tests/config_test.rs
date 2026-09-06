@@ -299,14 +299,10 @@ fn 複数の問題は全件まとめて報告される() {
 }
 
 #[test]
-fn 未対応構文はヒント付きの構文エラーになる() {
+fn インラインテーブルで書いた設定も読める() {
     let dir = project("[lint]\nterms = { \"サーバ\" = [\"サーバー\"] }\n");
-    let err = load(dir.path()).expect_err("インラインテーブルは v0.1 未対応");
-    assert!(
-        matches!(err, ConfigError::Syntax { line: 2, .. }),
-        "{err:?}"
-    );
-    assert!(err.to_string().contains("[lint.terms]"), "{err}");
+    let resolved = load(dir.path()).expect("インラインテーブルは 0.2 で読める");
+    assert_eq!(resolved.config.lint.terms["サーバ"], ["サーバー"]);
 }
 
 /// `output.clean` は既定 true で出力ディレクトリを丸ごと再帰削除するため、

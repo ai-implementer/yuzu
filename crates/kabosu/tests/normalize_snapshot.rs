@@ -177,3 +177,47 @@ fn date_time_の正規形() {
         kabosu::to_string(&Datetimes).unwrap()
     );
 }
+
+#[test]
+fn テーブルの配列とインラインテーブルの正規形() {
+    struct Product(&'static str, i64);
+    impl Encode for Product {
+        fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+            let mut t = encoder.table();
+            t.field("name", self.0)?;
+            t.field("sku", &self.1)?;
+            Ok(())
+        }
+    }
+    /// スカラとテーブルが混在した配列（ヘッダ形式では書けない）
+    struct Mixed;
+    impl Encode for Mixed {
+        fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+            let mut a = encoder.array();
+            a.element(&1_i64)?;
+            a.element(&Product("Nail", 2))?;
+            a.element(&BTreeMap::<String, i64>::new())?;
+            Ok(())
+        }
+    }
+    struct Doc;
+    impl Encode for Doc {
+        fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+            let mut t = encoder.table();
+            t.field("title", "在庫")?;
+            t.field("mixed", &Mixed)?;
+            t.field("empty", &Vec::<i64>::new())?;
+            t.field(
+                "products",
+                &vec![Product("Hammer", 738594937), Product("Nail", 284758393)],
+            )?;
+            t.field("owner", &{
+                let mut m = BTreeMap::new();
+                m.insert(String::from("name"), String::from("柚子"));
+                m
+            })?;
+            Ok(())
+        }
+    }
+    insta::assert_snapshot!("normalize_tables", kabosu::to_string(&Doc).unwrap());
+}

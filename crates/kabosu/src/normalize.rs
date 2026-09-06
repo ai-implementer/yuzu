@@ -12,6 +12,8 @@
 //!   オフセット 0 は `Z`）。書式は `Datetime` の `Display` に 1 実装で持たせる
 //! - `[A-Za-z0-9_-]+` に一致するキーは bare key、それ以外は basic string で引用
 //! - 親テーブルの値を子テーブルより先に出力し、各グループでは追加順を維持する
+//! - 要素が全部テーブルの配列は `[[a]]` へ展開する。インラインテーブルは
+//!   ヘッダ形式で書けない位置（配列の中）でだけ使う
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -73,35 +75,68 @@ pub(crate) fn render(root: &EncTable) -> String {
     out
 }
 
+/// ヘッダ形式で出す値か（子テーブルと、要素が全部テーブルの配列）
+fn is_header_form(value: &EncValue) -> bool {
+    match value {
+        EncValue::Table(_) => true,
+        EncValue::Array(items) => is_array_of_tables(items),
+        _ => false,
+    }
+}
+
+/// 要素が全部テーブルの（空でない）配列 = `[[a]]` で書ける
+fn is_array_of_tables(items: &[EncValue]) -> bool {
+    !items.is_empty() && items.iter().all(|v| matches!(v, EncValue::Table(_)))
+}
+
+/// `[a.b]` / `[[a.b]]` のヘッダ行を書く
+fn render_header(out: &mut String, path: &[String], array: bool) {
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(if array { "[[" } else { "[" });
+    for (i, seg) in path.iter().enumerate() {
+        if i > 0 {
+            out.push('.');
+        }
+        out.push_str(&render_key(seg));
+    }
+    out.push_str(if array { "]]\n" } else { "]\n" });
+}
+
 fn render_table(out: &mut String, table: &EncTable, path: &mut Vec<String>) {
-    // 親テーブルの値（非テーブル）を先に、追加順で
+    // ヘッダを出す前に、このテーブル自身の値を追加順で書く
+    // （ヘッダ以降の `key = value` は後続のテーブルに属してしまうため）
     for (key, value) in &table.entries {
-        if !matches!(value, EncValue::Table(_)) {
+        if !is_header_form(value) {
             out.push_str(&render_key(key));
             out.push_str(" = ");
             render_value(out, value, 0);
             out.push('\n');
         }
     }
-    // 子テーブルはヘッダを付けて再帰
+    // 子テーブルと `[[...]]` はヘッダを付けて再帰（互いの追加順は保つ）
     for (key, value) in &table.entries {
-        let EncValue::Table(sub) = value else {
-            continue;
-        };
-        path.push(String::from(key));
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push('[');
-        for (i, seg) in path.iter().enumerate() {
-            if i > 0 {
-                out.push('.');
+        match value {
+            EncValue::Table(sub) => {
+                path.push(String::from(key));
+                render_header(out, path, false);
+                render_table(out, sub, path);
+                path.pop();
             }
-            out.push_str(&render_key(seg));
+            EncValue::Array(items) if is_array_of_tables(items) => {
+                path.push(String::from(key));
+                for item in items {
+                    let EncValue::Table(sub) = item else {
+                        unreachable!("全要素がテーブルであることを検査済み");
+                    };
+                    render_header(out, path, true);
+                    render_table(out, sub, path);
+                }
+                path.pop();
+            }
+            _ => {}
         }
-        out.push_str("]\n");
-        render_table(out, sub, path);
-        path.pop();
     }
 }
 
@@ -129,8 +164,28 @@ fn render_value(out: &mut String, value: &EncValue, indent: usize) {
         EncValue::Boolean(b) => out.push_str(if *b { "true" } else { "false" }),
         EncValue::Datetime(dt) => out.push_str(&dt.to_string()),
         EncValue::Array(items) => render_array(out, items, indent),
-        EncValue::Table(_) => unreachable!("テーブルは render_table 側で描画する"),
+        // 値位置（配列の中）のテーブルはヘッダ形式で書けないのでインラインにする
+        EncValue::Table(table) => render_inline_table(out, table),
     }
+}
+
+/// インラインテーブル `{ k = v }`（空なら `{}`）。
+/// 配列の中など、ヘッダ形式が使えない位置でだけ使う
+fn render_inline_table(out: &mut String, table: &EncTable) {
+    if table.entries.is_empty() {
+        out.push_str("{}");
+        return;
+    }
+    out.push_str("{ ");
+    for (i, (key, value)) in table.entries.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&render_key(key));
+        out.push_str(" = ");
+        render_value(out, value, 0);
+    }
+    out.push_str(" }");
 }
 
 fn render_array(out: &mut String, items: &[EncValue], indent: usize) {

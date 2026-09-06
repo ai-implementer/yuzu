@@ -19,6 +19,9 @@ enum Rand {
     Bool(bool),
     Dt(Datetime),
     List(Vec<Rand>),
+    /// テーブル。値位置ならインラインテーブル、キー直下なら `[a]`、
+    /// 配列の要素が全部これなら `[[a]]` として出力される
+    Map(BTreeMap<String, Rand>),
 }
 
 impl Encode for Rand {
@@ -35,6 +38,7 @@ impl Encode for Rand {
                     array.element(item)?;
                 }
             }
+            Rand::Map(map) => return map.encode(encoder),
         }
         Ok(())
     }
@@ -57,7 +61,8 @@ impl Decode for Rand {
                 }
                 Some(Rand::List(out))
             }
-            // このテストの値位置にテーブルは生成しない（non_exhaustive のため包括腕）
+            Value::Table(_) => BTreeMap::<String, Rand>::decode(node, cx).map(Rand::Map),
+            // Value は non_exhaustive なので包括腕が要る
             _ => None,
         }
     }
@@ -164,17 +169,39 @@ fn rand_datetime(rng: &mut Lcg) -> Datetime {
 }
 
 fn rand_value(rng: &mut Lcg, depth: usize) -> Rand {
-    match rng.below(if depth >= 3 { 5 } else { 6 }) {
+    match rng.below(if depth >= 3 { 5 } else { 7 }) {
         0 => Rand::Str(rand_string(rng)),
         1 => Rand::Int(rng.next() as i64),
         2 => Rand::Bool(rng.below(2) == 0),
         3 => Rand::Float(rand_float(rng)),
         4 => Rand::Dt(rand_datetime(rng)),
-        _ => {
+        5 => {
+            // 要素が全部テーブルの配列（`[[a]]` へ展開される）も混ぜたいので、
+            // 半分はテーブルだけの配列にする
             let len = rng.below(4) as usize;
-            Rand::List((0..len).map(|_| rand_value(rng, depth + 1)).collect())
+            let tables_only = rng.below(2) == 0;
+            Rand::List(
+                (0..len)
+                    .map(|_| {
+                        if tables_only {
+                            Rand::Map(rand_map(rng, depth + 1))
+                        } else {
+                            rand_value(rng, depth + 1)
+                        }
+                    })
+                    .collect(),
+            )
         }
+        _ => Rand::Map(rand_map(rng, depth + 1)),
     }
+}
+
+/// ネストしたテーブル（空も混ぜる）
+fn rand_map(rng: &mut Lcg, depth: usize) -> BTreeMap<String, Rand> {
+    let len = rng.below(3) as usize;
+    (0..len)
+        .map(|i| (format!("k{i}"), rand_value(rng, depth)))
+        .collect()
 }
 
 /// テーブル（キーは重複しないよう添字で生成。引用が要るキーも混ぜる）
@@ -267,6 +294,85 @@ fn 乱数生成の_round_trip_と正規化の恒等() {
         // 恒等: 再エンコードでバイト同一
         let text2 = kabosu::to_string(report.value().unwrap()).unwrap();
         assert_eq!(text1, text2, "case {case}: 正規化出力が安定でない");
+    }
+}
+
+#[test]
+fn テーブルだけの配列はヘッダ形式_混在はインラインになる() {
+    let table = |pairs: &[(&str, &str)]| {
+        Rand::Map(
+            pairs
+                .iter()
+                .map(|(k, v)| (String::from(*k), Rand::Str(String::from(*v))))
+                .collect(),
+        )
+    };
+    let mut map: BTreeMap<String, Rand> = BTreeMap::new();
+    map.insert(
+        "products".into(),
+        Rand::List(vec![
+            table(&[("name", "Hammer")]),
+            table(&[("name", "Nail")]),
+        ]),
+    );
+    map.insert(
+        "mixed".into(),
+        Rand::List(vec![Rand::Int(1), table(&[("b", "x")])]),
+    );
+    map.insert("empty_list".into(), Rand::List(vec![]));
+
+    let text = kabosu::to_string(&map).unwrap();
+    assert_eq!(
+        text,
+        "empty_list = []\n\
+         mixed = [1, { b = \"x\" }]\n\
+         \n\
+         [[products]]\n\
+         name = \"Hammer\"\n\
+         \n\
+         [[products]]\n\
+         name = \"Nail\"\n"
+    );
+    // 往復しても同じ値・同じバイト列
+    let report = kabosu::from_str::<BTreeMap<String, Rand>>(&text).unwrap();
+    assert_eq!(report.value().unwrap(), &map);
+    assert_eq!(kabosu::to_string(report.value().unwrap()).unwrap(), text);
+}
+
+/// `inner` を n 段の単一キーテーブルで包む
+fn wrap(n: usize, inner: Rand) -> Rand {
+    let mut value = inner;
+    for _ in 0..n {
+        value = Rand::Map(BTreeMap::from([(String::from("k"), value)]));
+    }
+    value
+}
+
+#[test]
+fn 上限付近のネストでも正規形は再パースできる() {
+    // 整数と混在させるとヘッダ形式が使えず、インラインテーブルとして出力される。
+    // エンコーダが通した出力は必ず再パースできる = 読み書きの深度上限が揃っている。
+    // **最深部が空テーブル・空配列のときも同じ**（空のコンテナは入れ子を
+    // 1 段も増やさないので、パース側だけが 1 段数えると境界がずれる）
+    for inner in [Rand::Int(1), Rand::Map(BTreeMap::new()), Rand::List(vec![])] {
+        for n in 100..=130 {
+            let mut map: BTreeMap<String, Rand> = BTreeMap::new();
+            map.insert(
+                "mixed".into(),
+                Rand::List(vec![Rand::Int(1), wrap(n, inner.clone())]),
+            );
+            let Ok(text) = kabosu::to_string(&map) else {
+                continue; // エンコード側が上限で断ったぶんは対象外
+            };
+            let report = kabosu::from_str::<BTreeMap<String, Rand>>(&text)
+                .unwrap_or_else(|e| panic!("inner={inner:?} n={n}: 正規形が再パースできない: {e}"));
+            assert!(
+                !report.has_errors(),
+                "inner={inner:?} n={n}: {:?}",
+                report.diagnostics()
+            );
+            assert_eq!(report.value().unwrap(), &map, "inner={inner:?} n={n}");
+        }
     }
 }
 

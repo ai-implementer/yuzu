@@ -7,10 +7,9 @@
 //! - **手書き decode / encode**（derive マクロなし）: 必須・任意・既定値・ネスト・
 //!   検証・未知キー検出（Warn / Deny / Ignore）をサポート
 //! - **正規化出力**: 同じ値から常に同じバイト列を生成する
-//! - 対応範囲は TOML 1.0 のサブセット（文字列は複数行含む全種・整数は 10 進と
-//!   16,8,2 進・float・boolean・date-time・配列・テーブル）。まだ未対応の構文
-//!   （inline table / array of tables）は一般的な構文エラーにせず、位置付きの
-//!   [`ParseErrorKind::Unsupported`] として返す
+//! - **TOML 1.0 の全構文**に対応（文字列は複数行含む全種・整数は 10 進と
+//!   16,8,2 進・float・boolean・date-time・配列・テーブル・インラインテーブル・
+//!   テーブルの配列）。公式 toml-test での検証は 0.2 で行う
 //!
 //! ```
 //! let doc = kabosu::Document::parse("title = \"yuzu\"\n[dev]\nport = 5173\n").unwrap();
@@ -43,7 +42,7 @@ pub use decode::{
     TableDecoder, UnknownKeys,
 };
 pub use encode::{ArrayEncoder, Encode, EncodeError, EncodeErrorKind, Encoder, TableEncoder};
-pub use error::{ParseError, ParseErrorKind, UnsupportedFeature};
+pub use error::{ParseError, ParseErrorKind};
 pub use model::{
     Comment, Document, Entry, KeyPath, KeySegment, LineCol, Node, Span, Table, Value, ValueKind,
     line_col_of,

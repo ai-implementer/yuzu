@@ -2,8 +2,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use kabosu::{
-    DecodeOptions, DiagnosticCode, Document, ParseError, ParseErrorKind, UnknownKeys,
-    UnsupportedFeature, ValueKind,
+    DecodeOptions, DiagnosticCode, Document, ParseError, ParseErrorKind, UnknownKeys, ValueKind,
 };
 
 use crate::error::ConfigIssue;
@@ -235,7 +234,6 @@ fn syntax_message(text: &str, e: &ParseError) -> String {
         ParseErrorKind::TableConflict => {
             format!("テーブルの定義が既存のキーまたはテーブルと衝突しています{previous}")
         }
-        ParseErrorKind::Unsupported(feature) => unsupported_message(*feature),
         ParseErrorKind::UnterminatedString => "文字列が閉じていません".to_string(),
         ParseErrorKind::InvalidEscape => {
             "不正なエスケープシーケンスです（`\\` を含む値は `'...'` の literal string で書けます）"
@@ -252,6 +250,10 @@ fn syntax_message(text: &str, e: &ParseError) -> String {
             "値の後に改行が必要です（1 行に書けるキーは 1 つ）".to_string()
         }
         ParseErrorKind::UnclosedArray => "配列が閉じていません（`]` がありません）".to_string(),
+        ParseErrorKind::UnclosedInlineTable => {
+            "インラインテーブルが閉じていません（`}` がありません。TOML 1.0 では `{ ... }` の中に改行と末尾カンマを書けません）"
+                .to_string()
+        }
         ParseErrorKind::UnclosedTableHeader => {
             "テーブルヘッダが閉じていません（`]` がありません）".to_string()
         }
@@ -264,23 +266,6 @@ fn syntax_message(text: &str, e: &ParseError) -> String {
         ParseErrorKind::DepthExceeded => "ネストが深すぎます（上限 128）".to_string(),
         _ => e.to_string(),
     }
-}
-
-/// kabosu がまだ未対応の構文（inline table / array of tables）。
-/// yuzu の設定で必要になる書き換え先を案内する
-fn unsupported_message(feature: UnsupportedFeature) -> String {
-    let (name, hint) = match feature {
-        UnsupportedFeature::InlineTable => (
-            "インラインテーブル（`{ ... }`）",
-            "`[lint.terms]` のようなテーブルヘッダで書いてください",
-        ),
-        UnsupportedFeature::ArrayOfTables => (
-            "テーブルの配列（`[[...]]`）",
-            "yuzu の設定にテーブルの配列を取るキーはありません",
-        ),
-        _ => ("この構文", "別の書き方にしてください"),
-    };
-    format!("{name}は {CONFIG_FILE_NAME} では使えません（kabosu の未対応構文）。{hint}")
 }
 
 /// ディレクトリ設定の値がプロジェクトルート配下でない理由
@@ -546,13 +531,21 @@ mod tests {
     }
 
     #[test]
-    fn 未対応構文は書き換え先のヒント付きの構文エラー() {
-        let text = "[lint]\nterms = { \"サーバ\" = [\"サーバー\"] }\n";
-        match parse(text) {
+    fn インラインテーブルはテーブルヘッダと同じ結果になる() {
+        // `table_codec!` はノードの種別で見るので書き方は問わない（0.2 で対応）
+        let inline = parse("[lint]\nterms = { \"サーバ\" = [\"サーバー\"] }\n").unwrap();
+        let header = parse("[lint.terms]\n\"サーバ\" = [\"サーバー\"]\n").unwrap();
+        assert_eq!(inline.lint.terms, header.lint.terms);
+        assert_eq!(inline.lint.terms["サーバ"], ["サーバー"]);
+    }
+
+    #[test]
+    fn インラインテーブルの閉じ忘れは位置付きの構文エラー() {
+        // TOML 1.0 では `{ ... }` の中に改行を書けない
+        match parse("[lint]\nterms = {\n\"サーバ\" = [\"サーバー\"] }\n") {
             Err(ConfigError::Syntax { line, message, .. }) => {
                 assert_eq!(line, 2);
                 assert!(message.contains("インラインテーブル"), "{message}");
-                assert!(message.contains("[lint.terms]"), "{message}");
             }
             other => panic!("Syntax を期待: {other:?}"),
         }
