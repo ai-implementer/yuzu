@@ -131,6 +131,13 @@ lexer の「TOML として妥当なリテラルか」の判定（`is_valid_float
     コメント）は `invalid/` に置けないのでユニットテストで縛る
   - round-trip の乱数生成にテーブルと「テーブルだけの配列」を追加。
     snapshot に `normalize_tables`
+- レビュー指摘（PR #12）で直した 2 件
+  - **dotted key で作られたテーブルは中間経路としては通れる**（TOML 1.0 の
+    `apple.color = "red"` の後に `[fruit.apple.texture]` を足せる例）。
+    v0.14 から終端も中間も一律に拒否していた回帰。禁止は終端の再定義だけ
+  - **インラインテーブルの深度計算をエンコーダと揃えた**。キー 1 段につき 1
+    （`parse_keyval` と同じ）。2 段ぶん数えていたため「`to_string` は通るのに
+    その出力が `DepthExceeded` で再パースできない」入力が作れた
 
 以下は策定時のメモ。
 

@@ -339,6 +339,32 @@ fn テーブルだけの配列はヘッダ形式_混在はインラインにな�
     assert_eq!(kabosu::to_string(report.value().unwrap()).unwrap(), text);
 }
 
+/// n 段ネストした単一キーのテーブル
+fn deep_map(n: usize) -> Rand {
+    let mut value = Rand::Int(1);
+    for _ in 0..n {
+        value = Rand::Map(BTreeMap::from([(String::from("k"), value)]));
+    }
+    value
+}
+
+#[test]
+fn 上限付近のネストでも正規形は再パースできる() {
+    // 整数と混在させるとヘッダ形式が使えず、インラインテーブルとして出力される。
+    // エンコーダが通した出力は必ず再パースできる = 読み書きの深度上限が揃っている
+    for n in 100..=130 {
+        let mut map: BTreeMap<String, Rand> = BTreeMap::new();
+        map.insert("mixed".into(), Rand::List(vec![Rand::Int(1), deep_map(n)]));
+        let Ok(text) = kabosu::to_string(&map) else {
+            continue; // エンコード側が上限で断ったぶんは対象外
+        };
+        let report = kabosu::from_str::<BTreeMap<String, Rand>>(&text)
+            .unwrap_or_else(|e| panic!("n={n}: 正規形が再パースできない: {e}"));
+        assert!(!report.has_errors(), "n={n}: {:?}", report.diagnostics());
+        assert_eq!(report.value().unwrap(), &map, "n={n}");
+    }
+}
+
 #[test]
 fn ルートがテーブルでない値は_root_not_table() {
     let e = kabosu::to_string(&Rand::Int(1)).unwrap_err();

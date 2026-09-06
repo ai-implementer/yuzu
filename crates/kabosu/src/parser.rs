@@ -4,7 +4,10 @@
 //! 挿入時に検出し、最初の 1 件で `ParseError` として停止する。
 //! テーブルの再定義規則は TOML 1.0 に従う:
 //! - ヘッダ経路の中間として暗黙に作られたテーブルは、後から `[a]` で定義できる
-//! - dotted key で作られたテーブルをヘッダで再定義することはできない（逆も同じ）
+//! - dotted key で作られたテーブルをヘッダで再定義することはできない（逆も同じ）。
+//!   ただし**子テーブルを足すのは可**（`apple.color = "red"` の後の
+//!   `[fruit.apple.texture]`）。禁止は終端の再定義だけで、中間経路としては通れる
+//! - インラインテーブルは自己完結していて、子テーブルも足せない
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -124,11 +127,16 @@ fn parse_header(
 }
 
 /// ヘッダ経路の中間として降りられるノードか。
-/// dotted key とインラインテーブルは閉じているので不可、
+///
+/// **dotted key で作られたテーブルも中間としては通れる**（TOML 1.0 の
+/// `apple.color = "red"` の後に `[fruit.apple.texture]` を足せる例）。
+/// 禁じられているのは終端での再定義（`[fruit.apple]`）だけなので、
+/// そちらは `define_header_table` の終端判定で見る。
+/// インラインテーブルは自己完結していて子テーブルも足せないので不可、
 /// 配列は `[[...]]` が作ったもの（最後の要素が `ArrayHeader`）だけ可
 fn can_descend(node: &Node) -> bool {
     match node.value() {
-        Value::Table(t) => !matches!(t.origin(), TableOrigin::Dotted | TableOrigin::Inline),
+        Value::Table(t) => t.origin() != TableOrigin::Inline,
         Value::Array(items) => is_array_of_tables(items),
         _ => false,
     }
@@ -515,7 +523,11 @@ fn parse_inline_table(
                 ));
             }
             cur.skip_ws();
-            let value_depth = depth + 1 + segments.len();
+            // 深度はキーのセグメント 1 つにつき 1（`parse_keyval` と同じ数え方）。
+            // **エンコーダの `TableEncoder::field` も 1 段につき 1 なので、
+            // ここを 2 段ぶん数えると「to_string は通るのに再パースで
+            // DepthExceeded」になる**
+            let value_depth = depth + segments.len();
             if value_depth > MAX_DEPTH {
                 return Err(ParseError::new(
                     ParseErrorKind::DepthExceeded,
@@ -707,6 +719,59 @@ mod tests {
         );
         // 値のキーを dotted key が横断
         assert_eq!(err_kind("a = 1\na.b = 2\n"), ParseErrorKind::TableConflict);
+    }
+
+    #[test]
+    fn dotted_key_で作ったテーブルにも子テーブルを足せる() {
+        // TOML 1.0 の例文: `[fruit.apple.texture]` は足せる
+        let d = parse(
+            "[fruit]\n\
+             apple.color = \"red\"\n\
+             apple.taste = \"sweet\"\n\
+             \n\
+             [fruit.apple.texture]\n\
+             smooth = true\n",
+        );
+        let apple = d
+            .root()
+            .get("fruit")
+            .unwrap()
+            .node()
+            .as_table()
+            .unwrap()
+            .get("apple")
+            .unwrap()
+            .node()
+            .as_table()
+            .unwrap();
+        assert_eq!(apple.get("color").unwrap().node().as_str(), Some("red"));
+        assert!(
+            apple
+                .get("texture")
+                .unwrap()
+                .node()
+                .as_table()
+                .unwrap()
+                .get("smooth")
+                .unwrap()
+                .node()
+                .as_boolean()
+                .unwrap()
+        );
+        // ヘッダ・配列ヘッダのどちらでも中間経路として通れる
+        assert!(Document::parse("a.b = 1\n[a.c]\nx = 1\n").is_ok());
+        assert!(Document::parse("a.b = 1\n[[a.c]]\nx = 1\n").is_ok());
+        // 終端での再定義は不可のまま
+        assert_eq!(err_kind("a.b = 1\n[a]\n"), ParseErrorKind::TableConflict);
+        assert_eq!(
+            err_kind("[fruit]\napple.color = \"red\"\n[fruit.apple]\n"),
+            ParseErrorKind::TableConflict
+        );
+        // dotted key が作った「値」は経路にできない
+        assert_eq!(
+            err_kind("a.b = 1\n[a.b.c]\n"),
+            ParseErrorKind::TableConflict
+        );
     }
 
     #[test]
