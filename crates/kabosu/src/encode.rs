@@ -7,6 +7,7 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::datetime::Datetime;
 use crate::model::{KeyPath, KeySegment, Span};
 
 /// エンコード中に組み立てる値木（正規化出力の入力）
@@ -16,6 +17,7 @@ pub(crate) enum EncValue {
     Integer(i64),
     Float(f64),
     Boolean(bool),
+    Datetime(Datetime),
     Array(Vec<EncValue>),
     Table(EncTable),
 }
@@ -118,6 +120,11 @@ impl Encoder<'_> {
 
     pub fn boolean(&mut self, value: bool) {
         *self.slot = Some(EncValue::Boolean(value));
+    }
+
+    /// 日付・時刻。正規形（`T` 区切り・オフセット 0 は `Z`）で出力される
+    pub fn datetime(&mut self, value: Datetime) {
+        *self.slot = Some(EncValue::Datetime(value));
     }
 
     pub fn array(&mut self) -> ArrayEncoder<'_> {
@@ -285,6 +292,13 @@ impl Encode for i64 {
 impl Encode for f64 {
     fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
         encoder.float(*self);
+        Ok(())
+    }
+}
+
+impl Encode for Datetime {
+    fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+        encoder.datetime(*self);
         Ok(())
     }
 }

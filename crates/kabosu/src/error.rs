@@ -1,7 +1,7 @@
 //! パースエラー。
 //!
 //! 構文エラーは最初の 1 件で停止する（kabosu.md「型変換と診断」）。
-//! まだ未対応の構文（date-time / inline table / array of tables）は一般的な
+//! まだ未対応の構文（inline table / array of tables）は一般的な
 //! 構文エラーにせず、`Unsupported` として区別できる形で返す。
 //! エラー文は英語（利用側で `kind` から翻訳できる）。
 
@@ -129,11 +129,10 @@ pub enum ParseErrorKind {
 }
 
 /// まだ未対応の TOML 構文（位置付きで報告し、一般構文エラーと区別する）。
-/// float / 16,8,2 進整数 / 複数行文字列は 0.2 で対応した
+/// float / 16,8,2 進整数 / 複数行文字列 / date-time は 0.2 で対応した
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedFeature {
-    DateTime,
     InlineTable,
     ArrayOfTables,
 }
@@ -142,7 +141,6 @@ impl UnsupportedFeature {
     /// 英語の構文名（エラー文言用）
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::DateTime => "date-time",
             Self::InlineTable => "inline table",
             Self::ArrayOfTables => "array of tables",
         }

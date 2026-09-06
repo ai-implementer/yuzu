@@ -43,7 +43,8 @@ valid / invalid / encoder テストの完全通過。
 | float（小数・指数・`inf` / `nan`） | ✅（`Decode for f64` は整数リテラルを受けない。`nan` の符号は落とす） |
 | boolean | ✅ |
 | 配列（複数行・末尾カンマ・コメント・ネスト・型混在） | ✅ |
-| date-time / inline table / array of tables | `Unsupported`（位置付き。0.2 の残り） |
+| date-time（offset / local × date / time の 4 種） | ✅（`T` / `t` / 空白区切り・小数秒は 9 桁まで・オフセット 0 は `Z` へ正規化） |
+| inline table / array of tables | `Unsupported`（位置付き。0.2 の残り） |
 
 ## 使い方
 

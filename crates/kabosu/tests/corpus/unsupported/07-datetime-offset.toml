@@ -1,2 +1,0 @@
-# offset date-time も v0.1 未対応（妥当な RFC 3339 は Unsupported）
-odt = 1979-05-27T00:32:00.999999-07:00

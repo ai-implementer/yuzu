@@ -1,0 +1,13 @@
+---
+source: crates/kabosu/tests/normalize_snapshot.rs
+expression: "kabosu::to_string(&Datetimes).unwrap()"
+---
+odt_utc = 1979-05-27T07:32:00Z
+odt_west = 1979-05-27T00:32:00.999999-07:00
+odt_half_hour = 1979-05-27T07:32:00+09:30
+ldt = 1979-05-27T07:32:00.5
+ld = 1979-05-27
+lt_nanos = 07:32:00.123456789
+leap_second = 23:59:60
+leap_day = 2024-02-29
+list = [1979-05-27, 00:00:00]

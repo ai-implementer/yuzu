@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use kabosu::{Document, Node, Table, Value};
+use kabosu::{Datetime, Document, Node, Table, Value};
 
 /// kabosu の値木を toml::Value へ写す（比較用）
 fn to_toml_value(node: &Node) -> toml::Value {
@@ -14,9 +14,32 @@ fn to_toml_value(node: &Node) -> toml::Value {
         Value::Integer(n) => toml::Value::Integer(*n),
         Value::Float(f) => toml::Value::Float(*f),
         Value::Boolean(b) => toml::Value::Boolean(*b),
+        Value::Datetime(dt) => toml::Value::Datetime(to_toml_datetime(*dt)),
         Value::Array(items) => toml::Value::Array(items.iter().map(to_toml_value).collect()),
         Value::Table(t) => table_to_toml(t),
         other => unreachable!("未対応の値種別: {other:?}"),
+    }
+}
+
+fn to_toml_datetime(dt: Datetime) -> toml::value::Datetime {
+    toml::value::Datetime {
+        date: dt.date().map(|d| toml::value::Date {
+            year: d.year(),
+            month: d.month(),
+            day: d.day(),
+        }),
+        time: dt.time().map(|t| toml::value::Time {
+            hour: t.hour(),
+            minute: t.minute(),
+            second: t.second(),
+            nanosecond: t.nanosecond(),
+        }),
+        // kabosu はオフセットを分単位でしか持たない（`Z` と `+00:00` は同じ値）。
+        // canon が参照実装側の `Custom { minutes: 0 }` も `Z` へ寄せて比較する
+        offset: dt.offset().map(|o| match o.minutes() {
+            0 => toml::value::Offset::Z,
+            minutes => toml::value::Offset::Custom { minutes },
+        }),
     }
 }
 
@@ -28,11 +51,20 @@ fn table_to_toml(table: &Table) -> toml::Value {
     toml::Value::Table(map)
 }
 
-/// `nan` は `nan != nan` なので等値比較できない。比較用に文字列へ置き換える
-/// （kabosu 側も参照実装側も同じ変換を通す）
+/// 比較用の正規化（kabosu 側も参照実装側も同じ変換を通す）。
+/// - `nan` は `nan != nan` なので等値比較できず、文字列へ置き換える
+/// - オフセット 0 は `Z` に寄せる。参照実装は `+00:00` / `-00:00` を
+///   `Custom { minutes: 0 }` として `Z` と区別するが、kabosu は分単位の数値しか
+///   持たない（意図的な差。正規化出力ではどちらも `Z` になる）
 fn canon(v: toml::Value) -> toml::Value {
     match v {
         toml::Value::Float(f) if f.is_nan() => toml::Value::String(String::from("<nan>")),
+        toml::Value::Datetime(mut dt) => {
+            if dt.offset == Some(toml::value::Offset::Custom { minutes: 0 }) {
+                dt.offset = Some(toml::value::Offset::Z);
+            }
+            toml::Value::Datetime(dt)
+        }
         toml::Value::Array(items) => toml::Value::Array(items.into_iter().map(canon).collect()),
         toml::Value::Table(t) => {
             toml::Value::Table(t.into_iter().map(|(k, v)| (k, canon(v))).collect())
@@ -148,6 +180,7 @@ fn reencode(doc: &Document) -> String {
                 Value::Integer(n) => encoder.integer(*n),
                 Value::Float(f) => encoder.float(*f),
                 Value::Boolean(b) => encoder.boolean(*b),
+                Value::Datetime(dt) => encoder.datetime(*dt),
                 Value::Array(items) => {
                     let mut array = encoder.array();
                     for item in items {

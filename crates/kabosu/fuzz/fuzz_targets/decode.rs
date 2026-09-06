@@ -17,6 +17,8 @@ enum Dyn {
     #[allow(dead_code)]
     Bool(bool),
     #[allow(dead_code)]
+    Dt(kabosu::Datetime),
+    #[allow(dead_code)]
     List(Vec<Dyn>),
     #[allow(dead_code)]
     Table(BTreeMap<String, Dyn>),
@@ -29,6 +31,7 @@ impl Decode for Dyn {
             Value::Integer(n) => Some(Dyn::Int(*n)),
             Value::Float(f) => Some(Dyn::Float(*f)),
             Value::Boolean(b) => Some(Dyn::Bool(*b)),
+            Value::Datetime(dt) => Some(Dyn::Dt(*dt)),
             Value::Array(_) => Vec::<Dyn>::decode(node, cx).map(Dyn::List),
             Value::Table(_) => BTreeMap::<String, Dyn>::decode(node, cx).map(Dyn::Table),
             _ => None,

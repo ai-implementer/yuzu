@@ -15,6 +15,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::datetime::Datetime;
 use crate::model::{Document, Entry, KeyPath, KeySegment, Node, Span, Table, Value, ValueKind};
 
 /// 未知キーの扱い
@@ -414,6 +415,19 @@ impl Decode for f64 {
             Value::Float(f) => Some(*f),
             _ => {
                 cx.type_mismatch(ValueKind::Float, node);
+                None
+            }
+        }
+    }
+}
+
+impl Decode for Datetime {
+    /// 日付・時刻リテラルだけを受ける（4 種の区別は [`Datetime::kind`]）
+    fn decode(node: &Node, cx: &mut DecodeContext<'_>) -> Option<Self> {
+        match node.value() {
+            Value::Datetime(dt) => Some(*dt),
+            _ => {
+                cx.type_mismatch(ValueKind::Datetime, node);
                 None
             }
         }
