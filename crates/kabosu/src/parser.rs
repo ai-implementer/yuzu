@@ -425,12 +425,6 @@ fn parse_array(
 ) -> Result<Node, ParseError> {
     let start = cur.pos();
     cur.eat(b'[');
-    if depth + 1 > MAX_DEPTH {
-        return Err(ParseError::new(
-            ParseErrorKind::DepthExceeded,
-            Span::point(start),
-        ));
-    }
     let mut items: Vec<Node> = Vec::new();
     loop {
         skip_trivia(cur, comments)?;
@@ -444,6 +438,14 @@ fn parse_array(
                     start,
                     end: cur.pos(),
                 },
+            ));
+        }
+        // 深さの検査は**要素ごと**に行う。空の `[]` は入れ子を 1 段も増やさない
+        // ので、入口で弾くと空テーブルと同じ「再パースできない出力」が作れる
+        if depth + 1 > MAX_DEPTH {
+            return Err(ParseError::new(
+                ParseErrorKind::DepthExceeded,
+                Span::point(cur.pos()),
             ));
         }
         items.push(parse_value(cur, comments, depth + 1)?);
@@ -482,12 +484,10 @@ fn parse_inline_table(
 ) -> Result<Node, ParseError> {
     let start = cur.pos();
     cur.eat(b'{');
-    if depth + 1 > MAX_DEPTH {
-        return Err(ParseError::new(
-            ParseErrorKind::DepthExceeded,
-            Span::point(start),
-        ));
-    }
+    // 深さの検査は**キーごと**に行う（下の `value_depth`）。
+    // 空の `{}` は入れ子を 1 段も増やさないので、ここで弾いてはいけない
+    // （エンコーダも空テーブルでは深度を消費しないため、
+    // 弾くと「to_string は通るのに再パースできない」出力が作れる）
     let unclosed = |cur: &Cursor<'_>| {
         ParseError::new(
             ParseErrorKind::UnclosedInlineTable,
