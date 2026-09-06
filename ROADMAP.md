@@ -188,7 +188,13 @@ serde_json で読む / `Unsupported` は TOML 1.1 の案内へ転用。
     単独の CR も不可で、CRLF の CR だけコメントの終わりとして扱う
   - `ParseErrorKind::Unsupported(TomlV11)` を復活。対象は `\e` / `\xHH`・
     インラインテーブルの改行とコメントと末尾カンマ・秒を省略した時刻・
-    非 ASCII の bare key。yuzu-config は 1.0 での書き方を添えて報告する
+    秒を省略した時刻の 3 つ。yuzu-config は 1.0 での書き方を添えて報告する
+  - **レビュー指摘（PR #13）**: 引用符なしの非 ASCII キーを `TomlV11` に入れていたが、
+    **1.1 でも bare key は `A-Za-z0-9_-` に限られる**（参照実装も拒否し、toml-test の
+    1.1 一覧にも valid ケースが無い）。「1.1 なら書ける」と誤案内していたので外し、
+    引用を促す普通のキー構文エラーに戻した。`TomlV11` に variant を足すときは
+    **toml-test の「1.0 では invalid・1.1 では valid」で裏付ける**（doc コメントに
+    対応する toml-test のパスを書いてある）
   - kabosu 0.1.0 → **0.2.0**（`UnsupportedFeature` と `EncodeErrorKind::TableInArray` の
     削除、`Value` / `ValueKind` の variant 追加、`Datetime` 型の追加）
 

@@ -890,19 +890,21 @@ mod tests {
             err_kind("x = 07:32\n"),
             ParseErrorKind::Unsupported(TomlV11::TimeWithoutSeconds)
         );
-        assert_eq!(
-            err_kind("サーバ = 1\n"),
-            ParseErrorKind::Unsupported(TomlV11::UnicodeBareKey)
-        );
-        assert_eq!(
-            err_kind("[サーバ]\n"),
-            ParseErrorKind::Unsupported(TomlV11::UnicodeBareKey)
-        );
-        // 引用すれば TOML 1.0 でも書ける
-        assert!(Document::parse("\"サーバ\" = 1\n").is_ok());
-        // 記号始まりは従来どおり「キーが必要」、未知のエスケープは書き間違い
-        assert_eq!(err_kind("= 1\n"), ParseErrorKind::ExpectedKey);
+        // 未知のエスケープは書き間違いのまま
         assert_eq!(err_kind("x = \"\\q\"\n"), ParseErrorKind::InvalidEscape);
+    }
+
+    /// 引用符なしのキーは TOML 1.0 / 1.1 とも `A-Za-z0-9_-` だけ。
+    /// **1.1 でも許されない**ので「1.1 の記法」として案内してはいけない
+    #[test]
+    fn 引用符なしの非_ascii_キーは普通のキー構文エラー() {
+        assert_eq!(err_kind("サーバ = 1\n"), ParseErrorKind::ExpectedKey);
+        assert_eq!(err_kind("[サーバ]\n"), ParseErrorKind::ExpectedKey);
+        assert_eq!(err_kind("a.サーバ = 1\n"), ParseErrorKind::ExpectedKey);
+        assert_eq!(err_kind("= 1\n"), ParseErrorKind::ExpectedKey);
+        // 引用すればどちらの版でも書ける
+        assert!(Document::parse("\"サーバ\" = 1\n").is_ok());
+        assert!(Document::parse("[\"サーバ\"]\n").is_ok());
     }
 
     #[test]

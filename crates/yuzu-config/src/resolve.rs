@@ -221,10 +221,6 @@ fn toml_v11_message(feature: TomlV11) -> String {
             "秒を省略した時刻",
             "`07:32:00` のように秒まで書いてください",
         ),
-        TomlV11::UnicodeBareKey => (
-            "引用符なしの非 ASCII キー",
-            "`\"サーバ\" = ...` のように引用してください",
-        ),
         // TomlV11 は non_exhaustive（kabosu 側で 1.1 の構文が増えうる）
         _ => ("この記法", "TOML 1.0 の書き方にしてください"),
     };
@@ -274,7 +270,10 @@ fn syntax_message(text: &str, e: &ParseError) -> String {
             "コメントに制御文字は書けません（タブは可）".to_string()
         }
         ParseErrorKind::Unsupported(feature) => toml_v11_message(*feature),
-        ParseErrorKind::ExpectedKey => "キーが必要です".to_string(),
+        ParseErrorKind::ExpectedKey => {
+            "キーが必要です（`A-Za-z0-9_-` 以外を含むキーは `\"サーバ\"` のように引用してください）"
+                .to_string()
+        }
         ParseErrorKind::ExpectedValue => "値が必要です".to_string(),
         ParseErrorKind::ExpectedEquals => "キーの後に `=` が必要です".to_string(),
         ParseErrorKind::ExpectedNewline => {
@@ -581,13 +580,22 @@ mod tests {
             }
             other => panic!("Syntax を期待: {other:?}"),
         }
-        // 引用符なしの日本語キーも 1.1 の記法
+    }
+
+    /// 引用符なしの非 ASCII キーは TOML 1.1 でも許されない。
+    /// 「1.1 の記法」と案内せず、引用を促す普通の構文エラーにする
+    #[test]
+    fn 引用符なしの日本語キーは引用を促す構文エラー() {
         match parse("[lint.terms]\nサーバ = [\"サーバー\"]\n") {
-            Err(ConfigError::Syntax { message, .. }) => {
+            Err(ConfigError::Syntax { line, message, .. }) => {
+                assert_eq!(line, 2);
                 assert!(message.contains("引用"), "{message}");
+                assert!(!message.contains("TOML 1.1"), "{message}");
             }
             other => panic!("Syntax を期待: {other:?}"),
         }
+        // 引用すれば読める
+        assert!(parse("[lint.terms]\n\"サーバ\" = [\"サーバー\"]\n").is_ok());
     }
 
     #[test]

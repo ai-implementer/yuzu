@@ -140,18 +140,24 @@ pub enum ParseErrorKind {
 }
 
 /// TOML 1.1 で追加された構文。kabosu は TOML 1.0 のパーサなので受理しないが、
-/// 「書き間違い」ではなく「新しい版の記法」だと位置付きで伝える
+/// 「書き間違い」ではなく「新しい版の記法」だと位置付きで伝える。
+///
+/// **variant を足すときは「1.0 では invalid・1.1 では valid」であることを
+/// 公式 toml-test で裏付けること**（`files-toml-1.0.0` の invalid 一覧にあり、
+/// `files-toml-1.1.0` の invalid 一覧に無いケース）。引用符なしの非 ASCII キーは
+/// 1.1 でも許されないため、ここには入らない
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TomlV11 {
-    /// `\e`（ESC）と `\xHH` のエスケープ
+    /// `\e`（ESC）と `\xHH` のエスケープ。
+    /// toml-test: `invalid/string/basic-byte-escapes`
     Escape,
-    /// インラインテーブルの中の改行・コメント・末尾カンマ
+    /// インラインテーブルの中の改行・コメント・末尾カンマ。
+    /// toml-test: `invalid/inline-table/linebreak-01..04`・`trailing-comma`
     InlineTable,
-    /// 秒を省略した時刻（`07:32`）
+    /// 秒を省略した時刻（`07:32`）。
+    /// toml-test: `invalid/{datetime,local-datetime,local-time}/no-secs`
     TimeWithoutSeconds,
-    /// ASCII 英数字・`_`・`-` 以外を含む引用符なしのキー
-    UnicodeBareKey,
 }
 
 impl TomlV11 {
@@ -161,7 +167,6 @@ impl TomlV11 {
             Self::Escape => "the `\\e` and `\\xHH` escapes",
             Self::InlineTable => "newlines, comments and trailing commas in inline tables",
             Self::TimeWithoutSeconds => "a time without seconds",
-            Self::UnicodeBareKey => "a non-ASCII bare key",
         }
     }
 }

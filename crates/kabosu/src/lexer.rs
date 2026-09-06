@@ -136,15 +136,14 @@ impl<'a> Cursor<'a> {
                     }
                 }
                 if self.pos == start {
-                    // 非 ASCII の英数字で始まっていれば「書き間違い」ではなく
-                    // TOML 1.1 の Unicode bare key（`サーバ = 1`）
-                    let kind = match self.src[start..].chars().next() {
-                        Some(c) if !c.is_ascii() && c.is_alphanumeric() => {
-                            ParseErrorKind::Unsupported(TomlV11::UnicodeBareKey)
-                        }
-                        _ => ParseErrorKind::ExpectedKey,
-                    };
-                    return Err(ParseError::new(kind, Span::point(start)));
+                    // 引用符なしのキーは TOML 1.0 / 1.1 とも `A-Za-z0-9_-` だけ。
+                    // 非 ASCII も**どちらの版でも** bare key にはできないので、
+                    // 1.1 の記法としてではなく普通のキー構文エラーにする
+                    // （引用すれば書ける）
+                    return Err(ParseError::new(
+                        ParseErrorKind::ExpectedKey,
+                        Span::point(start),
+                    ));
                 }
                 let span = Span {
                     start,

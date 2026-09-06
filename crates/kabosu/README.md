@@ -47,7 +47,7 @@ cargo add kabosu
 | インラインテーブル `{ ... }` | ✅（TOML 1.0 どおり 1 行・末尾カンマ不可。作られたテーブルは閉じている） |
 | テーブルの配列 `[[a]]` | ✅（正規化では要素が全部テーブルの配列を `[[a]]` へ展開する） |
 | 公式 [toml-test](https://github.com/toml-lang/toml-test) | ✅ TOML 1.0.0 対象の valid 205 / invalid 474 を全通過 |
-| TOML 1.1 の構文 | 位置付きの [`ParseErrorKind::Unsupported`]（`\e` / `\xHH`・インラインテーブルの改行と末尾カンマ・秒を省略した時刻・非 ASCII の bare key） |
+| TOML 1.1 の構文 | 位置付きの [`ParseErrorKind::Unsupported`]（`\e` / `\xHH`・インラインテーブルの改行と末尾カンマ・秒を省略した時刻） |
 
 ## 使い方
 
