@@ -948,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "mikan-wasm"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "mikan",
  "serde_json",
@@ -2242,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-cli"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2262,7 +2262,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-config"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "kabosu",
  "tempfile",
@@ -2270,7 +2270,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-core"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "comrak",
  "globset",
@@ -2287,7 +2287,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-index"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "fst",
  "mikan",
@@ -2304,7 +2304,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-render"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "insta",
  "minijinja",
@@ -2326,7 +2326,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-server"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "axum",
  "futures-util",
@@ -2342,7 +2342,7 @@ dependencies = [
 
 [[package]]
 name = "yuzu-theme"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "rust-embed",
 ]
