@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_core::{MarkdownOptions, NavNode, Page, SiteModel};
+use yuzu_core::{NavNode, Page, SiteModel};
 
 use crate::assets;
 use crate::error::RenderError;
@@ -54,17 +54,7 @@ pub fn generate_llms_full_txt(
     cache: Option<&yuzu_core::BuildCache>,
 ) -> Result<String, RenderError> {
     let resolver = UrlResolver::new(&rc.base_url, site);
-    let md_opts = MarkdownOptions {
-        gfm: rc.config.markdown.gfm,
-        math: rc.config.markdown.math.enabled,
-        mermaid: rc.config.markdown.mermaid.enabled,
-        crossref_site_numbering: matches!(
-            rc.config.markdown.crossref.numbering,
-            yuzu_config::CrossrefNumbering::Site
-        ),
-        glossary: crate::glossary_options(&rc.config),
-        search_page: crate::search_page_options(&rc.config),
-    };
+    let md_opts = crate::markdown_options(&rc.config);
 
     let mut out = String::new();
     out.push_str(&format!("# {}\n", sanitize_line(&rc.config.site.title)));

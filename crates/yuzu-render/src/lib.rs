@@ -26,12 +26,29 @@ mod urls;
 pub use error::RenderError;
 pub use highlight::SyntectCodeRenderer;
 
-/// `markdown.glossary` を yuzu-core 側の中立型へ写す。
+/// 設定（yuzu-config）→ パース挙動（yuzu-core の [`yuzu_core::MarkdownOptions`]）の写像。
 ///
-/// **写像をここ 1 箇所に置く**理由: `MarkdownOptions` の構築点は cli と render に
-/// 8 箇所あり、辞書だけ配線を落とすと「設定したのに用語集が出ない」になる。
-/// yuzu-render は yuzu-config と yuzu-core の両方に依存する唯一の共通の下層
-pub fn glossary_options(cfg: &yuzu_config::Config) -> yuzu_core::GlossaryOptions {
+/// **ここが唯一の構築点**。以前は cli 5 箇所 ＋ render 3 箇所に同一のコピーがあり、
+/// フィールドを足したときに一部だけ配線を落とすと「設定したのに効かない」になっていた。
+/// yuzu-render は yuzu-config と yuzu-core の両方に依存する唯一の共通の下層なので、
+/// 写像の置き場はここになる
+pub fn markdown_options(cfg: &yuzu_config::Config) -> yuzu_core::MarkdownOptions {
+    yuzu_core::MarkdownOptions {
+        gfm: cfg.markdown.gfm,
+        math: cfg.markdown.math.enabled,
+        mermaid: cfg.markdown.mermaid.enabled,
+        crossref_site_numbering: matches!(
+            cfg.markdown.crossref.numbering,
+            yuzu_config::CrossrefNumbering::Site
+        ),
+        glossary: glossary_options(cfg),
+        search_page: search_page_options(cfg),
+    }
+}
+
+/// `markdown.glossary` を yuzu-core 側の中立型へ写す。
+/// 呼ぶのは [`markdown_options`] だけ（部分写像を外から組み立てさせない）
+fn glossary_options(cfg: &yuzu_config::Config) -> yuzu_core::GlossaryOptions {
     let g = &cfg.markdown.glossary;
     yuzu_core::GlossaryOptions {
         terms: g.terms.clone(),
@@ -41,9 +58,9 @@ pub fn glossary_options(cfg: &yuzu_config::Config) -> yuzu_core::GlossaryOptions
     }
 }
 
-/// `search.page` を yuzu-core 側の中立型へ写す（[`glossary_options`] と同じ規律）。
+/// `search.page` を yuzu-core 側の中立型へ写す（`glossary_options` と同じ規律）。
 /// `search.enabled: false` なら空を返す = 検索が無いのに結果ページだけ出ることはない
-pub fn search_page_options(cfg: &yuzu_config::Config) -> yuzu_core::SearchPageOptions {
+fn search_page_options(cfg: &yuzu_config::Config) -> yuzu_core::SearchPageOptions {
     if !cfg.search.enabled {
         return yuzu_core::SearchPageOptions::default();
     }
@@ -60,6 +77,55 @@ pub use urls::UrlResolver;
 
 #[cfg(test)]
 mod tests {
+    /// 全フィールドが設定から配線されていること。
+    ///
+    /// **既定値どうしの比較では配線漏れを検出できない**（yuzu-core の既定は
+    /// 「用語集なし」= `page` が空、yuzu-config の既定は `"glossary"` と、
+    /// 両者の既定はそもそも別物）。そこで全フィールドに既定と違う値を入れ、
+    /// 写像がそれを運んでいるかを見る。
+    /// **フィールドを足したらここがコンパイルエラーになる**ように分割代入で受ける
+    /// （`MarkdownOptions` は `PartialEq` を導出していないので構造体比較はできない）
+    #[test]
+    fn 全フィールドが設定から配線される() {
+        let mut cfg = yuzu_config::Config::default();
+        cfg.markdown.gfm = false;
+        cfg.markdown.math.enabled = false;
+        cfg.markdown.mermaid.enabled = false;
+        cfg.markdown.crossref.numbering = yuzu_config::CrossrefNumbering::Site;
+        cfg.markdown.glossary.terms = [("SSR".to_string(), "Server-Side Rendering".to_string())]
+            .into_iter()
+            .collect();
+        cfg.markdown.glossary.abbr = false;
+        cfg.markdown.glossary.page = "yougo".to_string();
+        cfg.markdown.glossary.page_title = "用語".to_string();
+        cfg.search.enabled = true;
+        cfg.search.page = "kensaku".to_string();
+        cfg.search.page_title = "検索結果".to_string();
+
+        let yuzu_core::MarkdownOptions {
+            gfm,
+            math,
+            mermaid,
+            crossref_site_numbering,
+            glossary,
+            search_page,
+        } = super::markdown_options(&cfg);
+
+        assert!(!gfm);
+        assert!(!math);
+        assert!(!mermaid);
+        assert!(crossref_site_numbering, "numbering: Site が運ばれていない");
+        assert_eq!(
+            glossary.terms.get("SSR").map(String::as_str),
+            Some("Server-Side Rendering")
+        );
+        assert!(!glossary.abbr);
+        assert_eq!(glossary.page, "yougo");
+        assert_eq!(glossary.page_title, "用語");
+        assert_eq!(search_page.page, "kensaku");
+        assert_eq!(search_page.page_title, "検索結果");
+    }
+
     #[test]
     fn 検索が無効なら結果ページの設定は空になる() {
         let mut cfg = yuzu_config::Config::default();

@@ -13,7 +13,6 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use anyhow::Context;
-use yuzu_core::MarkdownOptions;
 
 use crate::out::outln;
 
@@ -21,17 +20,7 @@ pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
     // --diff は「差分を見せる = 書き換えない」（gofmt -d 流）
     let dry_run = check || diff;
     let (root, rc) = super::load_project()?;
-    let opts = MarkdownOptions {
-        gfm: rc.config.markdown.gfm,
-        math: rc.config.markdown.math.enabled,
-        mermaid: rc.config.markdown.mermaid.enabled,
-        crossref_site_numbering: matches!(
-            rc.config.markdown.crossref.numbering,
-            yuzu_config::CrossrefNumbering::Site
-        ),
-        glossary: yuzu_render::glossary_options(&rc.config),
-        search_page: yuzu_render::search_page_options(&rc.config),
-    };
+    let opts = yuzu_render::markdown_options(&rc.config);
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
 

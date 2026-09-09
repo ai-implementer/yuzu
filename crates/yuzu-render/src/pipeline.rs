@@ -11,7 +11,7 @@ use minijinja::context;
 use rayon::prelude::*;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_core::{BuildCache, CachedBody, GeneratedKind, MarkdownOptions, OutputTracker, SiteModel};
+use yuzu_core::{BuildCache, CachedBody, GeneratedKind, OutputTracker, SiteModel};
 
 use crate::assets;
 use crate::context::{NavCtx, NavOrder, NavTrails, PageCtx, SiteCtx, build_breadcrumbs};
@@ -64,17 +64,7 @@ pub struct RenderParams<'a> {
 /// 失わないため）。`render_site` も冒頭で呼ぶので、呼び忘れても出力は壊れない
 pub fn validate_pages(site: &SiteModel, rc: &ResolvedConfig) -> Result<(), RenderError> {
     let cfg = &rc.config;
-    let md_opts = MarkdownOptions {
-        gfm: cfg.markdown.gfm,
-        math: cfg.markdown.math.enabled,
-        mermaid: cfg.markdown.mermaid.enabled,
-        crossref_site_numbering: matches!(
-            cfg.markdown.crossref.numbering,
-            yuzu_config::CrossrefNumbering::Site
-        ),
-        glossary: crate::glossary_options(cfg),
-        search_page: crate::search_page_options(cfg),
-    };
+    let md_opts = crate::markdown_options(cfg);
 
     let route_diags = yuzu_core::validate_routes(&site.pages);
     if let Some(first) = route_diags.first() {
@@ -101,17 +91,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let output_dir = &rc.output_dir;
     let ctx = &params.ctx;
 
-    let md_opts = MarkdownOptions {
-        gfm: cfg.markdown.gfm,
-        math: cfg.markdown.math.enabled,
-        mermaid: cfg.markdown.mermaid.enabled,
-        crossref_site_numbering: matches!(
-            cfg.markdown.crossref.numbering,
-            yuzu_config::CrossrefNumbering::Site
-        ),
-        glossary: crate::glossary_options(cfg),
-        search_page: crate::search_page_options(cfg),
-    };
+    let md_opts = crate::markdown_options(cfg);
 
     // ページ URL とエイリアスの妥当性（cli は破壊的な clean より前に呼ぶが、
     // ライブラリ直接利用と呼び忘れに備えてここでも自衛する）

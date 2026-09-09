@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::Context;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_core::{BuildCache, IgnoreMatcher, MarkdownOptions, OutputTracker, output};
+use yuzu_core::{BuildCache, IgnoreMatcher, OutputTracker, output};
 use yuzu_render::{LiveReloadMode, RenderCtx, RenderParams, RenderShared};
 
 use crate::commands::preview;
@@ -341,17 +341,7 @@ pub(crate) fn build_once(
         session.shared.reload_templates(rc.theme_dir.as_deref())?;
     }
 
-    let md_opts = MarkdownOptions {
-        gfm: rc.config.markdown.gfm,
-        math: rc.config.markdown.math.enabled,
-        mermaid: rc.config.markdown.mermaid.enabled,
-        crossref_site_numbering: matches!(
-            rc.config.markdown.crossref.numbering,
-            yuzu_config::CrossrefNumbering::Site
-        ),
-        glossary: yuzu_render::glossary_options(&rc.config),
-        search_page: yuzu_render::search_page_options(&rc.config),
-    };
+    let md_opts = yuzu_render::markdown_options(&rc.config);
     let site = yuzu_core::build_site_model_cached(
         &rc.content_dir,
         &rc.config.input.ignore,

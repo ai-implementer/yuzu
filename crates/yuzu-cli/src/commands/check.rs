@@ -5,23 +5,13 @@
 
 use std::process::ExitCode;
 
-use yuzu_core::{DiagBase, Diagnostic, MarkdownOptions};
+use yuzu_core::{DiagBase, Diagnostic};
 
 use super::diag;
 
 pub fn run(format: diag::Format, external_links: bool) -> anyhow::Result<ExitCode> {
     let (root, rc) = super::load_project()?;
-    let opts = MarkdownOptions {
-        gfm: rc.config.markdown.gfm,
-        math: rc.config.markdown.math.enabled,
-        mermaid: rc.config.markdown.mermaid.enabled,
-        crossref_site_numbering: matches!(
-            rc.config.markdown.crossref.numbering,
-            yuzu_config::CrossrefNumbering::Site
-        ),
-        glossary: yuzu_render::glossary_options(&rc.config),
-        search_page: yuzu_render::search_page_options(&rc.config),
-    };
+    let opts = yuzu_render::markdown_options(&rc.config);
     let mut lint_opts = diag::lint_options(&rc, external_links);
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
