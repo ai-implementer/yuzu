@@ -51,6 +51,10 @@ cargo build -p yuzu-cli
 ```
 
 - **CLI の終了コード規約**: 0 = 成功 / 1 = 違反あり（lint・check・fmt --check）/ 2 = 実行エラー
+- **CLI の実行文脈は `cx.rs` の `Cx` に集約する**（サブコマンドをまたいで効く引数の器。
+  `--root` の `canonicalize` は `Cx::new` が唯一の受け口 = 「`Cx` を持っている＝
+  正規化済み絶対パス」が不変条件）。グローバル引数を足すときは
+  `cli.rs` の `GlobalArgs` へ（`global = true` が必須）
 - **insta スナップショット**: 差分が出たら内容を必ず目視してから更新する
   - `cargo insta review` は cargo-insta が要る（**ホストに入っていないことがある**。
     開発コンテナには同梱）
@@ -100,6 +104,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - 未知キー・型不一致は位置付きの設定エラー（exit 2）、重複キーは構文エラー
   - 通常依存は kabosu だけ（serde / jsonc-parser / thiserror / tracing は使わない。
     ログは cli の `commands::load_project` が出す）
+  - **`--root` 指定時は上方向探索をしない**（探索すると「指定したのに親の
+    `yuzu.toml` を拾う」事故になる）。指定先に無いときの `ConfigFileNotFound` は
+    `find_project_root` 専用の `ProjectRootNotFound` と別物で、**文言に「上方向に探索」を
+    含めない**（探索していないため）
 - **yuzu-theme** — デフォルトテーマを rust-embed でバイナリ埋め込み。プロジェクトの
   `theme/` に同じ相対パスのファイルを置くとファイル単位で上書き
 - **tankan** — Mermaid 互換 SSR（sequence / flowchart / class / state / ER / gantt / pie /
