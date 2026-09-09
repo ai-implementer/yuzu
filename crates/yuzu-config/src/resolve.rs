@@ -40,9 +40,16 @@ pub struct ResolvedConfig {
 /// プロジェクトルートの `yuzu.toml` を読み込み、解決済み設定を返す
 pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
     let path = root.join(CONFIG_FILE_NAME);
-    let text = fs::read_to_string(&path).map_err(|source| ConfigError::Io {
-        path: path.clone(),
-        source,
+    // 「そこに yuzu.toml が無い」は権限エラー等と分けて専用のエラーにする。
+    // 探索を経ていない経路（cli の `--root`）で「上方向に探索」と案内しないため
+    let text = fs::read_to_string(&path).map_err(|source| match source.kind() {
+        std::io::ErrorKind::NotFound => ConfigError::ConfigFileNotFound {
+            root: root.to_path_buf(),
+        },
+        _ => ConfigError::Io {
+            path: path.clone(),
+            source,
+        },
     })?;
     let (config, doc) = parse_config(&text, &path)?;
     let mut diagnostics = Vec::new();

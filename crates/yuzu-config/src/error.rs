@@ -4,9 +4,14 @@ use std::path::PathBuf;
 /// 設定の探索・読み込み・解決で起きるエラー
 #[derive(Debug)]
 pub enum ConfigError {
-    ProjectRootNotFound {
-        start: PathBuf,
-    },
+    /// cwd から上方向に探索したが `yuzu.toml` が見つからなかった
+    /// （[`crate::find_project_root`] 経由）
+    ProjectRootNotFound { start: PathBuf },
+
+    /// 指定されたディレクトリに `yuzu.toml` が無い（探索を経ていない経路）。
+    /// 「探したが見つからない」の [`Self::ProjectRootNotFound`] とは別物で、
+    /// **文言に「上方向に探索」を含めない**のが要点（探索していないため）
+    ConfigFileNotFound { root: PathBuf },
 
     Io {
         path: PathBuf,
@@ -57,6 +62,13 @@ impl fmt::Display for ConfigError {
                 "{} が見つかりません（{} から上方向に探索）。`yuzu new` で作成するか、プロジェクトルートで実行してください",
                 crate::CONFIG_FILE_NAME,
                 start.display()
+            ),
+            Self::ConfigFileNotFound { root } => write!(
+                f,
+                "{} に {} がありません。`yuzu new` で作成するか、{} のあるディレクトリを指定してください",
+                root.display(),
+                crate::CONFIG_FILE_NAME,
+                crate::CONFIG_FILE_NAME
             ),
             Self::Io { path, source } => {
                 write!(f, "{} を読み込めません: {source}", path.display())
