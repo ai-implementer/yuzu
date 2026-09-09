@@ -195,6 +195,9 @@ jobs:
           grep -A 3 'figure.mermaid-ssr {' dist/_assets/css/theme.css | grep -q 'overflow-x: auto'
           # ビルドの進捗ログ（RUST_LOG の文書化）が CLI リファレンスに載っている
           grep -q 'RUST_LOG' dist/reference/cli/index.html
+          # グローバルフラグ --root（Phase 72）が CLI リファレンスと設定リファレンスに載っている
+          grep -q -- '--root' dist/reference/cli/index.html
+          grep -q -- '--root' dist/reference/config/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
@@ -207,6 +210,42 @@ jobs:
       - name: e2e (yuzu new && yuzu build && yuzu search)
         run: |
           ./target/debug/yuzu new "$RUNNER_TEMP/e2e-docs"
+          # Phase 72: --root（グローバルオプション）。cwd がプロジェクト外の状態で
+          # 検証する必要があるので、cd より前のここに置く
+          #
+          # サブコマンドの前後どちらでも効く（clap の global = true）
+          ./target/debug/yuzu --root "$RUNNER_TEMP/e2e-docs" build
+          ./target/debug/yuzu build --root "$RUNNER_TEMP/e2e-docs"
+          test -f "$RUNNER_TEMP/e2e-docs/dist/index.html"
+          ./target/debug/yuzu check --root "$RUNNER_TEMP/e2e-docs"
+          # yuzu.toml が無いディレクトリは実行エラー。探索していないので
+          # 文言に「上方向」を含めない
+          mkdir -p "$RUNNER_TEMP/root-empty"
+          if ./target/debug/yuzu check --root "$RUNNER_TEMP/root-empty" 2> "$RUNNER_TEMP/root-err.txt"; then
+            echo "yuzu.toml の無いディレクトリが成功扱いになった" >&2
+            exit 1
+          fi
+          grep -q 'yuzu.toml がありません' "$RUNNER_TEMP/root-err.txt"
+          if grep -q '上方向' "$RUNNER_TEMP/root-err.txt"; then
+            echo "探索していないのに探索の文言が出ている" >&2
+            exit 1
+          fi
+          # 親に yuzu.toml があっても拾わない（上方向探索をしない契約）
+          mkdir -p "$RUNNER_TEMP/e2e-docs/sub"
+          if ./target/debug/yuzu check --root "$RUNNER_TEMP/e2e-docs/sub"; then
+            echo "--root の指定先を無視して親の yuzu.toml を拾った" >&2
+            exit 1
+          fi
+          rmdir "$RUNNER_TEMP/e2e-docs/sub"
+          # ルート自身がシンボリックリンクでも通る（Cx で正規化しないと
+          # .yuzu のリンク検査を通る build・dev だけが落ちる）
+          ln -s "$RUNNER_TEMP/e2e-docs" "$RUNNER_TEMP/root-link"
+          ./target/debug/yuzu build --root "$RUNNER_TEMP/root-link"
+          # new は既存プロジェクトを読まない唯一のコマンドなので --root を拒否する
+          if ./target/debug/yuzu new --root "$RUNNER_TEMP/e2e-docs" "$RUNNER_TEMP/root-new"; then
+            echo "yuzu new が --root を受け付けた" >&2
+            exit 1
+          fi
           cd "$RUNNER_TEMP/e2e-docs"
           test -f .github/workflows/deploy.yml
           "$GITHUB_WORKSPACE/target/debug/yuzu" build

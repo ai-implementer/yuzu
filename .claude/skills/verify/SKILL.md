@@ -77,6 +77,8 @@ grep -q '"docGroups"' dist/_search/manifest.json                               #
 grep -q 'パーセントエンコード' dist/guide/writing/index.html                    # URL エンコード（Phase 64）
 grep -q '追随する' dist/guide/deploy/index.html                                # テーマ上書きの契約（Phase 65）
 grep -q 'シンボリックリンクを辿りません' dist/reference/cli/index.html          # 配信のリンク遮断（Phase 65）
+grep -q -- '--root' dist/reference/cli/index.html                              # グローバルフラグ（Phase 72）
+grep -q -- '--root' dist/reference/config/index.html                           # 上方向探索の但し書き（Phase 72）
 grep -q 'css/syntect.css' dist/index.html && test -f dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
@@ -94,6 +96,15 @@ grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html" && echo 
 ```bash
 cargo build -p yuzu-cli
 ./target/debug/yuzu new "<scratchpad>/e2e-docs"
+# --root（Phase 72）は cwd がプロジェクト外の状態で見る = cd より前に置く。
+# 前後どちらでも効く / 上方向探索をしない / ルート自身がリンクでも通る / new は拒否
+./target/debug/yuzu --root "<scratchpad>/e2e-docs" build
+./target/debug/yuzu build --root "<scratchpad>/e2e-docs"
+mkdir -p "<scratchpad>/root-empty"
+./target/debug/yuzu check --root "<scratchpad>/root-empty"   # exit 2・文言に「上方向」を含まない
+mkdir -p "<scratchpad>/e2e-docs/sub" && ./target/debug/yuzu check --root "<scratchpad>/e2e-docs/sub"  # exit 2
+ln -s "<scratchpad>/e2e-docs" "<scratchpad>/root-link" && ./target/debug/yuzu build --root "<scratchpad>/root-link"
+./target/debug/yuzu new --root "<scratchpad>/e2e-docs" "<scratchpad>/root-new"   # exit 2
 cd "<scratchpad>/e2e-docs"
 test -f .github/workflows/deploy.yml   # Pages デプロイ雛形の同梱
 <repo>/target/debug/yuzu build
