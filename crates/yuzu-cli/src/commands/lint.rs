@@ -17,8 +17,9 @@ use crate::out::outln;
 /// fix の適用が別のゆれを生む連鎖に備えた再 lint の上限（通常は 1 周で収束）
 const MAX_FIX_ROUNDS: usize = 10;
 
-pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
-    let (root, rc) = super::load_project()?;
+pub fn run(cx: &crate::cx::Cx, fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
+    let rc = super::load_project(cx)?;
+    let root = &rc.root;
     let opts = yuzu_render::markdown_options(&rc.config);
     // lint は外部リンクを評価しない（その抑制を unused にしない）
     let lint_opts = diag::lint_options(&rc, false);
@@ -60,7 +61,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
                 std::fs::write(&page.src, &fixed)
                     .with_context(|| format!("{} に書き込めません", page.src.display()))?;
                 applied_this_round += applied;
-                fixed_files.insert(page.src.strip_prefix(&root).unwrap_or(&page.src).to_owned());
+                fixed_files.insert(page.src.strip_prefix(root).unwrap_or(&page.src).to_owned());
             }
             if applied_this_round == 0 {
                 break; // 不動点（fix 対象なし or 全て適用不能）
@@ -107,7 +108,7 @@ pub fn run(fix: bool, format: diag::Format) -> anyhow::Result<ExitCode> {
         format,
         diags,
         &diag::Context {
-            root: &root,
+            root,
             content_dir: &rc.content_dir,
             // 集計行は原稿の数を出す（合成した用語集ページは数えない）
             pages: pages.iter().filter(|p| !p.is_generated()).count(),

@@ -16,10 +16,11 @@ use anyhow::Context;
 
 use crate::out::outln;
 
-pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
+pub fn run(cx: &crate::cx::Cx, check: bool, diff: bool) -> anyhow::Result<ExitCode> {
     // --diff は「差分を見せる = 書き換えない」（gofmt -d 流）
     let dry_run = check || diff;
-    let (root, rc) = super::load_project()?;
+    let rc = super::load_project(cx)?;
+    let root = &rc.root;
     let opts = yuzu_render::markdown_options(&rc.config);
 
     let pages = yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts)?;
@@ -33,7 +34,7 @@ pub fn run(check: bool, diff: bool) -> anyhow::Result<ExitCode> {
             continue;
         }
         changed += 1;
-        let display = diff_path(&root, &page.src);
+        let display = diff_path(root, &page.src);
         if diff {
             // ファイル単位で 1 回だけ書く（行ごとに書くと遅く、SIGPIPE の窓も増える）
             crate::out::str(&unified_diff(&display, &page.source, &formatted));

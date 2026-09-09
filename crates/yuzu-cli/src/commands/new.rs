@@ -34,7 +34,12 @@ const FILES: &[(&str, &str)] = &[
     ),
 ];
 
-pub fn run(dir: &Path) -> anyhow::Result<()> {
+pub fn run(cx: &crate::cx::Cx, dir: &Path) -> anyhow::Result<()> {
+    // `new` は既存プロジェクトを読まない唯一のコマンドなので `--root` の意味がない。
+    // 黙って無視せずエラーにする（未知のキーを黙殺しないという設定側の姿勢と揃える）
+    if cx.root().is_some() {
+        bail!("yuzu new では --root を指定できません（生成先は位置引数で指定します）");
+    }
     if dir.exists() && dir.read_dir()?.next().is_some() {
         bail!(
             "{} は空ではありません（既存ディレクトリを上書きしません）",

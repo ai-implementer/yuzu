@@ -4,8 +4,14 @@
 
 use crate::out::outln;
 
-pub fn run(query: &str, limit: usize, sections: &[String], json: bool) -> anyhow::Result<()> {
-    let (_, rc) = super::load_project()?;
+pub fn run(
+    cx: &crate::cx::Cx,
+    query: &str,
+    limit: usize,
+    sections: &[String],
+    json: bool,
+) -> anyhow::Result<()> {
+    let rc = super::load_project(cx)?;
 
     let out = yuzu_index::search_dist_with_options(&rc.output_dir, query, limit, sections)?;
     let (results, total) = (out.results, out.total);

@@ -72,7 +72,9 @@ pub(crate) struct Overrides {
 }
 
 impl Overrides {
-    fn apply(&self, rc: &mut ResolvedConfig) {
+    /// フラグを設定へ当てる（`build` / `dev` / `preview` 共用。
+    /// 「フラグは設定より優先」の解釈をここ 1 箇所に置く）
+    pub(crate) fn apply(&self, rc: &mut ResolvedConfig) {
         if let Some(raw) = &self.base_url {
             rc.base_url = yuzu_config::normalize_base_url(raw);
         }
@@ -82,9 +84,17 @@ impl Overrides {
     }
 }
 
-/// プロジェクトルートを探して設定を読み、CLI 上書きを当てる（build / dev 共通の入口）
-pub(crate) fn load_config(overrides: &Overrides) -> anyhow::Result<ResolvedConfig> {
-    let (_, mut rc) = crate::commands::load_project()?;
+/// プロジェクトルートを確定して設定を読み、CLI 上書きを当てる（build / dev 共通の入口）。
+///
+/// **`.yuzu` のリンク検査を通るのは build / dev だけ**という非対称は意図したもの。
+/// あれは「これから `.yuzu` へ書き込む」側の事前条件で、`.yuzu` に触れない
+/// 読み取り専用コマンド（check / lint / fmt / llms / search / preview）まで
+/// リンク構成で落とすのは過剰。配信パスの検査は preview 側の `symlink_guard` が持つ
+pub(crate) fn load_config(
+    cx: &crate::cx::Cx,
+    overrides: &Overrides,
+) -> anyhow::Result<ResolvedConfig> {
+    let mut rc = crate::commands::load_project(cx)?;
     overrides.apply(&mut rc);
     // ツール管理ディレクトリの経路も検証する。ここは `BuildSession::new` の
     // キャッシュ書き込み・破棄（--force）より前なので、`.yuzu` 系の書き込み・削除を
@@ -98,6 +108,7 @@ pub(crate) fn load_config(overrides: &Overrides) -> anyhow::Result<ResolvedConfi
 }
 
 pub fn run(
+    cx: &crate::cx::Cx,
     watch: bool,
     base_url: Option<String>,
     force: bool,
@@ -106,7 +117,7 @@ pub fn run(
     host: Option<String>,
 ) -> anyhow::Result<()> {
     let overrides = Overrides { base_url, host };
-    let rc = load_config(&overrides)?;
+    let rc = load_config(cx, &overrides)?;
 
     // --watch のときだけオートリフレッシュ JS（ポーリング式）を注入する
     let mode = if watch {

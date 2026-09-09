@@ -9,8 +9,13 @@ use yuzu_core::{DiagBase, Diagnostic};
 
 use super::diag;
 
-pub fn run(format: diag::Format, external_links: bool) -> anyhow::Result<ExitCode> {
-    let (root, rc) = super::load_project()?;
+pub fn run(
+    cx: &crate::cx::Cx,
+    format: diag::Format,
+    external_links: bool,
+) -> anyhow::Result<ExitCode> {
+    let rc = super::load_project(cx)?;
+    let root = &rc.root;
     let opts = yuzu_render::markdown_options(&rc.config);
     let mut lint_opts = diag::lint_options(&rc, external_links);
 
@@ -47,13 +52,13 @@ pub fn run(format: diag::Format, external_links: bool) -> anyhow::Result<ExitCod
     diags.extend(yuzu_core::validate_routes(&pages));
     // コンテンツインクルード（file=）の参照切れ・ルート外・行範囲外
     diags.extend(super::diag::config_diagnostics(&rc));
-    diags.extend(yuzu_core::validate_includes(&pages, &root, &opts));
+    diags.extend(yuzu_core::validate_includes(&pages, root, &opts));
     // openapi / jsonschema の file: 参照の切れ・ルート外（記法の解釈は core が持つ）
-    diags.extend(yuzu_core::validate_spec_refs(&pages, &root, &opts));
+    diags.extend(yuzu_core::validate_spec_refs(&pages, root, &opts));
     // 仕様の中身（パース失敗・未対応バージョン・$ref 先）。参照が解決できた
     // ブロックだけを見る。描画は失敗してもエラーボックスで継続するため、
     // 公開前に気づける場所はこの 2 つだけ
-    diags.extend(yuzu_render::validate_api_specs(&pages, &root, &opts));
+    diags.extend(yuzu_render::validate_api_specs(&pages, root, &opts));
     // 内部リンク・アンカー（外部リンクの出現箇所は捨てずに受け取る）
     let yuzu_core::LinkReport {
         diags: link_diags,
@@ -95,7 +100,7 @@ pub fn run(format: diag::Format, external_links: bool) -> anyhow::Result<ExitCod
         format,
         diags,
         &diag::Context {
-            root: &root,
+            root,
             content_dir: &rc.content_dir,
             pages: pages.iter().filter(|p| !p.is_generated()).count(),
             suppressed,

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
@@ -14,8 +14,22 @@ use clap::{Parser, Subcommand};
                   ロードマップと設計は README.md を参照。"
 )]
 pub struct Cli {
+    #[command(flatten)]
+    pub global: GlobalArgs,
+
     #[command(subcommand)]
     pub command: Command,
+}
+
+/// サブコマンドをまたいで効く引数。解決結果は [`crate::cx::Cx`] が持つ。
+/// **`global = true` が必須** — 無いと `yuzu build --root x`（サブコマンドの後ろ）が
+/// パースエラーになる
+#[derive(Args)]
+pub struct GlobalArgs {
+    /// プロジェクトルート（yuzu.toml のあるディレクトリ）。
+    /// 指定するとカレントディレクトリからの上方向探索を行わない
+    #[arg(long, global = true, value_name = "DIR")]
+    pub root: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -134,4 +148,41 @@ pub enum Command {
         #[arg(long)]
         external_links: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cli, Command};
+    use clap::{CommandFactory, Parser};
+
+    /// clap 公式のスモークテスト（引数名の重複・不正な設定を検出する）。
+    /// グローバル引数を足すと既存のサブコマンド固有の引数と衝突しうるので、
+    /// 追加のたびにここが番人になる
+    #[test]
+    fn 引数定義に矛盾がない() {
+        Cli::command().debug_assert();
+    }
+
+    /// `--root` はサブコマンドの前後どちらでも書ける（`global = true` の効果）
+    #[test]
+    fn root_はサブコマンドの前後どちらでも受け付ける() {
+        for args in [
+            ["yuzu", "--root", "docs", "build"],
+            ["yuzu", "build", "--root", "docs"],
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert_eq!(
+                cli.global.root.as_deref(),
+                Some(std::path::Path::new("docs"))
+            );
+            assert!(matches!(cli.command, Command::Build { .. }));
+        }
+    }
+
+    /// 無指定なら None（cwd からの上方向探索へ回る）
+    #[test]
+    fn root_無指定なら_none() {
+        let cli = Cli::try_parse_from(["yuzu", "check"]).unwrap();
+        assert!(cli.global.root.is_none());
+    }
 }
