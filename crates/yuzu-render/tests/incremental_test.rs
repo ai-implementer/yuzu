@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
 
-use yuzu_core::{BuildCache, CacheStats, MarkdownOptions, OutputTracker, output};
+use yuzu_core::{BuildCache, CacheStats, OutputTracker, output};
 use yuzu_render::{LiveReloadMode, RenderCtx, RenderParams, render_site};
 
 fn write(dir: &Path, rel: &str, content: &str) {
@@ -43,10 +43,7 @@ fn build_incremental(root: &Path, cache: &BuildCache) -> (BTreeSet<String>, Cach
     cache.begin_build();
     let rc = yuzu_config::load(root).unwrap();
     // 設定由来の写像は cli と同じ 1 実装を通す（用語集ページの合成もここで効く）
-    let md_opts = MarkdownOptions {
-        glossary: yuzu_render::glossary_options(&rc.config),
-        ..MarkdownOptions::default()
-    };
+    let md_opts = yuzu_render::markdown_options(&rc.config);
     let site = yuzu_core::build_site_model_cached(
         &rc.content_dir,
         &rc.config.input.ignore,

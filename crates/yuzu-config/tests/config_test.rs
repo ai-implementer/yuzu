@@ -238,6 +238,24 @@ fn 見つからなければエラーになる() {
     assert!(err.to_string().contains("yuzu.toml"), "{err}");
 }
 
+/// `load` を直接呼ぶ経路（cli の `--root`）は探索を経ていないので、
+/// 「上方向に探索」と案内してはいけない
+#[test]
+fn yuzu_toml_の無いディレクトリを_load_すると専用のエラーになる() {
+    let dir = tempfile::tempdir().unwrap();
+    let err = load(dir.path()).expect_err("yuzu.toml が無い");
+    assert!(
+        matches!(err, ConfigError::ConfigFileNotFound { .. }),
+        "{err:?}"
+    );
+    let msg = err.to_string();
+    assert!(msg.contains("yuzu.toml"), "{msg}");
+    assert!(
+        !msg.contains("上方向"),
+        "探索していないのに探索の文言が出ている: {msg}"
+    );
+}
+
 #[test]
 fn 旧来の_jsonc_はマーカーにならない() {
     // v0.14 で yuzu.jsonc から yuzu.toml へ移行した。互換読み込みは作らない

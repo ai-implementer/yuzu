@@ -9,12 +9,15 @@ use anyhow::{Context, bail};
 use yuzu_config::ResolvedConfig;
 use yuzu_server::{PathGuard, ServeOptions};
 
-pub fn run(port: Option<u16>, host: Option<String>) -> anyhow::Result<()> {
-    let (_, mut rc) = super::load_project()?;
-    // --host は dev.host の設定より優先（コンテナ内から 0.0.0.0 で配信する用途）
-    if let Some(host) = host {
-        rc.config.dev.host = host;
+pub fn run(cx: &crate::cx::Cx, port: Option<u16>, host: Option<String>) -> anyhow::Result<()> {
+    let mut rc = super::load_project(cx)?;
+    // --host の上書きは build / dev と同じ 1 実装を通す
+    // （`Overrides::apply`。「フラグは設定より優先」の解釈を 2 箇所に置かない）
+    super::build::Overrides {
+        base_url: None,
+        host,
     }
+    .apply(&mut rc);
 
     if !rc.output_dir.is_dir() {
         bail!(

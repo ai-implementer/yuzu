@@ -12,6 +12,7 @@ use yuzu_server::{ReloadNotifier, ServeOptions};
 use crate::commands::build;
 
 pub fn run(
+    cx: &crate::cx::Cx,
     port: Option<u16>,
     host: Option<String>,
     force: bool,
@@ -21,7 +22,7 @@ pub fn run(
         base_url: None,
         host,
     };
-    let rc = build::load_config(&overrides)?;
+    let rc = build::load_config(cx, &overrides)?;
 
     // dev.live_reload = false は「WS 注入なしの監視ビルド＋配信のみ」
     let mode = if rc.config.dev.live_reload {

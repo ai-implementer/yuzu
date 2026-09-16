@@ -22,29 +22,41 @@ CLAUDE.md にある）。
 - Phase は基盤 → 一貫性 → 追加機能 → dogfooding の依存順。着手時に判断点を
   決めてから実装する
 
-### 72 グローバルオプションの基盤（`--root` と実行文脈の集約） ⬜
+### 72 グローバルオプションの基盤（`--root` と実行文脈の集約） ✅
 
 **9 つの `run()` が位置引数を個別に取っている**のが、オプションを足すたびに
-全箇所を触ることになる原因。ここを実行文脈の構造体へ寄せてから `--root` を足す。
+全箇所を触ることになる原因。ここを実行文脈の構造体へ寄せてから `--root` を足した。
 
-- 現状（実測）
+- 着手時の実測
   - `Cli` 構造体にグローバル引数が 1 つも無い（`command` だけ）
   - `run()` は 9 箇所（`check` / `dev` / `llms` / `fmt` / `preview` / `new` /
     `lint` / `build` / `search`）で、`--force` / `--drafts` / `--port` / `--host` は
     build と dev が別々に定義している
-  - `MarkdownOptions` の構築は 10 箇所にコピーがある
-- やること
-  - `--root <DIR>` をグローバル引数に足す。探索・読み込みは Phase 63 で
-    `commands::load_project` に一本化済みなので、**解決はここ 1 箇所**
-  - 実行文脈（root / 出力形式 / 静粛さ）を 1 つの構造体にして各 `run()` へ渡す
-  - `MarkdownOptions` 構築の 10 箇所を集約する（候補欄で「抱き合わせると割が良い」と
-    していた分）
-- 判断点
-  - `--root` 指定時に cwd からの上方向探索を止めるか（止めないと
-    「`--root` を指定したのに親の `yuzu.toml` を拾う」事故が起きる）
-  - **build / dev だけが `load_config`（上書き適用・`.yuzu` のリンク検査）を通る
-    非対称**を揃えるか。揃えるなら全コマンドがリンク検査を通ることになる
-  - 実行文脈を構造体で渡すか、`run()` の引数を増やすだけにするか
+  - `MarkdownOptions` の構築は **8 箇所**（cli 5 ＋ render 3）にコピーがある。
+    策定時の「10 箇所」は grep が構造体定義と `impl Default` を拾った数
+- やったこと
+  - `--root <DIR>` をグローバル引数（`cli.rs` の `GlobalArgs`。clap の
+    `global = true` でサブコマンドの前後どちらでも書ける）に追加
+  - 実行文脈を `cx.rs` の `Cx` にまとめて各 `run()` の第 1 引数へ渡す。
+    `--root` の `canonicalize` は `Cx::new` が唯一の受け口
+  - `MarkdownOptions` の 8 箇所を `yuzu_render::markdown_options` へ集約
+    （`glossary_options` / `search_page_options` は非公開に落として部分写像を封じた）
+  - 指定先に `yuzu.toml` が無いときの `ConfigError::ConfigFileNotFound` を追加
+    （`ProjectRootNotFound` と別物。**文言に「上方向に探索」を含めない**）
+  - `preview` の自力 `--host` 上書きを `Overrides::apply` の 1 実装へ寄せた
+- 決めたこと
+  - **`--root` 指定時は上方向探索をしない** — 探索すると「指定したのに親の
+    `yuzu.toml` を拾う」事故が起きる
+  - **`--root` は受け口で 1 回 `canonicalize` する** — 相対パスのまま流すと
+    `rc.root` / `content_dir` / 診断のパス表示まで相対で伝播し、ルート自身が
+    シンボリックリンクだと `.yuzu` のリンク検査を通る build・dev だけが落ちる
+  - **`.yuzu` のリンク検査の非対称は揃えない** — あれは「これから `.yuzu` へ
+    書き込む」側の事前条件で、`.yuzu` に触れない読み取りコマンドまで落とすのは過剰。
+    理由は `load_config` の doc コメントに残した
+  - 実行文脈は構造体（`Cx`）で渡す — Phase 73 の `--quiet` / `--format` を足すとき
+    `run()` のシグネチャを触るのは今回 1 度で済む
+  - **`yuzu new --root` は明示的にエラー** — 既存プロジェクトを読まない唯一の
+    コマンドなので意味がない。黙殺しない（未知キーを黙って無視しない姿勢と揃える）
 
 ### 73 出力の一貫性（`--format` と静粛モード） ⬜
 

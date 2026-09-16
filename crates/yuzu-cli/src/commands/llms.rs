@@ -2,25 +2,13 @@
 //! dist/ 不要のドライラン兼エクスポート（`yuzu llms --full | pbcopy` で LLM に直接渡せる）。
 //! 明示実行なので `llms.enabled` に関わらず生成する（`yuzu search` と同じ思想）
 
-use yuzu_core::MarkdownOptions;
-
-pub fn run(full: bool) -> anyhow::Result<()> {
-    let (_, rc) = super::load_project()?;
+pub fn run(cx: &crate::cx::Cx, full: bool) -> anyhow::Result<()> {
+    let rc = super::load_project(cx)?;
 
     let site = yuzu_core::build_site_model(
         &rc.content_dir,
         &rc.config.input.ignore,
-        &MarkdownOptions {
-            gfm: rc.config.markdown.gfm,
-            math: rc.config.markdown.math.enabled,
-            mermaid: rc.config.markdown.mermaid.enabled,
-            crossref_site_numbering: matches!(
-                rc.config.markdown.crossref.numbering,
-                yuzu_config::CrossrefNumbering::Site
-            ),
-            glossary: yuzu_render::glossary_options(&rc.config),
-            search_page: yuzu_render::search_page_options(&rc.config),
-        },
+        &yuzu_render::markdown_options(&rc.config),
     )?;
 
     let text = if full {

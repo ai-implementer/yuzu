@@ -46,15 +46,8 @@ fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
     let site = yuzu_core::build_site_model(
         &rc.content_dir,
         &rc.config.input.ignore,
-        &MarkdownOptions {
-            gfm: rc.config.markdown.gfm,
-            math: rc.config.markdown.math.enabled,
-            mermaid: rc.config.markdown.mermaid.enabled,
-            // 設定由来の写像は cli と同じ 1 実装を通す（用語集の配線もここで効く）
-            glossary: yuzu_render::glossary_options(&rc.config),
-            search_page: yuzu_render::search_page_options(&rc.config),
-            ..MarkdownOptions::default()
-        },
+        // 設定由来の写像は cli と同じ 1 実装を通す（用語集の配線もここで効く）
+        &yuzu_render::markdown_options(&rc.config),
     )
     .unwrap();
     render_site(&RenderParams {
@@ -567,11 +560,7 @@ fn build_fixture_with(edit: impl FnOnce(&Path)) -> tempfile::TempDir {
     let site = yuzu_core::build_site_model(
         &rc.content_dir,
         &rc.config.input.ignore,
-        &yuzu_core::MarkdownOptions {
-            glossary: yuzu_render::glossary_options(&rc.config),
-            search_page: yuzu_render::search_page_options(&rc.config),
-            ..yuzu_core::MarkdownOptions::default()
-        },
+        &yuzu_render::markdown_options(&rc.config),
     )
     .unwrap();
     render_site(&RenderParams {

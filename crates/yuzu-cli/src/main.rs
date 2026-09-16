@@ -5,6 +5,7 @@
 
 mod cli;
 mod commands;
+mod cx;
 mod out;
 
 // 依存方向（cli → index）の配線。Phase 3 で実体を使う
@@ -47,8 +48,10 @@ fn main() -> ExitCode {
 
 fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
     let ok = |()| ExitCode::SUCCESS;
+    // グローバル引数の解決はここ 1 回だけ（`--root` の正規化を含む）
+    let cx = cx::Cx::new(cli.global.root)?;
     match cli.command {
-        cli::Command::New { dir } => commands::new::run(&dir).map(ok),
+        cli::Command::New { dir } => commands::new::run(&cx, &dir).map(ok),
         cli::Command::Build {
             watch,
             base_url,
@@ -56,26 +59,26 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
             drafts,
             port,
             host,
-        } => commands::build::run(watch, base_url, force, drafts, port, host).map(ok),
-        cli::Command::Preview { port, host } => commands::preview::run(port, host).map(ok),
+        } => commands::build::run(&cx, watch, base_url, force, drafts, port, host).map(ok),
+        cli::Command::Preview { port, host } => commands::preview::run(&cx, port, host).map(ok),
         cli::Command::Dev {
             port,
             host,
             force,
             drafts,
-        } => commands::dev::run(port, host, force, drafts).map(ok),
+        } => commands::dev::run(&cx, port, host, force, drafts).map(ok),
         cli::Command::Search {
             query,
             limit,
             section,
             json,
-        } => commands::search::run(&query, limit, &section, json).map(ok),
-        cli::Command::Llms { full } => commands::llms::run(full).map(ok),
-        cli::Command::Fmt { check, diff } => commands::fmt::run(check, diff),
-        cli::Command::Lint { fix, format } => commands::lint::run(fix, format),
+        } => commands::search::run(&cx, &query, limit, &section, json).map(ok),
+        cli::Command::Llms { full } => commands::llms::run(&cx, full).map(ok),
+        cli::Command::Fmt { check, diff } => commands::fmt::run(&cx, check, diff),
+        cli::Command::Lint { fix, format } => commands::lint::run(&cx, fix, format),
         cli::Command::Check {
             format,
             external_links,
-        } => commands::check::run(format, external_links),
+        } => commands::check::run(&cx, format, external_links),
     }
 }
