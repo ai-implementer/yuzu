@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
@@ -21,6 +21,30 @@ pub struct Cli {
     pub command: Command,
 }
 
+impl Cli {
+    /// clap のパースに、グローバル引数同士の排他検証を足した入口（`main` とテストが使う）。
+    ///
+    /// **`conflicts_with` はサブコマンドの境界をまたぐ指定を検出しない** —
+    /// `yuzu -q build -v` はトップレベルとサブコマンドで別々に検証され、どちらの側にも
+    /// 矛盾が無いので通ってしまう（値は親へ伝播するので両方 true になる）。
+    /// 黙ってどちらかを勝たせず、`-q -v` を同じ側に書いたときと同じ clap のエラー
+    /// （終了コード 2）にする
+    pub fn parse_validated<I, T>(args: I) -> Result<Self, clap::Error>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        let cli = Self::try_parse_from(args)?;
+        if cli.global.quiet && cli.global.verbose {
+            return Err(Self::command().error(
+                clap::error::ErrorKind::ArgumentConflict,
+                "the argument '--quiet' cannot be used with '--verbose'",
+            ));
+        }
+        Ok(cli)
+    }
+}
+
 /// サブコマンドをまたいで効く引数。`--root` の解決結果は [`crate::cx::Cx`] が持ち、
 /// `-q` / `-v` はログのサブスクライバを組む `main` が消費する（各コマンドは見ない）。
 /// **`global = true` が必須** — 無いと `yuzu build --root x`（サブコマンドの後ろ）が
@@ -35,6 +59,8 @@ pub struct GlobalArgs {
     pub root: Option<PathBuf>,
 
     /// 進捗ログ（info 以下）を出さない。警告とエラーは出る。RUST_LOG より優先
+    /// （`conflicts_with` は同じ側に書いたときだけ効く。境界をまたぐ指定は
+    /// [`Cli::parse_validated`] が弾く）
     #[arg(short, long, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
@@ -44,7 +70,7 @@ pub struct GlobalArgs {
 }
 
 impl GlobalArgs {
-    /// `-q` / `-v` の解決結果（同時指定は clap が弾くので両立しない）
+    /// `-q` / `-v` の解決結果（同時指定は [`Cli::parse_validated`] が弾くので両立しない）
     pub fn verbosity(&self) -> Verbosity {
         match (self.quiet, self.verbose) {
             (true, _) => Verbosity::Quiet,
@@ -193,6 +219,7 @@ pub enum Command {
 mod tests {
     use super::{Cli, Command, Verbosity};
     use crate::commands::search::Format;
+    use clap::error::ErrorKind;
     use clap::{CommandFactory, Parser};
 
     /// clap 公式のスモークテスト（引数名の重複・不正な設定を検出する）。
@@ -236,15 +263,29 @@ mod tests {
             (["yuzu", "-v", "build"], Verbosity::Verbose),
             (["yuzu", "build", "--verbose"], Verbosity::Verbose),
         ] {
-            let cli = Cli::try_parse_from(args).unwrap();
+            let cli = Cli::parse_validated(args).unwrap();
             assert_eq!(cli.global.verbosity(), expected, "{args:?}");
         }
     }
 
-    /// `-q` と `-v` の同時指定はエラー（黙ってどちらかを勝たせない）
+    /// `-q` と `-v` の同時指定はエラー（黙ってどちらかを勝たせない）。
+    /// 同じ側に書いた 2 通りは clap の `conflicts_with`、**サブコマンドの前後に分けた
+    /// 2 通りは `parse_validated` の後検証**が弾く（clap は境界をまたぐ矛盾を見ない）
     #[test]
     fn quiet_と_verbose_の同時指定はエラー() {
-        assert!(Cli::try_parse_from(["yuzu", "-q", "-v", "build"]).is_err());
+        for args in [
+            ["yuzu", "-q", "-v", "build"],
+            ["yuzu", "build", "-q", "-v"],
+            ["yuzu", "-q", "build", "-v"],
+            ["yuzu", "-v", "build", "-q"],
+        ] {
+            let err = Cli::parse_validated(args)
+                .err()
+                .unwrap_or_else(|| panic!("{args:?} が通った"));
+            assert_eq!(err.kind(), ErrorKind::ArgumentConflict, "{args:?}");
+            // clap の使い方エラーと同じ終了コード 2
+            assert_eq!(err.exit_code(), 2, "{args:?}");
+        }
     }
 
     /// `search --json` は `--format json` の旧表記として残す。同時指定は矛盾エラー

@@ -279,11 +279,16 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" build --force -v 2>&1 | grep -q 'DEBUG'
           test "${PIPESTATUS[0]}" -eq 0
           test -f dist/_search/manifest.json
-          # -q と -v の同時指定は clap の矛盾エラー（黙ってどちらかを勝たせない）
-          if "$GITHUB_WORKSPACE/target/debug/yuzu" build -q -v 2>/dev/null; then
-            echo "-q と -v の同時指定が通った" >&2
-            exit 1
-          fi
+          # -q と -v の同時指定は矛盾エラー（黙ってどちらかを勝たせない）。
+          # サブコマンドの前後に分けた指定は clap の conflicts_with が見ないので
+          # パース後の検証（Cli::parse_validated）が弾く。両順序を見る
+          for qv in "build -q -v" "-q build -v" "-v build -q"; do
+            # shellcheck disable=SC2086
+            if "$GITHUB_WORKSPACE/target/debug/yuzu" $qv 2>/dev/null; then
+              echo "-q と -v の同時指定が通った: yuzu $qv" >&2
+              exit 1
+            fi
+          done
           # search --format json は結果の JSON 配列だけを標準出力へ出す。
           # --json は旧表記として同じ出力で、--format との同時指定は矛盾エラー
           "$GITHUB_WORKSPACE/target/debug/yuzu" search --format json "はじめに" | head -1 | grep -q '^\[$'

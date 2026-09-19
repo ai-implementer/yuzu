@@ -55,6 +55,9 @@ cargo build -p yuzu-cli
   `--root` の `canonicalize` は `Cx::new` が唯一の受け口 = 「`Cx` を持っている＝
   正規化済み絶対パス」が不変条件）。グローバル引数を足すときは
   `cli.rs` の `GlobalArgs` へ（`global = true` が必須）
+  - **グローバル引数同士の排他は `conflicts_with` だけでは足りない** — clap は
+    トップレベルとサブコマンドを別々に検証するので `yuzu -q build -v` が通る。
+    `Cli::parse_validated` のパース後検証に足す（`main` とテストはこれを通す）
 - **insta スナップショット**: 差分が出たら内容を必ず目視してから更新する
   - `cargo insta review` は cargo-insta が要る（**ホストに入っていないことがある**。
     開発コンテナには同梱）

@@ -121,6 +121,7 @@ RUST_LOG=debug <repo>/target/debug/yuzu build --force -q 2>&1 | wc -l        # 0
 <repo>/target/debug/yuzu build --force -v 2>&1 | grep -q DEBUG && echo "OK verbose"
 test "${PIPESTATUS[0]}" -eq 0 && test -f dist/_search/manifest.json && echo "OK 完走"
 <repo>/target/debug/yuzu build -q -v                                          # exit 2（同時指定は矛盾）
+<repo>/target/debug/yuzu -q build -v                                          # exit 2（前後に分けても弾く）
 <repo>/target/debug/yuzu search --format json "はじめに" | head -1 | grep -q '^\[$' && echo "OK search json"
 <repo>/target/debug/yuzu search --json "はじめに" | head -1 | grep -q '^\[$' && echo "OK 旧表記"
 <repo>/target/debug/yuzu search --json --format json "はじめに"              # exit 2（旧表記との同時指定）

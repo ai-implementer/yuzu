@@ -13,7 +13,6 @@ use yuzu_index as _;
 
 use std::process::ExitCode;
 
-use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 /// 終了コード規約（grep 流）:
@@ -21,7 +20,11 @@ use tracing_subscriber::EnvFilter;
 fn main() -> ExitCode {
     // 引数のパースをログ初期化より先に行う（`-q` / `-v` がフィルタを決めるため）。
     // パースエラーは clap が自前で stderr へ出して終了するのでログは要らない
-    let cli = cli::Cli::parse();
+    // （`--help` / `--version` も同じ経路で終了コード 0）
+    let cli = match cli::Cli::parse_validated(std::env::args_os()) {
+        Ok(cli) => cli,
+        Err(err) => err.exit(),
+    };
     tracing_subscriber::fmt()
         .with_env_filter(log_filter(
             cli.global.verbosity(),
