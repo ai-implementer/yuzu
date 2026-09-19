@@ -132,14 +132,27 @@ CLAUDE.md にある）。
     安定しておらず、依存も増える。静的補完で足りないのは `--section` のセクション名と
     検索クエリだけで、どちらも補完のたびに `dist/_search` を読むことになる
 
-### 75 dogfooding ⬜
+### 75 dogfooding ✅
 
-- `--root` を docs のビルドで実運用する。現在は `cd docs` が前提で、
-  CLAUDE.md の検証手順・`verify` スキル・ci.yml がすべてそれに依存している
-- 追加したオプションを scaffold の `.github/workflows/deploy.yml` と
-  docs のワークフローへ反映する
-- 判断点: `cd docs` を `--root docs` へ置き換えるか、両方通るままにするか
-  （置き換えるならドキュメントと CI の同時更新が要る）
+- やったこと
+  - docs のビルド・検証を `--root docs` に統一した（ci.yml の docs ステップ・docs.yml・
+    docs-links.yml・`verify` スキル・CLAUDE.md）。`cd docs` / `working-directory: docs` を
+    無くし、出力の参照は `docs/dist/` に変えた
+  - docs の CI 組み込み例（guide/quality.md）と github 形式の説明（reference/cli.md）を
+    `--root docs` に更新
+  - scaffold の deploy.yml に、既存リポジトリのサブディレクトリへ生成した場合の案内
+    （リポジトリルートの `.github/workflows/` へ移して `--root docs`）をコメントで追加。
+    現状は `docs/.github/` に落ちて GitHub に無視されるため
+  - e2e に `--root` ＋ `--format github` の注釈パス検査を追加（cwd がプロジェクト外でも
+    `GITHUB_WORKSPACE` 相対に付け替わる = docs.yml / docs-links.yml の前提）
+- 決めたこと
+  - **`cd docs` は残さず全面的に `--root docs` へ** — 両方通す形にすると
+    「どちらが正か」が曖昧になる。cwd からの上方向探索の経路は scaffold の e2e
+    （`cd` して実行）が引き続き検証する
+  - **`-q` は CI に付けない** — ビルドの進捗ログは CI が落ちたときの切り分けに使う。
+    `check` は進捗を出さないので付けても変わらない
+  - **scaffold の deploy.yml に check ステップは足さない** — 利用者のデプロイが lint 違反で
+    止まるようになる挙動変更になる。案内コメントだけにする
 
 ## v0.10.1 レビューの持ち越し
 

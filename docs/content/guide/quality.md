@@ -212,13 +212,12 @@ GitHub Actions の注釈としてプルリクエストの diff 行に直接出�
 
 ```yaml
 - name: docs check
-  run: |
-    cd docs
-    yuzu check --format github
+  run: yuzu check --root docs --format github
 ```
 
 パスは `GITHUB_WORKSPACE` からの相対に自動で付け替わるので、上のように
-サブディレクトリへ移動してから実行しても正しいファイルに紐づきます。
+`--root` でサブディレクトリを指定しても、`cd docs` してから実行しても、
+正しいファイルに紐づきます。
 
 機械処理したいときは `--format json` を使います（標準出力へ単一の JSON
 オブジェクトだけを出します）。出力の詳細は
