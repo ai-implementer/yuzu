@@ -59,8 +59,8 @@ pub struct GlobalArgs {
     pub root: Option<PathBuf>,
 
     /// 進捗ログ（info 以下）を出さない。警告とエラーは出る。RUST_LOG より優先
-    /// （`conflicts_with` は同じ側に書いたときだけ効く。境界をまたぐ指定は
-    /// [`Cli::parse_validated`] が弾く）
+    // `conflicts_with` は同じ側に書いたときだけ効く。境界をまたぐ指定は
+    // `Cli::parse_validated` が弾く（doc コメントに書くと --help に出てしまう）
     #[arg(short, long, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
@@ -213,6 +213,13 @@ pub enum Command {
         #[arg(long)]
         external_links: bool,
     },
+
+    /// シェル補完スクリプトを標準出力へ出す（例: `eval "$(yuzu completions bash)"`）
+    Completions {
+        /// 対象シェル
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 #[cfg(test)]
@@ -314,5 +321,19 @@ mod tests {
         );
         // 診断の github 形式は検索には無い
         assert!(Cli::try_parse_from(["yuzu", "search", "--format", "github", "q"]).is_err());
+    }
+
+    /// `completions` はシェル名を value_enum で受け、未知のシェルは使い方エラー
+    #[test]
+    fn completions_はシェル名を受け付ける() {
+        let cli = Cli::try_parse_from(["yuzu", "completions", "zsh"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Completions {
+                shell: clap_complete::Shell::Zsh
+            }
+        ));
+        assert!(Cli::try_parse_from(["yuzu", "completions", "tcsh"]).is_err());
+        assert!(Cli::try_parse_from(["yuzu", "completions"]).is_err());
     }
 }

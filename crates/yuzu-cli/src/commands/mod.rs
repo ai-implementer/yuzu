@@ -5,6 +5,7 @@ use crate::cx::Cx;
 
 pub mod build;
 pub mod check;
+pub mod completions;
 pub mod dev;
 pub mod diag;
 pub mod extlink;

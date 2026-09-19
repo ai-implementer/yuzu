@@ -26,6 +26,9 @@ minijinja = { version = "2.21", features = ["loader"] }
 rayon = "1.11"
 rust-embed = "8.11"
 clap = { version = "4.6", features = ["derive"] }
+# シェル補完スクリプトの生成（`yuzu completions`）。clap と同じリポジトリの公式クレートで、
+# default features の依存は clap だけ（動的補完の unstable-dynamic は使わない）
+clap_complete = "4.6"
 # unified diff（`yuzu fmt --diff`）。純 Rust・推移依存なし。
 # insta（dev 依存）が既に同じバージョンを引いているため Cargo.lock は増えない。
 # 既定 feature の text（TextDiff）だけあれば足りる（inline / bytes / serde は不要）
