@@ -4,20 +4,32 @@
 
 use crate::out::outln;
 
+/// 検索結果の出力形式（`--format`）。診断の [`super::diag::Format`] とは別物 —
+/// 検索に `github` 形式は無く、値の集合を共有すると実行時に弾く分岐が要る
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum Format {
+    /// 人向けの一覧（件数・セクション別件数・スコア付きの結果）
+    #[default]
+    Human,
+    /// 結果の JSON 配列（`--json` の旧表記と同じ契約）
+    Json,
+}
+
 pub fn run(
     cx: &crate::cx::Cx,
     query: &str,
     limit: usize,
     sections: &[String],
-    json: bool,
+    format: Format,
 ) -> anyhow::Result<()> {
     let rc = super::load_project(cx)?;
 
     let out = yuzu_index::search_dist_with_options(&rc.output_dir, query, limit, sections)?;
     let (results, total) = (out.results, out.total);
 
-    if json {
-        // 出力契約は配列のまま（section を各要素へ足す加算的変更）
+    if format == Format::Json {
+        // 出力契約は配列のまま（section を各要素へ足す加算的変更）。
+        // **標準出力には JSON 以外を書かない**（診断の `--format json` と同じ規律）
         outln!("{}", serde_json::to_string_pretty(&results)?);
         return Ok(());
     }

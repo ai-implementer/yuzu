@@ -21,15 +21,50 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// サブコマンドをまたいで効く引数。解決結果は [`crate::cx::Cx`] が持つ。
+/// サブコマンドをまたいで効く引数。`--root` の解決結果は [`crate::cx::Cx`] が持ち、
+/// `-q` / `-v` はログのサブスクライバを組む `main` が消費する（各コマンドは見ない）。
 /// **`global = true` が必須** — 無いと `yuzu build --root x`（サブコマンドの後ろ）が
-/// パースエラーになる
+/// パースエラーになる。`display_order` はサブコマンドのヘルプでグローバル引数を
+/// 固有の引数の後ろへまとめるため（無いと `--limit` と `--section` の間に `--root` が挟まる）
 #[derive(Args)]
+#[command(next_display_order = 1000)]
 pub struct GlobalArgs {
     /// プロジェクトルート（yuzu.toml のあるディレクトリ）。
     /// 指定するとカレントディレクトリからの上方向探索を行わない
     #[arg(long, global = true, value_name = "DIR")]
     pub root: Option<PathBuf>,
+
+    /// 進捗ログ（info 以下）を出さない。警告とエラーは出る。RUST_LOG より優先
+    #[arg(short, long, global = true, conflicts_with = "verbose")]
+    pub quiet: bool,
+
+    /// 詳細ログ（debug）も出す。RUST_LOG より優先
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
+}
+
+impl GlobalArgs {
+    /// `-q` / `-v` の解決結果（同時指定は clap が弾くので両立しない）
+    pub fn verbosity(&self) -> Verbosity {
+        match (self.quiet, self.verbose) {
+            (true, _) => Verbosity::Quiet,
+            (_, true) => Verbosity::Verbose,
+            _ => Verbosity::Normal,
+        }
+    }
+}
+
+/// ログの量（`-q` / `-v` の解決結果）。
+/// **CLI フラグは `RUST_LOG` より優先する** — 打ったフラグのほうが意図として明示的で、
+/// シェルに残った環境変数に黙って負けると「`-q` を付けたのに進捗が出る」になる
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verbosity {
+    /// `-q`: warn 以上だけ（`RUST_LOG=warn` 相当）
+    Quiet,
+    /// 無指定: `RUST_LOG` があればそれ、無ければ info
+    Normal,
+    /// `-v`: debug 以上（`RUST_LOG=debug` 相当）
+    Verbose,
 }
 
 #[derive(Subcommand)]
@@ -101,8 +136,12 @@ pub enum Command {
         /// セクション（サイドバーの第 1 階層）で絞り込む。複数指定でいずれか
         #[arg(long, value_name = "名前")]
         section: Vec<String>,
-        /// JSON で出力する
-        #[arg(long)]
+        /// 出力形式（human = 人向けの一覧 / json = 結果の JSON 配列）
+        #[arg(long, value_enum, default_value_t = crate::commands::search::Format::Human)]
+        format: crate::commands::search::Format,
+        /// `--format json` の旧表記（v0.17 より前との互換用。ヘルプには出さない）。
+        /// `--format` と同時には指定できない
+        #[arg(long, hide = true, conflicts_with = "format")]
         json: bool,
     },
 
@@ -152,7 +191,8 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Command};
+    use super::{Cli, Command, Verbosity};
+    use crate::commands::search::Format;
     use clap::{CommandFactory, Parser};
 
     /// clap 公式のスモークテスト（引数名の重複・不正な設定を検出する）。
@@ -184,5 +224,54 @@ mod tests {
     fn root_無指定なら_none() {
         let cli = Cli::try_parse_from(["yuzu", "check"]).unwrap();
         assert!(cli.global.root.is_none());
+        assert_eq!(cli.global.verbosity(), Verbosity::Normal);
+    }
+
+    /// `-q` / `-v` もサブコマンドの前後どちらでも書ける
+    #[test]
+    fn quiet_と_verbose_はサブコマンドの前後どちらでも受け付ける() {
+        for (args, expected) in [
+            (["yuzu", "-q", "build"], Verbosity::Quiet),
+            (["yuzu", "build", "--quiet"], Verbosity::Quiet),
+            (["yuzu", "-v", "build"], Verbosity::Verbose),
+            (["yuzu", "build", "--verbose"], Verbosity::Verbose),
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert_eq!(cli.global.verbosity(), expected, "{args:?}");
+        }
+    }
+
+    /// `-q` と `-v` の同時指定はエラー（黙ってどちらかを勝たせない）
+    #[test]
+    fn quiet_と_verbose_の同時指定はエラー() {
+        assert!(Cli::try_parse_from(["yuzu", "-q", "-v", "build"]).is_err());
+    }
+
+    /// `search --json` は `--format json` の旧表記として残す。同時指定は矛盾エラー
+    #[test]
+    fn search_json_は互換で受け付け_format_との同時指定はエラー() {
+        let cli = Cli::try_parse_from(["yuzu", "search", "--json", "q"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Search {
+                json: true,
+                format: Format::Human,
+                ..
+            }
+        ));
+        let cli = Cli::try_parse_from(["yuzu", "search", "--format", "json", "q"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Search {
+                json: false,
+                format: Format::Json,
+                ..
+            }
+        ));
+        assert!(
+            Cli::try_parse_from(["yuzu", "search", "--json", "--format", "json", "q"]).is_err()
+        );
+        // 診断の github 形式は検索には無い
+        assert!(Cli::try_parse_from(["yuzu", "search", "--format", "github", "q"]).is_err());
     }
 }
