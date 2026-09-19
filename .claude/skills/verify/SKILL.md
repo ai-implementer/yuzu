@@ -80,6 +80,7 @@ grep -q 'シンボリックリンクを辿りません' dist/reference/cli/index
 grep -q -- '--root' dist/reference/cli/index.html                              # グローバルフラグ（Phase 72）
 grep -q -- '--root' dist/reference/config/index.html                           # 上方向探索の但し書き（Phase 72）
 grep -q -- '--quiet' dist/reference/cli/index.html                             # 静粛モード -q / -v（Phase 73）
+grep -q 'id="シェル補完"' dist/reference/cli/index.html                          # シェル補完の節（Phase 74。コード内文字列は span で割れる）
 grep -q 'css/syntect.css' dist/index.html && test -f dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
@@ -125,6 +126,10 @@ test "${PIPESTATUS[0]}" -eq 0 && test -f dist/_search/manifest.json && echo "OK 
 <repo>/target/debug/yuzu search --format json "はじめに" | head -1 | grep -q '^\[$' && echo "OK search json"
 <repo>/target/debug/yuzu search --json "はじめに" | head -1 | grep -q '^\[$' && echo "OK 旧表記"
 <repo>/target/debug/yuzu search --json --format json "はじめに"              # exit 2（旧表記との同時指定）
+# シェル補完（Phase 74）: 全シェルで生成でき、グローバル引数が候補に入る。bash は構文検査まで
+for sh in bash zsh fish powershell elvish; do <repo>/target/debug/yuzu completions $sh | grep -q quiet || echo "NG $sh"; done
+<repo>/target/debug/yuzu completions bash > "<scratchpad>/yuzu.bash" && bash -n "<scratchpad>/yuzu.bash" && echo "OK bash -n"
+<repo>/target/debug/yuzu completions bash --root .                            # exit 2（プロジェクトを読まない）
 # --base-url は設定より優先（deploy.yml が configure-pages の base_path を渡す契約）
 <repo>/target/debug/yuzu build --base-url /docs/ && grep -q '/docs/_assets/' dist/index.html
 <repo>/target/debug/yuzu build   # 後続の検査は既定 base_url に戻してから
