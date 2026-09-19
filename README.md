@@ -54,6 +54,7 @@ yuzu preview        # http://127.0.0.1:5173/ で確認
 yuzu fmt            # Markdown を正規形へ整形（--check で差分検出・--diff で差分表示）
 yuzu lint --fix     # 表記ゆれ（全角英数字・半角カナ・用語・長音符）を自動修正
 yuzu check          # lint + リンク切れ + fmt 差分の統合チェック（CI 用）
+eval "$(yuzu completions bash)"   # シェル補完（zsh / fish / powershell / elvish も）
 ```
 
 - **デプロイ** — GitHub に push すると Pages へ自動デプロイ

@@ -66,7 +66,7 @@ Web 調査込みで確定済みの技術選定です（差し替えない前提�
 | Markdown パース | comrak | GFM 完備・可変 AST・sourcepos（lint 用）・`format_commonmark`（fmt 用）。frontmatter は YAML（front matter extension）。パーサは yuzu-core 内部に隠蔽し、公開 API はパーサ非依存 |
 | テンプレート | minijinja | ランタイム解釈 ＝ 将来 dev でテンプレのホットリロードが可能 |
 | ハイライト | syntect ＋ two-face | pure-Rust（onig 非依存）。CSS クラス出力でビルド時実行。two-face（bat のアセット由来）が TypeScript / TSX / TOML / Dockerfile 等を補完する |
-| CLI | clap（derive） | 終了コード規約は 0 / 1 / 2。サブコマンドをまたぐ実行文脈（`--root`）は `Cx` 1 つにまとめて各 `run()` へ渡す |
+| CLI | clap（derive）＋ `clap_complete` | 終了コード規約は 0 / 1 / 2。サブコマンドをまたぐ実行文脈（`--root`）は `Cx` 1 つにまとめて各 `run()` へ渡す。シェル補完は clap の定義から実行時に生成する（同梱しない・動的補完は使わない） |
 | 設定 | TOML（kabosu） | `yuzu.toml` を自作の依存ゼロパーサ kabosu で読む（手書き decode・span 付き診断・未知キーは設定エラー）。上方向探索でルート確定（`--root` 指定時は探索しない）。v0.14 で serde ＋ JSONC から移行 |
 | テーマ同梱 | rust-embed | バイナリ埋め込み＋ `theme/` でファイル単位の上書き |
 | Mermaid | 既定はクライアント描画 | `markdown.mermaid.backend: "ssr"` で自作 SSR（tankan）に切り替える。未対応の図種は自動でクライアント描画へフォールバックする |

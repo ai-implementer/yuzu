@@ -126,7 +126,8 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 ### 凍結した設計判断（docs `development/index.md`「凍結した設計判断」参照。差し替えないこと）
 
 - comrak（Markdown）/ minijinja（テンプレート）/ syntect + two-face（ハイライト、
-  CSS クラス出力）/ clap derive / rust-embed / axum + notify + WebSocket（dev サーバ）
+  CSS クラス出力）/ clap derive ＋ clap_complete（補完は実行時生成のみ・`unstable-dynamic` は
+  使わない）/ rust-embed / axum + notify + WebSocket（dev サーバ）
 - TOML 設定は自作の kabosu（依存ゼロ。v0.14 で serde + JSONC から移行。
   JSONC の互換読み込みは作らない）
 - rayon（ページ並列化。出力はスレッド数に依らずバイト同一）

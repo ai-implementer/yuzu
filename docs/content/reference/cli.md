@@ -19,6 +19,7 @@ description: yuzu の全コマンド・主要フラグ・終了コード規約
 | `yuzu fmt` | Markdown を正規形へ整形する（既定はその場で書き換え） |
 | `yuzu lint` | 文書規約と表記ゆれの診断 |
 | `yuzu check` | lint ＋ リンク切れ検査 ＋ fmt 差分検出の統合チェック |
+| `yuzu completions <shell>` | シェル補完スクリプトを標準出力へ出す |
 
 ## 終了コード規約
 
@@ -50,8 +51,8 @@ description: yuzu の全コマンド・主要フラグ・終了コード規約
 - 指定すると**上方向探索をしません**。指定先に `yuzu.toml` が無ければ
   親を探さずに終了コード 2 で止まります（指定したつもりで親の設定を拾う事故を防ぐため）
 - パスは絶対パスへ正規化されます（相対指定・シンボリックリンク経由でも同じ結果）
-- `yuzu new` では使えません。既存プロジェクトを読まない唯一のコマンドで、
-  生成先は位置引数で指定します
+- `yuzu new` と `yuzu completions` では使えません。どちらも既存プロジェクトを
+  読まないコマンドで、指定すると終了コード 2 で止まります（黙って無視しません）
 - `yuzu fmt --diff` が出すパスは**そのプロジェクトルート相対**です。
   `patch -p1` はプロジェクトルートで当ててください
 
@@ -110,6 +111,42 @@ description: yuzu の全コマンド・主要フラグ・終了コード規約
 | `check --format <形式>` | 同上 |
 | `check --external-links` | 外部リンク（`http` / `https`）の到達性も検査する（HTTP は `curl` に委譲。HTTP 4xx を warning `external-link-broken` で報告し、到達不能・5xx・429 はスキップ件数に数える。[品質チェック](../guide/quality.md#外部リンクの検査opt-in)参照） |
 | `llms --full` | llms-full.txt（全ページの正規化 Markdown 連結）を出力 |
+
+## シェル補完
+
+`yuzu completions <shell>` が補完スクリプトを標準出力へ出します。対応シェルは
+`bash` / `zsh` / `fish` / `powershell` / `elvish` です。サブコマンド・フラグ・
+`--format` の値（`human` / `json`）まで補完され、スクリプトはバイナリの定義から
+その場で生成するので、yuzu を更新すれば新しいオプションも自動で入ります。
+
+シェルの設定ファイルに 1 行足すのが最短です:
+
+```bash
+# bash（~/.bashrc）
+eval "$(yuzu completions bash)"
+
+# zsh（~/.zshrc。compinit より後に置く）
+eval "$(yuzu completions zsh)"
+
+# fish（~/.config/fish/config.fish）
+yuzu completions fish | source
+```
+
+```powershell
+# PowerShell（$PROFILE）
+yuzu completions powershell | Out-String | Invoke-Expression
+```
+
+起動を速くしたいときはファイルへ保存して読み込みます（yuzu 更新時に再生成）:
+
+```bash
+yuzu completions bash > ~/.local/share/bash-completion/completions/yuzu
+yuzu completions zsh > ~/.zfunc/_yuzu    # fpath に ~/.zfunc を入れておく
+yuzu completions fish > ~/.config/fish/completions/yuzu.fish
+```
+
+`--section` のセクション名や検索クエリのような、ビルド結果に依存する候補は
+補完しません（補完のたびに `dist/_search` を読むことになるため）。
 
 ## ビルドの進捗ログ
 
