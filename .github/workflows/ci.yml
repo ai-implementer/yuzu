@@ -272,8 +272,13 @@ jobs:
           # （scaffold に警告は無いので stderr が空になる）
           RUST_LOG=debug "$GITHUB_WORKSPACE/target/debug/yuzu" build --force -q 2> "$RUNNER_TEMP/quiet.err"
           test ! -s "$RUNNER_TEMP/quiet.err"
-          # -v は debug ログ（ページ出力など）を出す
+          # -v は debug ログ（ページ出力など）を出す。grep -q は最初の一致で読み手を閉じるので
+          # 「stderr が先に閉じても（EPIPE）ビルドが完走する」の検査も兼ねる
+          # （tracing-subscriber の log_internal_errors 既定 true が書き込み失敗時に eprintln! で
+          # panic していた。--force は dist を作り直すので、落ちると _search が消えたまま残る）
           "$GITHUB_WORKSPACE/target/debug/yuzu" build --force -v 2>&1 | grep -q 'DEBUG'
+          test "${PIPESTATUS[0]}" -eq 0
+          test -f dist/_search/manifest.json
           # -q と -v の同時指定は clap の矛盾エラー（黙ってどちらかを勝たせない）
           if "$GITHUB_WORKSPACE/target/debug/yuzu" build -q -v 2>/dev/null; then
             echo "-q と -v の同時指定が通った" >&2

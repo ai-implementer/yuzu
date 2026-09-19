@@ -78,6 +78,12 @@ CLAUDE.md にある）。
     同時指定は clap の `conflicts_with` で矛盾エラー
   - グローバル引数に `next_display_order` を付け、サブコマンドのヘルプで
     固有の引数の後ろへまとめた（無いと `--limit` と `--section` の間に `--root` が挟まる）
+  - **既存の不具合を修正**: stderr への書き込みに失敗するとビルドが途中で落ちていた
+    （`tracing_subscriber::fmt()` の `log_internal_errors` 既定 true が、失敗時に同じ stderr へ
+    `eprintln!` して panic する）。`yuzu build 2>&1 | head` のように読み手が先に閉じると
+    再現し、`--force` は dist を作り直すので `_search` が消えたまま残る。CI の e2e で
+    `grep -q` が最初の一致で読み手を閉じて発覚。`log_internal_errors(false)` で
+    「書けなければ捨てる」（stdout の `out.rs` と同じ規律）
   - docs の CLI リファレンス（グローバルフラグ表・search の表・進捗ログの節）と
     ci.yml の docs ゲート＋ e2e（`-q` が `RUST_LOG=debug` に勝つ / `-v` で debug が出る /
     同時指定はエラー / `search --format json` と `--json` は同じ配列）を追加

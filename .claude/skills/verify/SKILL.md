@@ -117,7 +117,9 @@ test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_s
 <repo>/target/debug/yuzu search '"リロードライブ"' | grep -q "一致するページはありませんでした"
 # -q / -v / search --format（Phase 73）: -q は RUST_LOG より優先して info 以下を黙らせる
 RUST_LOG=debug <repo>/target/debug/yuzu build --force -q 2>&1 | wc -l        # 0
+# grep -q は最初の一致で読み手を閉じる = stderr の EPIPE でビルドが落ちない検査も兼ねる
 <repo>/target/debug/yuzu build --force -v 2>&1 | grep -q DEBUG && echo "OK verbose"
+test "${PIPESTATUS[0]}" -eq 0 && test -f dist/_search/manifest.json && echo "OK 完走"
 <repo>/target/debug/yuzu build -q -v                                          # exit 2（同時指定は矛盾）
 <repo>/target/debug/yuzu search --format json "はじめに" | head -1 | grep -q '^\[$' && echo "OK search json"
 <repo>/target/debug/yuzu search --json "はじめに" | head -1 | grep -q '^\[$' && echo "OK 旧表記"
