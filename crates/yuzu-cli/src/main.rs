@@ -115,6 +115,7 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
             format,
             external_links,
         } => commands::check::run(&cx, format, external_links),
+        cli::Command::Completions { shell } => commands::completions::run(&cx, shell).map(ok),
     }
 }
 

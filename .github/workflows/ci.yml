@@ -201,6 +201,9 @@ jobs:
           # 静粛モード -q / -v と search --format（Phase 73）が CLI リファレンスに載っている
           grep -q -- '--quiet' dist/reference/cli/index.html
           grep -q '検索結果の JSON 配列' dist/reference/cli/index.html
+          # シェル補完（Phase 74）の節が CLI リファレンスに載っている
+          # （コードブロック内の文字列はハイライトの span で分断されるので見出し id で照合する）
+          grep -q 'id="シェル補完"' dist/reference/cli/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
@@ -295,6 +298,23 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" search --json "はじめに" | head -1 | grep -q '^\[$'
           if "$GITHUB_WORKSPACE/target/debug/yuzu" search --json --format json "はじめに" 2>/dev/null; then
             echo "search --json と --format の同時指定が通った" >&2
+            exit 1
+          fi
+          # Phase 74: シェル補完。clap の定義から実行時に生成する（同梱しない）ので、
+          # 全シェルで出力でき、グローバル引数（--quiet）が候補に入ることを見る
+          for sh in bash zsh fish powershell elvish; do
+            "$GITHUB_WORKSPACE/target/debug/yuzu" completions "$sh" | grep -q 'quiet'
+          done
+          # bash / zsh の補完スクリプトは構文が通る（zsh はランナーに無ければ飛ばす）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" completions bash > "$RUNNER_TEMP/yuzu.bash"
+          bash -n "$RUNNER_TEMP/yuzu.bash"
+          if command -v zsh >/dev/null; then
+            "$GITHUB_WORKSPACE/target/debug/yuzu" completions zsh > "$RUNNER_TEMP/_yuzu"
+            zsh -n "$RUNNER_TEMP/_yuzu"
+          fi
+          # プロジェクトを読まないので --root は拒否する（new と同じ規律）
+          if "$GITHUB_WORKSPACE/target/debug/yuzu" completions bash --root . >/dev/null 2>&1; then
+            echo "yuzu completions が --root を受け付けた" >&2
             exit 1
           fi
           # Phase 6: fmt/lint/check（正常系 = 0、違反注入で = 1 の終了コード契約）

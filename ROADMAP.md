@@ -107,17 +107,30 @@ CLAUDE.md にある）。
   - 検索の `Format` は診断の `diag::Format` と別の enum — 検索に `github` は無く、
     集合を共有すると実行時に弾く分岐が要る
 
-### 74 shell 補完 ⬜
+### 74 shell 補完 ✅
 
-- やること
-  - `yuzu completions <bash|zsh|fish|powershell>` で補完スクリプトを出力する
-- 判断点
-  - **clap_complete を新規依存に入れるか**。凍結した設計判断は「clap derive」までで、
-    拡張の是非はここで決める
-  - 生成物をリポジトリへ同梱してリリースアセットに載せるか、実行時生成だけにするか
-    （同梱するとオプション変更のたびに再生成が要る = CI ゲートの追加）
-  - 動的補完（`--section` にセクション名、`search` にページ名）まで踏み込むか。
-    踏み込むと補完のたびに `dist/_search` を読むことになる
+- やったこと
+  - `yuzu completions <bash|zsh|fish|powershell|elvish>` を追加
+    （`commands/completions.rs`）。clap の定義 `Cli::command()` から実行時に生成するので、
+    サブコマンド・フラグ・`--format` の値まで補完され、オプションを足せば自動で追随する
+  - プロジェクトを読まないので `--root` は `new` と同じ規律で明示エラー
+  - 単体テストで全シェルの出力にサブコマンドとグローバル引数（`--quiet`）が入ることを
+    見る（= 手書きではなく定義から生成している証拠）。ci.yml の e2e で 5 シェルの生成と
+    `bash -n` / `zsh -n` の構文検査、`--root` の拒否
+  - docs の CLI リファレンスに導入手順（eval / ファイルへ保存）、README の
+    クイックスタートに 1 行、凍結した設計判断の表に clap_complete を追記
+  - ついでに `-q` の doc コメントに書いた実装メモが `--help` に出ていたのを
+    通常コメントへ移した
+- 決めたこと
+  - **clap_complete を依存に入れる** — clap と同じリポジトリの公式クレートで、
+    default features の依存は clap だけ（Cargo.lock に増えるのは 1 件）・MSRV 1.85 で
+    workspace と同じ。凍結した設計判断は「clap derive ＋ clap_complete」に広げた
+  - **実行時生成だけ** — リポジトリにもリリースアセットにも同梱しない。同梱すると
+    オプション変更のたびに再生成が要り、クロスビルドのターゲットは
+    ランナーで実行できないので生成元も分かれる。バイナリと常に一致するほうを取る
+  - **動的補完はしない** — clap_complete の動的補完は `unstable-dynamic` で API が
+    安定しておらず、依存も増える。静的補完で足りないのは `--section` のセクション名と
+    検索クエリだけで、どちらも補完のたびに `dist/_search` を読むことになる
 
 ### 75 dogfooding ⬜
 

@@ -1,6 +1,6 @@
 [package]
 name = "yuzu-cli"
-description = "yuzu の CLI（bin: yuzu。new / build / dev / preview / search / llms / fmt / lint / check）"
+description = "yuzu の CLI（bin: yuzu。new / build / dev / preview / search / llms / fmt / lint / check / completions）"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -22,6 +22,7 @@ yuzu-render = { workspace = true }
 yuzu-server = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
+clap_complete = { workspace = true }
 open = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
