@@ -58,25 +58,54 @@ CLAUDE.md にある）。
   - **`yuzu new --root` は明示的にエラー** — 既存プロジェクトを読まない唯一の
     コマンドなので意味がない。黙殺しない（未知キーを黙って無視しない姿勢と揃える）
 
-### 73 出力の一貫性（`--format` と静粛モード） ⬜
+### 73 出力の一貫性（`--format` と静粛モード） ✅
 
-同じ「出力の形」を指定する手段がコマンドごとに違う。
+同じ「出力の形」を指定する手段がコマンドごとに違っていた。
 
-- 現状（実測）
+- 着手時の実測
   - `--format {human,json,github}` があるのは `lint` と `check` だけ
   - `search` は `--json` の bool フラグ（`--format json` ではない）
-  - `fmt --diff` は独自の unified diff 出力
+  - `fmt --diff` は独自の unified diff 出力（`patch -p1` に通す契約なので対象外）
   - ログ制御は `RUST_LOG` 環境変数のみ。`EnvFilter` の既定が `info` なので、
     **v0.13 で足したビルド進捗ログを黙らせる手段が CLI に無い**
-- やること
-  - `-q` / `--quiet`（ログを抑制）と、必要なら `-v`（`debug` へ引き上げ）
-  - `search` の出力形式を `--format` へ寄せる
-- 判断点
-  - `search --json` を残すか外すか（**外すと破壊的変更**。残すなら
-    `--format` との優先順位を決める）
-  - `--quiet` が黙らせる範囲 — ログだけか、診断の集計行まで含めるか
-  - `build` にも `--format` を広げるか（ビルド結果を JSON で出す需要があるか）
-  - `-q` / `-v` をグローバル引数にするか、コマンドごとにするか
+  - ログの初期化が `Cli::parse()` より前にあり、フラグでフィルタを決められない構造
+- やったこと
+  - `-q` / `--quiet` と `-v` / `--verbose` をグローバル引数（`GlobalArgs`）に追加。
+    `main` が引数をパースしてからサブスクライバを組む順序に変え、
+    フィルタの決定は `log_filter`（フラグと `RUST_LOG` を引数で受ける純粋関数）に集約
+  - `search --format {human,json}` を追加（`commands/search.rs` の `Format`）。
+    `--json` は `hide = true` の互換エイリアスとして残し、`--format` との
+    同時指定は clap の `conflicts_with` で矛盾エラー
+  - グローバル引数に `next_display_order` を付け、サブコマンドのヘルプで
+    固有の引数の後ろへまとめた（無いと `--limit` と `--section` の間に `--root` が挟まる）
+  - **既存の不具合を修正**: stderr への書き込みに失敗するとビルドが途中で落ちていた
+    （`tracing_subscriber::fmt()` の `log_internal_errors` 既定 true が、失敗時に同じ stderr へ
+    `eprintln!` して panic する）。`yuzu build 2>&1 | head` のように読み手が先に閉じると
+    再現し、`--force` は dist を作り直すので `_search` が消えたまま残る。CI の e2e で
+    `grep -q` が最初の一致で読み手を閉じて発覚。`log_internal_errors(false)` で
+    「書けなければ捨てる」（stdout の `out.rs` と同じ規律）
+  - docs の CLI リファレンス（グローバルフラグ表・search の表・進捗ログの節）と
+    ci.yml の docs ゲート＋ e2e（`-q` が `RUST_LOG=debug` に勝つ / `-v` で debug が出る /
+    同時指定はエラー / `search --format json` と `--json` は同じ配列）を追加
+- 決めたこと
+  - **`search --json` は非表示の互換エイリアスとして残す** — 外すと破壊的変更で、
+    残す代償は `conflicts_with` 1 行。優先順位を決める必要が無い（同時指定を許さない）
+  - **`-q` は info 以下だけ黙らせ、warn は残す**（`RUST_LOG=warn` 相当）— yuzu.toml の
+    注意・ハイライト失敗・mermaid の構文エラーは黙らせると気づけない。標準出力の
+    契約物（診断・集計行・検索結果）と `fmt --check` の stderr 集計行は変えない
+  - **CLI フラグは `RUST_LOG` より優先** — 打ったフラグのほうが意図として明示的で、
+    シェルに残った環境変数に黙って負けると「`-q` を付けたのに進捗が出る」になる。
+    無指定のときだけ `RUST_LOG` を見る（不正な指定は従来どおり黙って `info`）
+  - **`-q` / `-v` はグローバル引数** — Phase 72 で用意した `GlobalArgs` に載せるだけ。
+    値は `Cx` に入れない（消費するのは `main` のログ初期化だけで、コマンドは見ない）
+  - **グローバル引数同士の排他は `conflicts_with` だけでは足りない** — clap は
+    トップレベルとサブコマンドを別々に検証するので `yuzu -q build -v` が通る
+    （レビュー指摘）。`Cli::parse_validated` のパース後検証で同じ clap エラー
+    （終了コード 2）にし、前後に分けた両順序をテストと e2e で見る
+  - **`build` に `--format` は広げない** — ビルドの結果は終了コードとログで足りる。
+    JSON で欲しい需要が出たら候補へ戻す
+  - 検索の `Format` は診断の `diag::Format` と別の enum — 検索に `github` は無く、
+    集合を共有すると実行時に弾く分岐が要る
 
 ### 74 shell 補完 ⬜
 

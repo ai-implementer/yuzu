@@ -55,6 +55,9 @@ cargo build -p yuzu-cli
   `--root` の `canonicalize` は `Cx::new` が唯一の受け口 = 「`Cx` を持っている＝
   正規化済み絶対パス」が不変条件）。グローバル引数を足すときは
   `cli.rs` の `GlobalArgs` へ（`global = true` が必須）
+  - **グローバル引数同士の排他は `conflicts_with` だけでは足りない** — clap は
+    トップレベルとサブコマンドを別々に検証するので `yuzu -q build -v` が通る。
+    `Cli::parse_validated` のパース後検証に足す（`main` とテストはこれを通す）
 - **insta スナップショット**: 差分が出たら内容を必ず目視してから更新する
   - `cargo insta review` は cargo-insta が要る（**ホストに入っていないことがある**。
     開発コンテナには同梱）
@@ -222,6 +225,11 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   残る不具合の修正）
   - **参照先ハッシュを `source_sha256` へ畳み込んではいけない** = `BuildCache::store` が
     エントリを丸ごと作り直し、meta / body / llms まで巻き添えで毎ビルド全ミスになる
+- **ログのサブスクライバは `log_internal_errors(false)` 必須**（`main.rs`）。
+  `tracing_subscriber::fmt()` の既定は true で、stderr への書き込み失敗時に同じ stderr へ
+  `eprintln!` して panic する = `yuzu build 2>&1 | head` のように読み手が先に閉じると
+  ビルドが途中で落ち、`--force` なら dist を作り直した後なので `_search` が消えたままになる
+  （`-q` / `-v` は `GlobalArgs` → `log_filter` で解決し、`RUST_LOG` より優先する）
 
 ### comrak
 

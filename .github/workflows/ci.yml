@@ -198,6 +198,9 @@ jobs:
           # グローバルフラグ --root（Phase 72）が CLI リファレンスと設定リファレンスに載っている
           grep -q -- '--root' dist/reference/cli/index.html
           grep -q -- '--root' dist/reference/config/index.html
+          # 静粛モード -q / -v と search --format（Phase 73）が CLI リファレンスに載っている
+          grep -q -- '--quiet' dist/reference/cli/index.html
+          grep -q '検索結果の JSON 配列' dist/reference/cli/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
@@ -265,6 +268,35 @@ jobs:
           # フレーズ検索（Phase 31）: 隣接一致でヒットし、逆順は 0 件
           "$GITHUB_WORKSPACE/target/debug/yuzu" search '"ライブリロード"' | grep -q "ライブリロード"
           "$GITHUB_WORKSPACE/target/debug/yuzu" search '"リロードライブ"' | grep -q "一致するページはありませんでした"
+          # Phase 73: -q は進捗ログ（info 以下）を黙らせ、RUST_LOG より優先する
+          # （scaffold に警告は無いので stderr が空になる）
+          RUST_LOG=debug "$GITHUB_WORKSPACE/target/debug/yuzu" build --force -q 2> "$RUNNER_TEMP/quiet.err"
+          test ! -s "$RUNNER_TEMP/quiet.err"
+          # -v は debug ログ（ページ出力など）を出す。grep -q は最初の一致で読み手を閉じるので
+          # 「stderr が先に閉じても（EPIPE）ビルドが完走する」の検査も兼ねる
+          # （tracing-subscriber の log_internal_errors 既定 true が書き込み失敗時に eprintln! で
+          # panic していた。--force は dist を作り直すので、落ちると _search が消えたまま残る）
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build --force -v 2>&1 | grep -q 'DEBUG'
+          test "${PIPESTATUS[0]}" -eq 0
+          test -f dist/_search/manifest.json
+          # -q と -v の同時指定は矛盾エラー（黙ってどちらかを勝たせない）。
+          # サブコマンドの前後に分けた指定は clap の conflicts_with が見ないので
+          # パース後の検証（Cli::parse_validated）が弾く。両順序を見る
+          for qv in "build -q -v" "-q build -v" "-v build -q"; do
+            # shellcheck disable=SC2086
+            if "$GITHUB_WORKSPACE/target/debug/yuzu" $qv 2>/dev/null; then
+              echo "-q と -v の同時指定が通った: yuzu $qv" >&2
+              exit 1
+            fi
+          done
+          # search --format json は結果の JSON 配列だけを標準出力へ出す。
+          # --json は旧表記として同じ出力で、--format との同時指定は矛盾エラー
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search --format json "はじめに" | head -1 | grep -q '^\[$'
+          "$GITHUB_WORKSPACE/target/debug/yuzu" search --json "はじめに" | head -1 | grep -q '^\[$'
+          if "$GITHUB_WORKSPACE/target/debug/yuzu" search --json --format json "はじめに" 2>/dev/null; then
+            echo "search --json と --format の同時指定が通った" >&2
+            exit 1
+          fi
           # Phase 6: fmt/lint/check（正常系 = 0、違反注入で = 1 の終了コード契約）
           "$GITHUB_WORKSPACE/target/debug/yuzu" fmt --check
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint
