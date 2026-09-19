@@ -36,7 +36,8 @@ jobs:
 
       - name: 外部リンクの到達性検査（docs/）
         # HTTP は curl へ委譲（ubuntu-latest に同梱）。github 形式で注釈を出し、
-        # 集計行の「スキップ N 件」で環境要因の件数も残す
-        working-directory: docs
+        # 集計行の「スキップ N 件」で環境要因の件数も残す。
+        # プロジェクトは --root で指定する（注釈のパスは GITHUB_WORKSPACE 相対に
+        # 付け替わるので cwd に依存しない）
         run: |
-          "$GITHUB_WORKSPACE/target/debug/yuzu" check --external-links --format github
+          target/debug/yuzu check --root docs --external-links --format github

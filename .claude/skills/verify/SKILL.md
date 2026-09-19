@@ -51,40 +51,42 @@ cargo check -p tankan --target wasm32-unknown-unknown
 
 **`docs/` の原稿・テーマ・記法まわりを触ったら必須。** CI（ci.yml の docs ステップ）と同じ内容。
 
+リポジトリルートから `--root docs` で実行する（`cd docs` しない。Phase 75 の dogfooding。
+出力は `docs/dist/`）。
+
 ```bash
 cargo build -p yuzu-cli
-cd docs
-<repo>/target/debug/yuzu check      # fmt 崩れ・壊れリンク・include エラーをまとめて検出
-<repo>/target/debug/yuzu build
-test -f dist/index.html && test -f dist/_search/manifest.json
+<repo>/target/debug/yuzu check --root docs      # fmt 崩れ・壊れリンク・include エラーをまとめて検出
+<repo>/target/debug/yuzu build --root docs
+test -f docs/dist/index.html && test -f docs/dist/_search/manifest.json
 # 機能ごとの配信ゲート（CI と同じ。新機能を足したら 1 行増やす）
-grep -q 'http-equiv="refresh"' dist/guide/lint/index.html                      # エイリアス
-grep -q '<figcaption>yuzu.toml:25-45</figcaption>' dist/guide/code-and-math/index.html   # インクルード
-grep -q 'id="fig:deps"' dist/development/index.html                            # 図表番号
-grep -q '<a href="#fig:deps">図 1</a>' dist/development/index.html             # 参照の自動補完
-grep -q '<details class="markdown-alert markdown-alert-tip">' dist/guide/writing/index.html  # 折りたたみ
-grep -q 'js/details-target.js' dist/guide/writing/index.html                   # 折りたたみ自動展開 JS
-grep -q 'yuzu-sidebar-scroll' dist/index.html                                  # サイドバー位置維持
-grep -q 'class="tab-label"' dist/guide/code-and-math/index.html                # タブ / コードグループ
-grep -q '取り込まれた Markdown 断片です' dist/guide/writing/index.html          # Markdown 断片
-grep -q '<abbr title="Server-Side Rendering' dist/guide/writing/index.html     # 用語集（本文の abbr 化）
-grep -q 'id="ssr"' dist/glossary/index.html                                    # 用語集ページの自動生成
-grep -q 'href="/glossary/"' dist/index.html                                    # 生成ページが nav に載る
-! grep -q '<abbr' dist/glossary/index.html                                     # 用語集ページ自身は abbr 化しない
-grep -q '<strong>「重要」</strong>' dist/guide/writing/index.html              # 約物に隣接した強調
-grep -q '<dl>' dist/guide/writing/index.html                                   # 定義リスト
-grep -q '"docGroups"' dist/_search/manifest.json                               # 検索の絞り込み区分
-grep -q 'パーセントエンコード' dist/guide/writing/index.html                    # URL エンコード（Phase 64）
-grep -q '追随する' dist/guide/deploy/index.html                                # テーマ上書きの契約（Phase 65）
-grep -q 'シンボリックリンクを辿りません' dist/reference/cli/index.html          # 配信のリンク遮断（Phase 65）
-grep -q -- '--root' dist/reference/cli/index.html                              # グローバルフラグ（Phase 72）
-grep -q -- '--root' dist/reference/config/index.html                           # 上方向探索の但し書き（Phase 72）
-grep -q -- '--quiet' dist/reference/cli/index.html                             # 静粛モード -q / -v（Phase 73）
-grep -q 'id="シェル補完"' dist/reference/cli/index.html                          # シェル補完の節（Phase 74。コード内文字列は span で割れる）
-grep -q 'css/syntect.css' dist/index.html && test -f dist/_assets/css/syntect.css  # syntect.css は有効時だけ
-<repo>/target/debug/yuzu search --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
+grep -q 'http-equiv="refresh"' docs/dist/guide/lint/index.html                      # エイリアス
+grep -q '<figcaption>yuzu.toml:25-45</figcaption>' docs/dist/guide/code-and-math/index.html   # インクルード
+grep -q 'id="fig:deps"' docs/dist/development/index.html                            # 図表番号
+grep -q '<a href="#fig:deps">図 1</a>' docs/dist/development/index.html             # 参照の自動補完
+grep -q '<details class="markdown-alert markdown-alert-tip">' docs/dist/guide/writing/index.html  # 折りたたみ
+grep -q 'js/details-target.js' docs/dist/guide/writing/index.html                   # 折りたたみ自動展開 JS
+grep -q 'yuzu-sidebar-scroll' docs/dist/index.html                                  # サイドバー位置維持
+grep -q 'class="tab-label"' docs/dist/guide/code-and-math/index.html                # タブ / コードグループ
+grep -q '取り込まれた Markdown 断片です' docs/dist/guide/writing/index.html          # Markdown 断片
+grep -q '<abbr title="Server-Side Rendering' docs/dist/guide/writing/index.html     # 用語集（本文の abbr 化）
+grep -q 'id="ssr"' docs/dist/glossary/index.html                                    # 用語集ページの自動生成
+grep -q 'href="/glossary/"' docs/dist/index.html                                    # 生成ページが nav に載る
+! grep -q '<abbr' docs/dist/glossary/index.html                                     # 用語集ページ自身は abbr 化しない
+grep -q '<strong>「重要」</strong>' docs/dist/guide/writing/index.html              # 約物に隣接した強調
+grep -q '<dl>' docs/dist/guide/writing/index.html                                   # 定義リスト
+grep -q '"docGroups"' docs/dist/_search/manifest.json                               # 検索の絞り込み区分
+grep -q 'パーセントエンコード' docs/dist/guide/writing/index.html                    # URL エンコード（Phase 64）
+grep -q '追随する' docs/dist/guide/deploy/index.html                                # テーマ上書きの契約（Phase 65）
+grep -q 'シンボリックリンクを辿りません' docs/dist/reference/cli/index.html          # 配信のリンク遮断（Phase 65）
+grep -q -- '--root' docs/dist/reference/cli/index.html                              # グローバルフラグ（Phase 72）
+grep -q -- '--root' docs/dist/reference/config/index.html                           # 上方向探索の但し書き（Phase 72）
+grep -q -- '--quiet' docs/dist/reference/cli/index.html                             # 静粛モード -q / -v（Phase 73）
+grep -q 'id="シェル補完"' docs/dist/reference/cli/index.html                          # シェル補完の節（Phase 74。コード内文字列は span で割れる）
+grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css  # syntect.css は有効時だけ
+<repo>/target/debug/yuzu search --root docs --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
-grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html" && echo "NG: フォールバック発生"
+grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' docs/dist/ --include="*.html" && echo "NG: フォールバック発生"
 ```
 
 **`docs/yuzu.toml` の 25-45 行目**（`[markdown]` から `[markdown.glossary.terms]` の末尾まで）は
@@ -142,9 +144,11 @@ echo '[壊れリンク](missing.md)' >> content/index.md
 # json は単一オブジェクトで、標準出力に他の行を混ぜない
 <repo>/target/debug/yuzu check --format json | head -1 | grep -q '^{$' && echo "OK json"
 # github は注釈行を出す。GITHUB_WORKSPACE を差し替えると相対パスが付け替わる
-# （CI が cd docs している状況の再現。これが崩れると PR に注釈が紐づかない）
+# （これが崩れると PR に注釈が紐づかない。--root 指定で cwd がプロジェクト外でも同じ =
+#   docs.yml / docs-links.yml がリポジトリルートから --root docs で実行する前提）
 <repo>/target/debug/yuzu check --format github | grep '^::error file='
-GITHUB_WORKSPACE="$(dirname "$PWD")" <repo>/target/debug/yuzu check --format github | grep '^::error file='
+GITHUB_WORKSPACE="$(dirname "$PWD")" <repo>/target/debug/yuzu check --format github | grep '^::error file=e2e-docs/'
+GITHUB_WORKSPACE="$(dirname "$PWD")" <repo>/target/debug/yuzu check --root "$PWD" --format github | grep '^::error file=e2e-docs/'
 # lint --fix と併用しても標準出力は JSON のまま（進捗は stderr へ逃げる）
 <repo>/target/debug/yuzu lint --fix --format json 2>/dev/null | head -1 | grep -q '^{$' && echo "OK fix+json"
 # preview のリンク遮断（Phase 65）: dist にリンクを置いて 404 と内容非漏洩を見る
