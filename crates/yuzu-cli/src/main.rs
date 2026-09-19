@@ -32,6 +32,13 @@ fn main() -> ExitCode {
         // `yuzu check --format json` の「標準出力へ JSON 以外を書かない」契約を破る
         // （yuzu.toml の警告が JSON の前に出てパースが失敗していた）
         .with_writer(std::io::stderr)
+        // **必須**: `fmt()` の既定は true で、stderr への書き込みに失敗すると
+        // 「代替として stderr へ eprintln!」する = 同じ stderr なので必ず失敗して
+        // `failed printing to stderr` で panic する。`yuzu build 2>&1 | head` のように
+        // 読み手が先に閉じると（EPIPE）ビルドが途中で落ち、`--force` なら dist を
+        // 作り直した後なので `_search` が消えたままになる。ログは stdout（out.rs）と
+        // 同じく「書けなければ捨てる」
+        .log_internal_errors(false)
         .init();
 
     let code = match run(cli) {
