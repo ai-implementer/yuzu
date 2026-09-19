@@ -79,6 +79,7 @@ grep -q '追随する' dist/guide/deploy/index.html                             
 grep -q 'シンボリックリンクを辿りません' dist/reference/cli/index.html          # 配信のリンク遮断（Phase 65）
 grep -q -- '--root' dist/reference/cli/index.html                              # グローバルフラグ（Phase 72）
 grep -q -- '--root' dist/reference/config/index.html                           # 上方向探索の但し書き（Phase 72）
+grep -q -- '--quiet' dist/reference/cli/index.html                             # 静粛モード -q / -v（Phase 73）
 grep -q 'css/syntect.css' dist/index.html && test -f dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
@@ -114,6 +115,13 @@ test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_s
 <repo>/target/debug/yuzu search "ダーくモード" | grep -q "ダークモード"
 <repo>/target/debug/yuzu search '"ライブリロード"' | grep -q "ライブリロード"
 <repo>/target/debug/yuzu search '"リロードライブ"' | grep -q "一致するページはありませんでした"
+# -q / -v / search --format（Phase 73）: -q は RUST_LOG より優先して info 以下を黙らせる
+RUST_LOG=debug <repo>/target/debug/yuzu build --force -q 2>&1 | wc -l        # 0
+<repo>/target/debug/yuzu build --force -v 2>&1 | grep -q DEBUG && echo "OK verbose"
+<repo>/target/debug/yuzu build -q -v                                          # exit 2（同時指定は矛盾）
+<repo>/target/debug/yuzu search --format json "はじめに" | head -1 | grep -q '^\[$' && echo "OK search json"
+<repo>/target/debug/yuzu search --json "はじめに" | head -1 | grep -q '^\[$' && echo "OK 旧表記"
+<repo>/target/debug/yuzu search --json --format json "はじめに"              # exit 2（旧表記との同時指定）
 # --base-url は設定より優先（deploy.yml が configure-pages の base_path を渡す契約）
 <repo>/target/debug/yuzu build --base-url /docs/ && grep -q '/docs/_assets/' dist/index.html
 <repo>/target/debug/yuzu build   # 後続の検査は既定 base_url に戻してから
