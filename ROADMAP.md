@@ -76,6 +76,12 @@ canonical / `og:url` / パス指定の og:image は `base_url` がフル URL の
   - エイリアスのリダイレクト HTML が出している相対 canonical（移動先ページ）は今回
     触らない — 移動先の宣言としては相対でも機能しており、フル URL 時だけ絶対にする
     変更は Phase 79 の dogfooding で要否を見る
+  - レビュー指摘 2 件: **`| url` フィルタは HTML 属性専用にして `&` を `&amp;` に**
+    （生のままだと `?label=a&copy;b` がパーサで `a©b` に化けて別の画像 URL になる。
+    `<script>` 内の文字列は実体参照がデコードされないので `| url_js` を新設して
+    リダイレクト HTML の `location.replace` はそちら）/ **`og:locale` は地域サブタグ
+    （2 文字のアルファベットか 3 桁の数字）があるときだけ**（`zh-Hant` の `Hant` は
+    文字体系で、`zh_HANT` を出していた。`zh-Hant-TW` は `zh_TW`）
 
 ### 77 本文 HTML の到達性とページメタ（CACHE bump を 1 回に束ねる） ⬜
 

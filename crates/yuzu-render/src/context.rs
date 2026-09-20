@@ -50,16 +50,32 @@ pub(crate) const GENERATOR: &str = "yuzu";
 
 /// `site.lang` から `og:locale` を作る。OGP の locale は `language_TERRITORY` で、
 /// 地域が無い `ja` から `ja_JP` を推測すると誤りうる（`en` → `en_US` か `en_GB` か）ため、
-/// **地域付きのときだけ**変換して、無ければ出さない
+/// **地域サブタグがあるときだけ**変換して、無ければ出さない。
+///
+/// BCP 47 の並び `language[-script][-region]` を最小限に読む: 2 番目が 4 文字なら
+/// 文字体系（`Hant` / `Latn`）で地域ではないので飛ばし、地域は 2 文字のアルファベット
+/// （`JP`）か 3 桁の数字（`419`）に限る。`zh-Hant` / `sr-Latn` は地域が無いので None
+/// （レビュー指摘: 文字体系を地域として `zh_HANT` を出していた）
 pub(crate) fn og_locale(lang: &str) -> Option<String> {
-    let (language, territory) = lang.split_once(['-', '_'])?;
-    if language.is_empty() || territory.is_empty() || territory.contains(['-', '_']) {
+    let mut subtags = lang.split(['-', '_']);
+    let language = subtags.next()?;
+    if language.is_empty() || !language.chars().all(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    let mut next = subtags.next()?;
+    if next.len() == 4 && next.chars().all(|c| c.is_ascii_alphabetic()) {
+        // 文字体系サブタグ。地域はその次
+        next = subtags.next()?;
+    }
+    let is_region = (next.len() == 2 && next.chars().all(|c| c.is_ascii_alphabetic()))
+        || (next.len() == 3 && next.chars().all(|c| c.is_ascii_digit()));
+    if !is_region {
         return None;
     }
     Some(format!(
         "{}_{}",
         language.to_ascii_lowercase(),
-        territory.to_ascii_uppercase()
+        next.to_ascii_uppercase()
     ))
 }
 
@@ -348,17 +364,25 @@ mod tests {
     use super::*;
     use yuzu_core::SiteModel;
 
-    /// og:locale は地域付きの lang だけ `language_TERRITORY` にし、地域の推測はしない
+    /// og:locale は地域サブタグがある lang だけ `language_TERRITORY` にし、地域の推測はしない
     #[test]
-    fn og_locale_は地域付きのときだけ作る() {
+    fn og_locale_は地域サブタグがあるときだけ作る() {
         assert_eq!(og_locale("ja-JP").as_deref(), Some("ja_JP"));
         assert_eq!(og_locale("en_us").as_deref(), Some("en_US"));
+        // 文字体系の後ろの地域は拾う（UN M.49 の数字地域も）
+        assert_eq!(og_locale("zh-Hant-TW").as_deref(), Some("zh_TW"));
+        assert_eq!(og_locale("es-419").as_deref(), Some("es_419"));
         assert_eq!(og_locale("ja"), None);
         assert_eq!(og_locale("en"), None);
-        // 不完全な形は出さない
+        // 文字体系だけで地域が無い（レビュー指摘: zh_HANT を出していた）
+        assert_eq!(og_locale("zh-Hant"), None);
+        assert_eq!(og_locale("sr-Latn"), None);
+        // 不完全・不正な形は出さない
         assert_eq!(og_locale("ja-"), None);
         assert_eq!(og_locale("-JP"), None);
-        assert_eq!(og_locale("zh-Hant-TW"), None);
+        assert_eq!(og_locale("ja-J"), None);
+        assert_eq!(og_locale("ja-JPN"), None);
+        assert_eq!(og_locale("en-oed"), None);
     }
 
     fn node(title: &str, route: Option<&str>, children: Vec<NavNode>) -> NavNode {

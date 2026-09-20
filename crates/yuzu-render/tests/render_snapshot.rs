@@ -193,6 +193,20 @@ fn og_image_はフル_url_指定なら_base_に依らず出る() {
     assert!(!index.contains(r#"rel="canonical""#));
 }
 
+/// 属性に出す URL の `&` は `&amp;` になる。生のままだと `&copy;` を HTML パーサが `©` に
+/// デコードして別の画像 URL になる（レビュー指摘）
+#[test]
+fn og_image_の_url_は属性として_and_をエスケープする() {
+    let dir = build_fixture_with_config(LiveReloadMode::None, |rc| {
+        rc.config.site.image = Some("https://cdn.example.com/og.png?label=a&copy;b".to_string());
+    });
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(index.contains(
+        r#"<meta property="og:image" content="https://cdn.example.com/og.png?label=a&amp;copy;b">"#
+    ));
+    assert!(!index.contains("a&copy;b"));
+}
+
 /// description はページに無ければサイトの値へ落ちる（meta description と og:description が
 /// 同じ値になる）。404 ページは description を持たないので確かめやすい
 #[test]
