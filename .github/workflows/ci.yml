@@ -205,6 +205,15 @@ jobs:
           # シェル補完（Phase 74）の節が CLI リファレンスに載っている
           # （コードブロック内の文字列はハイライトの span で分断されるので見出し id で照合する）
           grep -q 'id="シェル補完"' docs/dist/reference/cli/index.html
+          # <head> の共有カード（Phase 76）: URL に依らないタグは常に出る。
+          # canonical / og:url はフル URL のときだけなので、ここ（base_url 無し）では出ない
+          grep -q '<meta property="og:title"' docs/dist/index.html
+          grep -q '<meta name="twitter:card" content="summary">' docs/dist/index.html
+          if grep -q 'rel="canonical"' docs/dist/index.html; then
+            echo "base_url がフル URL でないのに canonical が出た" >&2
+            exit 1
+          fi
+          grep -q 'id="共有カードogpと-canonical"' docs/dist/guide/deploy/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
@@ -265,6 +274,20 @@ jobs:
           # --base-url は設定より優先して配信パスを差し替える（deploy.yml が使う契約）
           "$GITHUB_WORKSPACE/target/debug/yuzu" build --base-url /docs/
           grep -q '/docs/_assets/' dist/index.html
+          # Phase 76: 共有カード。site.image をパスで指定しても base がパスだけなら
+          # og:image は出ず、フル URL なら canonical / og:url / og:image が絶対 URL で出る
+          sed -i 's|^title = "My Docs"$|title = "My Docs"\nimage = "/images/yuzu-logo.svg"|' yuzu.toml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build --base-url /docs/
+          if grep -q 'og:image' dist/index.html; then
+            echo "base_url がパスだけなのに og:image が出た" >&2
+            exit 1
+          fi
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build --base-url https://example.com/docs/
+          grep -q '<link rel="canonical" href="https://example.com/docs/guide/getting-started/">' dist/guide/getting-started/index.html
+          grep -q '<meta property="og:url" content="https://example.com/docs/guide/getting-started/">' dist/guide/getting-started/index.html
+          grep -q '<meta property="og:image" content="https://example.com/docs/images/yuzu-logo.svg">' dist/index.html
+          # og:description はページの description が無ければ site.description へ落ちる（404 で見る）
+          grep -q '<meta property="og:description" content="yuzu で生成するドキュメントサイト">' dist/404.html
           "$GITHUB_WORKSPACE/target/debug/yuzu" search "はじめに" | grep "はじめに"
           # タイポトレランスの実ヒット確認（Phase 21: 出力の有無だけでは日本語 typo の
           # 不具合を見逃した反省から、ヒット内容まで検証する）
