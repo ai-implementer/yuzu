@@ -47,9 +47,10 @@ jobs:
         run: cargo build --release -p yuzu-cli
 
       - name: 品質ゲート（lint ＋ リンク切れ ＋ fmt 差分）
-        working-directory: docs
+        # プロジェクトは --root で指定する（Phase 75 の dogfooding。cd / working-directory
+        # に頼らず、リポジトリルートのまま docs/ を対象にする）
         run: |
-          "$GITHUB_WORKSPACE/target/release/yuzu" check
+          target/release/yuzu check --root docs
 
       - name: Pages の設定を取得
         id: pages
@@ -60,13 +61,12 @@ jobs:
         # configure-pages の base_url 出力は「Enforce HTTPS」が無効だと
         # http:// を返すため使わず、スキームを https に固定して
         # host + base_path から組み立てる
-        working-directory: docs
         run: |
-          "$GITHUB_WORKSPACE/target/release/yuzu" build --base-url "https://${{ steps.pages.outputs.host }}${{ steps.pages.outputs.base_path }}/"
+          target/release/yuzu build --root docs --base-url "https://${{ steps.pages.outputs.host }}${{ steps.pages.outputs.base_path }}/"
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が 1 ページでも出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
-          if grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html"; then
+          if grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' docs/dist/ --include="*.html"; then
             echo "SSR フォールバックが発生している（上記ページ）" >&2
             exit 1
           fi

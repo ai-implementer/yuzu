@@ -82,132 +82,133 @@ jobs:
       # デプロイは docs.yml（main push）だが、壊れた原稿・SSR フォールバックの
       # 混入はマージ前にここで検出する
       - name: docs site (yuzu check && yuzu build)
+        # プロジェクトは --root docs で指定する（Phase 75 の dogfooding。cd docs しない）。
+        # 出力は docs/dist/ に出る
         run: |
-          cd docs
-          # 診断は GitHub Actions の注釈で出す（Phase 46）。cd docs しているが、
-          # パスは GITHUB_WORKSPACE からの相対へ自動で付け替わるので PR の
-          # diff 行に紐づく。注釈の画面表示は 1 ステップ 10 件までで、残りはログに出る
-          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format github
-          "$GITHUB_WORKSPACE/target/debug/yuzu" build
-          test -f dist/index.html
-          test -f dist/_search/manifest.json
+          # 診断は GitHub Actions の注釈で出す（Phase 46）。パスは GITHUB_WORKSPACE からの
+          # 相対へ自動で付け替わるので PR の diff 行に紐づく（cwd に依存しない）。
+          # 注釈の画面表示は 1 ステップ 10 件までで、残りはログに出る
+          target/debug/yuzu check --root docs --format github
+          target/debug/yuzu build --root docs
+          test -f docs/dist/index.html
+          test -f docs/dist/_search/manifest.json
           # エイリアス（guide/quality の旧 URL）にリダイレクト HTML が生成される
-          grep -q 'http-equiv="refresh"' dist/guide/lint/index.html
+          grep -q 'http-equiv="refresh"' docs/dist/guide/lint/index.html
           # コンテンツインクルード: yuzu.toml の引用が展開されている
-          grep -q '<figcaption>yuzu.toml:25-45</figcaption>' dist/guide/code-and-math/index.html
+          grep -q '<figcaption>yuzu.toml:25-45</figcaption>' docs/dist/guide/code-and-math/index.html
           # 図表番号: キャプションの採番と参照リンクの自動補完
-          grep -q 'id="fig:deps"' dist/development/index.html
-          grep -q '<a href="#fig:deps">図 1</a>' dist/development/index.html
+          grep -q 'id="fig:deps"' docs/dist/development/index.html
+          grep -q '<a href="#fig:deps">図 1</a>' docs/dist/development/index.html
           # 折りたたみ Admonition: details/summary で描画される
-          grep -q '<details class="markdown-alert markdown-alert-tip">' dist/guide/writing/index.html
+          grep -q '<details class="markdown-alert markdown-alert-tip">' docs/dist/guide/writing/index.html
           # 折りたたみ内へのアンカージャンプを開く JS が配信される
-          grep -q 'js/details-target.js' dist/guide/writing/index.html
+          grep -q 'js/details-target.js' docs/dist/guide/writing/index.html
           # サイドバーのスクロール位置維持（base.jinja のインライン script）が配信されている
-          grep -q 'yuzu-sidebar-scroll' dist/index.html
+          grep -q 'yuzu-sidebar-scroll' docs/dist/index.html
           # タブ / コードグループ（Phase 50）: radio + label のマークアップが出ている
-          grep -q 'class="tab-label"' dist/guide/code-and-math/index.html
+          grep -q 'class="tab-label"' docs/dist/guide/code-and-math/index.html
           # Markdown 断片（Phase 51）: docs/snippets/ の断片が展開された散文で出ている
-          grep -q '取り込まれた Markdown 断片です' dist/guide/writing/index.html
+          grep -q '取り込まれた Markdown 断片です' docs/dist/guide/writing/index.html
           # 用語集（Phase 52）: 本文の略語が辞書の説明つきで <abbr> 化されている
-          grep -q '<abbr title="Server-Side Rendering' dist/guide/writing/index.html
+          grep -q '<abbr title="Server-Side Rendering' docs/dist/guide/writing/index.html
           # 用語集ページが自動生成され、用語ごとのアンカーが振られている
-          grep -q 'id="ssr"' dist/glossary/index.html
+          grep -q 'id="ssr"' docs/dist/glossary/index.html
           # 合成ページが nav 経路に乗っている（サイドバーに出る）
-          grep -q 'href="/glossary/"' dist/index.html
+          grep -q 'href="/glossary/"' docs/dist/index.html
           # 用語集ページ自身は abbr 化しない（説明文の中で用語が光る循環を防ぐ）
-          if grep -q '<abbr' dist/glossary/index.html; then
+          if grep -q '<abbr' docs/dist/glossary/index.html; then
             echo "用語集ページ自身が abbr 化された" >&2
             exit 1
           fi
           # 約物に隣接した強調（Phase 53 の cjk_friendly_emphasis）
-          grep -q '<strong>「重要」</strong>' dist/guide/writing/index.html
-          grep -q '<strong>この文は重要です。</strong>但し' dist/guide/writing/index.html
+          grep -q '<strong>「重要」</strong>' docs/dist/guide/writing/index.html
+          grep -q '<strong>この文は重要です。</strong>但し' docs/dist/guide/writing/index.html
           # 定義リスト（Phase 53 の description_lists）
-          grep -q '<dl>' dist/guide/writing/index.html
+          grep -q '<dl>' docs/dist/guide/writing/index.html
           # 検索の絞り込み: インデックスにナビ由来の区分が焼き込まれている
-          grep -q '"groups"' dist/_search/manifest.json
-          grep -q '"docGroups"' dist/_search/manifest.json
+          grep -q '"groups"' docs/dist/_search/manifest.json
+          grep -q '"docGroups"' docs/dist/_search/manifest.json
           # エンジン側で絞り込めて件数も絞り込み後になる（ブラウザ操作は CI で
           # 検証できないので、同一エンジンを通る CLI で担保する）
-          "$GITHUB_WORKSPACE/target/debug/yuzu" search --section 開発 "キャッシュ" | grep -q '/development/'
+          target/debug/yuzu search --root docs --section 開発 "キャッシュ" | grep -q '/development/'
           # 絞り込み UI の配線ゲート（機能自体はブラウザ操作なので CI では検証できない。
           # Phase 54 でチップは結果ページ search-page.js へ移動した）
-          grep -q 'search-filter-chip' dist/_assets/js/search-page.js
-          grep -q 'composedPath' dist/_assets/js/search-ui.js
+          grep -q 'search-filter-chip' docs/dist/_assets/js/search-page.js
+          grep -q 'composedPath' docs/dist/_assets/js/search-ui.js
           # 診断ルールのリファレンス（Phase 46）が配信されている
-          grep -q 'broken-anchor' dist/reference/rules/index.html
+          grep -q 'broken-anchor' docs/dist/reference/rules/index.html
           # 出力先・URL の安全化（v0.10.1）で足したルールが原稿に載っている
-          grep -q 'route-conflict' dist/reference/rules/index.html
-          grep -q 'unsafe-page-path' dist/reference/rules/index.html
+          grep -q 'route-conflict' docs/dist/reference/rules/index.html
+          grep -q 'unsafe-page-path' docs/dist/reference/rules/index.html
           # URL のパーセントエンコード（Phase 64）が原稿に載っている
-          grep -q 'パーセントエンコード' dist/guide/writing/index.html
-          grep -q '%E8%A8%AD%E8%A8%88/%E6%A6%82%20%E8%A6%81' dist/guide/writing/index.html
+          grep -q 'パーセントエンコード' docs/dist/guide/writing/index.html
+          grep -q '%E8%A8%AD%E8%A8%88/%E6%A6%82%20%E8%A6%81' docs/dist/guide/writing/index.html
           # 配信とテーマ契約（Phase 65）: テーマ上書きの追随責任と配信のリンク遮断が
           # 原稿に載り、docs（ハイライト有効）では syntect.css が <link> される
-          grep -q '追随する' dist/guide/deploy/index.html
-          grep -q 'シンボリックリンクを辿りません' dist/reference/cli/index.html
-          grep -q 'css/syntect.css' dist/index.html && test -f dist/_assets/css/syntect.css
+          grep -q '追随する' docs/dist/guide/deploy/index.html
+          grep -q 'シンボリックリンクを辿りません' docs/dist/reference/cli/index.html
+          grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css
           # 外部リンク検査（Phase 66）が原稿に載っている
-          grep -q 'external-link-broken' dist/reference/rules/index.html
-          grep -q -- '--external-links' dist/reference/cli/index.html
-          grep -q 'ネットワーク I/O' dist/development/index.html
+          grep -q 'external-link-broken' docs/dist/reference/rules/index.html
+          grep -q -- '--external-links' docs/dist/reference/cli/index.html
+          grep -q 'ネットワーク I/O' docs/dist/development/index.html
           # ページ単位の lint 抑制（Phase 58）が原稿に載っている
-          grep -q 'unused-lint-suppression' dist/reference/rules/index.html
-          grep -q 'lintDisable' dist/guide/quality/index.html
+          grep -q 'unused-lint-suppression' docs/dist/reference/rules/index.html
+          grep -q 'lintDisable' docs/dist/guide/quality/index.html
           # 行単位の lint 抑制（Phase 59）が原稿に載っている
-          grep -q 'yuzu-lint-disable-next-line' dist/reference/rules/index.html
-          grep -q 'yuzu-lint-disable-next-line' dist/guide/quality/index.html
+          grep -q 'yuzu-lint-disable-next-line' docs/dist/reference/rules/index.html
+          grep -q 'yuzu-lint-disable-next-line' docs/dist/guide/quality/index.html
           # 全ルールの enable/disable（Phase 60）が原稿に載っている
-          grep -q 'プロジェクト全体の無効化' dist/reference/rules/index.html
-          grep -q 'プロジェクト全体の無効化' dist/guide/quality/index.html
+          grep -q 'プロジェクト全体の無効化' docs/dist/reference/rules/index.html
+          grep -q 'プロジェクト全体の無効化' docs/dist/guide/quality/index.html
           # 検索の追加読み込み（Phase 49 → Phase 54 で結果ページへ移動）の JS が
           # 埋め込み経由で配信されている（機能自体はブラウザ操作なので CI では
           # 検証できない。配線ゲート）
-          grep -q 'search-page-more' dist/_assets/js/search-page.js
+          grep -q 'search-page-more' docs/dist/_assets/js/search-page.js
           # 検索結果ページ（Phase 54）: 専用ページが生成され、集約からは除外される
-          test -f dist/search/index.html
-          grep -q 'id="yuzu-search-page"' dist/search/index.html
-          grep -q 'data-page-size' dist/search/index.html
+          test -f docs/dist/search/index.html
+          grep -q 'id="yuzu-search-page"' docs/dist/search/index.html
+          grep -q 'data-page-size' docs/dist/search/index.html
           # ドロップダウン → 結果ページへの導線（全ページに data-search-page が配られる）
-          grep -q 'data-search-page' dist/index.html
+          grep -q 'data-search-page' docs/dist/index.html
           # llms.txt に検索結果ページが載らない（guide/search.md は実ページなので残る）
-          if grep -q '\[検索\](' dist/llms.txt; then
+          if grep -q '\[検索\](' docs/dist/llms.txt; then
             echo "llms.txt に検索結果ページが載った" >&2
             exit 1
           fi
           # ページ単位 .md も出さない
-          if test -f dist/search.md; then
+          if test -f docs/dist/search.md; then
             echo "検索結果ページのページ単位 .md が出た" >&2
             exit 1
           fi
           # ナビと目次の規模対応（Phase 56）: 現在セクションだけ開いた折りたたみ・
           # 他セクションは閉じる・TOC の nav 化・scrollspy 基準線の実測化
-          grep -q '<details class="nav-section" open>' dist/guide/writing/index.html
-          grep -q '<details class="nav-section">' dist/guide/writing/index.html
-          grep -q '<nav aria-label="このページの目次">' dist/guide/writing/index.html
-          grep -q 'scrollMarginTop' dist/_assets/js/scrollspy.js
+          grep -q '<details class="nav-section" open>' docs/dist/guide/writing/index.html
+          grep -q '<details class="nav-section">' docs/dist/guide/writing/index.html
+          grep -q '<nav aria-label="このページの目次">' docs/dist/guide/writing/index.html
+          grep -q 'scrollMarginTop' docs/dist/_assets/js/scrollspy.js
           # 印刷 / PDF 対応（Phase 55）: print CSS・ダーク定義の画面専用化・
           # 印刷前に閉じた details を開く JS が配信されている
-          grep -q '@media print' dist/_assets/css/theme.css
-          grep -q '@media screen' dist/_assets/css/syntect.css
-          grep -q 'beforeprint' dist/_assets/js/details-target.js
+          grep -q '@media print' docs/dist/_assets/css/theme.css
+          grep -q '@media screen' docs/dist/_assets/css/syntect.css
+          grep -q 'beforeprint' docs/dist/_assets/js/details-target.js
           # SSR 図のモバイル対応（Phase 61）: 縮小せず figure 内で横スクロール
-          grep -A 3 'figure.mermaid-ssr {' dist/_assets/css/theme.css | grep -q 'overflow-x: auto'
+          grep -A 3 'figure.mermaid-ssr {' docs/dist/_assets/css/theme.css | grep -q 'overflow-x: auto'
           # ビルドの進捗ログ（RUST_LOG の文書化）が CLI リファレンスに載っている
-          grep -q 'RUST_LOG' dist/reference/cli/index.html
+          grep -q 'RUST_LOG' docs/dist/reference/cli/index.html
           # グローバルフラグ --root（Phase 72）が CLI リファレンスと設定リファレンスに載っている
-          grep -q -- '--root' dist/reference/cli/index.html
-          grep -q -- '--root' dist/reference/config/index.html
+          grep -q -- '--root' docs/dist/reference/cli/index.html
+          grep -q -- '--root' docs/dist/reference/config/index.html
           # 静粛モード -q / -v と search --format（Phase 73）が CLI リファレンスに載っている
-          grep -q -- '--quiet' dist/reference/cli/index.html
-          grep -q '検索結果の JSON 配列' dist/reference/cli/index.html
+          grep -q -- '--quiet' docs/dist/reference/cli/index.html
+          grep -q '検索結果の JSON 配列' docs/dist/reference/cli/index.html
           # シェル補完（Phase 74）の節が CLI リファレンスに載っている
           # （コードブロック内の文字列はハイライトの span で分断されるので見出し id で照合する）
-          grep -q 'id="シェル補完"' dist/reference/cli/index.html
+          grep -q 'id="シェル補完"' docs/dist/reference/cli/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
-          if grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' dist/ --include="*.html"; then
+          if grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' docs/dist/ --include="*.html"; then
             echo "docs で SSR フォールバックが発生している（上記ページ）" >&2
             exit 1
           fi
@@ -457,9 +458,18 @@ jobs:
           # github は注釈行を出す（GITHUB_WORKSPACE 外なのでプロジェクトルート相対）
           "$GITHUB_WORKSPACE/target/debug/yuzu" check --format github \
             | grep -q '^::error file=content/index.md,line='
-          # GITHUB_WORKSPACE 配下なら、その相対へ付け替わる（docs で cd している対策の本体）
+          # GITHUB_WORKSPACE 配下なら、その相対へ付け替わる
           GITHUB_WORKSPACE="$RUNNER_TEMP" "$GITHUB_WORKSPACE/target/debug/yuzu" check --format github \
             | grep -q '^::error file=e2e-docs/content/index.md,'
+          # --root で指定し cwd がプロジェクト外でも同じ付け替えになる
+          # （Phase 75: docs.yml / docs-links.yml がリポジトリルートから --root docs で実行する前提）。
+          # ここまでの cd でプロジェクト内にいるので、サブシェルで親へ移動して条件を作る
+          # （後続の処理には影響しない）。--root は相対で渡し、正規化も兼ねて見る
+          (
+            cd "$RUNNER_TEMP"
+            GITHUB_WORKSPACE="$RUNNER_TEMP" "$GITHUB_WORKSPACE/target/debug/yuzu" check --root e2e-docs --format github \
+              | grep -q '^::error file=e2e-docs/content/index.md,'
+          )
           # lint --fix と json を併用しても標準出力が JSON のまま（進捗は stderr へ）
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint --fix --format json 2>/dev/null \
             | head -1 | grep -q '^{$'

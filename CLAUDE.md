@@ -360,6 +360,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   ルート）
   - main push で `.github/workflows/docs.yml` が GitHub Pages へデプロイし、ci.yml でも
     check・build・SSR フォールバック検出を検証する
+  - **リポジトリルートから `--root docs` で実行する**（`cd docs` しない。ci.yml・docs.yml・
+    docs-links.yml・`verify` スキルすべて。出力は `docs/dist/`）。cwd からの上方向探索の
+    経路は scaffold の e2e が検証する
   - 原稿は `yuzu fmt` の正規形・表記は長音符なし（`lint.terms` 準拠）で書く
 - **ci.yml の docs ゲートは docs の原稿と結合している**（新機能ごとに `grep` を 1 行足す運用）
   - 特に `docs/yuzu.toml` の 25-45 行目（`[markdown]` ブロック）はインクルードの `lines=` で
