@@ -33,6 +33,34 @@ pub(crate) struct SiteCtx<'a> {
     pub lang: &'a str,
     /// ヘッダーロゴの配信 URL（`site.logo` 由来。base 前置済み。None ならテーマ既定ロゴ）
     pub logo_url: Option<String>,
+    /// `og:image` の絶対 URL（`site.image` 由来）。パス指定は base がフル URL のときだけ
+    /// 解決され、それ以外は None（og:image は絶対 URL が必須）
+    pub image_url: Option<String>,
+    /// `og:locale`（`site.lang` に地域があるときだけ。`ja-JP` → `ja_JP`。`ja` だけなら None =
+    /// 地域を推測しない）
+    pub locale: Option<String>,
+    /// `<meta name="generator">` の値
+    pub generator: &'static str,
+}
+
+/// `<meta name="generator">` の値。**バージョンは含めない** — 含めるとリリースの
+/// バンプごとに HTML スナップショット 4 件が動き、「バンプコミットは Cargo.toml と
+/// Cargo.lock だけ」の規律と衝突する。ビルドの識別は `__yuzu/build_id` が担う
+pub(crate) const GENERATOR: &str = "yuzu";
+
+/// `site.lang` から `og:locale` を作る。OGP の locale は `language_TERRITORY` で、
+/// 地域が無い `ja` から `ja_JP` を推測すると誤りうる（`en` → `en_US` か `en_GB` か）ため、
+/// **地域付きのときだけ**変換して、無ければ出さない
+pub(crate) fn og_locale(lang: &str) -> Option<String> {
+    let (language, territory) = lang.split_once(['-', '_'])?;
+    if language.is_empty() || territory.is_empty() || territory.contains(['-', '_']) {
+        return None;
+    }
+    Some(format!(
+        "{}_{}",
+        language.to_ascii_lowercase(),
+        territory.to_ascii_uppercase()
+    ))
 }
 
 #[derive(Serialize)]
@@ -84,6 +112,10 @@ pub(crate) struct PageCtx<'a> {
     pub last_updated: Option<String>,
     /// 「このページを編集」リンク（git.edit_url の {path} 置換済み）
     pub edit_url: Option<String>,
+    /// canonical / `og:url` に出す絶対 URL。base がフル URL のときだけ Some
+    /// （相対 canonical は RFC 6596 §3 で許されるが、絶対 URL で出すのを方針にする。
+    /// sitemap の `<loc>` と同じゲート）
+    pub canonical_url: Option<String>,
     pub toc: Vec<TocCtx<'a>>,
 }
 
@@ -110,6 +142,9 @@ impl<'a> PageCtx<'a> {
             draft: page.frontmatter.draft,
             last_updated,
             edit_url,
+            canonical_url: resolver
+                .is_absolute_base()
+                .then(|| resolver.page_url(&page.route)),
             toc: build_toc(&visible),
         }
     }
@@ -312,6 +347,19 @@ pub(crate) fn build_breadcrumbs<'a>(
 mod tests {
     use super::*;
     use yuzu_core::SiteModel;
+
+    /// og:locale は地域付きの lang だけ `language_TERRITORY` にし、地域の推測はしない
+    #[test]
+    fn og_locale_は地域付きのときだけ作る() {
+        assert_eq!(og_locale("ja-JP").as_deref(), Some("ja_JP"));
+        assert_eq!(og_locale("en_us").as_deref(), Some("en_US"));
+        assert_eq!(og_locale("ja"), None);
+        assert_eq!(og_locale("en"), None);
+        // 不完全な形は出さない
+        assert_eq!(og_locale("ja-"), None);
+        assert_eq!(og_locale("-JP"), None);
+        assert_eq!(og_locale("zh-Hant-TW"), None);
+    }
 
     fn node(title: &str, route: Option<&str>, children: Vec<NavNode>) -> NavNode {
         NavNode {

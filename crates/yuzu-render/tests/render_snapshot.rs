@@ -38,11 +38,21 @@ fn walkdir_files(dir: &Path) -> Vec<std::path::PathBuf> {
 }
 
 fn build_fixture(live_reload: LiveReloadMode) -> tempfile::TempDir {
+    build_fixture_with_config(live_reload, |_| {})
+}
+
+/// 読み込んだ設定を差し替えてからビルドする（`<head>` メタの分岐など、フィクスチャの
+/// yuzu.toml を増やさずに検証したいとき。ファイルを書き換えるなら `build_fixture_with`）
+fn build_fixture_with_config(
+    live_reload: LiveReloadMode,
+    mutate: impl FnOnce(&mut yuzu_config::ResolvedConfig),
+) -> tempfile::TempDir {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
     let dir = tempfile::tempdir().unwrap();
     copy_tree(&fixture, dir.path());
 
-    let rc = yuzu_config::load(dir.path()).unwrap();
+    let mut rc = yuzu_config::load(dir.path()).unwrap();
+    mutate(&mut rc);
     let site = yuzu_core::build_site_model(
         &rc.content_dir,
         &rc.config.input.ignore,
@@ -121,6 +131,80 @@ fn エイリアスはリダイレクト_html_になり_base_url_に追随する(
     assert!(
         redirect.contains("はじめに"),
         "リンクテキストは移動先タイトル"
+    );
+}
+
+/// `<head>` の共有カード（OGP）。base がパスだけ（フィクスチャは `/docs/`）のときは
+/// URL に依らないタグだけ出て、絶対 URL が要る canonical / og:url / og:image は出ない
+#[test]
+fn head_メタは_base_がパスだけなら_url_系を出さない() {
+    let dir = build_fixture(LiveReloadMode::None);
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(index.contains(r#"<meta property="og:type" content="website">"#));
+    assert!(index.contains(r#"<meta property="og:site_name" content="Fixture Docs">"#));
+    assert!(index.contains(r#"<meta property="og:title" content=""#));
+    assert!(index.contains(r#"<meta name="twitter:card" content="summary">"#));
+    // generator にバージョンは含めない（含めるとバンプごとにスナップショットが動く）
+    assert!(index.contains(r#"<meta name="generator" content="yuzu">"#));
+    assert!(!index.contains(r#"rel="canonical""#), "{index}");
+    assert!(!index.contains("og:url"));
+    assert!(!index.contains("og:image"));
+    // lang = "ja"（地域なし）は og:locale を推測しない
+    assert!(!index.contains("og:locale"));
+}
+
+/// base がフル URL なら canonical / og:url を絶対 URL で出し、パス指定の `site.image` も
+/// 絶対 URL に解決する。地域付きの lang は og:locale になる
+#[test]
+fn head_メタは_base_がフル_url_なら_canonical_と_og_url_と_og_image_を出す() {
+    let dir = build_fixture_with_config(LiveReloadMode::None, |rc| {
+        rc.base_url = "https://example.com/docs/".to_string();
+        rc.config.site.image = Some("/images/og.png".to_string());
+        rc.config.site.lang = "ja-JP".to_string();
+    });
+    let guide =
+        fs::read_to_string(dir.path().join("dist/guide/getting-started/index.html")).unwrap();
+    assert!(guide.contains(
+        r#"<link rel="canonical" href="https://example.com/docs/guide/getting-started/">"#
+    ));
+    assert!(guide.contains(
+        r#"<meta property="og:url" content="https://example.com/docs/guide/getting-started/">"#
+    ));
+    assert!(guide.contains(
+        r#"<meta property="og:image" content="https://example.com/docs/images/og.png">"#
+    ));
+    assert!(guide.contains(r#"<meta property="og:locale" content="ja_JP">"#));
+    // 404 はどの URL にも対応しないので canonical / og:url を出さない
+    let not_found = fs::read_to_string(dir.path().join("dist/404.html")).unwrap();
+    assert!(!not_found.contains(r#"rel="canonical""#));
+    assert!(!not_found.contains("og:url"));
+}
+
+/// `site.image` がフル URL なら base がパスだけでも og:image を出す（絶対 URL が揃うため）
+#[test]
+fn og_image_はフル_url_指定なら_base_に依らず出る() {
+    let dir = build_fixture_with_config(LiveReloadMode::None, |rc| {
+        rc.config.site.image = Some("https://cdn.example.com/og.png".to_string());
+    });
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(
+        index.contains(r#"<meta property="og:image" content="https://cdn.example.com/og.png">"#)
+    );
+    assert!(!index.contains(r#"rel="canonical""#));
+}
+
+/// description はページに無ければサイトの値へ落ちる（meta description と og:description が
+/// 同じ値になる）。404 ページは description を持たないので確かめやすい
+#[test]
+fn description_はページに無ければサイトの値へフォールバックする() {
+    let dir = build_fixture(LiveReloadMode::None);
+    let not_found = fs::read_to_string(dir.path().join("dist/404.html")).unwrap();
+    assert!(
+        not_found.contains(r#"<meta name="description" content="yuzu-render のテスト用サイト">"#)
+    );
+    assert!(
+        not_found
+            .contains(r#"<meta property="og:description" content="yuzu-render のテスト用サイト">"#)
     );
 }
 

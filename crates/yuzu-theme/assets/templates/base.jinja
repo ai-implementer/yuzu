@@ -3,9 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ page.title }} | {{ site.title }}</title>
-{% if page.description %}<meta name="description" content="{{ page.description }}">
-{% endif %}{# URL 系の値はこちらで生成した安全な文字列なので safe を通す（/ の実体参照化を避ける） #}
+<title>{{ page.title }} | {{ site.title }}</title>{# description はページ → サイトの順（og:description と同じ値） #}{% set description = page.description or site.description %}
+{% if description %}<meta name="description" content="{{ description }}">
+{% endif %}<meta name="generator" content="{{ site.generator }}">{# 共有カード（OGP）。canonical / og:url / パス指定の og:image は base がフル URL のときだけ render 側が値を入れる（絶対 URL が必須。sitemap と同じゲート） #}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{ site.title }}">
+<meta property="og:title" content="{{ page.title }}">
+{% if description %}<meta property="og:description" content="{{ description }}">
+{% endif %}{% if page.canonical_url %}<link rel="canonical" href="{{ page.canonical_url | url }}">
+<meta property="og:url" content="{{ page.canonical_url | url }}">
+{% endif %}{% if site.image_url %}<meta property="og:image" content="{{ site.image_url | url }}">
+{% endif %}{% if site.locale %}<meta property="og:locale" content="{{ site.locale }}">
+{% endif %}<meta name="twitter:card" content="summary">{# URL 系の値はこちらで生成した安全な文字列なので safe を通す（/ の実体参照化を避ける） #}
 <link rel="stylesheet" href="{{ asset_url | url }}css/theme.css">
 {% if highlight_enabled %}<link rel="stylesheet" href="{{ asset_url | url }}css/syntect.css">
 {% endif %}{% if theme_css_vars %}{# yuzu.toml theme.css_vars 由来（値は render 側で検証済み） #}<style>

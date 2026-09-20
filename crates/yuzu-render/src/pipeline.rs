@@ -154,11 +154,26 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         );
         crate::context::TOC_LEVELS
     });
+    // og:image は絶対 URL が必須。フル URL 指定はそのまま、パス指定は base がフル URL の
+    // ときだけ解決する（ローカルビルドでは出ないのが普通なので debug ログに留める）
+    let image_url = cfg.site.image.as_deref().and_then(|p| {
+        if p.contains("://") {
+            Some(p.to_string())
+        } else if resolver.is_absolute_base() {
+            Some(resolver.public_url(p))
+        } else {
+            tracing::debug!("baseUrl がフル URL ではないため og:image（site.image）は出力しない");
+            None
+        }
+    });
     let site_ctx = SiteCtx {
         title: &cfg.site.title,
         description: cfg.site.description.as_deref(),
         lang: &cfg.site.lang,
         logo_url: cfg.site.logo.as_deref().map(|p| resolver.public_url(p)),
+        image_url,
+        locale: crate::context::og_locale(&cfg.site.lang),
+        generator: crate::context::GENERATOR,
     };
     // theme.css_vars / css_vars_dark → head に注入する CSS 変数上書き（全ページ共通）
     let theme_css_vars =
@@ -318,6 +333,8 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         page => context! {
             title => "ページが見つかりません",
             description => Option::<&str>::None,
+            // 404 は URL を持たない（どの route にも対応しない）ので canonical を出さない
+            canonical_url => Option::<&str>::None,
             toc => Vec::<String>::new(),
         },
         // route "404.html" はどのページ route とも一致しない = trail が空で
@@ -360,7 +377,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     // `<loc>` は絶対 URL が仕様のため、baseUrl がフル URL のときだけ生成する。
     // 対象は非 draft の実ページ＋用語集のみ（エイリアス・404・ページ単位 .md・
     // 検索結果ページは載せない — 判定は Page::in_sitemap）
-    if resolver.base().contains("://") {
+    if resolver.is_absolute_base() {
         let mut xml = String::from(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
              <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
