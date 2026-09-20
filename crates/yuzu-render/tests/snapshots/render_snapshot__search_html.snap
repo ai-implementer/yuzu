@@ -8,7 +8,15 @@ expression: html
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>検索 | Fixture Docs</title>
-
+<meta name="description" content="yuzu-render のテスト用サイト">
+<meta name="generator" content="yuzu">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Fixture Docs">
+<meta property="og:title" content="検索">
+<meta property="og:description" content="yuzu-render のテスト用サイト">
+<link rel="canonical" href="https://example.com/docs/search/">
+<meta property="og:url" content="https://example.com/docs/search/">
+<meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="https://example.com/docs/_assets/css/theme.css">
 <link rel="stylesheet" href="https://example.com/docs/_assets/css/syntect.css">
 <script>

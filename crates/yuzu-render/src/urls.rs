@@ -40,6 +40,12 @@ impl UrlResolver {
         &self.base
     }
 
+    /// base がフル URL（スキーム付き）か。絶対 URL が要る出力（sitemap の `<loc>`・
+    /// canonical・`og:url`・パス指定の `og:image`）はこれで揃えてゲートする
+    pub fn is_absolute_base(&self) -> bool {
+        self.base.contains("://")
+    }
+
     /// route → 配信 URL（例: `guide/` → `/docs/guide/`、`設計/` → `/docs/%E8%A8%AD%E8%A8%88/`）
     pub fn page_url(&self, route: &str) -> String {
         format!("{}{}", self.base, encode_path(route))

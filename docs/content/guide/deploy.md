@@ -129,6 +129,33 @@ git が無い環境・未コミットのページでは、日付を出さずに�
 このサイトも CI が `--base-url` にフル URL を渡しているため、
 `/sitemap.xml` が自動生成されています。
 
+## 共有カード（OGP）と canonical
+
+全ページの `<head>` に、SNS やチャットでリンクを貼ったときのカード用のメタ
+（[OGP](https://ogp.me/)）と `<meta name="twitter:card" content="summary">` が入ります。
+`og:title` はページタイトル、`og:description` はページの `description`
+（無ければ `site.description`）、`og:site_name` は `site.title` です。
+
+`base_url` が**フル URL** のときは、sitemap と同じ条件で次も出ます:
+
+- `<link rel="canonical">` と `og:url` — ページの絶対 URL
+- `og:image` — `site.image` で指定した画像（`public/` 配下のパス）を絶対 URL にしたもの
+
+画像は `site.image` で指定します:
+
+```toml
+[site]
+image = "/images/og.png"   # 1200×630 前後の PNG / JPEG を public/images/ に置く
+```
+
+`site.image` にフル URL（`https://cdn.example.com/og.png`）を書けば、`base_url` が
+パスだけでも `og:image` を出します。SVG はカードに使われないことが多いので、
+ロゴとは別に PNG / JPEG を用意してください。`og:locale` は `site.lang` が
+地域付き（`"ja-JP"`）のときだけ出ます（`"ja"` から地域は推測しません）。
+
+canonical は相対 URL も規格上は許されていますが、yuzu は絶対 URL のときだけ出す方針です
+（ホストが分からない状態の canonical は同一性の宣言として弱く、`og:url` とも揃わないため）。
+
 ## 静的ファイルの配信
 
 `public/` 配下はそのまま `dist/` へコピーされます（画像・favicon・

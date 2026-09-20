@@ -72,6 +72,7 @@ table_codec!(SiteConfig {
     "base_url" => base_url,
     "lang" => lang,
     "logo" => logo,
+    "image" => image,
 });
 
 table_codec!(InputConfig {

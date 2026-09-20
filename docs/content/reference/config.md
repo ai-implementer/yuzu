@@ -33,6 +33,7 @@ description = "..."
 lang = "ja"
 base_url = "/docs/"
 logo = "/images/logo.svg"
+image = "/images/og.png"
 
 [input]
 dir = "content"
@@ -135,10 +136,11 @@ edit_url = "https://github.com/me/docs/edit/main/content/{path}"
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
 | `title` | string / `"Documentation"` | サイトタイトル（ヘッダーと `<title>`） |
-| `description` | string / なし | meta description |
-| `lang` | string / `"ja"` | `<html lang>` |
-| `base_url` | string / なし | サブパス配信時の基点（例 `"/docs/"`。[詳細](../guide/deploy.md)） |
+| `description` | string / なし | meta description と `og:description` の既定値（ページの `description` が優先） |
+| `lang` | string / `"ja"` | `<html lang>`。地域付き（`"ja-JP"`）なら `og:locale` にも使う |
+| `base_url` | string / なし | サブパス配信時の基点（例 `"/docs/"`。[詳細](../guide/deploy.md)）。フル URL なら canonical / `og:url` / sitemap も出る |
 | `logo` | string / なし | ヘッダーのロゴ画像（`public/` 配下のパス。未指定なら 🍊） |
+| `image` | string / なし | 共有カードの画像 `og:image`（`public/` 配下のパスかフル URL。パス指定は `base_url` がフル URL のときだけ出る。[詳細](../guide/deploy.md#共有カードogpと-canonical)） |
 
 ## input / output
 

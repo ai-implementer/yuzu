@@ -44,6 +44,10 @@ pub struct SiteConfig {
     /// ヘッダーのタイトル横に出すロゴ画像（例: `/images/logo.svg`。public/ 配下を指す）。
     /// フル URL も可。未指定ならテーマ既定の絵文字ロゴ
     pub logo: Option<String>,
+    /// 共有カード（OGP `og:image`）の画像（例: `/images/og.png`。public/ 配下を指す）。
+    /// フル URL も可。og:image は絶対 URL が必須のため、パス指定は `base_url` が
+    /// フル URL のときだけ出力される。未指定なら og:image を出さない
+    pub image: Option<String>,
 }
 
 impl Default for SiteConfig {
@@ -54,6 +58,7 @@ impl Default for SiteConfig {
             base_url: None,
             lang: "ja".to_string(),
             logo: None,
+            image: None,
         }
     }
 }

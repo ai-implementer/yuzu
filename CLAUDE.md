@@ -292,6 +292,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - それ以外のテーマ JS は従来どおり `static/js/` の外部ファイル
 - minijinja はデフォルトで属性中の `/` をエスケープするため、テンプレートの URL 値には
   **自前の `| url` フィルタ**（`yuzu-render/src/templates.rs`）を通す
+  - **`| url` は HTML 属性専用**（`&` を `&amp;` にする。生のままだと `&copy;` を
+    パーサがデコードして別の URL になる）。`<script>` 内の文字列は実体参照がデコード
+    されないので **`| url_js`**（`&` を残す）を使う。文脈で使い分ける
   - `| safe` は `page.body`（レンダ済み HTML）と `theme_css_vars`（`css.rs` で検証済み）
     だけに残す
   - **URL 値へ `| safe` を使わない** = yuzu は slug 化をせずファイル名がそのまま

@@ -83,6 +83,8 @@ grep -q -- '--root' docs/dist/reference/cli/index.html                          
 grep -q -- '--root' docs/dist/reference/config/index.html                           # 上方向探索の但し書き（Phase 72）
 grep -q -- '--quiet' docs/dist/reference/cli/index.html                             # 静粛モード -q / -v（Phase 73）
 grep -q 'id="シェル補完"' docs/dist/reference/cli/index.html                          # シェル補完の節（Phase 74。コード内文字列は span で割れる）
+grep -q '<meta property="og:title"' docs/dist/index.html                          # 共有カード（Phase 76。canonical はフル URL 時だけ）
+grep -q 'id="共有カードogpと-canonical"' docs/dist/guide/deploy/index.html         # OGP の節（Phase 76）
 grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --root docs --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
@@ -134,6 +136,12 @@ for sh in bash zsh fish powershell elvish; do <repo>/target/debug/yuzu completio
 <repo>/target/debug/yuzu completions bash --root .                            # exit 2（プロジェクトを読まない）
 # --base-url は設定より優先（deploy.yml が configure-pages の base_path を渡す契約）
 <repo>/target/debug/yuzu build --base-url /docs/ && grep -q '/docs/_assets/' dist/index.html
+# 共有カード（Phase 76）: パスだけの base では og:image が出ず、フル URL なら canonical / og:url / og:image が絶対 URL で出る
+sed -i 's|^title = "My Docs"$|title = "My Docs"\nimage = "/images/yuzu-logo.svg"|' yuzu.toml
+<repo>/target/debug/yuzu build --base-url /docs/ && grep -q 'og:image' dist/index.html && echo "NG: パス base で og:image"
+<repo>/target/debug/yuzu build --base-url https://example.com/docs/
+grep -q 'rel="canonical" href="https://example.com/docs/guide/getting-started/"' dist/guide/getting-started/index.html && echo "OK canonical"
+grep -q 'og:image" content="https://example.com/docs/images/yuzu-logo.svg"' dist/index.html && echo "OK og:image"
 <repo>/target/debug/yuzu build   # 後続の検査は既定 base_url に戻してから
 <repo>/target/debug/yuzu fmt --check && <repo>/target/debug/yuzu lint && <repo>/target/debug/yuzu check
 # 異常系: 壊れリンクを注入して check が終了コード 1 を返すこと（CI と同じ）

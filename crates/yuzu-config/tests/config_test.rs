@@ -166,6 +166,17 @@ fn site_logo_を読み込める() {
     assert!(load(dir2.path()).unwrap().config.site.logo.is_none());
 }
 
+/// `site.image`（og:image の素材）。logo と同じくパスかフル URL の文字列で、未指定は None
+#[test]
+fn site_image_を読み込める() {
+    let dir = project("[site]\nimage = \"/images/og.png\"\n");
+    let rc = load(dir.path()).unwrap();
+    assert_eq!(rc.config.site.image.as_deref(), Some("/images/og.png"));
+
+    let dir2 = project("");
+    assert!(load(dir2.path()).unwrap().config.site.image.is_none());
+}
+
 #[test]
 fn llms_設定を読み込める() {
     let dir = project("[llms]\nfull = false\n");

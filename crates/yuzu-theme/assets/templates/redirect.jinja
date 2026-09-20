@@ -9,8 +9,8 @@
 <meta http-equiv="refresh" content="0; url={{ target_url | url }}">
 <link rel="canonical" href="{{ target_url | url }}">
 <meta name="robots" content="noindex">
-<title>{{ target_title }} | {{ site.title }}</title>
-<script>location.replace("{{ target_url | url }}");</script>
+<title>{{ target_title }} | {{ site.title }}</title>{# script 内の文字列は実体参照がデコードされないので、属性用の url ではなく url_js を通す #}
+<script>location.replace("{{ target_url | url_js }}");</script>
 </head>
 <body>
 <p>このページは移動しました: <a href="{{ target_url | url }}">{{ target_title }}</a></p>

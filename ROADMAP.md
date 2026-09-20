@@ -27,38 +27,61 @@ CLAUDE.md にある）。
 - Phase は「テンプレートだけ → 本文 HTML（bump 1 回）→ CSS の 2 系統化 → dogfooding」の
   順。着手時に判断点を決めてから実装する
 
-### 76 `<head>` メタ（canonical / OGP） ⬜
+### 76 `<head>` メタ（canonical / OGP） ✅
 
-**概要**: `base.jinja` の `<head>` に canonical と OGP（`og:*` / `twitter:card`）を足す。
-テンプレートだけの変更で新しい設定キーは不要（og:image を出すなら 1 キー）。
-主な判断点は og:image の素材をどうするか。
+**概要**: `base.jinja` の `<head>` に canonical と OGP（`og:*` / `twitter:card`）と
+`generator` を足した。新しい設定キーは `site.image`（og:image の素材）の 1 つ。
+canonical / `og:url` / パス指定の og:image は `base_url` がフル URL のときだけ出す
+（sitemap と同じゲート）。判断点 4 つはすべてユーザ確認のうえ推奨案。
 
-- 現状（実測）
-  - `base.jinja` の `<head>` にあるメタは `<title>` と `description` だけ。canonical /
-    `og:*` / `twitter:card` は無い
-  - 素材は既にある: `site.title` / `site.description` / `page.description` /
-    `site.lang` / `site.logo`（docs では SVG）。**og:image だけ素材不足**
-    （OGP は SVG を受け付けないクローラが多い）
-  - sitemap.xml が「`base_url` がフル URL のときだけ生成」のゲートを `pipeline.rs` に
-    持っており、canonical / `og:url` も同じゲートに乗せられる（canonical は
-    [RFC 6596 §3](https://www.rfc-editor.org/rfc/rfc6596.html#section-3) が相対 IRI も
-    許すが、絶対 URL で出すのをプロジェクト方針にする = sitemap と同じ）
-  - `<head>` を含む insta スナップショットは 4 件（テンプレート変更で全部動く）
-- やること
-  - `base_url` がフル URL のとき `<link rel="canonical">` と `og:url` を出す
-  - `og:title` / `og:description` / `og:type` / `og:site_name` / `og:locale`
-    （`site.lang` から）と `twitter:card` を出す。`page.description` が無ければ
-    `site.description` へフォールバック
-  - `<meta name="generator" content="yuzu X.Y.Z">`
-- 判断点
-  - **og:image をどうするか** — 新キー `site.image`（`public/` 配下のパス。フル URL 化）を
-    足すか、`site.logo` を流用するか（SVG は非対応が多い）、v0.18 では出さないか
-  - `og:type` は全ページ `website` か、トップ以外を `article` にするか
-  - `twitter:card` を出すか（`summary` 固定。og:image が無いと意味が薄い）
-  - フル URL 無しのときの canonical — 出さない（sitemap と同じ方針）か、相対で出すか。
-    相対 IRI は RFC 6596 で許されているが、ホストが分からない状態の canonical は
-    同一性の宣言としての価値が薄く、`og:url`（絶対 URL 必須）とも揃わないので、
-    絶対 URL を採り出さない案が有力
+- 着手時の実測
+  - `<head>` にあるメタは `<title>` と `description` だけ。素材は `site.title` /
+    `site.description` / `page.description` / `site.lang` / `site.logo`（docs では SVG）が
+    既にあり、og:image だけ素材が無かった
+  - sitemap.xml の「`base_url` がフル URL のときだけ生成」の判定が `pipeline.rs` に
+    文字列比較で直書きされていた
+  - `<head>` を含む insta スナップショットは 4 件
+- やったこと
+  - `site.image` を追加（schema / codec / config リファレンス / scaffold のコメント）。
+    パスは `site.logo` と同じ `public_url` で解決し、パス指定は base がフル URL のときだけ
+    `og:image` に出す。フル URL 指定は base に依らず出す
+  - `UrlResolver::is_absolute_base` を足し、sitemap のゲートもこれに揃えた
+  - `PageCtx::canonical_url`（フル URL 時だけ Some）と `SiteCtx` の `image_url` /
+    `locale` / `generator`。404 ページは URL を持たないので canonical / og:url を出さない
+  - `base.jinja`: meta description をページ → サイトの順にフォールバック（og:description と
+    同じ値）、`og:type` = website / `og:site_name` / `og:title` / `og:description` /
+    canonical ＋ `og:url` / `og:image` / `og:locale` / `twitter:card` = summary /
+    `generator`。空行を混ぜないよう `{% set %}` とコメントは行末に置いた
+  - テスト: パスだけの base では URL 系を出さない / フル URL なら canonical・og:url・
+    og:image が絶対 URL / フル URL 指定の image は base に依らず出る / description の
+    フォールバック（404 で見る）/ `og_locale` の単体テスト。スナップショット 4 件更新
+  - docs: `guide/deploy.md` に「共有カード（OGP）と canonical」の節、config リファレンスの
+    `site` 表。ci.yml の docs ゲートと e2e（パス base で og:image 無し → フル URL で
+    canonical / og:url / og:image / description フォールバック）
+- 決めたこと
+  - **og:image は新キー `site.image`** — `site.logo` は docs も scaffold も SVG で、SVG を
+    受け付けないクローラが多い。利用者が PNG / JPEG を用意する
+  - **`og:type` は全ページ website** — ドキュメントサイトのページは記事ではなくサイトの
+    一部。`article` は公開日・著者などの付随プロパティを期待されるが素材が無い
+  - **`twitter:card` は summary 固定で出す** — 1 行で済み、og:image が無くてもタイトルと
+    説明のカードは出る。他の値は `og:*` にフォールバックするので `twitter:*` を増やさない
+  - **フル URL 無しの canonical は出さない** — RFC 6596 §3 は相対 IRI を許すが、ホストが
+    分からない状態の canonical は同一性の宣言として弱く、`og:url`（絶対 URL 必須）とも
+    揃わない。絶対 URL で出すのをプロジェクト方針にする
+  - **`og:locale` は `site.lang` が地域付きのときだけ** — `ja` から `ja_JP` を推測すると
+    `en` → `en_US` か `en_GB` かで誤りうる。推測しない
+  - **`generator` にバージョンを含めない** — 含めるとリリースのバンプごとに HTML
+    スナップショット 4 件が動き、「バンプコミットは Cargo.toml と Cargo.lock だけ」の
+    規律と衝突する。ビルドの識別は `__yuzu/build_id` が担う
+  - エイリアスのリダイレクト HTML が出している相対 canonical（移動先ページ）は今回
+    触らない — 移動先の宣言としては相対でも機能しており、フル URL 時だけ絶対にする
+    変更は Phase 79 の dogfooding で要否を見る
+  - レビュー指摘 2 件: **`| url` フィルタは HTML 属性専用にして `&` を `&amp;` に**
+    （生のままだと `?label=a&copy;b` がパーサで `a©b` に化けて別の画像 URL になる。
+    `<script>` 内の文字列は実体参照がデコードされないので `| url_js` を新設して
+    リダイレクト HTML の `location.replace` はそちら）/ **`og:locale` は地域サブタグ
+    （2 文字のアルファベットか 3 桁の数字）があるときだけ**（`zh-Hant` の `Hant` は
+    文字体系で、`zh_HANT` を出していた。`zh-Hant-TW` は `zh_TW`）
 
 ### 77 本文 HTML の到達性とページメタ（CACHE bump を 1 回に束ねる） ⬜
 
