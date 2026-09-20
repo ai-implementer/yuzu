@@ -8,6 +8,8 @@ description = "yuzu で生成するドキュメントサイト"
 lang = "ja"
 # ヘッダーのタイトル横に出すロゴ画像（未指定なら 🍊）。public/ 配下がそのまま配信されます
 # logo = "/images/yuzu-logo.svg"
+# SNS 共有カード（og:image）の画像。base_url がフル URL のときだけ出ます（絶対 URL が必須）
+# image = "/images/og.png"
 # サブパスで配信する場合は base_url を設定します（例: 社内リバプロ配下）
 # base_url = "/docs/"
 
