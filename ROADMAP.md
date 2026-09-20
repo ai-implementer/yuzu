@@ -3,12 +3,125 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在
+## 現在: v0.18（Phase 76〜79）
 
-**v0.17 まで公開済み**。次の版（v0.18）は未策定で、候補は下の
-「[v0.18 以降の候補](#v018-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
-kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 は crates.io で公開済み（yuzu のリリースとは
-非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある）。
+**v0.17 まで公開済み**（kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 も crates.io で
+公開済み。yuzu のリリースとは非同期。kabosu の publish 前に fuzz を回す規律は
+CLAUDE.md にある）。
+
+軸は「**公開サイトの仕上げ**」。
+
+- 動機: 公開物（HTML）の質は v0.12「読む体験の完成」以来手を入れておらず、
+  v0.13 Phase 61 からの持ち越し 4 件（`<head>` メタ / 見出しパーマリンクのキーボード
+  到達性 / ページメタ / OS ダーク追従）が候補欄に 4 版分残っている。v0.16・v0.17 は
+  内部と CLI で、サイトの見え方は変わっていない
+- ゴール: 共有（SNS カード）・検索エンジン（canonical）・支援技術（キーボード到達性）・
+  OS 設定（ダーク追従）の 4 方向から「公開サイトとして過不足ない」状態にする。
+  新しい記法は足さない
+- **本文 HTML が変わるのは Phase 77 だけ**にまとめ、`CACHE_FORMAT_VERSION` の bump と
+  スナップショット全更新を 1 回で済ませる（Phase 76・78 はテンプレート・CSS・JS だけ）
+- Phase は「テンプレートだけ → 本文 HTML（bump 1 回）→ CSS の 2 系統化 → dogfooding」の
+  順。着手時に判断点を決めてから実装する
+
+### 76 `<head>` メタ（canonical / OGP） ⬜
+
+- 現状（実測）
+  - `base.jinja` の `<head>` にあるメタは `<title>` と `description` だけ。canonical /
+    `og:*` / `twitter:card` は無い
+  - 素材は既にある: `site.title` / `site.description` / `page.description` /
+    `site.lang` / `site.logo`（docs では SVG）。**og:image だけ素材不足**
+    （OGP は SVG を受け付けないクローラが多い）
+  - sitemap.xml が「`base_url` がフル URL のときだけ生成」のゲートを `pipeline.rs` に
+    持っており、canonical / `og:url` も同じゲートに乗せられる（相対 URL の canonical は
+    仕様上不可）
+  - `<head>` を含む insta スナップショットは 4 件（テンプレート変更で全部動く）
+- やること
+  - `base_url` がフル URL のとき `<link rel="canonical">` と `og:url` を出す
+  - `og:title` / `og:description` / `og:type` / `og:site_name` / `og:locale`
+    （`site.lang` から）と `twitter:card` を出す。`page.description` が無ければ
+    `site.description` へフォールバック
+  - `<meta name="generator" content="yuzu X.Y.Z">`
+- 判断点
+  - **og:image をどうするか** — 新キー `site.image`（`public/` 配下のパス。フル URL 化）を
+    足すか、`site.logo` を流用するか（SVG は非対応が多い）、v0.18 では出さないか
+  - `og:type` は全ページ `website` か、トップ以外を `article` にするか
+  - `twitter:card` を出すか（`summary` 固定。og:image が無いと意味が薄い）
+  - フル URL 無しのときの canonical — 出さない（sitemap と同じ）か、相対で出すか
+    （仕様違反なので出さない案が有力）
+
+### 77 本文 HTML の到達性とページメタ（CACHE bump を 1 回に束ねる） ⬜
+
+見出しパーマリンクとページメタは**どちらも本文 HTML / キャッシュ形式が変わる**ので、
+1 つの Phase に束ねて `CACHE_FORMAT_VERSION` の bump とスナップショット全更新を
+1 回で済ませる。
+
+- 現状（実測）
+  - comrak の `header_ids` 出力は
+    `<a href="#id" aria-hidden="true" class="anchor" id="id"></a>` で固定。`aria-hidden`
+    なのでキーボードでも支援技術でも到達できず、CSS（`theme.css` 825〜839 行）は
+    hover 時だけ表示する
+  - CSS だけの部分対応（focus で表示）は「`aria-hidden` の中にフォーカス可能要素」という
+    別の違反を生む
+  - `CachedMeta` は frontmatter / title / toc / labels の 4 フィールド。読了時間・文字数を
+    載せるには `extract_meta`（呼び出し 3 箇所）で数えて足す = bump 必須
+  - ページメタの表示場所は `page.jinja` の `.page-meta`（最終更新・編集リンク）が既にある
+- やること
+  - パーマリンク: `aria-hidden` を外し `aria-label`（「〜へのリンク」）を付け、
+    `:focus-visible` で表示する
+  - ページメタ: 本文の文字数と読了時間を `extract_meta` で数え、`.page-meta` に表示。
+    frontmatter で非表示にできる（`readingTime: false` 等）
+  - `CACHE_FORMAT_VERSION` 22 → 23。スナップショット全更新
+- 判断点
+  - **パーマリンクの実装位置** — comrak の出力を yuzu-core で後処理する（`<abbr>` 化と
+    同じ「適用 A〜D の後」の規律）か、`header_ids` を切って自前で `<a>` を生成するか
+    （後者は `Anchorizer` の 3 経路同期に 4 経路目を足すことになる）
+  - **id を見出し自身へ移すか** — `<h2 id="x">` に変えると既存の `#x` リンクはそのまま
+    動くが、`details-target.js` / scrollspy / 検索の位置情報など id を探す JS の
+    対象要素が変わる
+  - 読了時間の算出 — 日本語は文字数ベース（1 分あたり 400〜600 字）、英数は語数ベース。
+    コードブロック・図・表を数えるか。設定キー（`theme.reading_speed`）を足すか固定か
+  - 文字数を llms.txt / 検索 manifest にも載せるか（載せると検索の `FORMAT_VERSION` の
+    話になるので載せない案が有力）
+
+### 78 OS ダーク追従（JS 無効時・`theme.dark = false` 時） ⬜
+
+候補中最重量。
+
+- 現状（実測）
+  - `base.jinja` が `data-theme="light"` を無条件で書き、`theme.dark = true` のときだけ
+    インライン script が localStorage → OS 設定の順で `data-theme` を差し替える。
+    **JS 無効なら常にライト、`theme.dark = false` なら OS がダークでもライト**
+  - ダーク定義は 3 箇所に散っている: `theme.css` の変数ブロック（55〜81 行の 27 行）/
+    `css.rs` の `css_vars_dark` 生成 / `generate_syntect_css` のダーク配色
+    （いずれも `html[data-theme="dark"]` スコープ）。syntect.css は 21 KB（gzip 2 KB）
+  - `theme.dark` の意味は「ダークモード切替ボタンを出す」（config リファレンス）
+- やること
+  - `data-theme` の未設定状態（= OS 設定に従う）を作り、CSS に
+    `@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) … }` の
+    フォールバックを足す。JS が動けば従来どおり localStorage の選択が勝つ
+- 判断点
+  - **`theme.dark` の意味** — 現状の bool（ボタンの有無）のまま「OS 追従は常に有効」に
+    するか、3 値（`"toggle"` = ボタン＋ OS 追従 / `"auto"` = OS 追従のみ /
+    `"light"` = ライト固定）にするか。bool のまま「`false` でも OS がダークならダーク」は
+    設定キーの意味の再定義になる
+  - **CSS の 2 系統化の範囲** — 3 箇所すべてを `@media` 側にも複製する（syntect.css は
+    21 KB → 42 KB。gzip では 2 KB → 4 KB 程度）か、変数ブロックだけ複製して syntect は
+    JS 必須のままにするか（コードブロックだけライトのまま残る = 中途半端）
+  - **`data-theme="light"` のハードコードを外すか** — 外すと `html:not([data-theme])` が
+    「未設定 = OS 追従」になり、FOUC 回避 script は「保存済みがあるときだけ書く」形に
+    減る。`theme.dark = false` の既存サイトはライト固定を明示する必要が出る
+    （3 値化とセット）
+
+### 79 dogfooding ⬜
+
+- docs サイトで実運用する: og:image の素材（`public/images/` に PNG）を用意して
+  SNS カードの実物を確認、キーボードでパーマリンクへ到達できること、読了時間の表示、
+  OS ダーク追従（JS 無効・`theme.dark` の各値）
+- scaffold（`yuzu new`）の `yuzu.toml` と原稿に新キーの実例を足す
+- ci.yml の docs ゲート（canonical / `og:` / `aria-label` / 読了時間 /
+  `prefers-color-scheme`）と verify スキルの追随
+- 判断点: og:image を docs の `public/` に置くか（リポジトリにバイナリを足す）、
+  scaffold にも同梱するか
 
 ## v0.10.1 レビューの持ち越し
 
@@ -31,29 +144,13 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
     devcontainer のビルドが壊れる
   - 着手するなら: バージョン指定（`bash -s -- <version>`）は可能なのでそこから
 
-## v0.18 以降の候補
+## v0.19 以降の候補
 
 ### dogfooding 候補（v0.13 Phase 61 からの持ち越し）
 
-- **OS ダーク追従**（`theme.dark: false`・JS 無効時）— **候補中最重量で単独 Phase 相当**
-  - 障害: `base.jinja` が `data-theme="light"` を無条件ハードコードしており、
-    CSS フォールバックの前提から崩す必要がある
-  - 波及: ダーク定義が 3 箇所（theme.css / syntect 生成 / css_vars_dark 生成）に散り、
-    フォールバック追加で全部 2 系統化（21K の syntect.css が倍増）
-  - 論点: 「dark: false でもダークになる」= 設定キーの意味の再定義（3 値化等）を伴う
-- **見出しパーマリンクのキーボード到達性**
-  - 障害: `<a aria-hidden class="anchor">` は comrak のハードコード出力
-  - 完全対応（aria-hidden 除去＋ラベル付与）は yuzu-core の後処理 = 本文 HTML の変更
-    なので CACHE bump ＋全スナップショット更新を伴う
-  - CSS だけの部分対応は「aria-hidden 内のフォーカス可能要素」という別の違反を生む
-- **`<head>` メタ** — 新キーゼロで実装可能と調査済み
-  - canonical / og:url は sitemap と同じ「baseUrl がフル URL のときだけ」ゲート
-    （`pipeline.rs`）に乗せられる
-  - og:image だけ素材不足
-- **ページメタの拡充（読了時間・文字数）** — extract_meta で数えて CachedMeta へ載せる
-  = CACHE bump を伴う
-- ~~**`--root` グローバルオプションと shell 補完**~~ — v0.17 の Phase 72 / 74 へ移した
-  （上の「現在」を参照）
+- ~~**OS ダーク追従** / **見出しパーマリンクのキーボード到達性** / **`<head>` メタ** /
+  **ページメタの拡充（読了時間・文字数）**~~ — 4 件とも v0.18 の Phase 76〜78 へ移した
+  （上の「現在」を参照。実測と判断点もそちらに移設）
 
 ### その他の候補
 
