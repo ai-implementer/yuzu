@@ -40,8 +40,9 @@ CLAUDE.md にある）。
     `site.lang` / `site.logo`（docs では SVG）。**og:image だけ素材不足**
     （OGP は SVG を受け付けないクローラが多い）
   - sitemap.xml が「`base_url` がフル URL のときだけ生成」のゲートを `pipeline.rs` に
-    持っており、canonical / `og:url` も同じゲートに乗せられる（相対 URL の canonical は
-    仕様上不可）
+    持っており、canonical / `og:url` も同じゲートに乗せられる（canonical は
+    [RFC 6596 §3](https://www.rfc-editor.org/rfc/rfc6596.html#section-3) が相対 IRI も
+    許すが、絶対 URL で出すのをプロジェクト方針にする = sitemap と同じ）
   - `<head>` を含む insta スナップショットは 4 件（テンプレート変更で全部動く）
 - やること
   - `base_url` がフル URL のとき `<link rel="canonical">` と `og:url` を出す
@@ -54,8 +55,10 @@ CLAUDE.md にある）。
     足すか、`site.logo` を流用するか（SVG は非対応が多い）、v0.18 では出さないか
   - `og:type` は全ページ `website` か、トップ以外を `article` にするか
   - `twitter:card` を出すか（`summary` 固定。og:image が無いと意味が薄い）
-  - フル URL 無しのときの canonical — 出さない（sitemap と同じ）か、相対で出すか
-    （仕様違反なので出さない案が有力）
+  - フル URL 無しのときの canonical — 出さない（sitemap と同じ方針）か、相対で出すか。
+    相対 IRI は RFC 6596 で許されているが、ホストが分からない状態の canonical は
+    同一性の宣言としての価値が薄く、`og:url`（絶対 URL 必須）とも揃わないので、
+    絶対 URL を採り出さない案が有力
 
 ### 77 本文 HTML の到達性とページメタ（CACHE bump を 1 回に束ねる） ⬜
 
@@ -67,16 +70,23 @@ Phase に束ね、`CACHE_FORMAT_VERSION` の bump とスナップショット全
 - 現状（実測）
   - comrak の `header_ids` 出力は
     `<a href="#id" aria-hidden="true" class="anchor" id="id"></a>` で固定。`aria-hidden`
-    なのでキーボードでも支援技術でも到達できず、CSS（`theme.css` 825〜839 行）は
-    hover 時だけ表示する
+    は支援技術への公開を制御するだけでフォーカスを禁じる仕組みではないが、
+    `theme.css`（825〜839 行）が `.anchor` を **`visibility: hidden`** にしており、
+    `visibility: hidden` の要素はフォーカスを受けられない。到達できない原因は
+    この 2 つの組み合わせで、**`aria-hidden` を外すだけでは Tab で到達できない**
   - CSS だけの部分対応（focus で表示）は「`aria-hidden` の中にフォーカス可能要素」という
-    別の違反を生む
+    別の違反（[ACT ルール 6cfa84](https://www.w3.org/WAI/standards-guidelines/act/rules/6cfa84/)）
+    を生む
   - `CachedMeta` は frontmatter / title / toc / labels の 4 フィールド。読了時間・文字数を
     載せるには `extract_meta`（呼び出し 3 箇所）で数えて足す = bump 必須
   - ページメタの表示場所は `page.jinja` の `.page-meta`（最終更新・編集リンク）が既にある
 - やること
-  - パーマリンク: `aria-hidden` を外し `aria-label`（「〜へのリンク」）を付け、
-    `:focus-visible` で表示する
+  - パーマリンク: `aria-hidden` を外し `aria-label`（「〜へのリンク」）を付ける。CSS は
+    `visibility: hidden` をやめて `opacity: 0`（レイアウトに残しフォーカス可能）にし、
+    見出しの `:hover` と `.anchor:focus-visible` で `opacity: 1` にする
+  - 検証: hover 無しで Tab だけで到達し Enter で遷移できること（実機で確認。e2e では
+    `aria-hidden` が無く `aria-label` がある HTML と、`visibility: hidden` が消えた CSS を
+    ゲートにする）
   - ページメタ: 本文の文字数と読了時間を `extract_meta` で数え、`.page-meta` に表示。
     frontmatter で非表示にできる（`readingTime: false` 等）
   - `CACHE_FORMAT_VERSION` 22 → 23。スナップショット全更新
