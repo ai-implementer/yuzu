@@ -3,156 +3,12 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在: v0.17（Phase 72〜75）
+## 現在
 
-**v0.16 まで公開済み**（kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 も crates.io で
-公開済み。yuzu のリリースとは非同期。kabosu の publish 前に fuzz を回す規律は
-CLAUDE.md にある）。
-
-軸は「**CLI の使い心地**」。
-
-- 動機: v0.16 は kabosu の内部完成で**利用者に見える変化がゼロ**だった。CLI は
-  v0.10 の `--format` 以来まとまった手入れがなく、オプションが増えるたびに
-  9 つの `run()` を個別に触る構造のまま伸びている
-- ゴール: 実行文脈（プロジェクトルート・出力形式・静粛さ）を CLI の一段目で決めて
-  各コマンドへ渡す形にし、`--root` と shell 補完を入れる
-- **記法・テーマ・レンダリング結果は変えない**（本文 HTML が変わらないので
-  `CACHE_FORMAT_VERSION` の bump は不要。公開サイトの仕上げ候補は
-  「v0.18 以降の候補」へ据え置き）
-- Phase は基盤 → 一貫性 → 追加機能 → dogfooding の依存順。着手時に判断点を
-  決めてから実装する
-
-### 72 グローバルオプションの基盤（`--root` と実行文脈の集約） ✅
-
-**9 つの `run()` が位置引数を個別に取っている**のが、オプションを足すたびに
-全箇所を触ることになる原因。ここを実行文脈の構造体へ寄せてから `--root` を足した。
-
-- 着手時の実測
-  - `Cli` 構造体にグローバル引数が 1 つも無い（`command` だけ）
-  - `run()` は 9 箇所（`check` / `dev` / `llms` / `fmt` / `preview` / `new` /
-    `lint` / `build` / `search`）で、`--force` / `--drafts` / `--port` / `--host` は
-    build と dev が別々に定義している
-  - `MarkdownOptions` の構築は **8 箇所**（cli 5 ＋ render 3）にコピーがある。
-    策定時の「10 箇所」は grep が構造体定義と `impl Default` を拾った数
-- やったこと
-  - `--root <DIR>` をグローバル引数（`cli.rs` の `GlobalArgs`。clap の
-    `global = true` でサブコマンドの前後どちらでも書ける）に追加
-  - 実行文脈を `cx.rs` の `Cx` にまとめて各 `run()` の第 1 引数へ渡す。
-    `--root` の `canonicalize` は `Cx::new` が唯一の受け口
-  - `MarkdownOptions` の 8 箇所を `yuzu_render::markdown_options` へ集約
-    （`glossary_options` / `search_page_options` は非公開に落として部分写像を封じた）
-  - 指定先に `yuzu.toml` が無いときの `ConfigError::ConfigFileNotFound` を追加
-    （`ProjectRootNotFound` と別物。**文言に「上方向に探索」を含めない**）
-  - `preview` の自力 `--host` 上書きを `Overrides::apply` の 1 実装へ寄せた
-- 決めたこと
-  - **`--root` 指定時は上方向探索をしない** — 探索すると「指定したのに親の
-    `yuzu.toml` を拾う」事故が起きる
-  - **`--root` は受け口で 1 回 `canonicalize` する** — 相対パスのまま流すと
-    `rc.root` / `content_dir` / 診断のパス表示まで相対で伝播し、ルート自身が
-    シンボリックリンクだと `.yuzu` のリンク検査を通る build・dev だけが落ちる
-  - **`.yuzu` のリンク検査の非対称は揃えない** — あれは「これから `.yuzu` へ
-    書き込む」側の事前条件で、`.yuzu` に触れない読み取りコマンドまで落とすのは過剰。
-    理由は `load_config` の doc コメントに残した
-  - 実行文脈は構造体（`Cx`）で渡す — Phase 73 の `--quiet` / `--format` を足すとき
-    `run()` のシグネチャを触るのは今回 1 度で済む
-  - **`yuzu new --root` は明示的にエラー** — 既存プロジェクトを読まない唯一の
-    コマンドなので意味がない。黙殺しない（未知キーを黙って無視しない姿勢と揃える）
-
-### 73 出力の一貫性（`--format` と静粛モード） ✅
-
-同じ「出力の形」を指定する手段がコマンドごとに違っていた。
-
-- 着手時の実測
-  - `--format {human,json,github}` があるのは `lint` と `check` だけ
-  - `search` は `--json` の bool フラグ（`--format json` ではない）
-  - `fmt --diff` は独自の unified diff 出力（`patch -p1` に通す契約なので対象外）
-  - ログ制御は `RUST_LOG` 環境変数のみ。`EnvFilter` の既定が `info` なので、
-    **v0.13 で足したビルド進捗ログを黙らせる手段が CLI に無い**
-  - ログの初期化が `Cli::parse()` より前にあり、フラグでフィルタを決められない構造
-- やったこと
-  - `-q` / `--quiet` と `-v` / `--verbose` をグローバル引数（`GlobalArgs`）に追加。
-    `main` が引数をパースしてからサブスクライバを組む順序に変え、
-    フィルタの決定は `log_filter`（フラグと `RUST_LOG` を引数で受ける純粋関数）に集約
-  - `search --format {human,json}` を追加（`commands/search.rs` の `Format`）。
-    `--json` は `hide = true` の互換エイリアスとして残し、`--format` との
-    同時指定は clap の `conflicts_with` で矛盾エラー
-  - グローバル引数に `next_display_order` を付け、サブコマンドのヘルプで
-    固有の引数の後ろへまとめた（無いと `--limit` と `--section` の間に `--root` が挟まる）
-  - **既存の不具合を修正**: stderr への書き込みに失敗するとビルドが途中で落ちていた
-    （`tracing_subscriber::fmt()` の `log_internal_errors` 既定 true が、失敗時に同じ stderr へ
-    `eprintln!` して panic する）。`yuzu build 2>&1 | head` のように読み手が先に閉じると
-    再現し、`--force` は dist を作り直すので `_search` が消えたまま残る。CI の e2e で
-    `grep -q` が最初の一致で読み手を閉じて発覚。`log_internal_errors(false)` で
-    「書けなければ捨てる」（stdout の `out.rs` と同じ規律）
-  - docs の CLI リファレンス（グローバルフラグ表・search の表・進捗ログの節）と
-    ci.yml の docs ゲート＋ e2e（`-q` が `RUST_LOG=debug` に勝つ / `-v` で debug が出る /
-    同時指定はエラー / `search --format json` と `--json` は同じ配列）を追加
-- 決めたこと
-  - **`search --json` は非表示の互換エイリアスとして残す** — 外すと破壊的変更で、
-    残す代償は `conflicts_with` 1 行。優先順位を決める必要が無い（同時指定を許さない）
-  - **`-q` は info 以下だけ黙らせ、warn は残す**（`RUST_LOG=warn` 相当）— yuzu.toml の
-    注意・ハイライト失敗・mermaid の構文エラーは黙らせると気づけない。標準出力の
-    契約物（診断・集計行・検索結果）と `fmt --check` の stderr 集計行は変えない
-  - **CLI フラグは `RUST_LOG` より優先** — 打ったフラグのほうが意図として明示的で、
-    シェルに残った環境変数に黙って負けると「`-q` を付けたのに進捗が出る」になる。
-    無指定のときだけ `RUST_LOG` を見る（不正な指定は従来どおり黙って `info`）
-  - **`-q` / `-v` はグローバル引数** — Phase 72 で用意した `GlobalArgs` に載せるだけ。
-    値は `Cx` に入れない（消費するのは `main` のログ初期化だけで、コマンドは見ない）
-  - **グローバル引数同士の排他は `conflicts_with` だけでは足りない** — clap は
-    トップレベルとサブコマンドを別々に検証するので `yuzu -q build -v` が通る
-    （レビュー指摘）。`Cli::parse_validated` のパース後検証で同じ clap エラー
-    （終了コード 2）にし、前後に分けた両順序をテストと e2e で見る
-  - **`build` に `--format` は広げない** — ビルドの結果は終了コードとログで足りる。
-    JSON で欲しい需要が出たら候補へ戻す
-  - 検索の `Format` は診断の `diag::Format` と別の enum — 検索に `github` は無く、
-    集合を共有すると実行時に弾く分岐が要る
-
-### 74 shell 補完 ✅
-
-- やったこと
-  - `yuzu completions <bash|zsh|fish|powershell|elvish>` を追加
-    （`commands/completions.rs`）。clap の定義 `Cli::command()` から実行時に生成するので、
-    サブコマンド・フラグ・`--format` の値まで補完され、オプションを足せば自動で追随する
-  - プロジェクトを読まないので `--root` は `new` と同じ規律で明示エラー
-  - 単体テストで全シェルの出力にサブコマンドとグローバル引数（`--quiet`）が入ることを
-    見る（= 手書きではなく定義から生成している証拠）。ci.yml の e2e で 5 シェルの生成と
-    `bash -n` / `zsh -n` の構文検査、`--root` の拒否
-  - docs の CLI リファレンスに導入手順（eval / ファイルへ保存）、README の
-    クイックスタートに 1 行、凍結した設計判断の表に clap_complete を追記
-  - ついでに `-q` の doc コメントに書いた実装メモが `--help` に出ていたのを
-    通常コメントへ移した
-- 決めたこと
-  - **clap_complete を依存に入れる** — clap と同じリポジトリの公式クレートで、
-    default features の依存は clap だけ（Cargo.lock に増えるのは 1 件）・MSRV 1.85 で
-    workspace と同じ。凍結した設計判断は「clap derive ＋ clap_complete」に広げた
-  - **実行時生成だけ** — リポジトリにもリリースアセットにも同梱しない。同梱すると
-    オプション変更のたびに再生成が要り、クロスビルドのターゲットは
-    ランナーで実行できないので生成元も分かれる。バイナリと常に一致するほうを取る
-  - **動的補完はしない** — clap_complete の動的補完は `unstable-dynamic` で API が
-    安定しておらず、依存も増える。静的補完で足りないのは `--section` のセクション名と
-    検索クエリだけで、どちらも補完のたびに `dist/_search` を読むことになる
-
-### 75 dogfooding ✅
-
-- やったこと
-  - docs のビルド・検証を `--root docs` に統一した（ci.yml の docs ステップ・docs.yml・
-    docs-links.yml・`verify` スキル・CLAUDE.md）。`cd docs` / `working-directory: docs` を
-    無くし、出力の参照は `docs/dist/` に変えた
-  - docs の CI 組み込み例（guide/quality.md）と github 形式の説明（reference/cli.md）を
-    `--root docs` に更新
-  - scaffold の deploy.yml に、既存リポジトリのサブディレクトリへ生成した場合の案内
-    （リポジトリルートの `.github/workflows/` へ移して `--root docs`）をコメントで追加。
-    現状は `docs/.github/` に落ちて GitHub に無視されるため
-  - e2e に `--root` ＋ `--format github` の注釈パス検査を追加（cwd がプロジェクト外でも
-    `GITHUB_WORKSPACE` 相対に付け替わる = docs.yml / docs-links.yml の前提）
-- 決めたこと
-  - **`cd docs` は残さず全面的に `--root docs` へ** — 両方通す形にすると
-    「どちらが正か」が曖昧になる。cwd からの上方向探索の経路は scaffold の e2e
-    （`cd` して実行）が引き続き検証する
-  - **`-q` は CI に付けない** — ビルドの進捗ログは CI が落ちたときの切り分けに使う。
-    `check` は進捗を出さないので付けても変わらない
-  - **scaffold の deploy.yml に check ステップは足さない** — 利用者のデプロイが lint 違反で
-    止まるようになる挙動変更になる。案内コメントだけにする
+**v0.17 まで公開済み**。次の版（v0.18）は未策定で、候補は下の
+「[v0.18 以降の候補](#v018-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
+kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 は crates.io で公開済み（yuzu のリリースとは
+非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある）。
 
 ## v0.10.1 レビューの持ち越し
 
@@ -328,12 +184,103 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   - **yuzu 本体の機能追加は無し** — `yuzu.toml` に書ける構文が増えるだけ
     （インラインテーブル・テーブルの配列・日時・小数・複数行文字列が
     「未対応の構文」エラーにならなくなった）
+- **v0.17**（Phase 72〜75）CLI の使い心地
+  - グローバル引数 `--root <DIR>`（指定時は上方向探索をしない）と実行文脈 `Cx` の集約
+  - `-q` / `-v`（`RUST_LOG` より優先。`-q` は warn を残す）と
+    `search --format {human,json}`（`--json` は非表示の互換エイリアス）
+  - `yuzu completions <shell>` — bash / zsh / fish / powershell / elvish の補完スクリプトを
+    clap の定義から実行時に生成（同梱しない・動的補完はしない）
+  - dogfooding — docs のビルド・検証を `--root docs` へ統一、scaffold の deploy.yml に
+    サブディレクトリ運用の案内
+  - **記法・テーマ・レンダリング結果は変えていない**（`CACHE_FORMAT_VERSION` の bump 無し）
+  - Phase 外の修正 — stderr への書き込みに失敗するとビルドが途中で落ちていた
+    （`yuzu build 2>&1 | head` で再現。`--force` なら `_search` が消えたまま残る）
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、
 mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
 
 各版の Phase 内訳:
+
+<details>
+<summary>完了済み: v0.17（Phase 72〜75）の内訳</summary>
+
+軸は「**CLI の使い心地**」。v0.16 は kabosu の内部完成で利用者に見える変化がゼロだった。
+CLI は v0.10 の `--format` 以来まとまった手入れがなく、オプションが増えるたびに 9 つの
+`run()` を個別に触る構造のまま伸びていた。実行文脈（プロジェクトルート・出力形式・
+静粛さ）を CLI の一段目で決めて各コマンドへ渡す形にし、`--root` と shell 補完を入れた。
+記法・テーマ・レンダリング結果は変えていないので `CACHE_FORMAT_VERSION` の bump は無い。
+Phase は基盤 → 一貫性 → 追加機能 → dogfooding の依存順で、各 Phase は着手時に判断点を
+決めてから実装し、レビュー指摘（計 2 件）と CI で発覚した既存の不具合（1 件）を
+同じ PR で取り込んだ。
+
+- **72 グローバルオプションの基盤（`--root` と実行文脈の集約）** — 着手時の実測で
+  `Cli` にグローバル引数が 1 つも無く、`run()` 9 箇所が位置引数を個別に取り、
+  `MarkdownOptions` の構築が 8 箇所にコピーされていた。`--root <DIR>` を `GlobalArgs`
+  （clap の `global = true` でサブコマンドの前後どちらでも書ける）に足し、実行文脈を
+  `cx.rs` の `Cx` にまとめて各 `run()` の第 1 引数へ渡す。**`--root` 指定時は上方向探索を
+  しない**（探索すると「指定したのに親の `yuzu.toml` を拾う」事故になる）。
+  **`--root` は受け口 `Cx::new` で 1 回 `canonicalize`**（相対のまま流すと診断のパス表示まで
+  相対で伝播し、ルート自身がシンボリックリンクだと `.yuzu` のリンク検査を通る build・dev
+  だけが落ちる）。`.yuzu` のリンク検査の非対称は揃えない（書き込む側の事前条件で、
+  読み取りコマンドまで落とすのは過剰）。指定先に `yuzu.toml` が無いときの
+  `ConfigError::ConfigFileNotFound` は `ProjectRootNotFound` と別物で、文言に
+  「上方向に探索」を含めない。`yuzu new --root` は明示エラー（既存プロジェクトを読まない
+  唯一のコマンドで、黙殺しない）。`MarkdownOptions` の 8 箇所は
+  `yuzu_render::markdown_options` へ集約した
+- **73 出力の一貫性（`--format` と静粛モード）** — `--format` は lint と check だけ、
+  `search` は `--json` の bool、ログ制御は `RUST_LOG` のみで v0.13 のビルド進捗ログを
+  CLI から黙らせられなかった。`-q` / `-v` をグローバル引数に足し、引数のパースをログ
+  初期化より先に動かして、フィルタの決定を `main.rs` の `log_filter` に集約。
+  **CLI フラグは `RUST_LOG` より優先**（シェルに残った環境変数に黙って負けると
+  「`-q` を付けたのに進捗が出る」になる）。**`-q` は info 以下だけ黙らせ warn は残す**
+  （yuzu.toml の注意・ハイライト失敗・mermaid の構文エラーは黙らせると気づけない。
+  標準出力の契約物と `fmt --check` の集計行は変えない）。`search --format {human,json}`
+  を足し、**`--json` は `hide = true` の互換エイリアス**（`--format` との同時指定は矛盾
+  エラー。優先順位を決めない）。`build --format` は広げない。検索の `Format` は診断の
+  `diag::Format` と別 enum（検索に `github` は無い）。`GlobalArgs` に `next_display_order`
+  を付けてヘルプで固有の引数の後ろへまとめた。**CI で既存の不具合が発覚**:
+  `tracing_subscriber::fmt()` の `log_internal_errors` 既定 true が、stderr への書き込み
+  失敗時に同じ stderr へ `eprintln!` して panic していた。`yuzu build 2>&1 | head` で
+  再現し、`--force` は dist を作り直すので `_search` が消えたまま残る。
+  `log_internal_errors(false)` で「書けなければ捨てる」（stdout の `out.rs` と同じ規律）。
+  レビュー指摘 1 件: `conflicts_with` はサブコマンドの境界をまたぐ global 引数を検証しない
+  （`yuzu -q build -v` が通る）ため、`Cli::parse_validated` のパース後検証で同じ clap
+  エラー（終了コード 2）にした
+- **74 shell 補完** — `yuzu completions <bash|zsh|fish|powershell|elvish>` を追加。
+  判断は 3 点ともユーザ確認のうえ: **clap_complete を依存に入れる**（clap と同じ
+  リポジトリの公式クレートで、default features の依存は clap だけ・MSRV 1.85 で workspace
+  と同じ。凍結した設計判断は「clap derive ＋ clap_complete」に広げた）/ **実行時生成だけ**
+  （リポジトリにもリリースアセットにも同梱しない。同梱するとオプション変更のたびに
+  再生成が要り、クロスビルドのターゲットはランナーで実行できないので生成元も分かれる）/
+  **動的補完はしない**（`unstable-dynamic` で API が安定しておらず、静的補完で足りないのは
+  `--section` のセクション名と検索クエリだけ）。clap の定義 `Cli::command()` から生成する
+  ので、単体テストは全シェルの出力にグローバル引数（`--quiet`）が入ることを見る
+  （= 手書きではなく定義から生成している証拠）。プロジェクトを読まないので `--root` は
+  `new` と同じ規律で明示エラー。docs ゲートはコードブロック内の文字列が syntect の span で
+  分断されるため、見出し id で照合する
+- **75 dogfooding** — docs のビルド・検証を `--root docs` に統一し、`cd docs` /
+  `working-directory: docs` を ci.yml・docs.yml・docs-links.yml・`verify` スキル・
+  docs の例から無くした（出力の参照は `docs/dist/`）。**両方通す形にはしない**
+  （「どちらが正か」が曖昧になる。cwd からの上方向探索の経路は scaffold の e2e が
+  `cd` して検証する）。`-q` は CI に付けない（進捗ログは落ちたときの切り分けに使う）。
+  scaffold の deploy.yml には check ステップを足さず（利用者のデプロイが lint 違反で
+  止まる挙動変更になる）、既存リポジトリの `docs/` へ生成した場合の案内
+  （リポジトリルートの `.github/workflows/` へ移して `--root docs`）をコメントで足した。
+  e2e に「`--root` 指定で cwd がプロジェクト外でも github 形式の注釈パスが
+  `GITHUB_WORKSPACE` 相対になる」検査を追加（レビュー指摘 1 件: `cd` 後で cwd が
+  プロジェクト内のままだったので、サブシェルで親へ移動してから相対 `--root` で実行する）
+
+**教訓**: clap の `conflicts_with` はトップレベルとサブコマンドを別々に検証するので、
+global 引数同士の排他は後検証が要る。tracing-subscriber の `fmt()` は既定で書き込み失敗を
+stderr へ再報告するので、stderr が閉じた瞬間に panic する。どちらも「ライブラリの既定が
+CLI の規約（終了コード・書けなければ捨てる）と食い違う」型の罠で、CI の e2e が最初の一致で
+読み手を閉じる `grep -q` を使っていたことで表面化した。
+
+**非互換**は無い。`search --json` は非表示の互換エイリアスとして残り、`RUST_LOG` も
+従来どおり効く（`-q` / `-v` を付けたときだけ CLI フラグが優先する）。
+
+</details>
 
 <details>
 <summary>完了済み: v0.16（Phase 68〜71）の内訳</summary>
