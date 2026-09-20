@@ -462,9 +462,14 @@ jobs:
           GITHUB_WORKSPACE="$RUNNER_TEMP" "$GITHUB_WORKSPACE/target/debug/yuzu" check --format github \
             | grep -q '^::error file=e2e-docs/content/index.md,'
           # --root で指定し cwd がプロジェクト外でも同じ付け替えになる
-          # （Phase 75: docs.yml / docs-links.yml がリポジトリルートから --root docs で実行する前提）
-          GITHUB_WORKSPACE="$RUNNER_TEMP" "$GITHUB_WORKSPACE/target/debug/yuzu" check --root "$RUNNER_TEMP/e2e-docs" --format github \
-            | grep -q '^::error file=e2e-docs/content/index.md,'
+          # （Phase 75: docs.yml / docs-links.yml がリポジトリルートから --root docs で実行する前提）。
+          # ここまでの cd でプロジェクト内にいるので、サブシェルで親へ移動して条件を作る
+          # （後続の処理には影響しない）。--root は相対で渡し、正規化も兼ねて見る
+          (
+            cd "$RUNNER_TEMP"
+            GITHUB_WORKSPACE="$RUNNER_TEMP" "$GITHUB_WORKSPACE/target/debug/yuzu" check --root e2e-docs --format github \
+              | grep -q '^::error file=e2e-docs/content/index.md,'
+          )
           # lint --fix と json を併用しても標準出力が JSON のまま（進捗は stderr へ）
           "$GITHUB_WORKSPACE/target/debug/yuzu" lint --fix --format json 2>/dev/null \
             | head -1 | grep -q '^{$'

@@ -148,7 +148,8 @@ echo '[壊れリンク](missing.md)' >> content/index.md
 #   docs.yml / docs-links.yml がリポジトリルートから --root docs で実行する前提）
 <repo>/target/debug/yuzu check --format github | grep '^::error file='
 GITHUB_WORKSPACE="$(dirname "$PWD")" <repo>/target/debug/yuzu check --format github | grep '^::error file=e2e-docs/'
-GITHUB_WORKSPACE="$(dirname "$PWD")" <repo>/target/debug/yuzu check --root "$PWD" --format github | grep '^::error file=e2e-docs/'
+# cwd をプロジェクト外へ出してから --root（相対）で指定する（サブシェルなので後続に影響しない）
+( cd .. && GITHUB_WORKSPACE="$PWD" <repo>/target/debug/yuzu check --root e2e-docs --format github | grep '^::error file=e2e-docs/' )
 # lint --fix と併用しても標準出力は JSON のまま（進捗は stderr へ逃げる）
 <repo>/target/debug/yuzu lint --fix --format json 2>/dev/null | head -1 | grep -q '^{$' && echo "OK fix+json"
 # preview のリンク遮断（Phase 65）: dist にリンクを置いて 404 と内容非漏洩を見る
