@@ -9,7 +9,11 @@ yuzu の開発計画と、これまでのリリースの内訳。**このファ�
 公開済み。yuzu のリリースとは非同期。kabosu の publish 前に fuzz を回す規律は
 CLAUDE.md にある）。
 
-軸は「**公開サイトの仕上げ**」。
+軸は「**公開サイトの仕上げ**」。v0.13 から持ち越していた 4 件（`<head>` メタ /
+パーマリンクの到達性 / ページメタ / OS ダーク追従）を 4 つの Phase で消化する。
+本文 HTML が変わる 2 件は Phase 77 に束ね、キャッシュ形式の bump を 1 回で済ませる。
+
+以下は策定の詳細。
 
 - 動機: 公開物（HTML）の質は v0.12「読む体験の完成」以来手を入れておらず、
   v0.13 Phase 61 からの持ち越し 4 件（`<head>` メタ / 見出しパーマリンクのキーボード
@@ -24,6 +28,10 @@ CLAUDE.md にある）。
   順。着手時に判断点を決めてから実装する
 
 ### 76 `<head>` メタ（canonical / OGP） ⬜
+
+**概要**: `base.jinja` の `<head>` に canonical と OGP（`og:*` / `twitter:card`）を足す。
+テンプレートだけの変更で新しい設定キーは不要（og:image を出すなら 1 キー）。
+主な判断点は og:image の素材をどうするか。
 
 - 現状（実測）
   - `base.jinja` の `<head>` にあるメタは `<title>` と `description` だけ。canonical /
@@ -51,9 +59,10 @@ CLAUDE.md にある）。
 
 ### 77 本文 HTML の到達性とページメタ（CACHE bump を 1 回に束ねる） ⬜
 
-見出しパーマリンクとページメタは**どちらも本文 HTML / キャッシュ形式が変わる**ので、
-1 つの Phase に束ねて `CACHE_FORMAT_VERSION` の bump とスナップショット全更新を
-1 回で済ませる。
+**概要**: 見出しパーマリンクをキーボードと支援技術から到達できる形にし、読了時間・
+文字数をページメタに出す。どちらも本文 HTML / キャッシュ形式が変わるので 1 つの
+Phase に束ね、`CACHE_FORMAT_VERSION` の bump とスナップショット全更新を 1 回で済ませる。
+主な判断点はパーマリンクの実装位置（comrak 出力の後処理か自前生成か）。
 
 - 現状（実測）
   - comrak の `header_ids` 出力は
@@ -85,7 +94,10 @@ CLAUDE.md にある）。
 
 ### 78 OS ダーク追従（JS 無効時・`theme.dark = false` 時） ⬜
 
-候補中最重量。
+**概要**: JS が無効でも、切替ボタンを出さない設定でも、OS のダーク設定に追従させる。
+`data-theme="light"` のハードコードを外して「未設定 = OS 追従」を作り、CSS に
+`prefers-color-scheme` のフォールバックを足す。候補中最重量で、主な判断点は
+`theme.dark` の 3 値化と CSS 2 系統化の範囲。
 
 - 現状（実測）
   - `base.jinja` が `data-theme="light"` を無条件で書き、`theme.dark = true` のときだけ
@@ -113,6 +125,9 @@ CLAUDE.md にある）。
     （3 値化とセット）
 
 ### 79 dogfooding ⬜
+
+**概要**: Phase 76〜78 を docs サイト・scaffold・CI ゲートで実運用し、SNS カードや
+キーボード操作の実物を確認する。
 
 - docs サイトで実運用する: og:image の素材（`public/images/` に PNG）を用意して
   SNS カードの実物を確認、キーボードでパーマリンクへ到達できること、読了時間の表示、
