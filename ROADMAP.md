@@ -317,6 +317,218 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
     devcontainer のビルドが壊れる
   - 着手するなら: バージョン指定（`bash -s -- <version>`）は可能なのでそこから
 
+## 10-04 見直しの持ち越し
+
+**概要**: 10-04 にプロジェクト全体を上級プログラマー・上級マネージャー・一般利用者の
+3 つの視点で見直した結果のうち、v0.18 Phase 77 で直した 6 件以外の指摘。
+3 人とも「作りの規律は高い」と評価したうえで、配布物の体裁（ライセンス表記・
+脆弱性窓口）・利用者の体験と docs の食い違い・1 人運用の持続性・露出に穴がある、
+という見立てで一致した。優先度は「配布物として必要なもの」→「利用者の体験と docs」→
+「運用と持続性」→「急がないコード整理」の順（3 人の合意）。
+
+各項目は「現状（根拠）・対処案・工数（小 / 中 / 大）」の順に書く。根拠のうち、
+コード・ファイル・`gh` の結果で確かめたものは断定し、確かめていないものは
+**未確認**と書く。ファイルの行番号は 10-04（Phase 77 マージ後）時点。
+
+### 配布物として必要なもの
+
+- ⬜ **第三者ライセンスの表記が配布物に無い**（工数: 小〜中）
+  - リリースのアーカイブに入れているのは `README.md` と yuzu 自身の `LICENSE-MIT` /
+    `LICENSE-APACHE` だけ（`release.yml:142` の `cp`）。バイナリには 200 余りの
+    crate が入っており、comrak（BSD-2-Clause）や MIT の crate は、バイナリで配るときに
+    著作権表示と許諾文を添える必要がある。two-face は「同梱する構文定義に個別の
+    ライセンスがある」として表示用の `acknowledgement` モジュールを用意しているが、
+    yuzu は使っていない
+  - `yuzu build` が利用者のサイトへ配る mermaid.min.js・KaTeX（JS・CSS・フォント）・
+    分かち書きモデル（`_search/model.zst`）にもライセンス文が付いていない
+  - crates.io で公開している tankan / mikan / kabosu の各 crate ディレクトリに
+    LICENSE ファイルが無い（ワークスペース直下にしか無い）。パッケージにも入らない
+    （`cargo package --list` で 3 crate とも LICENSE が 0 件）。mikan は分かち書き
+    モデルも同梱している
+  - 対処案: cargo-about 等で THIRD-PARTY-LICENSES を生成してアーカイブに入れる /
+    dist にもライセンス一覧（vendor 資産の分）を出す / 3 crate のディレクトリに
+    LICENSE-* を置く（シンボリックリンクは `cargo package` が実体を入れるか要確認）
+- ⬜ **vendor 資産の更新メモが公開サイトに配信されている**（工数: 小）
+  - `crates/yuzu-theme/assets/static/vendor/README.md`（取得元・版・ハッシュの記録）が
+    テーマ資産として埋め込まれ、`dist/_assets/vendor/README.md` に出る。このサイトでも
+    `https://ai.implementer.net/yuzu/_assets/vendor/README.md` で配信されている
+    （見直し時に確認）。利用者のサイトでも同じ
+  - 対処案: rust-embed の対象から外す（`#[exclude]`）。上のライセンス一覧で置き換える
+- ⬜ **脆弱性の窓口と監視が無い**（工数: 小）
+  - `SECURITY.md` が無い。GitHub の secret scanning・push protection・dependabot の
+    セキュリティ更新はすべて disabled（`gh api repos/…` の `security_and_analysis`）
+  - CI に cargo-deny / cargo-audit が無い。`ci.yml` と `fuzz.yml` に `permissions:` が
+    無い（既定の権限で動く。`docs.yml` / `release.yml` / `docs-links.yml` には有る）
+  - 利用者のサイトへ配る mermaid は 11.16.0（`scripts/vendor-mermaid.sh:10`）。上流は
+    先へ進んでいる。間にセキュリティ修正があるかは**未確認**
+  - 対処案: SECURITY.md と private vulnerability reporting を有効化 / secret scanning を
+    有効化 / dependabot（cargo と github-actions）/ cargo-deny を CI へ / ci.yml と
+    fuzz.yml に `permissions: contents: read` / vendor 資産の定期確認
+- ⬜ **tankan の修正（Phase 77）が crates.io に出ていない**（工数: 小）
+  - gantt の `5日` での panic と state の循環は、公開中の tankan 0.2.0 には残っている
+  - 対処案: publish-crate スキルでパッチ版（0.2.1）を出すか判断する
+
+### 利用者の体験と docs
+
+- ⬜ **build が壊れたページを黙って出す**（工数: 小〜中）
+  - リンク切れ・画像切れ・存在しない見出しへのリンク・インクルードの失敗を含んでも、
+    `yuzu build` は一部の警告だけで終了コード 0。`yuzu check` で初めてエラーとして出る。
+    README の手順（dev → build → preview）では check は「CI 用」に見えるので実行されない
+  - Mermaid の書き間違いは、既定の描画方式（client）では build も check も何も言わない。
+    ssr にすると build は警告を出すが、**ページ名が無く**、行番号は図の中での行
+  - 対処案: build の最後に「リンク切れ N 件。詳細は `yuzu check`」の 1 行を出す /
+    SSR の警告にページ名を付ける / client 描画でも tankan のパースだけ通して構文エラーを
+    check で報告するか（tankan 未対応の図種との切り分けが要る）
+- ⬜ **docs と雛形の設定の書き方が TOML になっていない**（工数: 小）
+  - v0.14 で設定を TOML に移した後も、JSON / YAML 風の書き方が残っており、
+    コピペすると設定エラーになる: `guide/diagrams.md:11-12`（`backend: "client"`）/
+    `guide/deploy.md:103`（`markdown.mermaid.backend: "client"`）/
+    `guide/writing.md:217`（`markdown.crossref.numbering: "site"`）/
+    `guide/writing.md:265`（`"abbr": false`）/ `guide/code-and-math.md:175`
+    （`markdown.math.enabled: false`）/ `development/index.md:72` /
+    雛形 `crates/yuzu-cli/scaffold/index.md:25`（`backend: "ssr"`）
+  - 図の描画方式の既定値が食い違っている: 既定は client（`yuzu-config/src/schema.rs:283`。
+    `guide/diagrams.md:11` も client）なのに、`guide/deploy.md:105` は「既定の `"ssr"`」
+  - README の「図は 10 図種をビルド時に SVG 化」（`README.md:21`）は既定の設定では
+    そうならない（mermaid.min.js をブラウザで読む）。「JS を使うのは検索とテーマ切替だけ」
+    （`README.md:33`）も、数式は KaTeX がブラウザで描く（`base.jinja:124-125`）ので
+    正しくない
+  - `guide/index.md:49` の「`content/` と `theme/` を監視して」は、実際はプロジェクト
+    ルート全体を監視している
+  - 対処案: TOML の表記（`[markdown.mermaid]` + `backend = "ssr"`、または
+    `markdown.mermaid.backend = "ssr"`）に揃える。docs ゲートに JSON 風表記の
+    否定 grep を足すと再発を防げる
+- ⬜ **frontmatter の型エラーが英語で、1 件ずつ、行番号がずれる**（工数: 中）
+  - `order: "最初"` で `invalid type: string "最初", expected i64 at line 2 column 8`。
+    `i64` が利用者に分からない。行番号は frontmatter の中での行で、ファイル上の行と
+    ずれる。直すと次のエラーが出る（yuzu.toml のエラーは位置付き・日本語・全件で、
+    落差が大きい）
+  - 対処案: serde_yaml_ng のエラーを日本語に読み替え、行をファイル上の行へ足し直す。
+    キーごとの型検査で全件出す（kabosu の decode と同じ考え方）
+- ⬜ **手元の Markdown フォルダから始める方法が書かれていない**（工数: 小）
+  - `yuzu new .` は「空ではありません」で止まり、`yuzu build` は「yuzu new で作成
+    するか…」と案内する。実際は空の `yuzu.toml` 1 枚で動くが、どこにも書かれていない
+  - 対処案: ガイドに「既存のフォルダで始める」節。`yuzu init`（yuzu.toml だけ作る）を
+    足すかは判断
+- ⬜ **dist をファイルとして直接開けないことが書かれていない**（工数: 小）
+  - リンクがサイトのルートから始まる形（`/_assets/…`）なので、`index.html` を
+    ダブルクリックで開くと CSS もナビも効かない。触れているのは `guide/search.md:119`
+    （検索の `file://`）だけ。社内でフォルダごと渡す使い方ができるかが分からない
+  - `--base-url ./` を黙って受け付け、`/./_assets/…` を出力する
+  - 対処案: ガイドに明記する。相対パス出力に対応するかは別の判断（大）。
+    `--base-url` に `.` 始まりを渡したら警告する
+- ⬜ **雛形のナビが不自然**（工数: 小）
+  - サイドバーに英小文字の「guide」が出る（`guide/index.md` が無いため）。ホームの
+    「次のページ」が用語集で、本文の「次は はじめに へ」と食い違う
+  - 対処案: 雛形に `guide/index.md` を足す。用語集の nav 上の順序を末尾に固定する
+- ⬜ **検索で 2 文字の語に無関係な結果が混ざる**（工数: 小〜中）
+  - `yuzu search "単語"` に「英語」を含む節が出る。誤字補正（1 文字違いまで許す）が
+    2 文字の語にも効くため
+  - 対処案: 語の長さで誤字補正を切る（3 文字以上だけ等）。mikan の変更なので
+    native / wasm が同じ実装を通ることと、`FORMAT_VERSION` を上げずに済むかを確かめる
+- ⬜ **細かな分かりにくさ**（工数: 小）
+  - ビルドのログに UTC 時刻と `body_misses=4` のような開発者向けの値が出る。
+    パイプ先にも色コードが混ざる。ページ数が build では 4・検索インデックスでは 3・
+    check では 2 と食い違う。何も抑制していないのに「抑制 3 件」と出る（雛形の原稿の分）
+  - `yuzu --help` が「README.md を参照」と書く（バイナリだけの利用者は持っていない）。
+    「WS ライブリロード」「baseUrl」（設定名は `base_url`）、`--base-url` の説明の
+    「CI から configure-pages の base_path を渡す用途」など、内部の言葉が出る
+  - 雛形の原稿が機能カタログになっていて、自分の原稿を書き始めるには大半を消す必要がある
+  - ガイドのフォルダ構成図（`guide/index.md:33-38`）に `snippets/` が無い。雛形の
+    `theme/README.md` がリポジトリ内のパス（`crates/yuzu-theme/assets/`）を指している
+    （バイナリの利用者は持っていない）
+
+### 運用と持続性
+
+- ⬜ **権限と知識が 1 人に集中している**（工数: 小）
+  - org のメンバーも、tankan / mikan / kabosu の crates.io の owner も 1 人
+    （見直し時に確認）。main にブランチ保護も ruleset も無い（`gh api` で確認）
+  - 開発コンテナは apple container 前提で、個人の 1Password の項目名まで前提にしている
+    （`scripts/dev-container.sh` の OTEL）
+  - 対処案: crates.io に 2 人目の owner（GitHub team）/ main の保護（必須チェック
+    `check` / `msrv`）/ 1Password の項目名を環境変数で差し替え可能にする
+- ⬜ **運用文書の古い記述**（工数: 小）
+  - `.claude/skills/release/SKILL.md:95-98`: 見出しが「tankan / mikan」で kabosu が
+    抜けている / 「実行回数はまだ 0 回」（実際は 3 crate とも公開済み）/ 参照先の
+    CLAUDE.md「汎用ライブラリの crates.io 公開」の節がもう無い（publish-crate スキルへ
+    移った）
+  - 7 crate の Cargo.toml（yuzu-cli / core / render / config / index / server / theme）の
+    「README ロードマップ参照」は、ロードマップが ROADMAP.md に分かれた後も残っている
+  - tankan / mikan / kabosu の Cargo.toml・`fuzz.yml:5`・`ci.yml:46` は
+    CLAUDE.md「リリース手順」を参照しているが、その節は今はスキルへの案内だけで
+    1 段遠回り（壊れてはいない）
+  - `crates/mikan/assets/model/README.md:20` が git 管理外の「設計ノート」を参照して
+    いる（CLAUDE.md の「公開物から docs/design を参照しない」に反する）
+  - 対処案: 直す。参照先の節・ファイルが実在するかを verify で grep する検査を足すと
+    再発を防げる
+- ⬜ **0.x の互換性方針・CHANGELOG・アップグレードガイドが無い**（工数: 小）
+  - パッチ版の v0.10.1 に非互換の変更が入っていた。v0.14 の TOML 移行の手順は
+    リリースノートにしかなく、docs に無い。リリースノートは内部実装の説明が多く、
+    利用者に関係する変更が埋もれる
+  - 対処案: docs に「互換性の方針と移行手順」1 ページ / リリースノートを
+    「利用者への影響」と「内部」に分ける / CHANGELOG.md を置くかは判断
+- ⬜ **ROADMAP.md の肥大化**（工数: 小）
+  - 完了済みの内訳が全体の約 8 割を占める。候補（i18n・VS Code 拡張など）に
+    「誰の何を解決するか」が書かれていない
+  - 対処案: 完了済みの内訳を別ファイル（例 `docs/` の開発履歴ページ）へ移す。
+    候補ごとに対象の利用者と解決することを 1 行書く
+- ⬜ **CI の穴**（工数: 中）
+  - テストは Linux だけ（`ci.yml` の `runs-on` は ubuntu-latest のみ）。配布している
+    macOS・Windows のバイナリは、release.yml で `--version` を確かめるだけ。Windows での
+    パスの正規化やリンク検査の不具合の有無は**未確認**
+  - fuzz は手動起動のみで、対象は kabosu だけ。実行履歴は 09-06 の 2 回。Phase 77 の
+    tankan の 2 件は、コーパスを変異させる簡単なハーネスで 90 秒以内に見つかった
+  - `ci.yml` の test / build に `--locked` が無い
+  - 公開リポジトリの定期実行（docs-links.yml）は、60 日間動きが無いと GitHub が止める
+  - 対処案: windows / macos の `cargo test` を matrix に / tankan の `render_svg` を
+    fuzz 対象に足し、月次の定期実行 / `--locked` を足す
+- ⬜ **macOS バイナリが未署名・未公証**（工数: 説明だけなら小・署名するなら中）
+  - ブラウザでダウンロードすると Gatekeeper に止められる可能性がある（**未確認**）。
+    docs に回避方法の説明が無い
+- ⬜ **外部への露出が無い**（工数: 中）
+  - repo の description・topics・homepage が空、Discussions 無効、star 0・fork 0
+    （`gh repo view` で確認）。README・docs・ライブラリの README が日本語のみ。
+    mdBook / VitePress / MkDocs 等との比較が無い。インストールは手動配置か
+    `cargo install --git` だけ（Homebrew・cargo-binstall のメタデータ・install
+    スクリプトが無い）
+  - 対処案: 想定する利用者（例「日本語で設計書を書くチーム」）と他ツールとの比較を
+    1 ページに / 英語の README を最低限 / topics・description / cargo-binstall の
+    メタデータ。品質側の指摘（上の「配布物」「利用者の体験」）を先に片付けてから
+- ⬜ **外部からの貢献の受け口が無い**（工数: 小）
+  - CONTRIBUTING・CODE_OF_CONDUCT・issue / PR テンプレートが無く、ラベルも既定のまま。
+    貢献を受けるかどうかの表明が無い
+- ⬜ **`.claude/settings.local.json` が .gitignore に入っていない**（工数: 小）
+  - 未追跡のまま置かれていて、誤ってコミットする余地がある
+
+### 急がないコード整理
+
+- ⬜ **長い関数**（工数: 中）
+  - `crates/yuzu-render/src/pipeline.rs:88` の `render_site`（約 335 行）/
+    `crates/tankan/src/sequence/layout.rs` のレイアウト関数（約 430 行）/
+    `crates/yuzu-index/src/builder.rs` のビルド関数（約 220 行）/
+    `crates/yuzu-core/src/suppress.rs` の抑制の適用（約 220 行）。
+    `crates/yuzu-core/src/markdown/mod.rs` は 1094 行
+  - 対処案: `render_site` はページ単位の処理と集約を別関数に。`markdown/mod.rs` を
+    分けるなら、「comrak を触るのは mod.rs だけ」の規則をディレクトリ単位に
+    定義し直す必要がある
+- ⬜ **同じ処理が 2 か所にある**（工数: 小）
+  - `escape_html` が `yuzu-core/src/markdown/mod.rs:22` と
+    `yuzu-render/src/highlight.rs:438` に同じ中身で 2 つ
+  - mermaid / math の言語の集合は `yuzu-core/src/lib.rs:143` の
+    `is_special_render_lang` と `yuzu-render/src/highlight.rs:324-333` の分岐を
+    コメントで同期させているだけ（openapi / jsonschema は `SPEC_LANGS` とテストで縛って
+    いるのと非対称）
+  - 対処案: `escape_html` を core に 1 つ / 言語を enum にして網羅 match で縛る
+- ⬜ **依存とビルド設定**（工数: 小）
+  - sha2 が 0.10.9 と 0.11.0 の 2 版入っている（Cargo.lock）
+  - axum を既定の features のまま使っており、使っていない json / form / query が入る
+  - `yuzu-index` は rust-embed（`assets/search/`）を使うのに build.rs が無い（CLAUDE.md
+    の罠に記載済み。新規ファイルを足すと release が古い埋め込みを使う恐れ）
+- ⬜ **性能の気になる点**（工数: 小〜中。**どちらも未計測**）
+  - `yuzu-render/src/context.rs` がページごとに nav 全体の URL を作り直している
+  - `yuzu-cli/src/commands/build.rs` の git 連携メタが、watch の再ビルドのたびに全履歴を
+    `git log` している
+
 ## v0.19 以降の候補
 
 ### dogfooding 候補（v0.13 Phase 61 からの持ち越し）
