@@ -7,6 +7,8 @@
 # する（skills の絶対 symlink・hooks・codex の projects トラストが無傷で動く）。
 # devcontainer.json の Docker 経路は ARG 既定値（vscode/1000）のまま。詳細は
 # .devcontainer/README.md「認証の仕組み」。
+# shell / claude / codex は New Relic への OTEL 送信設定も exec 時に注入する
+# （キーは 1Password の op で取得。取れなければ送らない）。
 #
 # 使い方:
 #   scripts/dev-container.sh build   # イメージをビルド（--no-cache 可）
@@ -106,6 +108,28 @@ export_host_env() {
     HOST_ENV_FLAGS+=(-e GH_TOKEN)
   else
     echo "warn: gh auth token が取得できませんでした（gh は未認証になります）" >&2
+  fi
+
+  # Claude Code の利用状況を New Relic（OpenTelemetry）へ送る。計測はコンテナ内だけ（ホストでは送らない）。
+  # ライセンスキーは 1Password から取り出し、GH_TOKEN と同じく値なしの -e で exec 時にだけ渡す
+  # （run に焼くと container inspect の env にキーが残る）。キーが取れないときは設定ごと渡さない
+  local nr_key
+  nr_key=$(op item get "NewRelic(claude-otel-api)" --vault Private --fields credential --reveal 2>/dev/null || true)
+  if [ -n "$nr_key" ]; then
+    OTEL_EXPORTER_OTLP_HEADERS="api-key=$nr_key"
+    export OTEL_EXPORTER_OTLP_HEADERS
+    HOST_ENV_FLAGS+=(
+      -e CLAUDE_CODE_ENABLE_TELEMETRY=1
+      -e OTEL_METRICS_EXPORTER=otlp
+      -e OTEL_LOGS_EXPORTER=otlp
+      -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      -e OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net:4318
+      -e OTEL_EXPORTER_OTLP_HEADERS
+      # 送信元のコンテナを区別する属性。ほかのコンテナでも同じ属性名で値を変えて送る
+      -e OTEL_RESOURCE_ATTRIBUTES=container.name=yuzu
+    )
+  else
+    echo "warn: 1Password から New Relic のキーを取得できませんでした（テレメトリは送信されません）" >&2
   fi
 }
 
@@ -270,7 +294,7 @@ case "${1:-}" in
   clean) cmd_clean ;;
   status) cmd_status ;;
   *)
-    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac
