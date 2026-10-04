@@ -13,4 +13,8 @@ pub enum ServerError {
 
     #[error("ファイル監視に失敗しました: {0}")]
     Notify(#[from] notify::Error),
+
+    /// 監視中の再ビルドが panic して監視スレッドが止まったので、配信も止めた
+    #[error("監視中の再ビルドで内部エラーが起きたため、配信を終了しました: {0}")]
+    WatchStopped(String),
 }

@@ -6,7 +6,7 @@ description: ワークスペース構成・依存方向・凍結した設計判�
 
 # アーキテクチャ
 
-yuzu は Cargo workspace（MSRV 1.85 / edition 2024）で、役割ごとに
+yuzu は Cargo workspace（MSRV 1.87 / edition 2024。公開ライブラリの kabosu・tankan は MSRV 1.85）で、役割ごとに
 crate を分けています。
 
 ## ワークスペース構成

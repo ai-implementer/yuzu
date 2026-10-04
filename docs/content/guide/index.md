@@ -13,10 +13,10 @@ description: yuzu のインストールとクイックスタート
 ダウンロードして展開し、`yuzu` を PATH の通った場所へ置きます。
 各リリースには検証用の `SHA256SUMS` も添付されています。
 
-Rust ツールチェイン（1.85 以降）があれば、ソースからもインストールできます:
+Rust ツールチェイン（1.87 以降）があれば、ソースからもインストールできます:
 
 ```bash
-cargo install --git https://github.com/ai-implementer/yuzu yuzu-cli
+cargo install --locked --git https://github.com/ai-implementer/yuzu yuzu-cli
 ```
 
 ## プロジェクトを作る

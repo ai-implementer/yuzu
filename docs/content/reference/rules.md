@@ -24,7 +24,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 ## yuzu lint のルール
 
-深刻度はすべて warning です。「無効化可」のルールは
+深刻度は `frontmatter-unrecognized` を除いてすべて warning です。「無効化可」のルールは
 [`lint.rules`](#プロジェクト全体の無効化lintrules) の `false` で
 プロジェクト全体を無効化できます（`config-*` と抑制機構自身の 2 ルールは対象外）。
 `lint.terms` / `lint.max_directory_depth` を使うルールは、設定しない限り発火しません。
@@ -41,6 +41,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `code-block-meta` | フェンス情報文字列の書き間違い・範囲外の行ハイライト | 不可 | 無効化可 |
 | `duplicate-label` | 図表ラベル（`{#fig:x}`）の同一ページ内での重複 | 不可 | 無効化可 |
 | `frontmatter-unknown-key` | frontmatter の未知のトップレベルキー | 不可 | 無効化可 |
+| `frontmatter-unrecognized` | frontmatter のつもりの記述が読まれていない（error） | 不可 | 常時有効 |
 | `config-path-outside-root` | `input.dir` がプロジェクトルートの外を指す | 不可 | 常時有効 |
 | `invalid-lint-suppression` | frontmatter `lintDisable` の未知・抑制不可のルール名 | 不可 | 常時有効 |
 | `unused-lint-suppression` | `lintDisable` に書いたのにこのページで発火しなかった抑制 | 不可 | 常時有効 |
@@ -52,6 +53,22 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 （パスはプロジェクトルート相対で出ます）。なお設定のキーのタイポ・型違い・
 重複は診断ではなく**設定エラー**（終了コード 2）で、どのコマンドでも
 読み込み時に止まります（[設定](config.md)参照）。
+
+`frontmatter-unrecognized` は、frontmatter のつもりの記述が本文として表示される
+（または本文が frontmatter として読まれて消える）壊れた出力を知らせる error です。
+抑制はできず、`yuzu build` でも警告が出ます。次の 3 つを報告します。
+
+- 閉じの `---` が無い。1 行目が `---` で 2 行目が `title:` のような
+  「英字のキーとコロン」の形のときだけ報告します。先頭の `---` は区切り線としても
+  正しい書き方なので、2 行目が空行や見出しの文書は対象外です。区切り線のつもりで
+  2 行目にキーの形の行を書いた場合は、`---` の次に空行を入れてください
+- `+++` で囲んだ TOML 形式。yuzu の frontmatter は `---` で囲んだ YAML だけです
+- 先頭の区切り線から次の `---` までが frontmatter として読まれている
+  （中身が YAML のマッピングとして読めないとき。見出しや箇条書きだけの区間など）。
+  文書の先頭の区切り線は `***` で書いてください
+
+どの場合も `yuzu fmt` はそのページを書き換えません（整形すると `---` が区切り線の
+`-----` に変わり、frontmatter だった痕跡が消えるため）。
 
 `code-block-meta` はフェンス情報文字列の問題をまとめて報告します
 （`showLineNumbers` の書き間違い、`{2,4-6}` の解釈できない部分、`file=` のない `lines=`、

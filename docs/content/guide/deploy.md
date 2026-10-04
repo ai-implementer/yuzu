@@ -39,6 +39,12 @@ GitHub Pages への自動デプロイが動きます。必要な操作はリポ�
 `yuzu build --base-url` へ渡すため、project pages のサブパス
 （`/<リポジトリ名>/`）も設定なしで正しく配信されます。
 
+ワークフローがインストールする yuzu は、`yuzu new` を実行した yuzu と同じ版に
+固定されています（`cargo install` の `--tag v0.18.0` のような指定）。リリース前の
+変更がデプロイに混ざらないためです。新しい版に上げるときは、このタグを書き換えて
+ください。同じ版がキャッシュにあれば、2 回目以降のデプロイではインストールを
+飛ばします。
+
 > [!NOTE]
 > このサイト自身も同じ仕組みで公開されています。リポジトリの
 > [.github/workflows/docs.yml](https://github.com/ai-implementer/yuzu/blob/main/.github/workflows/docs.yml)

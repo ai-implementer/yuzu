@@ -72,10 +72,10 @@ jobs:
             echo "\`yuzu\` を PATH の通った場所へ置いてください。"
             echo "検証は \`sha256sum -c SHA256SUMS\`（macOS は \`shasum -a 256 -c SHA256SUMS\`）。"
             echo ""
-            echo "Rust 1.85 以降ならソースからもインストールできます:"
+            echo "Rust 1.87 以降ならソースからもインストールできます:"
             echo ""
             echo '```bash'
-            echo "cargo install --git https://github.com/$GITHUB_REPOSITORY --tag $GITHUB_REF_NAME yuzu-cli"
+            echo "cargo install --locked --git https://github.com/$GITHUB_REPOSITORY --tag $GITHUB_REF_NAME yuzu-cli"
             echo '```'
             if [ -n "$PREV" ]; then
               echo ""

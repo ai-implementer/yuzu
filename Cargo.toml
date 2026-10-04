@@ -5,7 +5,9 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.17.0"
 edition = "2024"
-rust-version = "1.85"
+# 1.87: mikan が使う ruzstd 0.8.2 が 1.87 で安定化した API（is_multiple_of）を使う。
+# kabosu・tankan は依存が軽く 1.85 で通るので、各 Cargo.toml で 1.85 を宣言する
+rust-version = "1.87"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ai-implementer/yuzu"
 authors = ["ai-implementer"]
@@ -62,9 +64,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 walkdir = "2"
 globset = "0.4"
-# 9.0 は rc 段階のため 8.2 に固定（notify-debouncer-mini 0.7 は notify ^8.2 前提）
+# 9.0 は rc 段階のため 8.2 に固定。debounce とイベントの種類の絞り込みは
+# yuzu-server の監視スレッドで行う（debouncer は種類を捨てるので使わない。
+# Linux の inotify が届ける「開いただけ」のイベントで再ビルドが止まらなくなる）
 notify = "8.2"
-notify-debouncer-mini = "0.7"
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.7", features = ["fs"] }
 # broadcast（ライブリロード通知）に "sync" が必須（axum の feature からは有効化されない）

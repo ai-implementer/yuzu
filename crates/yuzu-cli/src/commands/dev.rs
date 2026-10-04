@@ -45,7 +45,7 @@ pub fn run(
     // session と設定はクロージャへ move してセッション全体で再利用する
     let mut watcher = build::WatchBuild::new(rc.clone(), overrides, mode, drafts, session);
     let root = rc.root.clone();
-    let _watch_handle = yuzu_server::watch(&paths, ignore, build::DEBOUNCE, move |changed| {
+    let mut watch_handle = yuzu_server::watch(&paths, ignore, build::DEBOUNCE, move |changed| {
         tracing::info!(changed = %build::format_changed(&root, changed), "変更を検知 → 再ビルド");
         match watcher.rebuild() {
             // 通知は必ず再ビルド成功後（失敗時に通知すると壊れた dist を読ませる）
@@ -55,6 +55,7 @@ pub fn run(
                 }
             }
             // 執筆中の一時的なエラーでプロセスは落とさない
+            // （panic は別。監視スレッドが受けて配信ごと止める = exit 2）
             Err(e) => tracing::error!("再ビルドに失敗しました: {e:#}"),
         }
     })?;
@@ -79,6 +80,7 @@ pub fn run(
         base_url: rc.base_url.clone(),
         live_reload: notifier,
         path_guard: Some(super::preview::symlink_guard(&rc.root)),
+        watch_failure: watch_handle.take_failure(),
     })?;
     Ok(())
 }

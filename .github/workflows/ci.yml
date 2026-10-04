@@ -214,6 +214,9 @@ jobs:
             exit 1
           fi
           grep -q 'id="共有カードogpと-canonical"' docs/dist/guide/deploy/index.html
+          # Phase 77: frontmatter の読み違いのルールと、雛形 deploy.yml の版固定の説明
+          grep -q 'frontmatter-unrecognized' docs/dist/reference/rules/index.html
+          grep -q 'yuzu と同じ版に' docs/dist/guide/deploy/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
@@ -264,6 +267,14 @@ jobs:
           fi
           cd "$RUNNER_TEMP/e2e-docs"
           test -f .github/workflows/deploy.yml
+          # Phase 77: deploy.yml のインストールは yuzu new した版のタグに固定される
+          # （版指定なしだと利用者のサイトが main の最新でビルドされる）
+          version=$("$GITHUB_WORKSPACE/target/debug/yuzu" --version | awk '{print $2}')
+          grep -q -- "--locked --git https://github.com/ai-implementer/yuzu --tag v$version yuzu-cli" .github/workflows/deploy.yml
+          if grep -q '__YUZU_VERSION__' .github/workflows/deploy.yml; then
+            echo "deploy.yml に版の印が残っている" >&2
+            exit 1
+          fi
           "$GITHUB_WORKSPACE/target/debug/yuzu" build
           test -f dist/index.html
           test -f dist/guide/getting-started/index.html
@@ -306,6 +317,33 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" build --force -v 2>&1 | grep -q 'DEBUG'
           test "${PIPESTATUS[0]}" -eq 0
           test -f dist/_search/manifest.json
+          # Phase 77: Linux（inotify）は開いた・読んだだけのイベントも届ける。何も編集せずに
+          # build --watch を数秒動かして、再ビルドが起きないこと（以前は止まらなかった）
+          timeout 6 "$GITHUB_WORKSPACE/target/debug/yuzu" build --watch --port 5199 > "$RUNNER_TEMP/watch.log" 2>&1 || true
+          grep -q '監視中' "$RUNNER_TEMP/watch.log"
+          if grep -q '変更を検知' "$RUNNER_TEMP/watch.log"; then
+            echo "何も編集していないのに再ビルドした" >&2
+            cat "$RUNNER_TEMP/watch.log" >&2
+            exit 1
+          fi
+          # Phase 77: frontmatter の閉じ忘れは error（check が 1）・build は警告で続ける。
+          # 先頭の区切り線で始まる正常な文書は誤検出しない
+          printf -- '---\ntitle: 閉じ忘れ\n\n本文\n' > content/unclosed.md
+          printf -- '---\n\n# 区切り線で始まる\n\n本文\n' > content/hr-first.md
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build 2> "$RUNNER_TEMP/fm-build.err"
+          grep -q '閉じの `---` がありません' "$RUNNER_TEMP/fm-build.err"
+          set +e
+          "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json > "$RUNNER_TEMP/fm-check.json" 2>/dev/null
+          status=$?
+          set -e
+          test "$status" -eq 1
+          grep -q '"path": "content/unclosed.md"' "$RUNNER_TEMP/fm-check.json"
+          grep -q '"rule": "frontmatter-unrecognized"' "$RUNNER_TEMP/fm-check.json"
+          if grep -B2 '"path": "content/hr-first.md"' "$RUNNER_TEMP/fm-check.json" | grep -q 'frontmatter-unrecognized'; then
+            echo "区切り線で始まる文書を frontmatter の閉じ忘れと誤検出した" >&2
+            exit 1
+          fi
+          rm content/unclosed.md content/hr-first.md
           # -q と -v の同時指定は矛盾エラー（黙ってどちらかを勝たせない）。
           # サブコマンドの前後に分けた指定は clap の conflicts_with が見ないので
           # パース後の検証（Cli::parse_validated）が弾く。両順序を見る
@@ -550,8 +588,11 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
             | grep -q '"rule": "config-path-outside-root"'
 
-  # kabosu の MSRV（rust-version = 1.85）でのコンパイル可能性。
-  # 公開ライブラリなので stable より古い固定版でも check が通ることを縛る
+  # MSRV（各 Cargo.toml の rust-version）でのコンパイル可能性。ワークスペース
+  # （yuzu 本体と mikan）は 1.87、公開ライブラリの kabosu・tankan は 1.85。
+  # **RUSTUP_TOOLCHAIN を必ず付ける** — リポジトリの rust-toolchain.toml（stable）が
+  # rustup の既定より優先されるので、無いと黙って stable で検査する（以前の
+  # このジョブがそうだった）。rustc の版も確かめて、指定が効いていることを縛る
   msrv:
     runs-on: ubuntu-latest
     steps:
@@ -559,6 +600,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # 1.85
         with:
           toolchain: "1.85"
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # 1.87
+        with:
+          toolchain: "1.87"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - name: check (kabosu, MSRV)
-        run: cargo check -p kabosu
+      - name: check (kabosu・tankan, MSRV 1.85)
+        env:
+          RUSTUP_TOOLCHAIN: "1.85"
+        run: |
+          rustc --version
+          rustc --version | grep -q '^rustc 1\.85\.'
+          cargo check --locked -p kabosu -p tankan
+      - name: check (workspace, MSRV 1.87)
+        env:
+          RUSTUP_TOOLCHAIN: "1.87"
+        run: |
+          rustc --version
+          rustc --version | grep -q '^rustc 1\.87\.'
+          cargo check --locked --workspace

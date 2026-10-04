@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 
 use yuzu_config::ResolvedConfig;
-use yuzu_server::{PathGuard, ServeOptions};
+use yuzu_server::{PathGuard, ServeOptions, WatchFailure};
 
 pub fn run(cx: &crate::cx::Cx, port: Option<u16>, host: Option<String>) -> anyhow::Result<()> {
     let mut rc = super::load_project(cx)?;
@@ -25,11 +25,17 @@ pub fn run(cx: &crate::cx::Cx, port: Option<u16>, host: Option<String>) -> anyho
             rc.output_dir.display()
         );
     }
-    serve_dist(&rc, port)
+    serve_dist(&rc, port, None)
 }
 
-/// dist/ を配信する（`preview` と `build --watch` で共用。ブロッキング）
-pub(crate) fn serve_dist(rc: &ResolvedConfig, port: Option<u16>) -> anyhow::Result<()> {
+/// dist/ を配信する（`preview` と `build --watch` で共用。ブロッキング）。
+/// `watch_failure` は `build --watch` が渡す監視停止の合図（監視が panic で
+/// 止まったら配信も止めて Err を返す）
+pub(crate) fn serve_dist(
+    rc: &ResolvedConfig,
+    port: Option<u16>,
+    watch_failure: Option<WatchFailure>,
+) -> anyhow::Result<()> {
     let host: IpAddr = rc
         .config
         .dev
@@ -44,6 +50,7 @@ pub(crate) fn serve_dist(rc: &ResolvedConfig, port: Option<u16>) -> anyhow::Resu
         base_url: rc.base_url.clone(),
         live_reload: None,
         path_guard: Some(symlink_guard(&rc.root)),
+        watch_failure,
     })?;
     Ok(())
 }

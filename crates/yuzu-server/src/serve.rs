@@ -15,7 +15,7 @@
 //! 読み側にも掛けるのが目的。server は core を知らないので、検査の中身は
 //! cli が [`PathGuard`] に包んで渡す（`WatchIgnore` と同型）
 
-use std::future::Future;
+use std::future::{Future, IntoFuture};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -32,6 +32,7 @@ use tower_http::services::fs::{Backend, TokioBackend, TokioFile};
 
 use crate::error::ServerError;
 use crate::livereload::{LIVERELOAD_PATH, ReloadNotifier, handle_socket};
+use crate::watch::WatchFailure;
 
 /// 配信パスの検査述語。引数は配信ディレクトリ配下の**絶対パス**（`ServeDir` が
 /// 要求パスを結合した後の値）。`Err(理由)` なら配信しない（404 扱い・理由は
@@ -50,6 +51,10 @@ pub struct ServeOptions {
     pub live_reload: Option<ReloadNotifier>,
     /// 配信パスの検査（None なら `ServeDir` の既定どおりリンクも辿る）
     pub path_guard: Option<PathGuard>,
+    /// 監視と一緒に配信するとき（`dev` / `build --watch`）に渡す。監視スレッドが
+    /// panic で止まったら配信も止めて [`ServerError::WatchStopped`] を返す
+    /// （監視だけが黙って止まり、編集しても再ビルドされない状態を残さない）
+    pub watch_failure: Option<WatchFailure>,
 }
 
 /// `TokioBackend` を包み、`open` / `metadata` の前に [`PathGuard`] を通す。
@@ -114,9 +119,33 @@ pub fn serve(opts: ServeOptions) -> Result<(), ServerError> {
             Err(e) => return Err(e.into()),
         };
         tracing::info!("http://{addr}{base} で配信中（Ctrl+C で停止）");
-        axum::serve(listener, app).await?;
-        Ok(())
+        let Some(failure) = opts.watch_failure else {
+            axum::serve(listener, app).await?;
+            return Ok(());
+        };
+        // 監視の停止を受けたら、配信中の接続を待たずに止める。graceful shutdown は
+        // 接続が閉じるまで待つので、ライブリロードの WebSocket が開いている限り
+        // 終わらない（プロセスはこの後すぐ終了するので打ち切ってよい）
+        tokio::select! {
+            result = axum::serve(listener, app).into_future() => {
+                result?;
+                Ok(())
+            }
+            message = failure.wait() => Err(ServerError::WatchStopped(message)),
+        }
     })
+}
+
+/// base_url のパスを axum のルートとして字句どおりに扱える形にする。
+///
+/// ルート構文で特別な意味を持つ `{` / `}`（パラメータ）は `%7B` / `%7D` にする。
+/// axum はパーセントエンコードされたままのパスで照合し、ブラウザは URL のパスの
+/// `{` / `}` を必ずエンコードして送るので、この形でないと一致しない（`{{` で
+/// 重ねてただの文字にしても、エンコードされた要求とは一致しない）。
+/// `:` / `*` はブラウザがエンコードしないので字句どおりに残し、それで始まる
+/// セグメントは `without_v07_checks` と組で通す
+fn literal_route(path: &str) -> String {
+    path.replace('{', "%7B").replace('}', "%7D")
 }
 
 /// Router の組み立て（テスト容易性のため分離）
@@ -159,15 +188,20 @@ fn build_router(
         Router::new().fallback_service(serve_dir)
     } else {
         // nest_service のパスは末尾スラッシュなし（例: "/docs"）。"/" を渡すと panic
-        let mount = base.trim_end_matches('/').to_string();
+        let mount = literal_route(base.trim_end_matches('/'));
         let redirect_to = base.to_string();
-        Router::new().nest_service(&mount, serve_dir).route(
-            "/",
-            get(move || {
-                let to = redirect_to.clone();
-                async move { Redirect::temporary(&to) }
-            }),
-        )
+        // without_v07_checks: axum 0.8 は `:` / `*` で始まるセグメントを旧構文として
+        // panic で拒むが、base_url では URL として正当な文字なので字句どおりに配信する
+        Router::new()
+            .without_v07_checks()
+            .nest_service(&mount, serve_dir)
+            .route(
+                "/",
+                get(move || {
+                    let to = redirect_to.clone();
+                    async move { Redirect::temporary(&to) }
+                }),
+            )
     };
 
     if let Some(notifier) = live_reload {
@@ -207,7 +241,7 @@ mod tests {
 
     use futures_util::StreamExt;
 
-    use super::{PathGuard, ReloadNotifier, base_path, build_router};
+    use super::{PathGuard, ReloadNotifier, base_path, build_router, literal_route};
 
     #[test]
     fn base_path_の取り出し() {
@@ -215,6 +249,99 @@ mod tests {
         assert_eq!(base_path("/docs/"), "/docs/");
         assert_eq!(base_path("https://example.com/docs/"), "/docs/");
         assert_eq!(base_path("https://example.com"), "/");
+    }
+
+    #[test]
+    fn ルート構文の波括弧はブラウザが送る形にエンコードする() {
+        assert_eq!(literal_route("/docs"), "/docs");
+        assert_eq!(literal_route("/a{b}"), "/a%7Bb%7D");
+        assert_eq!(literal_route("/{*x}"), "/%7B*x%7D");
+        assert_eq!(literal_route("/:x"), "/:x");
+    }
+
+    /// axum 0.8 は `:` / `*` で始まるセグメントや `{` を含むパスをルート登録時に
+    /// panic で拒む。base_url としては正当なので、panic せず組み立てられること
+    #[test]
+    fn ルート構文に当たる_base_でも_panic_しない() {
+        let dir = tempfile::tempdir().unwrap();
+        for base in ["/:x/", "/*x/", "/a{b}/", "/{*x}/", "/docs/:v/"] {
+            let built = std::panic::catch_unwind(|| {
+                let _ = build_router(dir.path(), base, None, None);
+            });
+            assert!(built.is_ok(), "base = {base} で panic した");
+        }
+    }
+
+    #[tokio::test]
+    async fn コロンで始まる_base_でも字句どおりに配信する() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<html>home</html>").unwrap();
+        let addr = spawn_server(dir.path(), "/:x/", None).await;
+
+        let ok = reqwest_lite(addr, "/:x/index.html").await;
+        assert!(ok.starts_with("HTTP/1.0 200"), "resp:\n{ok}");
+        assert!(ok.contains("home"));
+    }
+
+    /// 波括弧を含む base は、ブラウザが送るエンコード済みの形（`%7B` / `%7D`）で配信する
+    #[tokio::test]
+    async fn 波括弧を含む_base_はエンコード済みの要求で配信する() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<html>home</html>").unwrap();
+        let addr = spawn_server(dir.path(), "/a{b}/", None).await;
+
+        let ok = reqwest_lite(addr, "/a%7Bb%7D/index.html").await;
+        assert!(ok.starts_with("HTTP/1.0 200"), "resp:\n{ok}");
+        assert!(ok.contains("home"));
+    }
+
+    /// 監視スレッドが panic で止まったら、配信も止めて Err を返す
+    /// （監視だけが止まり配信が残る状態にしない）
+    #[test]
+    fn 監視の_panic_で配信を止めて_watch_stopped_を返す() {
+        let tmp = crate::watch::tests::visible_tempdir();
+        let root = tmp.path().canonicalize().unwrap();
+        std::fs::write(root.join("index.html"), "<html>home</html>").unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        let mut handle = crate::watch(
+            std::slice::from_ref(&root),
+            crate::WatchIgnore::default(),
+            Duration::from_millis(50),
+            |_| panic!("テスト用の panic"),
+        )
+        .unwrap();
+        let failure = handle.take_failure();
+        assert!(handle.take_failure().is_none(), "合図は 1 回だけ取り出せる");
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let dir = root.clone();
+        std::thread::spawn(move || {
+            let result = super::serve(super::ServeOptions {
+                dir,
+                host: std::net::IpAddr::from([127, 0, 0, 1]),
+                port: 0,
+                base_url: "/".to_string(),
+                live_reload: None,
+                path_guard: None,
+                watch_failure: failure,
+            });
+            let _ = done_tx.send(result);
+        });
+        // サーバが待ち受けに入ってから変更を起こす
+        std::thread::sleep(Duration::from_millis(300));
+        std::fs::write(root.join("a.md"), "# a\n").unwrap();
+
+        let result = done_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("serve が戻らない");
+        match result {
+            Err(crate::ServerError::WatchStopped(message)) => {
+                assert!(message.contains("テスト用の panic"), "{message}");
+            }
+            other => panic!("WatchStopped を期待したが {other:?}"),
+        }
+        drop(handle);
     }
 
     /// テスト用サーバをエフェメラルポートで起動し、アドレスを返す

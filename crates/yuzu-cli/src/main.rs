@@ -11,13 +11,17 @@ mod out;
 // 依存方向（cli → index）の配線。Phase 3 で実体を使う
 use yuzu_index as _;
 
+use std::io::Write;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::process::ExitCode;
 
 use tracing_subscriber::EnvFilter;
 
 /// 終了コード規約（grep 流）:
 /// 0 = 成功（違反なし）/ 1 = fmt・lint・check の違反あり / 2 = 実行エラー
+/// （panic も 2。既定の 101 にしない）
 fn main() -> ExitCode {
+    install_panic_hook();
     // 引数のパースをログ初期化より先に行う（`-q` / `-v` がフィルタを決めるため）。
     // パースエラーは clap が自前で stderr へ出して終了するのでログは要らない
     // （`--help` / `--version` も同じ経路で終了コード 0）
@@ -44,13 +48,7 @@ fn main() -> ExitCode {
         .log_internal_errors(false)
         .init();
 
-    let code = match run(cli) {
-        Ok(code) => code,
-        Err(err) => {
-            eprintln!("Error: {err:?}");
-            ExitCode::from(2)
-        }
-    };
+    let code = run_catching(|| run(cli));
     // 標準出力の I/O エラー（ディスクフル等）は実行エラー扱い。
     // 下流が閉じただけ（BrokenPipe）は成功で、コマンド本来の終了コードを保つ
     if let Err(err) = out::finish() {
@@ -58,6 +56,54 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
     code
+}
+
+/// コマンドを実行して終了コードを決める。Err は 2、**panic も 2**
+/// （rayon の並列処理で起きた panic も呼び出し元へ伝え直されるのでここで受かる）。
+/// panic の内容は hook が出し済みなので、ここでは何も書かない。
+///
+/// `dev` / `build --watch` の監視スレッドの panic はここへ届かない。監視側
+/// （`yuzu_server::watch`）が受けて配信を止め、`serve` の Err として戻ってくる
+fn run_catching(f: impl FnOnce() -> anyhow::Result<ExitCode>) -> ExitCode {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(Ok(code)) => code,
+        Ok(Err(err)) => {
+            eprintln!("Error: {err:?}");
+            ExitCode::from(2)
+        }
+        Err(_) => ExitCode::from(2),
+    }
+}
+
+/// panic hook を差し替える。**hook の中で終了させない** — hook は
+/// `catch_unwind` で回収する panic でも先に呼ばれるので、ここで `exit` すると
+/// Mermaid 描画の回収（クライアント描画への切り替え）が動かなくなる。
+///
+/// - 回収する区間（`yuzu_core::recover::is_recovering`）では何も出さない
+///   （描画側が警告 1 行で知らせる）
+/// - それ以外は不具合として 1 行で知らせる。`RUST_BACKTRACE` があれば既定の
+///   出力（バックトレース付き）も続けて出す
+/// - stderr へ書けなくても panic しない（`eprintln!` は書き込み失敗で panic し、
+///   hook 内の panic はプロセスを abort させる）
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if yuzu_core::recover::is_recovering() {
+            return;
+        }
+        let message = yuzu_core::recover::panic_message(info.payload());
+        let location = info
+            .location()
+            .map(|l| format!("（{}:{}）", l.file(), l.line()))
+            .unwrap_or_default();
+        let _ = writeln!(
+            std::io::stderr(),
+            "Error: 内部エラーが起きました（yuzu の不具合です。再現手順を添えて報告してください）: {message}{location}"
+        );
+        if std::env::var_os("RUST_BACKTRACE").is_some() {
+            default_hook(info);
+        }
+    }));
 }
 
 /// ログフィルタの決定。**`-q` / `-v` は `RUST_LOG` より優先**し、無指定のときだけ
@@ -121,8 +167,37 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
 
 #[cfg(test)]
 mod tests {
-    use super::log_filter;
+    use std::process::ExitCode;
+
+    use super::{log_filter, run_catching};
     use crate::cli::Verbosity;
+
+    /// panic は既定の 101 ではなく規約の 2（実行エラー）
+    #[test]
+    fn panic_は終了コード_2_になる() {
+        assert_eq!(
+            run_catching(|| panic!("テスト用の panic")),
+            ExitCode::from(2)
+        );
+        // rayon の並列処理中の panic も呼び出し元へ伝え直されて 2 になる
+        assert_eq!(
+            run_catching(|| {
+                use rayon::prelude::*;
+                (0..8).into_par_iter().for_each(|i| {
+                    if i == 5 {
+                        panic!("並列処理中の panic");
+                    }
+                });
+                Ok(ExitCode::SUCCESS)
+            }),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            run_catching(|| Err(anyhow::anyhow!("通常のエラー"))),
+            ExitCode::from(2)
+        );
+        assert_eq!(run_catching(|| Ok(ExitCode::from(1))), ExitCode::from(1));
+    }
 
     /// `-q` / `-v` は `RUST_LOG` より優先する
     #[test]

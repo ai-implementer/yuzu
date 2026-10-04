@@ -140,10 +140,11 @@ pub fn run(
     //（キャッシュ・テンプレート Env・ハイライタ・トークナイザ）
     let mut watcher = WatchBuild::new(rc.clone(), overrides, mode, drafts, session);
     let root = rc.root.clone();
-    let _watch_handle = yuzu_server::watch(&paths, ignore, DEBOUNCE, move |changed| {
+    let mut watch_handle = yuzu_server::watch(&paths, ignore, DEBOUNCE, move |changed| {
         tracing::info!(changed = %format_changed(&root, changed), "変更を検知 → 再ビルド");
         if let Err(e) = watcher.rebuild() {
             // 執筆中の一時的な構文エラー等でプロセスは落とさない
+            // （panic は別。監視スレッドが受けて配信ごと止める = exit 2）
             tracing::error!("再ビルドに失敗しました: {e:#}");
         }
     })?;
@@ -151,7 +152,7 @@ pub fn run(
     // 受け入れ条件「編集 → ブラウザ自動更新」を 1 コマンドで満たすため、
     // preview と同じ静的サーバも起動する（ブロッキング）。
     // ポート・ホストは `dev` と同じく上書きできる（両方を並走させる用途）
-    preview::serve_dist(&rc, port)
+    preview::serve_dist(&rc, port, watch_handle.take_failure())
 }
 
 /// 監視ビルド 1 本ぶんの状態（`build --watch` / `dev` 共通）。

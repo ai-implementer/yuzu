@@ -40,7 +40,7 @@ use comrak::{Anchorizer, Arena, Options, format_commonmark, format_html, parse_d
 
 use crate::MarkdownOptions;
 use crate::error::CoreError;
-use crate::frontmatter::parse_frontmatter;
+use crate::frontmatter::{looks_like_misread_thematic_break, parse_frontmatter};
 use crate::markdown::fence::parse_fence_info;
 use crate::model::{CrossrefLabel, Frontmatter, Page, PlainSection, SourceSpan, TocEntry};
 use crate::traits::{CodeBlockRenderer, UrlRewriter};
@@ -141,7 +141,13 @@ pub(crate) fn extract_meta(
             NodeValue::FrontMatter(raw) => {
                 frontmatter = parse_frontmatter(raw).map_err(|message| CoreError::Frontmatter {
                     path: src_path.to_path_buf(),
-                    message,
+                    message: if looks_like_misread_thematic_break(raw) {
+                        format!(
+                            "{message}（先頭の `---` を区切り線のつもりで書いた場合は、後ろの `---` までが frontmatter として読まれています。先頭の区切り線は `***` で書いてください）"
+                        )
+                    } else {
+                        message
+                    },
                 })?;
             }
             NodeValue::Heading(heading) => {
@@ -700,14 +706,9 @@ pub(crate) fn frontmatter_raw(
 /// 整形器のバグでビルド全体が落ちないよう捕捉して None を返す
 /// （呼び出し側が原文へ縮退する）。上流修正後も防御として残す
 pub(crate) fn catch_formatter_panic<T>(f: impl FnOnce() -> T) -> Option<T> {
-    // 既定の panic フックはバックトレースを stderr へ吐いて紛らわしいので、
-    // 捕捉中だけ黙らせる。fmt / llms 正規化は直列区間なので、他スレッドの
-    // 本物のパニック表示を巻き込む実害は無い
-    let prev = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-    std::panic::set_hook(prev);
-    result.ok()
+    // 既定の panic 出力（`thread … panicked at …`）は紛らわしいので、CLI の hook が
+    // 回収区間の印（recover.rs）を見て黙る。呼び出し側が警告 1 行を出す
+    crate::recover::catch(f).ok()
 }
 
 /// 原文から frontmatter（区切り行込み）を取り除いた本文を返す。

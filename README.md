@@ -1,7 +1,7 @@
 # yuzu 🍊
 
 [![CI](https://github.com/ai-implementer/yuzu/actions/workflows/ci.yml/badge.svg)](https://github.com/ai-implementer/yuzu/actions/workflows/ci.yml)
-![MSRV](https://img.shields.io/badge/MSRV-1.85-orange)
+![MSRV](https://img.shields.io/badge/MSRV-1.87-orange)
 ![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
 
 Markdown で書いた設計書を、プロダクション品質の静的 HTML ドキュメントサイトに
@@ -38,10 +38,10 @@ Markdown で書いた設計書を、プロダクション品質の静的 HTML �
 
 - **バイナリ** — [GitHub Releases](https://github.com/ai-implementer/yuzu/releases/latest)
   から取って PATH の通った場所へ置く（macOS arm64/x64・Linux x64・Windows x64）
-- **ソース** — Rust 1.85 以降で `cargo install`
+- **ソース** — Rust 1.87 以降で `cargo install`
 
 ```bash
-cargo install --git https://github.com/ai-implementer/yuzu yuzu-cli
+cargo install --locked --git https://github.com/ai-implementer/yuzu yuzu-cli
 # リポジトリ内での開発中は: cargo install --path crates/yuzu-cli
 ```
 
