@@ -99,7 +99,7 @@ frontmatter の閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動
 ジョブ / 異常な `base_url` での panic。どれも本文 HTML とキャッシュ形式は変えない。
 主な判断点は、監視イベントの絞り込み方と、雛形 deploy.yml の版の固定方法。
 
-- 現状（実測。コードを読んで確認し、1・2・6 は開発コンテナで実行して再現した）
+- 現状（実測。コードを読んで確認し、1・2・3・6 は開発コンテナで実行して再現した）
   1. **Linux で `yuzu dev` / `build --watch` の再ビルドが止まらない** — notify 8.2 の
      inotify は監視マスクに `OPEN`（ファイルを開いただけ）を含む（`inotify.rs:427`）。
      notify-debouncer-mini はイベントの種類を捨ててパスだけを渡し、
@@ -123,6 +123,15 @@ frontmatter の閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動
      閉じの `---` が無いと本文として描画される（`title: …` がそのまま出る。警告なし）。
      `yuzu check` は整形差分として `yuzu fmt` を案内し、従うと先頭の `---` が区切り線の
      `-----` ＋空行に書き換わる（`+++` は `\+++` になる）
+     - 一方で、**先頭の `---` は CommonMark では正当な区切り線**でもある。`---`・空行・
+       `# Introduction`・本文 の文書は区切り線＋見出しとして正しく描画される
+       （build は exit 0。fmt は `---` を `-----` に正規化するだけ）。「先頭が `---` で
+       閉じが無い」だけでは frontmatter の閉じ忘れと区別できない
+     - comrak は 1 行目が `---` ちょうどで、以降に `---` だけの行があれば中身を問わず
+       frontmatter とみなす（comrak 0.53 `strings.rs:372` の `split_off_front_matter`）。
+       そのため区切り線を 2 本使う文書（`---`・空行・見出し・本文・`---`・本文）は、
+       間が frontmatter と読まれて build / check が YAML のエラーで exit 2 になる
+       （既にある誤検出）
   4. **雛形 deploy.yml が main を版指定なしでインストールする** —
      `yuzu-cli/scaffold/deploy.yml:37` が `cargo install --git …/yuzu yuzu-cli` で、
      利用者のサイトはデプロイのたびに main の最新でビルドされる（v0.14 の TOML 移行の
@@ -147,18 +156,22 @@ frontmatter の閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動
   2. tankan: gantt は `strip_suffix` で単位を判定する。state は開いているスコープに
      同じ id があればパースエラーにし、`scope_chain` に深さの上限を付ける（apispec の
      `MAX_DEPTH` と同じ考え方）。corpus に再現入力 2 件。yuzu 側は `render_svg` の
-     呼び出しで panic を受け止め、構文エラーと同じくクライアント描画へ切り替えて
-     警告を出す。tankan のパッチ版公開は publish-crate スキルで別に判断する
-  3. frontmatter: 先頭行が `---` なのに閉じが無いファイルを lint の新ルールで error に
-     し、build でも警告する。fmt はそのファイルを書き換えない。診断ルール一覧（docs の
+     呼び出しを `catch_unwind` で包んで panic を回収し、構文エラーと同じくクライアント
+     描画へ切り替えて警告を出す（CLI 全体の panic との分け方は判断点）。tankan の
+     パッチ版公開は publish-crate スキルで別に判断する
+  3. frontmatter: 「frontmatter 候補」の判定を yuzu-core の 1 か所に作り、**候補なのに
+     閉じが無い**ときだけ lint の新ルールで報告し、build でも警告する。候補の条件は
+     判断点で決める（案: 1 行目が `---` ちょうどで、2 行目が空行でなく `キー:` の形 =
+     YAML のマッピング行）。2 行目が空行や見出しなど、区切り線で始まる通常の文書は
+     候補にしない。fmt は候補のファイルだけ書き換えない。診断ルール一覧（docs の
      リファレンス）と ci.yml の docs ゲートを足す
   4. 雛形 deploy.yml: 版を固定する（判断点参照）。`guide/deploy.md` の説明も合わせる
   5. MSRV: ジョブに `RUSTUP_TOOLCHAIN: "1.85"`（ディレクトリのファイルより環境変数が
      優先）を設定し、`rustc --version` が 1.85 であることも確かめる。対象を
      `cargo check --workspace --locked` に広げる
   6. `base_url`: 設定の読み込みで `:` `*` `{` で始まるセグメントを設定エラー（exit 2）に
-     する。CLI の `--base-url` 上書きも同じ検証を通す。main で panic を受け止めて
-     exit 2 にする
+     する。CLI の `--base-url` 上書きも同じ検証を通す。回収されずに main まで上がって
+     きた panic を exit 2 にする（判断点参照）
 - 判断点
   - **監視の絞り込み方** — notify-debouncer-full へ替える（種類が残る）か、notify を
     直接使って自前で debounce するか。どちらでも macOS の挙動（保存 1 回で再ビルド
@@ -168,15 +181,38 @@ frontmatter の閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動
     バイナリを取得して SHA256SUMS で検証する（デプロイが速くなる。対応 OS の判定が
     要る）か。どちらも、未リリースの main からビルドした `yuzu new` は存在しないタグか
     古いタグを指すことになる
-  - **frontmatter の新ルール** — ルール名（例 `frontmatter-unclosed`）、`+++`
-    （TOML frontmatter は未対応）も同じルールで「対応していない形式」と伝えるか
+  - **frontmatter 候補の判定方法と曖昧な場合の扱い**
+    - 2 行目が `キー:` の形なら候補にするか、yuzu の既知キー（`title` / `order` /
+      `description` 等）に限るか。前者は打ち間違いのキーも拾えるが、区切り線の直後に
+      「用語: 説明」のような本文の行が続く文書を候補にしてしまう
+    - 曖昧な場合を error にするか、warning にとどめるか、報告しないか
+    - 閉じがある側の誤検出（区切り線 2 本の文書が exit 2）も同じ判定で救うか。
+      comrak の判定を前段で上書きする（候補のときだけ `front_matter_delimiter` を
+      有効にする等）ことになるので、範囲を広げるかは着手時に決める
+    - ルール名（例 `frontmatter-unclosed`）、`+++`（TOML frontmatter は未対応）も
+      同じルールで「対応していない形式」と伝えるか
   - **MSRV が 1.85 で通らなかったとき** — MSRV を上げる（README・リリースノート・
     `rust-version` を同時に直す）か、コードを 1.85 で通る形に直すか
-  - **panic の受け止め方** — main の `catch_unwind` か panic hook か。rayon のワーカーで
-    起きた panic も exit 2 にできるか
+  - **panic の受け止め方** — 回収して処理を続ける panic（`render_svg` の描画）と、
+    CLI 全体を終わらせる panic を分ける
+    - panic hook は `catch_unwind` で回収する panic でも先に実行される
+      （[`std::panic::set_hook`](https://doc.rust-lang.org/std/panic/fn.set_hook.html)
+      の仕様）。**hook の中で `process::exit(2)` する一律終了は選ばない** = 描画の
+      回収とクライアント描画へのフォールバックが動かなくなる
+    - CLI 全体の panic は main の `catch_unwind` で受けて exit 2 にする（rayon は並列
+      処理中の panic を呼び出し元へ伝え直すので main で受けられる）。hook を差し替える
+      なら出力の整形だけにし、終了させない
+    - 既定の hook は回収する panic でも `thread '…' panicked at …` を stderr へ出す。
+      描画の回収時にこれを抑えて警告 1 行にするかを決める
+    - 前提: ネイティブの release は unwind（`panic = "abort"` は wasm 用の
+      `profile.wasm-release` だけ）なので `catch_unwind` が効く
 - 検証
   - 各不具合の再現入力をテストに足す（tankan の corpus・設定エラー・lint の新ルール・
     監視イベントの種類の絞り込み）
+  - 回帰テスト: `---`・空行・`# Introduction`・本文 の文書を frontmatter の閉じ忘れと
+    誤検出せず、fmt も従来どおり整形すること
+  - 描画の panic では build が exit 0 のままクライアント描画へ切り替わって警告が出る
+    こと、それ以外の panic では exit 2 になること
   - 開発コンテナ（Linux）とホスト（macOS）の両方で `yuzu dev` を起動し、何も編集しない
     間は再ビルドせず、保存したときは 1 回だけ再ビルドすること
   - ci.yml の MSRV ジョブのログに rustc 1.85 が出ること
