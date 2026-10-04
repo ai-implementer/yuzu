@@ -156,7 +156,7 @@ expression: html
 
 
 <article class="markdown-body">
-<h1><a href="#検索" aria-hidden="true" class="anchor" id="検索"></a>検索</h1>
+<h1 id="検索">検索<a class="anchor" href="#検索" aria-label="「検索」へのリンク"></a></h1>
 
 </article>
 <div class="search-page" id="yuzu-search-page"

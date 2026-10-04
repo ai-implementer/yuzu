@@ -17,8 +17,8 @@
     if (!entry) {
       var anchor = document.getElementById(id);
       if (!anchor) continue;
-      // id は見出し内の空 <a class="anchor"> に付く（comrak header_ids）ので、
-      // 幾何判定は親の h2/h3 で行う（見出し上端はアンカーよりわずかに上に来て判定が安定する）
+      // id は見出し自身に付く（Phase 78。それ以前は見出し内の空 <a class="anchor">）。
+      // closest は自身も含むので、どちらの形でも幾何判定は見出しで行う
       entry = byId[id] = {
         anchor: anchor, // 基準線の実測（scroll-margin-top）に使う
         heading: anchor.closest("h1,h2,h3,h4,h5,h6") || anchor,

@@ -2,7 +2,7 @@
 source: crates/yuzu-core/tests/body_snapshot.rs
 expression: html
 ---
-<h1><a href="#数式" aria-hidden="true" class="anchor" id="数式"></a>数式</h1>
+<h1 id="数式">数式<a class="anchor" href="#数式" aria-label="「数式」へのリンク"></a></h1>
 <p>インライン <span data-math-style="inline">x^2</span> とコード数式 <code data-math-style="inline">a+b</code> の段落。</p>
 <p><span data-math-style="display">
 \int_0^1 f(x) \, dx

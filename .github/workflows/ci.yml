@@ -217,6 +217,17 @@ jobs:
           # Phase 77: frontmatter の読み違いのルールと、雛形 deploy.yml の版固定の説明
           grep -q 'frontmatter-unrecognized' docs/dist/reference/rules/index.html
           grep -q 'yuzu と同じ版に' docs/dist/guide/deploy/index.html
+          # Phase 78: 見出しのパーマリンク。id は見出し自身に付き、リンクは末尾に
+          # aria-label 付き（aria-hidden の付いた旧形式が残っていたら失敗）。
+          # CSS は visibility: hidden でなく、フォーカスで # を出す
+          grep -q '<h2 id="frontmatter">frontmatter<a class="anchor" href="#frontmatter" aria-label="「frontmatter」へのリンク">' docs/dist/guide/writing/index.html
+          if grep -rl 'aria-hidden="true" class="anchor"' docs/dist/ --include="*.html"; then
+            echo "aria-hidden の付いた見出しアンカーが残っている（上記ページ）" >&2
+            exit 1
+          fi
+          grep -q '.anchor:focus-visible' docs/dist/_assets/css/theme.css
+          # Phase 78: 読了時間と文字数（既定で表示）
+          grep -q 'class="page-meta-reading">約 [0-9]* 分で読めます' docs/dist/guide/writing/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）

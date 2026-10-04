@@ -61,7 +61,10 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v21: packet の SSR 追加（従来フォールバックが SSR 成功へ）
 /// - v22: route → URL のパーセントエンコード（本文リンクの `.md` 解決結果が
 ///   `encode_path` を通り、著者がエンコード済みで書いた参照もデコードして解決する）
-pub const CACHE_FORMAT_VERSION: u32 = 22;
+/// - v23: 見出しのパーマリンク（id を見出し自身へ・リンクを末尾に aria-label 付きで。
+///   本文 HTML が変わる）と、CachedMeta に本文の分量（読了時間・文字数）・
+///   frontmatter `readingTime` を追加（Phase 78。bump を 1 回に束ねた）
+pub const CACHE_FORMAT_VERSION: u32 = 23;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +76,8 @@ pub struct CachedMeta {
     pub toc: Vec<TocEntry>,
     /// 図表キャプションのラベル（相互参照のターゲット）
     pub labels: Vec<crate::model::CrossrefLabel>,
+    /// 本文の分量（読了時間・文字数）
+    pub reading: crate::model::ReadingStats,
 }
 
 /// パス2（render_body_html）の結果

@@ -269,7 +269,15 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             };
             let html = tpl.render(context! {
                 site => site_ctx,
-                page => PageCtx::new(page, &body, &resolver, last_updated, edit_url, &toc_levels),
+                page => PageCtx::new(
+                    page,
+                    &body,
+                    &resolver,
+                    last_updated,
+                    edit_url,
+                    &toc_levels,
+                    cfg.theme.reading_time,
+                ),
                 nav => NavCtx::build(&params.site.nav, nav_trails.trail(&page.route), &resolver),
                 nav_collapse => cfg.nav.collapse,
                 pager => nav_order.pager(&page.route, &resolver),

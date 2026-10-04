@@ -48,8 +48,8 @@ pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
 pub use markdown::fragment::FRAGMENT_LANG;
 pub use markdown::{FenceBlock, RenderedBody, extract_fence_blocks};
 pub use model::{
-    CrossrefLabel, Frontmatter, GeneratedKind, NavNode, Page, PlainSection, SiteModel, SourceSpan,
-    TocEntry,
+    CrossrefLabel, Frontmatter, GeneratedKind, NavNode, Page, PlainSection, ReadingStats,
+    SiteModel, SourceSpan, TocEntry,
 };
 pub use nav::{NavGroup, nav_groups, route_group_key};
 pub use output::{OutputTracker, WriteOutcome};
@@ -366,8 +366,14 @@ fn load_pages_cached(
         let cached = cache
             .zip(source_hash.as_deref())
             .and_then(|(c, h)| c.meta(&rel_key, h));
-        let (frontmatter, title, toc, labels) = match cached {
-            Some(meta) => (meta.frontmatter, meta.title, meta.toc, meta.labels),
+        let (frontmatter, title, toc, labels, reading) = match cached {
+            Some(meta) => (
+                meta.frontmatter,
+                meta.title,
+                meta.toc,
+                meta.labels,
+                meta.reading,
+            ),
             None => {
                 let meta = markdown::extract_meta(&source, opts, &file.abs)?;
                 let title = meta
@@ -385,10 +391,11 @@ fn load_pages_cached(
                             title: title.clone(),
                             toc: meta.toc.clone(),
                             labels: meta.labels.clone(),
+                            reading: meta.reading,
                         },
                     );
                 }
-                (meta.frontmatter, title, meta.toc, meta.labels)
+                (meta.frontmatter, title, meta.toc, meta.labels, meta.reading)
             }
         };
 
@@ -403,6 +410,7 @@ fn load_pages_cached(
             labels,
             crossref_offset: Default::default(),
             source,
+            reading,
             generated: None,
         });
     }
@@ -444,6 +452,7 @@ fn glossary_page(content_dir: &Path, opts: &MarkdownOptions) -> Result<Option<Pa
         labels: meta.labels,
         crossref_offset: Default::default(),
         source,
+        reading: ReadingStats::default(),
         generated: Some(GeneratedKind::Glossary),
     }))
 }
@@ -490,6 +499,7 @@ fn search_result_page(
         labels: meta.labels,
         crossref_offset: Default::default(),
         source,
+        reading: ReadingStats::default(),
         generated: Some(GeneratedKind::Search),
     }))
 }

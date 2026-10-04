@@ -186,20 +186,23 @@ expression: guide
 </nav>
 
 <article class="markdown-body" data-md-url="/docs/guide/getting-started.md">
-<h1><a href="#はじめに" aria-hidden="true" class="anchor" id="はじめに"></a>はじめに</h1>
-<h2><a href="#インストール" aria-hidden="true" class="anchor" id="インストール"></a>インストール</h2>
+<h1 id="はじめに">はじめに<a class="anchor" href="#はじめに" aria-label="「はじめに」へのリンク"></a></h1>
+<h2 id="インストール">インストール<a class="anchor" href="#インストール" aria-label="「インストール」へのリンク"></a></h2>
 <pre class="highlight" data-lang="rust"><code class="language-rust"><span class="line"><span class="yz-source yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-storage yz-type yz-function yz-rust">fn</span> </span><span class="yz-entity yz-name yz-function yz-rust">main</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-begin yz-rust">(</span></span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-function yz-parameters yz-rust"><span class="yz-punctuation yz-section yz-parameters yz-end yz-rust">)</span></span></span></span><span class="yz-meta yz-function yz-rust"> </span><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-block yz-rust"><span class="yz-punctuation yz-section yz-block yz-begin yz-rust">{</span></span></span></span>
 </span><span class="line"><span class="yz-source yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-block yz-rust">    <span class="yz-support yz-macro yz-rust">println!</span><span class="yz-meta yz-group yz-rust"><span class="yz-punctuation yz-section yz-group yz-begin yz-rust">(</span></span><span class="yz-meta yz-group yz-rust"><span class="yz-string yz-quoted yz-double yz-rust"><span class="yz-punctuation yz-definition yz-string yz-begin yz-rust">&quot;</span>こんにちは yuzu<span class="yz-punctuation yz-definition yz-string yz-end yz-rust">&quot;</span></span></span><span class="yz-meta yz-group yz-rust"><span class="yz-punctuation yz-section yz-group yz-end yz-rust">)</span></span><span class="yz-punctuation yz-terminator yz-rust">;</span></span></span></span>
 </span><span class="line"><span class="yz-source yz-rust"><span class="yz-meta yz-function yz-rust"><span class="yz-meta yz-block yz-rust"></span><span class="yz-meta yz-block yz-rust"><span class="yz-punctuation yz-section yz-block yz-end yz-rust">}</span></span></span></span>
 </span></code></pre>
-<h2><a href="#使い方" aria-hidden="true" class="anchor" id="使い方"></a>使い方</h2>
+<h2 id="使い方">使い方<a class="anchor" href="#使い方" aria-label="「使い方」へのリンク"></a></h2>
 <p><a href="/docs/">ホームへ戻る</a></p>
-<h3><a href="#詳細" aria-hidden="true" class="anchor" id="詳細"></a>詳細</h3>
+<h3 id="詳細">詳細<a class="anchor" href="#詳細" aria-label="「詳細」へのリンク"></a></h3>
 <p>本文。</p>
-<h4><a href="#補足" aria-hidden="true" class="anchor" id="補足"></a>補足</h4>
+<h4 id="補足">補足<a class="anchor" href="#補足" aria-label="「補足」へのリンク"></a></h4>
 <p>h4 は既定の TOC（2-3）には載らない。<code>theme.toc.levels</code> の検証用。</p>
 
 </article>
+<div class="page-meta">
+<span class="page-meta-reading">約 1 分で読めます（68 文字）</span>
+</div>
 <nav class="pager" aria-label="前後のページ">
 <a class="pager-prev" rel="prev" href="/docs/guide/"><span class="pager-dir">前のページ</span><span class="pager-title">ガイド</span></a>
 </nav>

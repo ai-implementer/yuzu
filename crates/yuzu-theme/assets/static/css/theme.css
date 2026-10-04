@@ -97,8 +97,8 @@ html {
    キャレット追従スクロールにも scroll-padding を適用するため、sticky ヘッダー内の
    検索欄（常に padding ラインより上にある）へ 1 文字入力するたびにページが
    上へスクロールしてしまう。対象は遷移先になりうる id 持ち:
-   見出し内の <a class="anchor">・脚注参照 <a data-footnote-ref>・脚注定義 <li> */
-.markdown-body .anchor,
+   見出し（id は見出し自身に付く）・脚注参照 <a data-footnote-ref>・脚注定義 <li> */
+.markdown-body :is(h1, h2, h3, h4, h5, h6)[id],
 .markdown-body [data-footnote-ref],
 .markdown-body .footnotes li {
   scroll-margin-top: calc(var(--header-height) + 1rem);
@@ -566,12 +566,13 @@ body {
   color: var(--accent-fg);
 }
 
-/* ページメタ（最終更新日・編集リンク。git.last_updated / git.edit_url 有効時のみ） */
+/* ページメタ（最終更新日・読了時間・編集リンク。それぞれ有効時のみ）。
+   情報は左に並べ、編集リンクだけ右端に寄せる */
 .page-meta {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem 1rem;
   margin-top: 2.5rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
@@ -580,6 +581,7 @@ body {
 }
 
 .page-meta-edit {
+  margin-left: auto;
   color: var(--fg-muted);
 }
 
@@ -821,23 +823,21 @@ body {
   color: var(--fg-muted);
 }
 
-/* comrak が見出し先頭に挿入する空のアンカー要素。ホバーで # を出す */
+/* 見出し末尾のパーマリンク（yuzu-core heading.rs が aria-label 付きで出す）。
+   見出しのホバーかキーボードのフォーカスで # を出す。
+   visibility: hidden / display: none にしない — その要素はフォーカスを受けられず、
+   Tab で到達できなくなる（Phase 78 まではそうだった）。opacity なら
+   レイアウトにもフォーカス順にも残る */
 .markdown-body .anchor {
-  float: left;
-  margin-left: -1.1rem;
-  padding-right: 0.2rem;
+  margin-left: 0.4rem;
   text-decoration: none;
   color: var(--fg-muted);
-  visibility: hidden;
+  opacity: 0;
 }
 
-.markdown-body h1:hover .anchor,
-.markdown-body h2:hover .anchor,
-.markdown-body h3:hover .anchor,
-.markdown-body h4:hover .anchor,
-.markdown-body h5:hover .anchor,
-.markdown-body h6:hover .anchor {
-  visibility: visible;
+.markdown-body :is(h1, h2, h3, h4, h5, h6):hover .anchor,
+.markdown-body .anchor:focus-visible {
+  opacity: 1;
 }
 
 .markdown-body .anchor::before {

@@ -156,6 +156,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 - **URL 分類** — `linkcheck.rs` の判定と yuzu-render `urls.rs` の `UrlResolver::rewrite` を揃える
 - **アンカー採番** — extract_meta / 本文 HTML 化 / extract_plain_sections の
   **3 経路とも全見出しを文書順に** Anchorizer へ通す（片方で見出しを飛ばすと id がずれる）
+  - 本文 HTML の見出しは `markdown/heading.rs` の HeadingAdapter が描く（id は見出し自身・
+    パーマリンクは末尾に aria-label 付き。comrak の header_ids の既定出力は使わない）。
+    採番の入力は comrak と同じ `HeadingMeta::content`。見出しの描画を変えるときは
+    ここだけを直し、HTML 文字列の後処理で `class="anchor"` を書き換えない
 - **フェンス情報文字列** — `markdown/fence.rs`（描画・検索・lint が共有。
   lint 用に `parse_fence_info_detailed`）
 - **外部ファイル参照** — `include.rs`

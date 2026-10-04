@@ -1245,10 +1245,43 @@ fn git_メタは日付マップと_edit_url_設定から出る() {
 }
 
 #[test]
-fn git_メタ未設定なら_page_meta_を出さない() {
+fn git_メタ未設定なら最終更新も編集リンクも出さない() {
     let dir = build_fixture(LiveReloadMode::None);
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
-    assert!(!index.contains("page-meta"));
+    assert!(!index.contains("page-meta-updated"), "{index}");
+    assert!(!index.contains("page-meta-edit"), "{index}");
+}
+
+/// 読了時間・文字数（Phase 78）: 既定で出し、サイト全体は `theme.reading_time`、
+/// ページ単位は frontmatter `readingTime: false` で消せる
+#[test]
+fn 読了時間は既定で出し_設定と_frontmatter_で消せる() {
+    let dir = build_fixture_with(|root| {
+        fs::write(
+            root.join("content/long.md"),
+            format!("# 長いページ\n\n{}\n", "あ".repeat(1200)),
+        )
+        .unwrap();
+        fs::write(
+            root.join("content/quiet.md"),
+            "---\nreadingTime: false\n---\n# 静かなページ\n\n本文\n",
+        )
+        .unwrap();
+    });
+    let long = fs::read_to_string(dir.path().join("dist/long/index.html")).unwrap();
+    // 見出し 5 字 + 本文 1200 字 = 1205 字 → 1205 / 500 = 2.41 → 3 分
+    assert!(
+        long.contains(r#"<span class="page-meta-reading">約 3 分で読めます（1,205 文字）</span>"#),
+        "{long}"
+    );
+    let quiet = fs::read_to_string(dir.path().join("dist/quiet/index.html")).unwrap();
+    assert!(!quiet.contains("page-meta-reading"), "{quiet}");
+
+    let off = build_fixture_with_config(LiveReloadMode::None, |rc| {
+        rc.config.theme.reading_time = false;
+    });
+    let index = fs::read_to_string(off.path().join("dist/index.html")).unwrap();
+    assert!(!index.contains("page-meta-reading"), "{index}");
 }
 
 #[test]

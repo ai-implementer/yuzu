@@ -147,6 +147,57 @@ fn 数式の_html_スナップショット() {
     insta::assert_snapshot!("math_html", html);
 }
 
+/// 見出しのパーマリンク（Phase 78）: id は見出し自身・リンクは末尾に aria-label 付き。
+/// aria-hidden を付けない（キーボード・支援技術から到達できるように）。
+/// id は TOC（extract_meta）の採番と一致し、ラベルの見出し文はエスケープする
+#[test]
+fn 見出しのパーマリンクは末尾に_aria_label_付きで置く() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("index.md"),
+        "# 概要\n\n## A & \"B\" < C\n\n## `code` と **強調**\n\n## 概要\n",
+    )
+    .unwrap();
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let page = &site.pages[0];
+    let html = render_body_html(
+        page,
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+        None,
+    )
+    .unwrap()
+    .html;
+
+    assert!(!html.contains("aria-hidden"), "{html}");
+    assert!(
+        html.contains(
+            r##"<h1 id="概要">概要<a class="anchor" href="#概要" aria-label="「概要」へのリンク"></a></h1>"##
+        ),
+        "{html}"
+    );
+    // 見出し文の記号は属性用にエスケープする（id は Anchorizer が記号を落とす）
+    assert!(
+        html.contains(r#"aria-label="「A &amp; &quot;B&quot; &lt; C」へのリンク""#),
+        "{html}"
+    );
+    // 装飾は平らにした文字列でラベルにする
+    assert!(
+        html.contains(r#"aria-label="「code と 強調」へのリンク""#),
+        "{html}"
+    );
+    // TOC の id と本文の id が文書順で一致する（重複見出しの -1 も含めて）
+    for entry in &page.toc {
+        assert!(
+            html.contains(&format!(r#"id="{}">"#, entry.id)),
+            "TOC の id {} が本文に無い:\n{html}",
+            entry.id
+        );
+    }
+    assert!(page.toc.iter().any(|e| e.id == "概要-1"), "{:?}", page.toc);
+}
+
 #[test]
 fn alerts_と脚注の_html_スナップショット() {
     let dir = tempfile::tempdir().unwrap();
@@ -739,8 +790,10 @@ fn 用語集_見出しで初出を使い切らない() {
     );
     assert_eq!(html.matches("<abbr").count(), 1, "{html}");
     // 見出しは素のまま（アンカー ID の採番も従来どおり）
-    assert!(html.contains(r#"id="ssg-とは""#), "{html}");
-    assert!(html.contains("></a>SSG とは</h1>"), "{html}");
+    assert!(
+        html.contains(r#"<h1 id="ssg-とは">SSG とは<a class="anchor""#),
+        "{html}"
+    );
 }
 
 #[test]

@@ -208,47 +208,72 @@ Linux での再ビルドの繰り返し / Mermaid の入力によるビルドの
   - ホスト（macOS）でも `yuzu dev` が動くことをユーザが確認
   - CI の `msrv` ジョブが rustc 1.85.1（kabosu・tankan）と 1.87.0（ワークスペース）で通ることを確認
 
-### 78 本文 HTML の到達性とページメタ（CACHE bump を 1 回に束ねる） ⬜
+### 78 本文 HTML の到達性とページメタ（CACHE bump を 1 回に束ねる） ✅
 
-**概要**: 見出しパーマリンクをキーボードと支援技術から到達できる形にし、読了時間・
-文字数をページメタに出す。どちらも本文 HTML / キャッシュ形式が変わるので 1 つの
-Phase に束ね、`CACHE_FORMAT_VERSION` の bump とスナップショット全更新を 1 回で済ませる。
-主な判断点はパーマリンクの実装位置（comrak 出力の後処理か自前生成か）。
+**概要**: 見出しのパーマリンクをキーボードと支援技術から到達できる形にし、読了時間と
+文字数をページメタに出した。どちらも本文 HTML / キャッシュ形式が変わるので 1 つの
+Phase に束ね、`CACHE_FORMAT_VERSION` を 22 → 23 の 1 回で済ませた。判断点 3 つは
+確認の応答が無かったので推奨案で進めた（作り方は comrak の HeadingAdapter / id は
+見出し自身・リンクは末尾 / 読了時間は既定で表示・速度は固定）。
 
-- 現状（実測）
-  - comrak の `header_ids` 出力は
-    `<a href="#id" aria-hidden="true" class="anchor" id="id"></a>` で固定。`aria-hidden`
-    は支援技術への公開を制御するだけでフォーカスを禁じる仕組みではないが、
-    `theme.css`（825〜839 行）が `.anchor` を **`visibility: hidden`** にしており、
-    `visibility: hidden` の要素はフォーカスを受けられない。到達できない原因は
-    この 2 つの組み合わせで、**`aria-hidden` を外すだけでは Tab で到達できない**
-  - CSS だけの部分対応（focus で表示）は「`aria-hidden` の中にフォーカス可能要素」という
-    別の違反（[ACT ルール 6cfa84](https://www.w3.org/WAI/standards-guidelines/act/rules/6cfa84/)）
-    を生む
-  - `CachedMeta` は frontmatter / title / toc / labels の 4 フィールド。読了時間・文字数を
-    載せるには `extract_meta`（呼び出し 3 箇所）で数えて足す = bump 必須
-  - ページメタの表示場所は `page.jinja` の `.page-meta`（最終更新・編集リンク）が既にある
-- やること
-  - パーマリンク: `aria-hidden` を外し `aria-label`（「〜へのリンク」）を付ける。CSS は
-    `visibility: hidden` をやめて `opacity: 0`（レイアウトに残しフォーカス可能）にし、
-    見出しの `:hover` と `.anchor:focus-visible` で `opacity: 1` にする
-  - 検証: hover 無しで Tab だけで到達し Enter で遷移できること（実機で確認。e2e では
-    `aria-hidden` が無く `aria-label` がある HTML と、`visibility: hidden` が消えた CSS を
-    ゲートにする）
-  - ページメタ: 本文の文字数と読了時間を `extract_meta` で数え、`.page-meta` に表示。
-    frontmatter で非表示にできる（`readingTime: false` 等）
-  - `CACHE_FORMAT_VERSION` 22 → 23。スナップショット全更新
-- 判断点
-  - **パーマリンクの実装位置** — comrak の出力を yuzu-core で後処理する（`<abbr>` 化と
-    同じ「適用 A〜D の後」の規律）か、`header_ids` を切って自前で `<a>` を生成するか
-    （後者は `Anchorizer` の 3 経路同期に 4 経路目を足すことになる）
-  - **id を見出し自身へ移すか** — `<h2 id="x">` に変えると既存の `#x` リンクはそのまま
-    動くが、`details-target.js` / scrollspy / 検索の位置情報など id を探す JS の
-    対象要素が変わる
-  - 読了時間の算出 — 日本語は文字数ベース（1 分あたり 400〜600 字）、英数は語数ベース。
-    コードブロック・図・表を数えるか。設定キー（`theme.reading_speed`）を足すか固定か
-  - 文字数を llms.txt / 検索 manifest にも載せるか（載せると検索の `FORMAT_VERSION` の
-    話になるので載せない案が有力）
+- 着手時の実測
+  - comrak の `header_ids` の出力は見出しの先頭に
+    `<a href="#id" aria-hidden="true" class="anchor" id="id"></a>` で固定（comrak 0.53
+    `html.rs:623`）。`theme.css` が `.anchor` を `visibility: hidden` にしており、
+    `aria-hidden` と合わせてキーボードからも支援技術からも到達できなかった
+  - comrak には見出しの描画を差し替える `HeadingAdapter`（`plugins.render.heading_adapter`）
+    がある。渡される見出し文（`HeadingMeta::content`）は comrak 自身の採番と同じ
+    `collect_text` で作られる
+  - id を探す JS は `scrollspy.js`（`getElementById` → `closest("h1…h6")`）と
+    `details-target.js`（`getElementById` → 祖先の details を開く）。どちらも id が
+    見出し自身に移っても動く。`scroll-margin-top` は `.anchor` に掛けていた
+  - ページメタの表示場所は `page.jinja` の `.page-meta`（最終更新・編集リンク）
+- やったこと
+  1. 見出しの描画（yuzu-core `markdown/heading.rs` の `PermalinkHeadings`）: comrak の
+     HeadingAdapter で `<h2 id="x">見出し<a class="anchor" href="#x" aria-label="「見出し」へのリンク"></a></h2>`
+     を出す。id は comrak の既定と同じ入力を同じ `Anchorizer` に文書順で通すので、
+     既存の `#id` リンク・TOC・検索の位置情報は変わらない（重複見出しの `-1` も同じ）。
+     ラベルの見出し文は属性用にエスケープする
+  2. CSS: `.anchor` を `visibility: hidden` から `opacity: 0` にし、見出しの `:hover` と
+     `.anchor:focus-visible` で出す（`#` は見出しの右）。`scroll-margin-top` は id を
+     持つ見出しへ移した。`scrollspy.js` はコメントだけ直した（`closest` は自身も含む）
+  3. 本文の分量（yuzu-core `markdown/reading.rs`）: `extract_meta` で `Text` と行内コードを
+     数える（コードブロック・図・数式・生 HTML・frontmatter はノードの種類で外れ、
+     画像の代替テキストは配下を除外）。日本語（かな・漢字・和文の約物・全角英数）は
+     1 分 500 字、英数字は 1 分 200 語として足して切り上げる。`Page.reading` と
+     `CachedMeta.reading` に載せる
+  4. 表示: `.page-meta` に「約 N 分で読めます（M 文字）」（文字数は 3 桁区切り）。
+     `theme.reading_time`（既定 true）と frontmatter `readingTime`（既定 true）の両方が
+     有効で、文章があり、合成ページでないときだけ。`.page-meta` は情報を左に並べ、
+     編集リンクだけ右端に寄せる形にした
+  5. 設定: `theme.reading_time`（schema / codec / 雛形 yuzu.toml / config リファレンスの
+     2 箇所）と frontmatter `readingTime`（`KNOWN_KEYS`・執筆ガイドの frontmatter 一覧）
+  6. `CACHE_FORMAT_VERSION` 22 → 23。スナップショットは本文 4 件・ページ 3 件を目視して
+     更新（見出しの形と読了時間の行だけが変わり、検索結果ページには読了時間が出ない）
+  7. docs: 執筆ガイドに「見出しへのリンク」「読了時間と文字数」の節。ci.yml の docs
+     ゲート（見出しの新しい形・旧形式の `aria-hidden` アンカーが残っていない・
+     `.anchor:focus-visible`・読了時間の行）と verify スキル
+- 決めたこと
+  - **パーマリンクは comrak の HeadingAdapter で描く** — 出力 HTML の文字列を後処理すると
+    comrak の出力形式に依存し、ラベル用の見出し文を id から引き直す必要がある。
+    HeadingAdapter なら採番の入力が comrak 自身と同じで、Anchorizer の 4 経路目も
+    作らない
+  - **id は見出し自身に付け、リンクは末尾に置く** — 飛んだ先が見出しそのものになり、
+    読み上げも「見出し文 → リンク名」の順になる。リンクを見出しの外に出す案は、
+    見出しごとに包む要素が要り本文の CSS やテーマ上書きへの影響が大きいので採らない。
+    見出しの読み上げにリンク名が混ざる点は残る
+  - **読了時間は既定で表示し、速度は固定** — 設定キーは表示の有無（`theme.reading_time`）
+    だけにした。文字数は検索の manifest と llms.txt には載せない（検索の
+    `FORMAT_VERSION` の話になるため）
+  - **表示は `.page-meta`（ページ末尾）** — 当初の計画どおり。ページ先頭のほうが
+    読む前の目安として役に立つので、Phase 80 の dogfooding で位置を見直す
+- 確認
+  - 単体テスト（数え方 4 件・3 桁区切り）・本文の結合テスト（ラベルのエスケープ・
+    装飾を平らにしたラベル・TOC と本文の id の一致）・描画の結合テスト（既定で表示 /
+    frontmatter で消える / `theme.reading_time = false` で消える）
+  - docs サイトのビルドとゲート（執筆ガイドで「約 10 分で読めます（5,611 文字）」）
+  - **未確認**: ブラウザで hover 無しに Tab だけで `#` に到達し、Enter で見出しへ移ること
+    （この環境にブラウザが無い。Phase 80 の dogfooding で見る）
 
 ### 79 OS ダーク追従（JS 無効時・`theme.dark = false` 時） ⬜
 
@@ -288,8 +313,9 @@ Phase に束ね、`CACHE_FORMAT_VERSION` の bump とスナップショット全
 キーボード操作の実物を確認する。
 
 - docs サイトで実運用する: og:image の素材（`public/images/` に PNG）を用意して
-  SNS カードの実物を確認、キーボードでパーマリンクへ到達できること、読了時間の表示、
-  OS ダーク追従（JS 無効・`theme.dark` の各値）
+  SNS カードの実物を確認、キーボードでパーマリンクへ到達できること（hover 無しで Tab
+  だけで `#` に届き、Enter で見出しへ移る）、読了時間の表示（ページ末尾のままか、
+  読む前の目安として先頭へ移すか）、OS ダーク追従（JS 無効・`theme.dark` の各値）
 - scaffold（`yuzu new`）の `yuzu.toml` と原稿に新キーの実例を足す
 - ci.yml の docs ゲート（canonical / `og:` / `aria-label` / 読了時間 /
   `prefers-color-scheme`）と verify スキルの追随

@@ -4,8 +4,9 @@
 //! - パス2: [`render_body_html`] — コードブロック差し替え・URL 書き換えを
 //!   AST 上で行ってから HTML 化
 //!
-//! ⚠️ アンカー ID の同期: comrak の `header_ids` 拡張は HTML 化時に内部の
-//! `Anchorizer` で ID を採番する。TOC 側も**全見出しを文書順で**採番することで
+//! ⚠️ アンカー ID の同期: HTML 化時の見出し id は `heading.rs` の
+//! `PermalinkHeadings`（comrak の HeadingAdapter）が comrak の header_ids と同じ入力・
+//! 同じ `Anchorizer` で採番する。TOC 側も**全見出しを文書順で**採番することで
 //! 重複サフィックス（`-1` 等）を一致させている。片方だけ見出しを飛ばすとずれる。
 
 pub(crate) mod collapse;
@@ -13,6 +14,8 @@ pub(crate) mod crossref;
 pub(crate) mod fence;
 pub(crate) mod fragment;
 pub(crate) mod glossary;
+mod heading;
+mod reading;
 pub(crate) mod suppress_comment;
 pub(crate) mod tabs;
 
@@ -36,13 +39,17 @@ pub(crate) fn escape_html(text: &str) -> String {
 use std::path::Path;
 
 use comrak::nodes::{AstNode, NodeHtmlBlock, NodeValue};
-use comrak::{Anchorizer, Arena, Options, format_commonmark, format_html, parse_document};
+use comrak::{
+    Anchorizer, Arena, Options, format_commonmark, format_html_with_plugins, parse_document,
+};
 
 use crate::MarkdownOptions;
 use crate::error::CoreError;
 use crate::frontmatter::{looks_like_misread_thematic_break, parse_frontmatter};
 use crate::markdown::fence::parse_fence_info;
-use crate::model::{CrossrefLabel, Frontmatter, Page, PlainSection, SourceSpan, TocEntry};
+use crate::model::{
+    CrossrefLabel, Frontmatter, Page, PlainSection, ReadingStats, SourceSpan, TocEntry,
+};
 use crate::traits::{CodeBlockRenderer, UrlRewriter};
 
 /// comrak のオプションを組み立てる（凍結: GFM 拡張＋YAML frontmatter＋header_ids）。
@@ -99,9 +106,11 @@ pub(crate) struct ExtractedMeta {
     pub first_h1: Option<String>,
     pub toc: Vec<TocEntry>,
     pub labels: Vec<CrossrefLabel>,
+    /// 本文の分量（読了時間・文字数）
+    pub reading: ReadingStats,
 }
 
-/// frontmatter・先頭 h1・TOC（h1〜h6 全見出し＋アンカー ID）を抽出する
+/// frontmatter・先頭 h1・TOC（h1〜h6 全見出し＋アンカー ID）・本文の分量を抽出する
 pub(crate) fn extract_meta(
     source: &str,
     opts: &MarkdownOptions,
@@ -172,6 +181,7 @@ pub(crate) fn extract_meta(
         first_h1,
         toc,
         labels,
+        reading: reading::count(root),
     })
 }
 
@@ -534,8 +544,13 @@ pub(crate) fn render_body_html(
         }
     }
 
+    // 見出しは HeadingAdapter で描く（id を見出し自身に・パーマリンクを末尾に
+    // aria-label 付きで。採番は comrak の header_ids と同じ = heading.rs）
+    let headings = heading::PermalinkHeadings::new();
+    let mut plugins = comrak::options::Plugins::default();
+    plugins.render.heading_adapter = Some(&headings);
     let mut out = String::new();
-    format_html(root, &options, &mut out)?;
+    format_html_with_plugins(root, &options, &mut out, &plugins)?;
     Ok(RenderedBody {
         html: out,
         used_fragment,
