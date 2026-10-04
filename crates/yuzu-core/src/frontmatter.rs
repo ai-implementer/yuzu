@@ -62,7 +62,8 @@ impl Unrecognized {
 /// 候補とする。2 行目が空行・見出し・日本語の文（`用語: 説明`）なら候補にしない。
 ///
 /// 逆に、2 行目がキーの形でないのに comrak が frontmatter として切り出していて、
-/// 中身にキーの行が 1 つも無ければ、区切り線の誤読とみる。
+/// 中身が YAML のマッピングとして読めなければ、区切り線の誤読とみる
+/// （[`looks_like_misread_thematic_break`]。引用符付きキー・フロー形式は正しい frontmatter）。
 ///
 /// `frontmatter_raw` は comrak が切り出した frontmatter（区切り行込み）。
 /// 1 行目が `---` のときだけ呼ぶ（comrak のパースを全ページで走らせないため）
@@ -119,11 +120,22 @@ fn is_toml_key_line(line: &str) -> bool {
 /// comrak は 1 行目が `---` で後ろに `---` だけの行があれば中身を問わず
 /// frontmatter とみなすので、区切り線を 2 本使う文書は間が YAML として読まれる
 /// （見出しの `# …` は YAML ではコメントなので、パースが通って本文が黙って消える）。
-/// 中身が空でなく、キーの行が 1 つも無ければ誤読とみる（コメント行の後にキーが
-/// 続く正しい frontmatter は誤読にしない）
+///
+/// 判定は**中身を YAML として読んだ結果**で行う（行の形では見ない。引用符付きの
+/// キー `"title": x` やフロー形式 `{title: x}` も正しい frontmatter のため）:
+/// - マッピング → 正しい frontmatter（誤読ではない）
+/// - 空でないのに null（コメントだけ = 見出しだけの区間）・文字列・配列 → 誤読
+/// - YAML として壊れている → キーの形の行が 1 つも無ければ誤読（壊れた frontmatter の
+///   エラーに区切り線の案内を添えるかどうかにだけ使う）
 pub(crate) fn looks_like_misread_thematic_break(raw: &str) -> bool {
     let body = yaml_body(raw);
-    !body.is_empty() && !body.lines().any(|l| is_yaml_key_line(l.trim_start()))
+    if body.is_empty() {
+        return false;
+    }
+    match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(body) {
+        Ok(value) => !value.is_mapping(),
+        Err(_) => !body.lines().any(|l| is_yaml_key_line(l.trim_start())),
+    }
 }
 
 /// 生テキストから `---` 区切りを外した YAML 部分を返す
@@ -266,9 +278,37 @@ mod tests {
             detect("---\n\n前半の本文。\n---\n後半\n"),
             Some(MisreadThematicBreak)
         );
+        // 区切り線の間が箇条書きだけ（YAML では配列）も誤読
+        assert_eq!(
+            detect("---\n\n- 項目1\n- 項目2\n\n---\n後半\n"),
+            Some(MisreadThematicBreak)
+        );
         // コメント行の後にキーが続く正しい frontmatter・空の frontmatter は誤読にしない
         assert_eq!(detect("---\n# メモ\ntitle: x\n---\n本文\n"), None);
         assert_eq!(detect("---\n\ntitle: x\n---\n本文\n"), None);
         assert_eq!(detect("---\n---\n本文\n"), None);
+    }
+
+    /// YAML として正しいマッピングは、行の形に依らず誤読にしない
+    /// （PR #22 のレビュー指摘の回帰テスト: 引用符付きキー・フロー形式）
+    #[test]
+    fn 引用符付きキーやフロー形式の_frontmatter_は誤読にしない() {
+        for source in [
+            "---\n\"title\": Quoted\n---\n本文\n",
+            "---\n'title': Single\norder: 1\n---\n本文\n",
+            "---\n{title: Flow, order: 1}\n---\n本文\n",
+            "---\n? title\n: 明示キー\n---\n本文\n",
+        ] {
+            assert_eq!(detect(source), None, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn 壊れた_yaml_はキーの形の行が無いときだけ誤読とみる() {
+        use super::looks_like_misread_thematic_break as misread;
+        // キーの形の行がある壊れた frontmatter は、区切り線の案内を添えない
+        assert!(!misread("---\ntitle: [閉じていない\n---"));
+        // キーの形の行が無く YAML としても壊れている = 区切り線の誤読とみる
+        assert!(misread("---\n\n# 見出し\n\n本文: [閉じていない\n---"));
     }
 }

@@ -1274,6 +1274,32 @@ mod tests {
         assert!(formatted.starts_with("-----"), "{formatted:?}");
     }
 
+    /// YAML として正しい frontmatter は、引用符付きキー・フロー形式でも誤検出せず、
+    /// fmt も本文を整形する（PR #22 のレビュー指摘の回帰テスト）
+    #[test]
+    fn 引用符付きキーやフロー形式の_frontmatter_は誤検出せず_fmt_も整形する() {
+        for source in [
+            "---\n\"title\": Quoted\n---\n\n* 項目\n",
+            "---\n{title: Flow, order: 1}\n---\n\n* 項目\n",
+        ] {
+            assert!(unrecognized(source).is_empty(), "{source:?}");
+            let page = page_from(source);
+            assert_eq!(
+                page.title,
+                if source.contains("Flow") {
+                    "Flow"
+                } else {
+                    "Quoted"
+                }
+            );
+            let formatted = crate::format_document(&page, &MarkdownOptions::default()).unwrap();
+            assert!(
+                formatted.contains("- 項目"),
+                "本文が整形されない: {formatted:?}"
+            );
+        }
+    }
+
     /// 閉じ忘れのページは fmt が書き換えない（`---` が区切り線の `-----` に変わって
     /// frontmatter だった痕跡が消えるため）
     #[test]
