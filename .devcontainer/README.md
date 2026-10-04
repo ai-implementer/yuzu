@@ -39,6 +39,7 @@ symlink ならその実体）を**ホストと同一の絶対パスへ bind moun
 | gh | macOS Keychain | ラッパーが exec のたびに `gh auth token` で取り出し `GH_TOKEN` を値なし `-e` で注入（argv に値を出さない） |
 | git identity | `~/.gitconfig`（マウントしない） | `GIT_AUTHOR_*` / `GIT_COMMITTER_*` を env 注入（lfs filter 事故回避のため gitconfig 自体は共有しない） |
 | git push/fetch | SSH agent | `container run --ssh` の agent フォワード（`~/.ssh` はマウントしない） |
+| New Relic（OTEL） | 1Password `Private / NewRelic(claude-otel-api)` | exec のたびに `op` で取り出し `OTEL_EXPORTER_OTLP_HEADERS` を値なし `-e` で注入（送信先・`container.name=yuzu` 等の設定も同時に渡す）。取れなければテレメトリ設定ごと渡さない |
 
 旧構成（`~/.claude` を `yuzu-claude` volume にしていた頃）から移行したら、
 `build` → `down` → `up` で作り直したうえで `container volume rm yuzu-claude` で残骸を消してよい
@@ -110,6 +111,8 @@ cargo build -p yuzu-cli
   及ばない前提で使う（GH_TOKEN も `container inspect` の env には出ないが exec へは渡る）
 - **`~/.claude.json` は共有しない**: `CLAUDE_CONFIG_DIR=~/.claude` により Linux 側の
   状態ファイルは `~/.claude/` 配下に入り、ホスト mac の `~/.claude.json` と書き込み競合しない
+- **テレメトリはラッパーの shell / claude / codex だけ**: OTEL 設定は exec 時の注入で、run には焼かない
+  （焼くと `container inspect` にキーが残る）。devcontainer 経路や素の `container exec` では送られない
 - **メモリ**: apple container はコンテナ = 軽量 VM。ラッパーが既定 8g を割り当てる
   （不足したら `YUZU_CONTAINER_MEMORY=12g scripts/dev-container.sh up`）
 - **Codex のサンドボックス（Landlock）がコンテナのカーネルで動かない場合**は
@@ -132,7 +135,7 @@ cargo build -p yuzu-cli
 |---|---|---|
 | イメージ定義 | `.devcontainer/Dockerfile` | 両者が build 参照 |
 | ユーザ / HOME / workspace | ARG `DEV_USER` / `DEV_UID` / `DEV_GID` / `DEV_HOME` / `DEV_WORKSPACE`。既定 = devcontainer 経路（`vscode` 1000:1000 / `/home/vscode` / `/workspaces/yuzu`）、ラッパー経路 = ホスト値（gid は uid と同値） | Dockerfile の ARG（ラッパーが `--build-arg` で上書き） |
-| env | `PATH` / `CARGO_TARGET_DIR` / `CLAUDE_CONFIG_DIR` / `CARGO_TERM_COLOR` | Dockerfile の ENV のみ（containerEnv で再定義しない。ラッパーの `-e` は認証・identity の**追加**のみ） |
+| env | `PATH` / `CARGO_TARGET_DIR` / `CLAUDE_CONFIG_DIR` / `CARGO_TERM_COLOR` | Dockerfile の ENV のみ（containerEnv で再定義しない。ラッパーの `-e` は認証・identity・テレメトリの**追加**のみ） |
 | volume | `yuzu-cargo-registry:$DEV_HOME/.cargo/registry` / `yuzu-target:/cargo-target` | devcontainer.json の mounts ＝ ラッパーの VOLUMES（名前一致・マウント先は DEV_HOME 依存） |
 | claude / codex / gh 設定 | devcontainer 経路 = volume（`yuzu-claude` / `yuzu-codex` / `yuzu-gh`）、ラッパー経路 = ホストの実ディレクトリを同一パスへ bind mount | devcontainer.json の mounts / ラッパー `cmd_up` |
 | ポート | 5173（devcontainer は forwardPorts、ラッパーは `-p 127.0.0.1:5173:5173`） | 意味差あり: forward は動的トンネル、publish は静的公開 |
