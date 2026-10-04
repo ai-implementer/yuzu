@@ -149,6 +149,12 @@ frontmatter の閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動
      `normalize_base_url`（`yuzu-config/src/resolve.rs:417`）は形を整えるだけで値を
      検証しない。panic 時の終了コードは 101 で、規約の 0 / 1 / 2 から外れる
      （`yuzu-cli/src/main.rs:20`）
+     - `dev` / `build --watch` の再ビルドは、notify-debouncer-mini が起こす監視スレッドの
+       上で動く（`commands/dev.rs:48-60`・`commands/build.rs:143-149` のコールバック）。
+       main は `yuzu_server::serve` で配信をブロックしており（`serve.rs:98-118`）、
+       終わる経路は Ctrl+C だけ。再ビルド中に panic すると監視スレッドだけが止まり、
+       配信は続く（編集しても再ビルドされない状態が黙って続く。コードから読める挙動で、
+       実行では未確認）
 - やること
   1. 監視: イベントの種類を受け取れる形にして、アクセス系（`EventKind::Access`）を
      捨てる。notify は凍結した選定だが debouncer は対象外。ci.yml に「Linux で
@@ -171,7 +177,10 @@ frontmatter の閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動
      `cargo check --workspace --locked` に広げる
   6. `base_url`: 設定の読み込みで `:` `*` `{` で始まるセグメントを設定エラー（exit 2）に
      する。CLI の `--base-url` 上書きも同じ検証を通す。回収されずに main まで上がって
-     きた panic を exit 2 にする（判断点参照）
+     きた panic を exit 2 にする（判断点参照）。`dev` / `build --watch` は、監視スレッドで
+     起きた panic を監視側で受けて終了要求を main へ送る。`yuzu_server::serve` に終了の
+     合図を受け取る口を足し（axum の `with_graceful_shutdown`）、配信を止めて exit 2 で
+     終わる
 - 判断点
   - **監視の絞り込み方** — notify-debouncer-full へ替える（種類が残る）か、notify を
     直接使って自前で debounce するか。どちらでも macOS の挙動（保存 1 回で再ビルド
@@ -200,8 +209,19 @@ frontmatter の閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動
       の仕様）。**hook の中で `process::exit(2)` する一律終了は選ばない** = 描画の
       回収とクライアント描画へのフォールバックが動かなくなる
     - CLI 全体の panic は main の `catch_unwind` で受けて exit 2 にする（rayon は並列
-      処理中の panic を呼び出し元へ伝え直すので main で受けられる）。hook を差し替える
-      なら出力の整形だけにし、終了させない
+      処理中の panic を呼び出し元へ伝え直すので、通常の build・check なら main で
+      受けられる）。hook を差し替えるなら出力の整形だけにし、終了させない
+    - **監視スレッドの panic は main の `catch_unwind` に届かない** — `dev` /
+      `build --watch` では rayon が panic を伝え直す先が監視スレッドになる。監視側で
+      受けて終了要求を main へ送る（やること 6）。受ける場所を yuzu-server の `watch`
+      （汎用。コールバックの panic を `WatchHandle` 経由で知らせる。server は yuzu-core を
+      知らないままでよい）にするか、cli のコールバックの中にするか
+    - panic 後に終了せず監視を続ける案は採らない — `WatchBuild` のセッション・
+      キャッシュが途中の状態で残りうる。Err（執筆中の一時的なエラー）は従来どおり
+      ログだけで続ける
+    - 回帰テストで panic を起こす手段 — yuzu-server の単体テスト（panic する
+      コールバック）で済ませるか、CLI の e2e 用にテスト専用の口（debug ビルド限定の
+      環境変数など）を作るか
     - 既定の hook は回収する panic でも `thread '…' panicked at …` を stderr へ出す。
       描画の回収時にこれを抑えて警告 1 行にするかを決める
     - 前提: ネイティブの release は unwind（`panic = "abort"` は wasm 用の
@@ -213,6 +233,8 @@ frontmatter の閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動
     誤検出せず、fmt も従来どおり整形すること
   - 描画の panic では build が exit 0 のままクライアント描画へ切り替わって警告が出る
     こと、それ以外の panic では exit 2 になること
+  - `dev` / `build --watch` で再ビルド中に panic したら、配信が止まって exit 2 になること
+    （回帰テスト: panic するコールバックから終了要求が届き、`serve` が戻ること）
   - 開発コンテナ（Linux）とホスト（macOS）の両方で `yuzu dev` を起動し、何も編集しない
     間は再ビルドせず、保存したときは 1 回だけ再ビルドすること
   - ci.yml の MSRV ジョブのログに rustc 1.85 が出ること
