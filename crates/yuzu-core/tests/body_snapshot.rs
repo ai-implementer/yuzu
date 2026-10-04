@@ -526,6 +526,40 @@ fn タブが一枚だけならグループにしない() {
 }
 
 /// 断片テスト用: プロジェクトルート（content/ と snippets/ を持つ）を作る
+/// 読了時間・文字数は断片を展開した後で数える（直接書いた本文と同じ値になる。
+/// PR #25 のレビュー指摘: 原文だけを数えると取り込んだ文章が丸ごと抜けていた）
+#[test]
+fn 読了時間は断片を展開した本文で数える() {
+    let body = "あ".repeat(1200);
+    let reading_of = |root: &std::path::Path, page_src: &str| {
+        fs::write(root.join("content/index.md"), page_src).unwrap();
+        let site =
+            build_site_model(&root.join("content"), &[], &MarkdownOptions::default()).unwrap();
+        render_body_html(
+            &site.pages[0],
+            &MarkdownOptions::default(),
+            &MermaidOnlyRenderer,
+            &NoopUrlRewriter,
+            Some(root),
+        )
+        .unwrap()
+        .reading
+    };
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("content")).unwrap();
+    fs::create_dir_all(root.path().join("snippets")).unwrap();
+    fs::write(root.path().join("snippets/body.md"), &body).unwrap();
+
+    let direct = reading_of(root.path(), &format!("# 直接\n\n{body}\n"));
+    let included = reading_of(
+        root.path(),
+        "# 取込\n\n```include file=\"snippets/body.md\"\n```\n",
+    );
+    assert_eq!(direct.chars, 1202);
+    assert_eq!(included, direct);
+    assert_eq!(included.minutes, 3);
+}
+
 fn fragment_fixture(page_src: &str, fragment_src: &str) -> (tempfile::TempDir, String) {
     let root = tempfile::tempdir().unwrap();
     fs::create_dir_all(root.path().join("content")).unwrap();

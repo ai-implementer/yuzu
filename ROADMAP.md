@@ -237,11 +237,16 @@ Phase に束ね、`CACHE_FORMAT_VERSION` を 22 → 23 の 1 回で済ませた�
   2. CSS: `.anchor` を `visibility: hidden` から `opacity: 0` にし、見出しの `:hover` と
      `.anchor:focus-visible` で出す（`#` は見出しの右）。`scroll-margin-top` は id を
      持つ見出しへ移した。`scrollspy.js` はコメントだけ直した（`closest` は自身も含む）
-  3. 本文の分量（yuzu-core `markdown/reading.rs`）: `extract_meta` で `Text` と行内コードを
-     数える（コードブロック・図・数式・生 HTML・frontmatter はノードの種類で外れ、
-     画像の代替テキストは配下を除外）。日本語（かな・漢字・和文の約物・全角英数）は
-     1 分 500 字、英数字は 1 分 200 語として足して切り上げる。`Page.reading` と
-     `CachedMeta.reading` に載せる
+  3. 本文の分量（yuzu-core `markdown/reading.rs`）: 本文 HTML 化（`render_body_html`）の
+     中で、Markdown 断片を展開した直後・パス1 がコードブロック等を HtmlBlock へ差し替える
+     前に、`Text` と行内コードを数える（コードブロック・図・数式・生 HTML・frontmatter は
+     ノードの種類で外れ、画像の代替テキストは配下を除外）。日本語（かな・漢字・和文の
+     約物・全角英数）は 1 分 500 字、英数字は 1 分 200 語として足して切り上げる。
+     `RenderedBody::reading` と本文キャッシュ（`CachedBody.reading`）に載せる。
+     断片を使うページは本文ごとキャッシュしないので、参照先だけの編集でも数え直る
+     - 当初は `extract_meta`（原文だけを読む）で数えており、` ```include ` で取り込んだ
+       文章が丸ごと抜けていた（同じ 1,200 字が直接なら 1,202 字、取り込むと 2 字。
+       PR #25 のレビュー指摘）
   4. 表示: `.page-meta` に「約 N 分で読めます（M 文字）」（文字数は 3 桁区切り）。
      `theme.reading_time`（既定 true）と frontmatter `readingTime`（既定 true）の両方が
      有効で、文章があり、合成ページでないときだけ。`.page-meta` は情報を左に並べ、
@@ -269,8 +274,10 @@ Phase に束ね、`CACHE_FORMAT_VERSION` を 22 → 23 の 1 回で済ませた�
     読む前の目安として役に立つので、Phase 80 の dogfooding で位置を見直す
 - 確認
   - 単体テスト（数え方 4 件・3 桁区切り）・本文の結合テスト（ラベルのエスケープ・
-    装飾を平らにしたラベル・TOC と本文の id の一致）・描画の結合テスト（既定で表示 /
-    frontmatter で消える / `theme.reading_time = false` で消える）
+    装飾を平らにしたラベル・TOC と本文の id の一致・断片で取り込んだ文章を直接書いた
+    ときと同じに数える）・描画の結合テスト（既定で表示 / frontmatter で消える /
+    `theme.reading_time = false` で消える）・インクリメンタルビルドのテスト（断片の
+    参照先だけを書き換えても読了時間・文字数が数え直る）
   - docs サイトのビルドとゲート（執筆ガイドで「約 10 分で読めます（5,611 文字）」）
   - **未確認**: ブラウザで hover 無しに Tab だけで `#` に到達し、Enter で見出しへ移ること
     （この環境にブラウザが無い。Phase 80 の dogfooding で見る）

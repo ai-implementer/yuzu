@@ -164,7 +164,6 @@ mod tests {
             toc: Vec::new(),
             labels: Vec::new(),
             crossref_offset: Default::default(),
-            reading: Default::default(),
             generated: None,
             source: String::new(),
         }

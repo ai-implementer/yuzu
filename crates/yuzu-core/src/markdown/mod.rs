@@ -106,11 +106,9 @@ pub(crate) struct ExtractedMeta {
     pub first_h1: Option<String>,
     pub toc: Vec<TocEntry>,
     pub labels: Vec<CrossrefLabel>,
-    /// 本文の分量（読了時間・文字数）
-    pub reading: ReadingStats,
 }
 
-/// frontmatter・先頭 h1・TOC（h1〜h6 全見出し＋アンカー ID）・本文の分量を抽出する
+/// frontmatter・先頭 h1・TOC（h1〜h6 全見出し＋アンカー ID）を抽出する
 pub(crate) fn extract_meta(
     source: &str,
     opts: &MarkdownOptions,
@@ -181,7 +179,6 @@ pub(crate) fn extract_meta(
         first_h1,
         toc,
         labels,
-        reading: reading::count(root),
     })
 }
 
@@ -268,6 +265,9 @@ pub struct RenderedBody {
     /// コード引用の `file=` は yuzu-render 側の `external_deps` が担い、
     /// こちらは core 展開ぶんを補完する。片方だけ見ると v15 の事故が再演する）
     pub used_fragment: bool,
+    /// 本文の分量（読了時間・文字数）。Markdown 断片を展開した後の本文で数える
+    /// （断片を使うページは本文キャッシュに載らないので、参照先だけの編集でも数え直る）
+    pub reading: ReadingStats,
 }
 
 pub(crate) fn render_body_html(
@@ -348,6 +348,11 @@ pub(crate) fn render_body_html(
             }
         }
     }
+
+    // 本文の分量はここで数える: 断片を展開した後（取り込んだ文章も数える）で、
+    // かつパス1 がコードブロック・キャプション等を HtmlBlock へ差し替える前
+    // （差し替え後は文章ノードが消える。コードブロックは元から数えない）
+    let reading = reading::count(root);
 
     // 相互参照の解決表（`#fig:deps` → 「図 1」）。ラベルはメタ抽出時に
     // 同じ規則で採番済みなので、ここでは引くだけ
@@ -554,6 +559,7 @@ pub(crate) fn render_body_html(
     Ok(RenderedBody {
         html: out,
         used_fragment,
+        reading,
     })
 }
 

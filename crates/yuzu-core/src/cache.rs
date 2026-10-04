@@ -62,8 +62,8 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v22: route → URL のパーセントエンコード（本文リンクの `.md` 解決結果が
 ///   `encode_path` を通り、著者がエンコード済みで書いた参照もデコードして解決する）
 /// - v23: 見出しのパーマリンク（id を見出し自身へ・リンクを末尾に aria-label 付きで。
-///   本文 HTML が変わる）と、CachedMeta に本文の分量（読了時間・文字数）・
-///   frontmatter `readingTime` を追加（Phase 78。bump を 1 回に束ねた）
+///   本文 HTML が変わる）と、CachedBody に本文の分量（読了時間・文字数）・
+///   CachedMeta の Frontmatter に `readingTime` を追加（Phase 78。bump を 1 回に束ねた）
 pub const CACHE_FORMAT_VERSION: u32 = 23;
 
 /// パス1（extract_meta）の結果
@@ -76,8 +76,6 @@ pub struct CachedMeta {
     pub toc: Vec<TocEntry>,
     /// 図表キャプションのラベル（相互参照のターゲット）
     pub labels: Vec<crate::model::CrossrefLabel>,
-    /// 本文の分量（読了時間・文字数）
-    pub reading: crate::model::ReadingStats,
 }
 
 /// パス2（render_body_html）の結果
@@ -88,6 +86,9 @@ pub struct CachedBody {
     pub html: String,
     /// mermaid SSR がフォールバックしたか（mermaid.js 読込要否の判定に使う）
     pub mermaid_fallback: bool,
+    /// 本文の分量（読了時間・文字数）。Markdown 断片を展開した後で数えた値。
+    /// 断片を使うページは本文ごとキャッシュしないので、参照先の編集でも古くならない
+    pub reading: crate::model::ReadingStats,
 }
 
 /// パス4（検索）の 1 セクション。tf はタイトル・見出し重み適用済み
@@ -477,6 +478,7 @@ mod tests {
         CachedBody {
             html: html.to_string(),
             mermaid_fallback: false,
+            reading: Default::default(),
         }
     }
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use yuzu_core::{NavNode, Page, TocEntry};
+use yuzu_core::{NavNode, Page, ReadingStats, TocEntry};
 
 use crate::urls::UrlResolver;
 
@@ -155,7 +155,8 @@ impl<'a> PageCtx<'a> {
         last_updated: Option<String>,
         edit_url: Option<String>,
         toc_levels: &std::ops::RangeInclusive<u8>,
-        reading_time: bool,
+        // 本文の分量（断片展開後に数えた値）。`theme.reading_time` が false なら None
+        reading: Option<ReadingStats>,
     ) -> Self {
         let visible: Vec<&TocEntry> = page
             .toc
@@ -175,13 +176,11 @@ impl<'a> PageCtx<'a> {
                 .is_absolute_base()
                 .then(|| resolver.page_url(&page.route)),
             toc: build_toc(&visible),
-            reading: (reading_time
-                && page.frontmatter.reading_time
-                && !page.is_generated()
-                && page.reading.minutes > 0)
-                .then(|| ReadingCtx {
-                    minutes: page.reading.minutes,
-                    chars: group_digits(page.reading.chars),
+            reading: reading
+                .filter(|r| page.frontmatter.reading_time && !page.is_generated() && r.minutes > 0)
+                .map(|r| ReadingCtx {
+                    minutes: r.minutes,
+                    chars: group_digits(r.chars),
                 }),
         }
     }

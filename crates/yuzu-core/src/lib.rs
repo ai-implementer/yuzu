@@ -366,14 +366,8 @@ fn load_pages_cached(
         let cached = cache
             .zip(source_hash.as_deref())
             .and_then(|(c, h)| c.meta(&rel_key, h));
-        let (frontmatter, title, toc, labels, reading) = match cached {
-            Some(meta) => (
-                meta.frontmatter,
-                meta.title,
-                meta.toc,
-                meta.labels,
-                meta.reading,
-            ),
+        let (frontmatter, title, toc, labels) = match cached {
+            Some(meta) => (meta.frontmatter, meta.title, meta.toc, meta.labels),
             None => {
                 let meta = markdown::extract_meta(&source, opts, &file.abs)?;
                 let title = meta
@@ -391,11 +385,10 @@ fn load_pages_cached(
                             title: title.clone(),
                             toc: meta.toc.clone(),
                             labels: meta.labels.clone(),
-                            reading: meta.reading,
                         },
                     );
                 }
-                (meta.frontmatter, title, meta.toc, meta.labels, meta.reading)
+                (meta.frontmatter, title, meta.toc, meta.labels)
             }
         };
 
@@ -410,7 +403,6 @@ fn load_pages_cached(
             labels,
             crossref_offset: Default::default(),
             source,
-            reading,
             generated: None,
         });
     }
@@ -452,7 +444,6 @@ fn glossary_page(content_dir: &Path, opts: &MarkdownOptions) -> Result<Option<Pa
         labels: meta.labels,
         crossref_offset: Default::default(),
         source,
-        reading: ReadingStats::default(),
         generated: Some(GeneratedKind::Glossary),
     }))
 }
@@ -499,7 +490,6 @@ fn search_result_page(
         labels: meta.labels,
         crossref_offset: Default::default(),
         source,
-        reading: ReadingStats::default(),
         generated: Some(GeneratedKind::Search),
     }))
 }

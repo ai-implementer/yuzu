@@ -54,7 +54,8 @@ impl Default for Frontmatter {
 
 /// 本文の分量（ページメタの読了時間・文字数）。
 /// 数えるのは本文の文章だけ（コードブロック・図・数式・生 HTML・画像の代替テキスト・
-/// frontmatter は数えない）。数え方は `markdown/reading.rs`
+/// frontmatter は数えない）。Markdown 断片は展開した後で数える。
+/// 数え方は `markdown/reading.rs`、数える場所は本文 HTML 化（`RenderedBody::reading`）
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReadingStats {
     /// 空白を除いた文字数
@@ -137,8 +138,6 @@ pub struct Page {
     pub crossref_offset: crate::markdown::crossref::Numbering,
     /// Markdown 原文（本文 HTML 化・将来の `yuzu fmt` が再パースに使う）
     pub source: String,
-    /// 本文の分量（読了時間・文字数）
-    pub reading: ReadingStats,
     /// ビルド時に合成したページの種別（実ページは None）。**実ファイルが無い**ので
     /// `yuzu fmt` / `yuzu lint --fix` の書き込み対象から外し、「このページを編集」
     /// リンクも出さない。リンク検査では**リンク先としてだけ**有効にする。
