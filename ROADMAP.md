@@ -407,9 +407,18 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
     キーごとの型検査で全件出す（kabosu の decode と同じ考え方）
 - ⬜ **手元の Markdown フォルダから始める方法が書かれていない**（工数: 小）
   - `yuzu new .` は「空ではありません」で止まり、`yuzu build` は「yuzu new で作成
-    するか…」と案内する。実際は空の `yuzu.toml` 1 枚で動くが、どこにも書かれていない
-  - 対処案: ガイドに「既存のフォルダで始める」節。`yuzu init`（yuzu.toml だけ作る）を
-    足すかは判断
+    するか…」と案内する。どこにも書かれていない
+  - 空の `yuzu.toml` 1 枚で動くのは、**原稿が `content/` 配下にある場合だけ**
+    （`input.dir` の既定が `content`）。原稿がフォルダ直下にあると、build は成功するが
+    原稿は 1 件も取り込まれず、HTML は `404.html` しか出ない（PR #23 のレビュー指摘。
+    実機で確認）
+  - フォルダ直下の原稿を `input.dir = "."` で読ませることはできない。出力先
+    （`output.dir`）が原稿ディレクトリと重なるとして設定エラー（exit 2）になる。
+    原稿を `content/`（または任意のサブフォルダ ＋ `input.dir` の指定）へ移す必要がある
+  - 原稿が 0 件でも build は成功し、知らせるのは INFO の `pages=0` だけ（警告が無い）
+  - 対処案: ガイドに「既存のフォルダで始める」節（原稿の置き場所の条件と、移す手順）/
+    原稿が 0 件の build で警告を出す（`input.dir` の値と、直下に `.md` があればその旨）/
+    `yuzu init`（yuzu.toml だけ作る）を足すかは判断
 - ⬜ **dist をファイルとして直接開けないことが書かれていない**（工数: 小）
   - リンクがサイトのルートから始まる形（`/_assets/…`）なので、`index.html` を
     ダブルクリックで開くと CSS もナビも効かない。触れているのは `guide/search.md:119`
@@ -443,10 +452,14 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
 - ⬜ **権限と知識が 1 人に集中している**（工数: 小）
   - org のメンバーも、tankan / mikan / kabosu の crates.io の owner も 1 人
     （見直し時に確認）。main にブランチ保護も ruleset も無い（`gh api` で確認）
-  - 開発コンテナは apple container 前提で、個人の 1Password の項目名まで前提にしている
-    （`scripts/dev-container.sh` の OTEL）
+  - 開発コンテナの任意の OTEL 設定（New Relic への送信）が個人の環境に固定されている。
+    1Password の Vault 名・項目名を `scripts/dev-container.sh` に直書きしている。
+    なお開発コンテナ自体は apple container 専用ではなく（`scripts/dev-container.sh` は
+    docker にも対応し、`.devcontainer/devcontainer.json` にも Docker 経路がある）、
+    キーが取れなければテレメトリを無効にして続行するので、他の人の開発を妨げはしない
+    （PR #23 のレビュー指摘で記述を限定）
   - 対処案: crates.io に 2 人目の owner（GitHub team）/ main の保護（必須チェック
-    `check` / `msrv`）/ 1Password の項目名を環境変数で差し替え可能にする
+    `check` / `msrv`）/ OTEL 用の 1Password の項目名を環境変数で差し替え可能にする
 - ⬜ **運用文書の古い記述**（工数: 小）
   - `.claude/skills/release/SKILL.md:95-98`: 見出しが「tankan / mikan」で kabosu が
     抜けている / 「実行回数はまだ 0 回」（実際は 3 crate とも公開済み）/ 参照先の
