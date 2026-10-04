@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## プロジェクト概要
 
 yuzu は Markdown の設計書を静的 HTML ドキュメントサイトに変換する Rust 製ツール
-（Cargo workspace、MSRV 1.85 / edition 2024）。
+（Cargo workspace、MSRV 1.87 / edition 2024。公開ライブラリの kabosu・tankan は 1.85）。
 
 - **日本語で書く** — 対話・コメント・ドキュメント・テスト名すべて
 - **コミットはユーザの指示があるまで行わない**（push もユーザが行う運用）
@@ -258,6 +258,15 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     `WatchIgnore`。glob 判定は yuzu-core の `IgnoreMatcher` を**述語で**渡す =
     server は yuzu-core を知らない）
   - **除外はイベントのフィルタで監視登録は減らない**（notify にパス単位の除外が無い）
+  - **イベントは種類でも絞る** — Linux の inotify は開いた・読んだだけのイベントも届け、
+    絞らないとビルドが原稿を読むたびに再ビルドして止まらない（macOS では起きないので
+    気付きにくい）。種類を捨てる debouncer（notify-debouncer-mini 等）を戻さない
+  - **監視スレッドの panic は main の `catch_unwind` に届かない** — `watch` が受けて
+    `WatchFailure` で `serve` に知らせ、配信ごと止めて exit 2 にする
+- **panic hook の中で終了させない**（`main.rs` の `install_panic_hook`）。hook は
+  `catch_unwind` で回収する panic でも先に呼ばれるので、exit すると Mermaid 描画・
+  comrak 整形の回収（`yuzu_core::recover`）が動かなくなる。回収区間の出力抑制は
+  スレッドごとの印（`is_recovering`）で行い、hook の差し替えで黙らせない
 - **watch 中の `yuzu.toml` 変更は取り込むが、監視・配信の前提になる設定は起動時固定**
   （`build.rs` の `WatchBuild` / `pin_restart_only`）
   - `output.dir` を差し替えると新しい出力先が監視除外から外れて無限ループになるため、
@@ -266,6 +275,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - **サーバや監視スレッドへ起動時に渡す設定を増やしたらこの関数にも足す**
 - yuzu-server の serve テストは TCP バインドするため、サンドボックス内では
   PermissionDenied で落ちる（コード起因ではない）
+- 監視のテストで実ディレクトリを使うときは `tempfile::tempdir()` を使わない
+  （既定名が `.tmpXXXX` = 隠しディレクトリで、監視が常に無視する）。
+  `watch::tests::visible_tempdir` を使う
 
 ### 検索インデックスと wasm
 
@@ -376,6 +388,12 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     次の行へ進む（= ゲートになっていない）
   - `if cmd; then echo "…" >&2; exit 1; fi` の形で明示的に落とす（PR #7 のレビュー指摘で
     既存 7 箇所を置換済み）
+- **MSRV の検査は `RUSTUP_TOOLCHAIN` で版を指定する**（ci.yml の `msrv` ジョブ）
+  - リポジトリの `rust-toolchain.toml`（stable）が rustup の既定より優先されるので、
+    `dtolnay/rust-toolchain` で古い版を入れるだけでは stable で検査してしまう
+    （Phase 77 まで実際にそうだった）。`rustc --version` の確認も外さない
+  - MSRV はワークスペース 1.87（mikan の依存 ruzstd の都合）・kabosu と tankan は 1.85。
+    依存を上げて MSRV が上がったら、README・リリースノート（release.yml）・docs も直す
 - `docs/design/` は git 管理外のローカル設計ノート。公開物（コード・README・コミット）から
   参照しない
 

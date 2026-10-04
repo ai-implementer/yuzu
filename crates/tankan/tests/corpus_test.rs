@@ -208,6 +208,48 @@ fn 構文エラーは_parse_エラーでフォールバック区別できる() {
     }
 }
 
+/// 以前 panic・メモリの使い切りを起こしていた入力は、落ちずに Parse エラーになる
+/// （呼び出し側はクライアント描画へ切り替えられる）
+#[test]
+fn 落ちていた入力は_parse_エラーになる() {
+    for (source, expect) in [
+        // 期間の末尾が多バイト文字（末尾 1 バイトで切って panic していた）
+        (
+            "gantt\ndateFormat YYYY-MM-DD\n設計 : 2024-01-01, 5日\n",
+            "期間として解釈できません",
+        ),
+        // 複合状態を自分自身の内側で開く（親子が循環して辿り上げが終わらなかった）
+        (
+            "stateDiagram-v2\nstate A {\n  state A {\n    X --> Y\n  }\n}\n",
+            "自分自身の内側",
+        ),
+        (
+            "stateDiagram-v2\nstate A {\n  state B {\n    state A {\n      X --> Y\n    }\n  }\n}\n",
+            "自分自身の内側",
+        ),
+    ] {
+        let err = tankan::render_svg(source, &tankan::Options::default()).unwrap_err();
+        assert!(!err.is_unsupported(), "Parse エラーのはず: {err}");
+        assert!(err.to_string().contains(expect), "{err}");
+    }
+    // 別々のブロックで開き直すのは循環ではない（後から開いた側で親が付け替わる）
+    assert!(
+        tankan::render_svg(
+            "stateDiagram-v2\nstate A {\n  state B {\n    X --> Y\n  }\n}\nstate B {\n  state A {\n    Z --> W\n  }\n}\n",
+            &tankan::Options::default()
+        )
+        .is_ok()
+    );
+    // 単位が d / w の期間は従来どおり受理する
+    assert!(
+        tankan::render_svg(
+            "gantt\ndateFormat YYYY-MM-DD\nA : 2024-01-01, 5d\nB : 1.5w\n",
+            &tankan::Options::default()
+        )
+        .is_ok()
+    );
+}
+
 #[test]
 fn テーマの_css_変数が_style_に埋め込まれる() {
     let options = tankan::Options {

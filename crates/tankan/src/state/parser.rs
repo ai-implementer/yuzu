@@ -313,7 +313,18 @@ impl StateParser {
                 .composite_index
                 .get(name)
                 .expect("事前スキャンで登録済み");
-            self.diagram.subgraphs[sub].parent = self.effective_scope();
+            let parent = self.effective_scope();
+            // 自分自身の内側で開き直すと親子関係が循環し、レイアウトの
+            // スコープの辿り上げが終わらなくなる（`state A { state A {` や
+            // `state A { state B { state A {`）。別々のブロックで開き直すのは
+            // 親の付け替えで、循環にはならない
+            if self.is_within(parent, sub) {
+                return Err(Error::Parse {
+                    line: line_no,
+                    message: format!("複合状態 {name} を自分自身の内側で開いています"),
+                });
+            }
+            self.diagram.subgraphs[sub].parent = parent;
             if let Some(display) = display {
                 self.diagram.subgraphs[sub].title = display;
             }
@@ -580,6 +591,19 @@ impl StateParser {
             }
         }
         self.diagram
+    }
+
+    /// `scope` から親を辿った鎖に `target` が含まれるか（`scope` 自身を含む）。
+    /// 親子関係は複合状態を開くときにこの検査で循環を拒むので、辿りは必ず終わる
+    fn is_within(&self, scope: Option<usize>, target: usize) -> bool {
+        let mut cur = scope;
+        while let Some(s) = cur {
+            if s == target {
+                return true;
+            }
+            cur = self.diagram.subgraphs[s].parent;
+        }
+        false
     }
 
     fn effective_direction(&self, scope: Option<usize>) -> Direction {

@@ -33,8 +33,10 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: yuzu をインストール
-        # fork や特定バージョンを使う場合はこの URL / ref を差し替える
-        run: cargo install --git https://github.com/ai-implementer/yuzu yuzu-cli
+        # `yuzu new` を実行した yuzu と同じ版に固定している（main の最新は未リリースの
+        # 非互換を含みうる）。版を上げるときはこのタグを書き換える。fork を使う場合は
+        # URL も差し替える。同じ版がキャッシュにあれば「インストール済み」で飛ばされる
+        run: cargo install --locked --git https://github.com/ai-implementer/yuzu --tag v__YUZU_VERSION__ yuzu-cli
 
       - name: Pages の設定を取得
         id: pages

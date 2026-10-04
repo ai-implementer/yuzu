@@ -91,153 +91,119 @@ canonical / `og:url` / パス指定の og:image は `base_url` がフル URL の
     （2 文字のアルファベットか 3 桁の数字）があるときだけ**（`zh-Hant` の `Hant` は
     文字体系で、`zh_HANT` を出していた。`zh-Hant-TW` は `zh_TW`）
 
-### 77 初めて使う人が最初に踏む不具合の修正 ⬜
+### 77 初めて使う人が最初に踏む不具合の修正 ✅
 
-**概要**: 10-04 の見直しで見つかった不具合のうち、初めて使う人が最初の数分で踏む
-6 件を直す。Linux での再ビルドの繰り返し / Mermaid の入力によるビルドの停止 /
-frontmatter の閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動いていない MSRV
-ジョブ / 異常な `base_url` での panic。どれも本文 HTML とキャッシュ形式は変えない。
-主な判断点は、監視イベントの絞り込み方と、雛形 deploy.yml の版の固定方法。
+**概要**: 10-04 の見直しで見つかった、初めて使う人が最初の数分で踏む 6 件を直した。
+Linux での再ビルドの繰り返し / Mermaid の入力によるビルドの停止 / frontmatter の
+閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動いていなかった MSRV ジョブ /
+異常な `base_url` での panic と panic 時の終了コード。本文 HTML とキャッシュ形式は
+変えていない（`CACHE_FORMAT_VERSION` の bump は Phase 78 の 1 回のまま）。判断点 7 つの
+うち 4 つはユーザ確認のうえ推奨案、残り 3 つは確認の応答が無かったので推奨案で進めた。
 
-- 現状（実測。コードを読んで確認し、1・2・3・6 は開発コンテナで実行して再現した）
+- 着手時の実測（コードを読んで確認し、1・2・3・6 は開発コンテナで実行して再現した）
   1. **Linux で `yuzu dev` / `build --watch` の再ビルドが止まらない** — notify 8.2 の
      inotify は監視マスクに `OPEN`（ファイルを開いただけ）を含む（`inotify.rs:427`）。
-     notify-debouncer-mini はイベントの種類を捨ててパスだけを渡し、
-     `yuzu-server/src/watch.rs:86-98` も種類で絞らないので、ビルドが原稿を読むたびに
-     「変更」と判定される。`yuzu new` 直後の `yuzu dev` で 10 秒に 33 回、
-     `build --watch` で 6 秒に 14 回（Linux 6.18・ext4）。macOS（FSEvents）では起きない
-     ため、これまで気付かなかった
-  2. **Mermaid の入力でビルドが落ちる（tankan）**
-     - gantt: `parse_duration_days`（`tankan/src/gantt/parser.rs:362`）が
-       `split_at(seg.len() - 1)` で末尾 1 バイトを切るため、`設計 : 2024-01-01, 5日` の
-       ように末尾が多バイト文字だと panic し、`yuzu build` が exit 101 で落ちる。
-       `yuzu check` では検出されない
-     - state: `state A {` の中で `state A {` を開くと親子関係が循環し、
-       `flowchart/layout.rs:440` の `scope_chain` が push し続けてメモリを使い切る
-       （`state/parser.rs:311-316` に検査が無い。`state/parser.rs:585` も同じ形）
-     - yuzu 側は `render_svg` の Err をクライアント描画へ切り替える
-       （`yuzu-render/src/highlight.rs:282-297`）が、panic は受け止めていない。
-       docs サイトは `backend = "ssr"` なので自分のサイトでも起きうる
-  3. **frontmatter の閉じ忘れが無言で、案内どおり直すと痕跡が消える** — frontmatter の
-     判定は comrak の `front_matter_delimiter`（`markdown/mod.rs:68`）に任せており、
-     閉じの `---` が無いと本文として描画される（`title: …` がそのまま出る。警告なし）。
-     `yuzu check` は整形差分として `yuzu fmt` を案内し、従うと先頭の `---` が区切り線の
-     `-----` ＋空行に書き換わる（`+++` は `\+++` になる）
-     - 一方で、**先頭の `---` は CommonMark では正当な区切り線**でもある。`---`・空行・
-       `# Introduction`・本文 の文書は区切り線＋見出しとして正しく描画される
-       （build は exit 0。fmt は `---` を `-----` に正規化するだけ）。「先頭が `---` で
-       閉じが無い」だけでは frontmatter の閉じ忘れと区別できない
-     - comrak は 1 行目が `---` ちょうどで、以降に `---` だけの行があれば中身を問わず
-       frontmatter とみなす（comrak 0.53 `strings.rs:372` の `split_off_front_matter`）。
-       そのため区切り線を 2 本使う文書（`---`・空行・見出し・本文・`---`・本文）は、
-       間が frontmatter と読まれて build / check が YAML のエラーで exit 2 になる
-       （既にある誤検出）
-  4. **雛形 deploy.yml が main を版指定なしでインストールする** —
-     `yuzu-cli/scaffold/deploy.yml:37` が `cargo install --git …/yuzu yuzu-cli` で、
-     利用者のサイトはデプロイのたびに main の最新でビルドされる（v0.14 の TOML 移行の
-     ような非互換がリリース前に届く。毎回フルコンパイルで遅い）。リリースノートは
-     `--tag` 付きで案内しており食い違っている（`release.yml:78`）
-  5. **MSRV ジョブが 1.85 で動いていない** — `ci.yml` の msrv ジョブは 1.85 を入れるが、
-     リポジトリの `rust-toolchain.toml`（`channel = "stable"`）が rustup の既定より
-     優先され、実際の rustc は stable（run 37189008229 では 1.98.1）。対象も
-     `cargo check -p kabosu` だけで、README とリリースノートの「Rust 1.85 以降なら
-     ソースからインストールできる」は検査されていない。依存の宣言上の最大は 1.85.0、
-     let chain（1.88〜）は 0 件だが、新しい標準ライブラリ API の使用は通すまで分からない
-  6. **異常な `base_url` で panic・panic 時の終了コードが規約外** —
-     `base_url = "/:x/"` のように `:` `*` `{` で始まるセグメントを含むと、`yuzu preview`
-     が axum のルート登録（`yuzu-server/src/serve.rs:161`）で panic する。
-     `normalize_base_url`（`yuzu-config/src/resolve.rs:417`）は形を整えるだけで値を
-     検証しない。panic 時の終了コードは 101 で、規約の 0 / 1 / 2 から外れる
-     （`yuzu-cli/src/main.rs:20`）
-     - `dev` / `build --watch` の再ビルドは、notify-debouncer-mini が起こす監視スレッドの
-       上で動く（`commands/dev.rs:48-60`・`commands/build.rs:143-149` のコールバック）。
-       main は `yuzu_server::serve` で配信をブロックしており（`serve.rs:98-118`）、
-       終わる経路は Ctrl+C だけ。再ビルド中に panic すると監視スレッドだけが止まり、
-       配信は続く（編集しても再ビルドされない状態が黙って続く。コードから読める挙動で、
-       実行では未確認）
-- やること
-  1. 監視: イベントの種類を受け取れる形にして、アクセス系（`EventKind::Access`）を
-     捨てる。notify は凍結した選定だが debouncer は対象外。ci.yml に「Linux で
-     `build --watch` を数秒動かし、何も編集しなければ再ビルドが 0 回」の e2e を足す
-  2. tankan: gantt は `strip_suffix` で単位を判定する。state は開いているスコープに
-     同じ id があればパースエラーにし、`scope_chain` に深さの上限を付ける（apispec の
-     `MAX_DEPTH` と同じ考え方）。corpus に再現入力 2 件。yuzu 側は `render_svg` の
-     呼び出しを `catch_unwind` で包んで panic を回収し、構文エラーと同じくクライアント
-     描画へ切り替えて警告を出す（CLI 全体の panic との分け方は判断点）。tankan の
-     パッチ版公開は publish-crate スキルで別に判断する
-  3. frontmatter: 「frontmatter 候補」の判定を yuzu-core の 1 か所に作り、**候補なのに
-     閉じが無い**ときだけ lint の新ルールで報告し、build でも警告する。候補の条件は
-     判断点で決める（案: 1 行目が `---` ちょうどで、2 行目が空行でなく `キー:` の形 =
-     YAML のマッピング行）。2 行目が空行や見出しなど、区切り線で始まる通常の文書は
-     候補にしない。fmt は候補のファイルだけ書き換えない。診断ルール一覧（docs の
-     リファレンス）と ci.yml の docs ゲートを足す
-  4. 雛形 deploy.yml: 版を固定する（判断点参照）。`guide/deploy.md` の説明も合わせる
-  5. MSRV: ジョブに `RUSTUP_TOOLCHAIN: "1.85"`（ディレクトリのファイルより環境変数が
-     優先）を設定し、`rustc --version` が 1.85 であることも確かめる。対象を
-     `cargo check --workspace --locked` に広げる
-  6. `base_url`: 設定の読み込みで `:` `*` `{` で始まるセグメントを設定エラー（exit 2）に
-     する。CLI の `--base-url` 上書きも同じ検証を通す。回収されずに main まで上がって
-     きた panic を exit 2 にする（判断点参照）。`dev` / `build --watch` は、監視スレッドで
-     起きた panic を監視側で受けて終了要求を main へ送る。`yuzu_server::serve` に終了の
-     合図を受け取る口を足し（axum の `with_graceful_shutdown`）、配信を止めて exit 2 で
-     終わる
-- 判断点
-  - **監視の絞り込み方** — notify-debouncer-full へ替える（種類が残る）か、notify を
-    直接使って自前で debounce するか。どちらでも macOS の挙動（保存 1 回で再ビルド
-    1 回）を変えないこと
-  - **雛形 deploy.yml の版の固定方法** — `yuzu new` が自分の版の `--tag vX.Y.Z` を
-    埋め込む（小さい変更。`include_str!` の雛形へ実行時に差し込む）か、リリースの
-    バイナリを取得して SHA256SUMS で検証する（デプロイが速くなる。対応 OS の判定が
-    要る）か。どちらも、未リリースの main からビルドした `yuzu new` は存在しないタグか
-    古いタグを指すことになる
-  - **frontmatter 候補の判定方法と曖昧な場合の扱い**
-    - 2 行目が `キー:` の形なら候補にするか、yuzu の既知キー（`title` / `order` /
-      `description` 等）に限るか。前者は打ち間違いのキーも拾えるが、区切り線の直後に
-      「用語: 説明」のような本文の行が続く文書を候補にしてしまう
-    - 曖昧な場合を error にするか、warning にとどめるか、報告しないか
-    - 閉じがある側の誤検出（区切り線 2 本の文書が exit 2）も同じ判定で救うか。
-      comrak の判定を前段で上書きする（候補のときだけ `front_matter_delimiter` を
-      有効にする等）ことになるので、範囲を広げるかは着手時に決める
-    - ルール名（例 `frontmatter-unclosed`）、`+++`（TOML frontmatter は未対応）も
-      同じルールで「対応していない形式」と伝えるか
-  - **MSRV が 1.85 で通らなかったとき** — MSRV を上げる（README・リリースノート・
-    `rust-version` を同時に直す）か、コードを 1.85 で通る形に直すか
-  - **panic の受け止め方** — 回収して処理を続ける panic（`render_svg` の描画）と、
-    CLI 全体を終わらせる panic を分ける
-    - panic hook は `catch_unwind` で回収する panic でも先に実行される
-      （[`std::panic::set_hook`](https://doc.rust-lang.org/std/panic/fn.set_hook.html)
-      の仕様）。**hook の中で `process::exit(2)` する一律終了は選ばない** = 描画の
-      回収とクライアント描画へのフォールバックが動かなくなる
-    - CLI 全体の panic は main の `catch_unwind` で受けて exit 2 にする（rayon は並列
-      処理中の panic を呼び出し元へ伝え直すので、通常の build・check なら main で
-      受けられる）。hook を差し替えるなら出力の整形だけにし、終了させない
-    - **監視スレッドの panic は main の `catch_unwind` に届かない** — `dev` /
-      `build --watch` では rayon が panic を伝え直す先が監視スレッドになる。監視側で
-      受けて終了要求を main へ送る（やること 6）。受ける場所を yuzu-server の `watch`
-      （汎用。コールバックの panic を `WatchHandle` 経由で知らせる。server は yuzu-core を
-      知らないままでよい）にするか、cli のコールバックの中にするか
-    - panic 後に終了せず監視を続ける案は採らない — `WatchBuild` のセッション・
-      キャッシュが途中の状態で残りうる。Err（執筆中の一時的なエラー）は従来どおり
-      ログだけで続ける
-    - 回帰テストで panic を起こす手段 — yuzu-server の単体テスト（panic する
-      コールバック）で済ませるか、CLI の e2e 用にテスト専用の口（debug ビルド限定の
-      環境変数など）を作るか
-    - 既定の hook は回収する panic でも `thread '…' panicked at …` を stderr へ出す。
-      描画の回収時にこれを抑えて警告 1 行にするかを決める
-    - 前提: ネイティブの release は unwind（`panic = "abort"` は wasm 用の
-      `profile.wasm-release` だけ）なので `catch_unwind` が効く
-- 検証
-  - 各不具合の再現入力をテストに足す（tankan の corpus・設定エラー・lint の新ルール・
-    監視イベントの種類の絞り込み）
-  - 回帰テスト: `---`・空行・`# Introduction`・本文 の文書を frontmatter の閉じ忘れと
-    誤検出せず、fmt も従来どおり整形すること
-  - 描画の panic では build が exit 0 のままクライアント描画へ切り替わって警告が出る
-    こと、それ以外の panic では exit 2 になること
-  - `dev` / `build --watch` で再ビルド中に panic したら、配信が止まって exit 2 になること
-    （回帰テスト: panic するコールバックから終了要求が届き、`serve` が戻ること）
-  - 開発コンテナ（Linux）とホスト（macOS）の両方で `yuzu dev` を起動し、何も編集しない
-    間は再ビルドせず、保存したときは 1 回だけ再ビルドすること
-  - ci.yml の MSRV ジョブのログに rustc 1.85 が出ること
+     notify-debouncer-mini はイベントの種類を捨ててパスだけを渡し、yuzu 側も種類で
+     絞っていなかったので、ビルドが原稿を読むたびに「変更」と判定された。`yuzu new`
+     直後の `yuzu dev` で 10 秒に 33 回（Linux 6.18・ext4）。macOS（FSEvents）では
+     起きないため気付かなかった
+  2. **Mermaid の入力でビルドが落ちる（tankan）** — gantt は `parse_duration_days` が
+     末尾 1 バイトで単位を切るため `5日` で panic（exit 101）。state は `state A {` の
+     内側で `state A {` を開くと親子が循環し、レイアウトのスコープの辿り上げが
+     メモリを使い切る。yuzu 側は `render_svg` の Err はクライアント描画へ切り替えるが、
+     panic は受け止めていなかった
+  3. **frontmatter の閉じ忘れが無言で、`yuzu fmt` すると痕跡が消える**。一方で先頭の
+     `---` は CommonMark では正当な区切り線でもあり、「先頭が `---` で閉じが無い」だけ
+     では区別できない。さらに comrak は 1 行目が `---` で後ろに `---` だけの行があれば
+     中身を問わず frontmatter とみなすため、区切り線を 2 本使う文書は、YAML が壊れて
+     exit 2 になるか、**間が YAML のコメントとして通って本文が黙って消える**
+     （後者は着手後に見つけた）
+  4. **雛形 deploy.yml が main を版指定なしでインストールする**（リリース前の非互換が
+     利用者のデプロイに届く）
+  5. **MSRV ジョブが 1.85 で動いていない** — `rust-toolchain.toml`（stable）が rustup の
+     既定より優先され、実際は stable で検査していた。**1.85 で通すと、mikan の依存
+     ruzstd 0.8.2 が 1.87 で安定化した API（`is_multiple_of`）を使っていて通らない**。
+     1.87 ならワークスペース全体が通り、kabosu・tankan は 1.85 でも通る
+  6. **`base_url = "/:x/"` で `yuzu preview` が panic** — axum 0.8 は `:` / `*` で始まる
+     セグメントを旧構文としてルート登録時に panic で拒む。`{` / `}` はルートの
+     パラメータ構文。panic 時の終了コードは 101。`dev` / `build --watch` の再ビルドは
+     監視スレッドで動くため、そこでの panic は main に届かず、監視だけが止まって配信が
+     残る
+- やったこと
+  1. 監視（yuzu-server `watch.rs`）: notify-debouncer-mini を外し、notify を直接使う。
+     監視スレッドで「受信 → 種類で絞る → 静かになるまで待つ」を行う。開いた・読んだ
+     だけのイベントは捨て、書き込みを終えて閉じた（`CLOSE_WRITE`）は残す。変更が
+     途切れず届いても debounce 間隔の 10 倍で区切る。依存が 1 つ減った
+  2. 監視スレッドの panic: コールバックを `catch_unwind` で受けて監視を止め、
+     `WatchHandle::take_failure` の合図（`WatchFailure`）で `serve` に知らせる。
+     `serve` は配信を止めて `ServerError::WatchStopped` を返し、`dev` / `build --watch`
+     は exit 2 で終わる。執筆中の構文エラーのような Err は従来どおりログだけで続ける
+  3. tankan: gantt は `strip_suffix` で単位を判定（有限でない値も拒否）。state は
+     複合状態を開くとき、新しい親から辿った鎖に自分が含まれればパースエラー
+     （`is_within`）。flowchart レイアウトの `scope_chain` にクラスタ数の上限を付けた
+     （万一の循環でも止まる）。回帰テストは公開 API（`render_svg`）経由で 3 件
+  4. panic の回収（yuzu-core `recover.rs`）: `catch` と、回収区間にいるかを示す
+     スレッドごとの印 `is_recovering`。Mermaid の SSR（yuzu-render）と comrak の整形
+     （`catch_formatter_panic`）の 2 か所で使う。後者はこれまで hook を差し替えて
+     黙らせていたが、並列に動く他スレッドの本物の panic まで黙らせるのでこちらに
+     寄せた。描画の panic は警告 1 行を出してクライアント描画へ切り替える
+  5. CLI（`main.rs`）: `run_catching` で panic を exit 2 に（rayon の並列処理中の panic
+     もここで受かることをテストで確認）。`install_panic_hook` は回収区間では何も出さず、
+     それ以外は「内部エラー（yuzu の不具合）」を 1 行で出す。**hook の中では終了
+     させない**。stderr へ書けなくても panic しない
+  6. frontmatter（yuzu-core `frontmatter.rs` の `detect_unrecognized`）: lint の新ルール
+     `frontmatter-unrecognized`（error・抑制不可。lint で唯一の error）で 3 つを報告し、
+     build でも警告する。fmt はそのページを書き換えない
+     - 閉じ忘れ: 1 行目が `---` ちょうどで、2 行目が「ASCII のキーとコロン」の形
+       （`title:` 等）なのに閉じが無い。2 行目が空行・見出し・日本語の文なら対象外
+     - TOML 形式: `+++` で始まり 2 行目が `キー =`
+     - 区切り線の誤読: 1 行目が `---` で、comrak が切り出した中身にキーの行が 1 つも
+       無い。YAML が壊れて exit 2 になる側は、エラー文に「先頭の区切り線は `***` で」の
+       案内を足した
+  7. 雛形 deploy.yml: `cargo install --locked --git … --tag v<版> yuzu-cli`。版は
+     `yuzu new` が雛形の印（`__YUZU_VERSION__`）を自分の `CARGO_PKG_VERSION` で埋める
+  8. MSRV: ワークスペースの `rust-version` を 1.87 に上げ、kabosu・tankan は各
+     Cargo.toml で 1.85 を宣言。ci.yml の `msrv` ジョブを 2 段（1.85 で kabosu・
+     tankan、1.87 でワークスペース全体）にし、`RUSTUP_TOOLCHAIN` で版を指定して
+     `rustc --version` も確かめる。README・リリースノート・docs の「1.85」を直し、
+     インストール手順に `--locked` を付けた
+  9. `base_url`: preview / dev のルート登録で `without_v07_checks` を使い、`{` / `}` は
+     `%7B` / `%7D` にする（`literal_route`）。`/:x/`・`/*x/` は字句どおり、`/a{b}/` は
+     ブラウザが送るエンコード済みの `/a%7Bb%7D/` で配信する（どれも panic しない）
+  10. docs: 診断ルール一覧（`frontmatter-unrecognized` の節）・デプロイガイド（版の固定）・
+      内部設計（監視イベントの種類と panic）。ci.yml に docs ゲート 2 行と e2e
+      （deploy.yml のタグ・`build --watch` を 6 秒動かして再ビルド 0 回・frontmatter の
+      閉じ忘れが check で error / 区切り線の文書は誤検出しない）
+- 決めたこと
+  - **監視は notify を直接使う**（debouncer-full に替えない）— 依存を増やさず、監視
+    スレッドが自前になるのでコールバックの panic もそこで受けられる
+  - **雛形は `--tag` を埋め込む**（バイナリ取得にしない）— 変更が小さく、rust-cache が
+    `~/.cargo` を保存するので 2 回目以降は「インストール済み」で飛ばされる。版を雛形に
+    直書きしないのは「バンプコミットは Cargo.toml と Cargo.lock だけ」の規律のため。
+    未リリースの main からビルドした `yuzu new` は直前のリリースのタグを指す
+  - **frontmatter は「キーらしい行」なら error** — 既知キーに限ると `titel:` のような
+    打ち間違いを拾えない。日本語の文（`用語: 説明`）は ASCII キーの形に当たらないので
+    候補にならない。区切り線のつもりで 2 行目に英字のキーの形を書いた文書は誤検出
+    するが、`---` の次に空行を入れれば外れる（文面で案内）
+  - **区切り線の誤読は判定を変えずに報告だけ足す** — comrak の切り出しを前段で
+    上書きすると、空行やコメントで始まる正しい frontmatter を壊しうる。中身にキーの行が
+    1 つも無いときだけ誤読とみる（コメント行の後にキーが続く frontmatter は対象外）
+  - **MSRV は本体と mikan を 1.87、kabosu・tankan は 1.85** — 公開ライブラリの対応範囲を
+    不必要に狭めない。ruzstd を古い版に固定する案は、`cargo install`（`--locked` なし）が
+    最新を選ぶので利用者の環境では効かない
+  - **panic の出力は回収区間だけ黙らせ、それ以外は 1 行**。回帰テストは単体テストだけ
+    （本番コードにテスト専用の口を作らない）
+  - **`base_url` は検証して拒むのでなく、字句どおりに配信する** — `/:x/` は URL として
+    正当で build の出力にも問題が無いので、preview / dev 側を直した（ROADMAP の当初案
+    「設定の読み込みで設定エラー」から変更）。`{` / `}` は `{{` で重ねてただの文字にする
+    方法もあるが、axum はエンコードされたままのパスで照合し、ブラウザは `{` / `}` を
+    必ずエンコードして送るので、エンコード済みの形でマウントしないと一致しない
+  - **監視の停止は graceful shutdown にしない** — 接続が閉じるまで待つので、ライブ
+    リロードの WebSocket が開いている限り終わらない。プロセスはすぐ終わるので打ち切る
+- 確認
+  - 開発コンテナ（Linux）で `yuzu new` 直後の `build --watch` / `dev` を 8 秒ずつ
+    動かして再ビルド 0 回、1 回保存すると 1 回だけ再ビルド
+  - ホスト（macOS）での `yuzu dev` の確認は未実施
 
 ### 78 本文 HTML の到達性とページメタ（CACHE bump を 1 回に束ねる） ⬜
 

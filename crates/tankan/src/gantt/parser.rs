@@ -357,18 +357,20 @@ fn parse_task(
     ))
 }
 
-/// `Nd` / `Nw`（小数は切り上げ）
+/// `Nd` / `Nw`（小数は切り上げ）。
+/// 単位は `strip_suffix` で見る（末尾 1 バイトで切ると `5日` のような多バイト文字の
+/// 途中で切って panic する）
 fn parse_duration_days(seg: &str) -> Option<i64> {
-    let (num, unit) = seg.split_at(seg.len().checked_sub(1)?);
+    let (num, days_per_unit) = match (seg.strip_suffix('d'), seg.strip_suffix('w')) {
+        (Some(num), _) => (num, 1.0),
+        (_, Some(num)) => (num, 7.0),
+        _ => return None,
+    };
     let value: f64 = num.parse().ok()?;
-    if value <= 0.0 {
+    if !value.is_finite() || value <= 0.0 {
         return None;
     }
-    match unit {
-        "d" => Some(value.ceil() as i64),
-        "w" => Some((value * 7.0).ceil() as i64),
-        _ => None,
-    }
+    Some((value * days_per_unit).ceil() as i64)
 }
 
 fn parse_tick(rest: &str, line_no: usize) -> Result<TickInterval, Error> {

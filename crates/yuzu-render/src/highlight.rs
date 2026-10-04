@@ -279,20 +279,28 @@ impl PageCodeRenderer<'_> {
             let mut options = options_base.clone();
             options.id_prefix = format!("tk{}", self.mermaid_counter.get());
             self.mermaid_counter.set(self.mermaid_counter.get() + 1);
-            match tankan::render_svg(code, &options) {
-                Ok(svg) => {
+            // tankan の panic は回収してクライアント描画へ（利用者の入力 1 つで
+            // ビルド全体を落とさない。出力は警告 1 行 = yuzu-core の recover.rs）
+            match yuzu_core::recover::catch(|| tankan::render_svg(code, &options)) {
+                Ok(Ok(svg)) => {
                     return Some(format!(
                         "<figure class=\"mermaid-ssr\">\n{svg}\n</figure>\n"
                     ));
                 }
-                Err(e) if e.is_unsupported() => {
+                Ok(Err(e)) if e.is_unsupported() => {
                     // 想定内（未対応図種）: 静かにクライアント描画へ
                     tracing::debug!("mermaid SSR 未対応のためクライアント描画へ: {e}");
                     self.mermaid_fallback.set(true);
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     // 構文エラー: 書き間違いの可能性が高いので可視化する
                     tracing::warn!("mermaid の構文エラー（クライアント描画へフォールバック): {e}");
+                    self.mermaid_fallback.set(true);
+                }
+                Err(message) => {
+                    tracing::warn!(
+                        "mermaid の SSR 中に内部エラーが起きました（クライアント描画へフォールバック。tankan の不具合です）: {message}"
+                    );
                     self.mermaid_fallback.set(true);
                 }
             }

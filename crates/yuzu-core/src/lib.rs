@@ -23,6 +23,7 @@ mod markdown;
 mod model;
 mod nav;
 pub mod output;
+pub mod recover;
 mod routes;
 pub mod rules;
 mod scan;
@@ -230,6 +231,16 @@ pub fn build_site_model_cached(
             }
             !page.frontmatter.draft
         });
+    }
+    // frontmatter のつもりの記述が本文に出ているページは build でも知らせる
+    // （`yuzu check` を回さない人も気付けるように。診断は lint の
+    // `frontmatter-unrecognized`。行の形が候補のページだけ comrak で確かめる）
+    for page in &pages {
+        if let Some(kind) = frontmatter::detect_unrecognized(&page.source, || {
+            markdown::frontmatter_raw(&page.source, opts).map(|(raw, _)| raw)
+        }) {
+            tracing::warn!(page = %page.rel.display(), "{}", kind.message());
+        }
     }
     // 合成ページは nav 構築より前に混ぜる（サイドバー・パンくず・pager・
     // 通し番号の順序決めがすべて pages を入力にしているため。検索結果ページは
@@ -539,7 +550,17 @@ pub fn normalize_markdown(page: &Page, opts: &MarkdownOptions) -> Result<String,
 /// - 冪等: `format_document` の出力を再整形しても変化しない
 /// - comrak の整形がパニックするページ（既知バグ）は原文のまま返す
 ///   （= 整形スキップ。fmt は書き込まず、check も差分として扱わない）
+/// - frontmatter のつもりの記述が読まれていないページ（閉じ忘れ等）も原文のまま返す。
+///   整形すると先頭の `---` が区切り線の `-----` に変わり、frontmatter だった痕跡が
+///   消える。直し方は lint の `frontmatter-unrecognized` が知らせる
 pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
+    if frontmatter::detect_unrecognized(&page.source, || {
+        markdown::frontmatter_raw(&page.source, opts).map(|(raw, _)| raw)
+    })
+    .is_some()
+    {
+        return Ok(page.source.to_string());
+    }
     match markdown::catch_formatter_panic(|| markdown::format_document(&page.source, opts)) {
         Some(result) => result,
         None => {

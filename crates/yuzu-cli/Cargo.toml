@@ -31,4 +31,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
+# 並列処理中の panic が main の catch_unwind まで伝わることのテスト用
+rayon = { workspace = true }
 tempfile = { workspace = true }

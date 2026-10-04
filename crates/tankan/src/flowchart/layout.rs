@@ -436,7 +436,9 @@ fn entity_of(
     }
 }
 
-/// end の所属スコープチェーン（内側 → 外側 → None）
+/// end の所属スコープチェーン（内側 → 外側 → None）。
+/// 親子関係はパーサが循環させない前提だが、万一循環していても止まるよう
+/// クラスタ数を上限に辿る（循環すると push し続けてメモリを使い切るため）
 fn scope_chain(diagram: &FlowchartDiagram, end: EndRef) -> Vec<Option<usize>> {
     let mut chain = Vec::new();
     let mut cur = match end {
@@ -446,8 +448,10 @@ fn scope_chain(diagram: &FlowchartDiagram, end: EndRef) -> Vec<Option<usize>> {
     loop {
         chain.push(cur);
         match cur {
-            Some(s) => cur = diagram.subgraphs[s].parent,
-            None => break,
+            Some(s) if chain.len() <= diagram.subgraphs.len() => {
+                cur = diagram.subgraphs[s].parent;
+            }
+            _ => break,
         }
     }
     chain

@@ -60,6 +60,9 @@ pub const DIRECTORY_TOO_DEEP: Rule = warning("directory-too-deep");
 pub const CODE_BLOCK_META: Rule = warning("code-block-meta");
 pub const DUPLICATE_LABEL: Rule = warning("duplicate-label");
 pub const FRONTMATTER_UNKNOWN_KEY: Rule = warning("frontmatter-unknown-key");
+// lint が出す唯一の error。frontmatter が本文として表示される = 壊れた出力なので
+// 抑制できない（区切り線のつもりなら `---` の次に空行を入れれば候補から外れる）
+pub const FRONTMATTER_UNRECOGNIZED: Rule = error("frontmatter-unrecognized");
 
 // --- yuzu.toml のルール（warning。ページ外なので lintDisable の対象外）。
 // 未知キー・型不一致・重複キーは診断ではなく読み込みエラー（exit 2）なのでここには無い ---
@@ -101,6 +104,7 @@ pub const RULES: &[Rule] = &[
     CODE_BLOCK_META,
     DUPLICATE_LABEL,
     FRONTMATTER_UNKNOWN_KEY,
+    FRONTMATTER_UNRECOGNIZED,
     CONFIG_PATH_OUTSIDE_ROOT,
     BROKEN_LINK,
     BROKEN_ANCHOR,

@@ -4,6 +4,8 @@
 //! - `duplicate-h1` — 本文 h1 が 2 個以上（テーマはページタイトルを h1 相当で表示する）
 //! - `heading-level-skip` — 隣接見出し間でレベルが 2 以上深くなる（markdownlint MD001 相当）
 //! - `frontmatter-unknown-key` — 既知キー以外のトップレベルキー（typo 検出）
+//! - `frontmatter-unrecognized` — frontmatter のつもりの記述が読まれていない
+//!   （閉じの `---` 忘れ・TOML 形式の `+++`）。lint で唯一の error
 //! - `duplicate-label` — 図表ラベル（`{#fig:x}`）の重複
 //! - `code-block-meta` — フェンス情報文字列の表示メタの typo・範囲外の行ハイライト・
 //!   ` ```include ` の file= 漏れと無視される表示メタ
@@ -23,7 +25,7 @@
 
 use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::error::CoreError;
-use crate::frontmatter::{KNOWN_KEYS, yaml_body};
+use crate::frontmatter::{KNOWN_KEYS, detect_unrecognized, yaml_body};
 use crate::markdown;
 use crate::model::{Page, SourceSpan, TocEntry};
 use crate::rules;
@@ -42,6 +44,7 @@ pub(crate) fn lint_page(
     }
     let mut out = Vec::new();
     check_headings(&page.toc, page, &mut out);
+    check_frontmatter_unrecognized(page, opts, &mut out);
     check_frontmatter_keys(page, opts, &mut out);
     check_code_meta(page, opts, &mut out);
     check_duplicate_labels(page, &mut out);
@@ -525,6 +528,31 @@ fn check_duplicate_labels(page: &Page, out: &mut Vec<Diagnostic>) {
             });
         }
     }
+}
+
+/// frontmatter のつもりの記述が frontmatter として読まれていない（閉じ忘れ・TOML 形式）。
+/// 本文として表示される壊れた出力なので error。判定は `frontmatter::detect_unrecognized`
+/// （build の警告・fmt のスキップと同じ 1 実装）
+fn check_frontmatter_unrecognized(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic>) {
+    let Some(kind) = detect_unrecognized(&page.source, || {
+        markdown::frontmatter_raw(&page.source, opts).map(|(raw, _)| raw)
+    }) else {
+        return;
+    };
+    out.push(Diagnostic {
+        rule: rules::FRONTMATTER_UNRECOGNIZED.id,
+        severity: rules::FRONTMATTER_UNRECOGNIZED.severity,
+        base: DiagBase::Content,
+        rel: page.rel.clone(),
+        span: Some(SourceSpan {
+            start_line: 1,
+            start_col: 1,
+            end_line: 1,
+            end_col: 3,
+        }),
+        message: kind.message().to_string(),
+        fix: None,
+    });
 }
 
 /// frontmatter の未知キー検出。
@@ -1205,5 +1233,54 @@ mod tests {
         let (fixed, n) = super::apply_fixes("abcdef", &[mk(2, 5, "Z"), mk(2, 5, "Z")]);
         assert_eq!(n, 1);
         assert_eq!(fixed, "aZef");
+    }
+
+    fn unrecognized(source: &str) -> Vec<crate::Diagnostic> {
+        super::lint_page(
+            &page_from(source),
+            &MarkdownOptions::default(),
+            &LintOptions::default(),
+        )
+        .unwrap()
+        .into_iter()
+        .filter(|d| d.rule == "frontmatter-unrecognized")
+        .collect()
+    }
+
+    /// comrak の実際の切り出しで判定する（閉じ忘れ・TOML・区切り線の誤読は error）
+    #[test]
+    fn frontmatter_のつもりの記述が読まれていなければ_error() {
+        for source in [
+            "---\ntitle: 閉じ忘れ\norder: 5\n\n本文\n",
+            "+++\ntitle = \"x\"\n+++\n\n本文\n",
+            "---\n\n# 見出し\n\n---\n\n後半\n",
+        ] {
+            let diags = unrecognized(source);
+            assert_eq!(diags.len(), 1, "{source:?}: {diags:?}");
+            assert_eq!(diags[0].severity, crate::Severity::Error);
+            assert_eq!(diags[0].span.unwrap().start_line, 1);
+        }
+    }
+
+    /// 先頭の区切り線で始まる正常な文書は誤検出せず、fmt も従来どおり整形する
+    /// （PR #21 のレビュー指摘の回帰テスト）
+    #[test]
+    fn 区切り線で始まる文書は誤検出せず_fmt_も整形する() {
+        let source = "---\n\n# Introduction\n\n本文です。\n";
+        assert!(unrecognized(source).is_empty());
+        let formatted =
+            crate::format_document(&page_from(source), &MarkdownOptions::default()).unwrap();
+        assert_ne!(formatted, source, "通常の文書は整形される");
+        assert!(formatted.starts_with("-----"), "{formatted:?}");
+    }
+
+    /// 閉じ忘れのページは fmt が書き換えない（`---` が区切り線の `-----` に変わって
+    /// frontmatter だった痕跡が消えるため）
+    #[test]
+    fn 閉じ忘れのページは_fmt_が書き換えない() {
+        let source = "---\ntitle: 閉じ忘れ\norder: 5\n\n本文\n";
+        let formatted =
+            crate::format_document(&page_from(source), &MarkdownOptions::default()).unwrap();
+        assert_eq!(formatted, source);
     }
 }

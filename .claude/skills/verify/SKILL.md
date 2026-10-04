@@ -85,6 +85,8 @@ grep -q -- '--quiet' docs/dist/reference/cli/index.html                         
 grep -q 'id="シェル補完"' docs/dist/reference/cli/index.html                          # シェル補完の節（Phase 74。コード内文字列は span で割れる）
 grep -q '<meta property="og:title"' docs/dist/index.html                          # 共有カード（Phase 76。canonical はフル URL 時だけ）
 grep -q 'id="共有カードogpと-canonical"' docs/dist/guide/deploy/index.html         # OGP の節（Phase 76）
+grep -q 'frontmatter-unrecognized' docs/dist/reference/rules/index.html             # frontmatter の読み違い（Phase 77）
+grep -q 'yuzu と同じ版に' docs/dist/guide/deploy/index.html                          # 雛形 deploy.yml の版固定（Phase 77）
 grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --root docs --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
@@ -113,6 +115,8 @@ ln -s "<scratchpad>/e2e-docs" "<scratchpad>/root-link" && ./target/debug/yuzu bu
 ./target/debug/yuzu new --root "<scratchpad>/e2e-docs" "<scratchpad>/root-new"   # exit 2
 cd "<scratchpad>/e2e-docs"
 test -f .github/workflows/deploy.yml   # Pages デプロイ雛形の同梱
+# 雛形 deploy.yml は yuzu new した版のタグでインストールする（Phase 77）
+grep -q -- "--tag v$(<repo>/target/debug/yuzu --version | awk '{print $2}') yuzu-cli" .github/workflows/deploy.yml && echo "OK deploy tag"
 <repo>/target/debug/yuzu build
 test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_search/search_bg.wasm
 <repo>/target/debug/yuzu search "はじめに" | grep "はじめに"
@@ -143,6 +147,14 @@ sed -i 's|^title = "My Docs"$|title = "My Docs"\nimage = "/images/yuzu-logo.svg"
 grep -q 'rel="canonical" href="https://example.com/docs/guide/getting-started/"' dist/guide/getting-started/index.html && echo "OK canonical"
 grep -q 'og:image" content="https://example.com/docs/images/yuzu-logo.svg"' dist/index.html && echo "OK og:image"
 <repo>/target/debug/yuzu build   # 後続の検査は既定 base_url に戻してから
+# 監視（Phase 77）: 何も編集せず build --watch を数秒動かして再ビルド 0 回（Linux の inotify は
+# 開いただけのイベントも届ける。macOS では起きないので開発コンテナで見る）
+timeout 6 <repo>/target/debug/yuzu build --watch --port 5199 2>&1 | grep -c '変更を検知'   # 0
+# frontmatter の閉じ忘れは check で error（exit 1）・区切り線で始まる文書は誤検出しない（Phase 77）
+printf -- '---\ntitle: 閉じ忘れ\n\n本文\n' > content/unclosed.md
+printf -- '---\n\n# 区切り線で始まる\n\n本文\n' > content/hr-first.md
+<repo>/target/debug/yuzu check --format json 2>/dev/null | grep -B2 '"path": "content/' | grep -c frontmatter-unrecognized   # 1（unclosed.md だけ）
+rm content/unclosed.md content/hr-first.md
 <repo>/target/debug/yuzu fmt --check && <repo>/target/debug/yuzu lint && <repo>/target/debug/yuzu check
 # 異常系: 壊れリンクを注入して check が終了コード 1 を返すこと（CI と同じ）
 echo '[壊れリンク](missing.md)' >> content/index.md
