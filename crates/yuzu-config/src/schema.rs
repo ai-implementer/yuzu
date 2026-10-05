@@ -98,8 +98,9 @@ impl Default for OutputConfig {
 #[derive(Debug, Clone)]
 pub struct ThemeConfig {
     pub name: String,
-    /// ダークモード切替 UI を有効にするか
-    pub dark: bool,
+    /// ダークモードの扱い（切替ボタン＋ OS 追従 / OS 追従のみ / ライト固定）。
+    /// 旧形式の bool も読む（`true` = toggle、`false` = light）
+    pub dark: DarkMode,
     /// テーマ CSS 変数の上書き（キーは `--` 省略可。例: `accent = "#0a6cff"`）。
     /// 変数名は theme.css の `:root` 定義を参照。BTreeMap なので出力は決定的
     pub css_vars: BTreeMap<String, String>,
@@ -116,7 +117,7 @@ impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
             name: "default".to_string(),
-            dark: true,
+            dark: DarkMode::default(),
             css_vars: BTreeMap::new(),
             css_vars_dark: BTreeMap::new(),
             toc: TocConfig::default(),
@@ -285,6 +286,29 @@ impl Default for MermaidConfig {
         Self {
             enabled: true,
             backend: MermaidBackend::Client,
+        }
+    }
+}
+
+/// `theme.dark` — ダークモードの扱い
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DarkMode {
+    /// 切替ボタンを出し、選択が無ければ OS の設定に従う（既定。旧 `true`）
+    #[default]
+    Toggle,
+    /// ボタンを出さず、OS の設定に従う
+    Auto,
+    /// ボタンを出さず、常にライト（旧 `false`）
+    Light,
+}
+
+impl DarkMode {
+    /// TOML 上の値（`"toggle"` / `"auto"` / `"light"`）。テンプレートにもこの値で渡す
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Toggle => "toggle",
+            Self::Auto => "auto",
+            Self::Light => "light",
         }
     }
 }

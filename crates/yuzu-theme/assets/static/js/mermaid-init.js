@@ -10,26 +10,39 @@
     el.dataset.mermaidSource = el.textContent;
   });
 
+  // data-theme が無いあいだは OS の設定に従う（CSS の prefers-color-scheme と同じ判定）
+  var osDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+  function isDark() {
+    var theme = document.documentElement.dataset.theme;
+    return theme ? theme === "dark" : osDark.matches;
+  }
+
   function render() {
-    var dark = document.documentElement.dataset.theme === "dark";
     window.mermaid.initialize({
       startOnLoad: false,
-      theme: dark ? "dark" : "default",
+      theme: isDark() ? "dark" : "default",
     });
     window.mermaid.run();
   }
 
-  render();
-
-  // theme.js（ボタン）以外の切替経路にも追従できるよう属性変化を監視する
-  new MutationObserver(function () {
+  function rerender() {
     blocks.forEach(function (el) {
       el.removeAttribute("data-processed");
       el.textContent = el.dataset.mermaidSource;
     });
     render();
-  }).observe(document.documentElement, {
+  }
+
+  render();
+
+  // theme.js（ボタン）以外の切替経路にも追従できるよう属性変化を監視する
+  new MutationObserver(rerender).observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["data-theme"],
+  });
+  // 明示の選択が無いときは OS 側の切替にも追従する
+  osDark.addEventListener("change", function () {
+    if (!document.documentElement.dataset.theme) rerender();
   });
 })();

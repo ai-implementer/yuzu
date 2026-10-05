@@ -29,6 +29,39 @@ pub fn iter() -> impl Iterator<Item = Cow<'static, str>> {
 
 #[cfg(test)]
 mod tests {
+    /// `selector {` の次の行から、対応する `  }` の手前までの宣言を返す
+    fn block_body<'a>(css: &'a str, selector: &str) -> &'a str {
+        let open = format!("  {selector} {{\n");
+        let start = css
+            .find(&open)
+            .unwrap_or_else(|| panic!("{selector} が無い"))
+            + open.len();
+        let len = css[start..]
+            .find("\n  }\n")
+            .expect("ブロックが閉じていない");
+        &css[start..start + len]
+    }
+
+    /// theme.css のダーク定義は 2 系統（明示の選択 / OS 追従）を手で並べている。
+    /// 片方だけ直すと「ボタンで選んだダーク」と「OS 追従のダーク」で配色が食い違うので、
+    /// 中身が同じであることを縛る（Phase 79）
+    #[test]
+    fn ダーク定義の_2_系統は同じ中身() {
+        let css =
+            String::from_utf8(super::get("static/css/theme.css").unwrap().into_owned()).unwrap();
+        let explicit = block_body(&css, "html[data-theme=\"dark\"]");
+        let os = block_body(&css, "html:not([data-theme])");
+        assert!(explicit.contains("--bg:"), "{explicit}");
+        assert_eq!(
+            explicit, os,
+            "theme.css のダーク定義 2 ブロックが食い違っている"
+        );
+        // OS 追従は画面専用かつ prefers-color-scheme の内側
+        assert!(css.contains(
+            "@media screen and (prefers-color-scheme: dark) {\n  html:not([data-theme]) {"
+        ));
+    }
+
     #[test]
     fn 必須アセットが同梱されている() {
         for path in [

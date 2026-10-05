@@ -306,6 +306,14 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   サイドバーのスクロール位置復元）
   - どちらも**最初のペイントより前**に走る必要があるため
   - それ以外のテーマ JS は従来どおり `static/js/` の外部ファイル
+- **ダーク定義は 2 系統**（Phase 79）: 明示の選択 `html[data-theme="dark"]` と、選択が無い
+  ときの OS 追従 `@media (prefers-color-scheme: dark)` の `html:not([data-theme])`
+  - **`data-theme` を付けない状態が「OS の設定に従う」**。FOUC 回避の script は保存済みの
+    選択があるときだけ付ける（OS の値を書き込むと JS 無効で効かず、OS 側の切替にも追従しない）
+  - theme.css の手書きの 2 ブロックは同じ中身にする（yuzu-theme のテストが縛る）。
+    syntect.css と `css_vars_dark` は `css.rs` の `dark_two_ways` が 2 系統を出す
+  - JS で配色を判定するときは「`data-theme` があればそれ、無ければ `matchMedia`」
+    （`theme.js` / `mermaid-init.js`）
 - minijinja はデフォルトで属性中の `/` をエスケープするため、テンプレートの URL 値には
   **自前の `| url` フィルタ**（`yuzu-render/src/templates.rs`）を通す
   - **`| url` は HTML 属性専用**（`&` を `&amp;` にする。生のままだと `&copy;` を

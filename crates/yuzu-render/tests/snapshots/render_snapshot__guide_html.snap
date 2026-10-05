@@ -3,7 +3,7 @@ source: crates/yuzu-render/tests/render_snapshot.rs
 expression: guide
 ---
 <!DOCTYPE html>
-<html lang="ja" data-theme="light">
+<html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,12 +18,13 @@ expression: guide
 <link rel="stylesheet" href="/docs/_assets/css/theme.css">
 <link rel="stylesheet" href="/docs/_assets/css/syntect.css">
 <script>
-// FOUC 回避: CSS 適用前に保存済みテーマ（なければ OS 設定）を反映する
+// FOUC 回避: CSS 適用前に、切替ボタンで保存した選択だけを反映する。
+// 保存が無ければ data-theme を付けない = CSS の prefers-color-scheme が OS の設定に従う
+// （JS 無効でも同じ見た目になり、OS 側の切替にもその場で追従する）
 (function () {
   var stored = null;
   try { stored = localStorage.getItem("yuzu-theme"); } catch (e) {}
-  var theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  document.documentElement.dataset.theme = theme;
+  if (stored === "dark" || stored === "light") document.documentElement.dataset.theme = stored;
 })();
 </script>
 </head>

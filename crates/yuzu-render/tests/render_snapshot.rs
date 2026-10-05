@@ -1252,6 +1252,40 @@ fn git_メタ未設定なら最終更新も編集リンクも出さない() {
     assert!(!index.contains("page-meta-edit"), "{index}");
 }
 
+/// `theme.dark` の 3 値（Phase 79）。data-theme を付けないのが「OS の設定に従う」状態:
+/// - toggle（既定）: 付けない・切替ボタンと保存済みの選択を戻す script を出す
+/// - auto: 付けない・ボタンも script も出さない（OS 追従だけ）
+/// - light: `data-theme="light"` を付けてライト固定・ボタンも script も出さない
+#[test]
+fn theme_dark_の_3_値で_data_theme_とボタンが変わる() {
+    use yuzu_config::DarkMode;
+
+    let render = |mode: DarkMode| {
+        let dir = build_fixture_with_config(LiveReloadMode::None, |rc| {
+            rc.config.theme.dark = mode;
+        });
+        fs::read_to_string(dir.path().join("dist/index.html")).unwrap()
+    };
+
+    let toggle = render(DarkMode::Toggle);
+    assert!(toggle.contains("<html lang=\"ja\">"), "{toggle}");
+    assert!(toggle.contains("id=\"theme-toggle\""));
+    assert!(toggle.contains("localStorage.getItem(\"yuzu-theme\")"));
+
+    let auto = render(DarkMode::Auto);
+    assert!(auto.contains("<html lang=\"ja\">"), "{auto}");
+    assert!(!auto.contains("id=\"theme-toggle\""));
+    assert!(!auto.contains("localStorage.getItem(\"yuzu-theme\")"));
+
+    let light = render(DarkMode::Light);
+    assert!(
+        light.contains("<html lang=\"ja\" data-theme=\"light\">"),
+        "{light}"
+    );
+    assert!(!light.contains("id=\"theme-toggle\""));
+    assert!(!light.contains("localStorage.getItem(\"yuzu-theme\")"));
+}
+
 /// 読了時間・文字数（Phase 78）: 既定で出し、サイト全体は `theme.reading_time`、
 /// ページ単位は frontmatter `readingTime: false` で消せる
 #[test]

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ site.lang }}" data-theme="light">
+<html lang="{{ site.lang }}"{% if theme_mode == "light" %} data-theme="light"{% endif %}>{# data-theme 未設定 = OS の設定に従う（CSS の prefers-color-scheme）。light 固定のときだけ明示する #}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -21,12 +21,13 @@
 {{ theme_css_vars | safe }}</style>
 {% endif %}{% if math_enabled %}<link rel="stylesheet" href="{{ asset_url | url }}vendor/katex/katex.min.css">
 {% endif %}{% if dark_enabled %}<script>
-// FOUC 回避: CSS 適用前に保存済みテーマ（なければ OS 設定）を反映する
+// FOUC 回避: CSS 適用前に、切替ボタンで保存した選択だけを反映する。
+// 保存が無ければ data-theme を付けない = CSS の prefers-color-scheme が OS の設定に従う
+// （JS 無効でも同じ見た目になり、OS 側の切替にもその場で追従する）
 (function () {
   var stored = null;
   try { stored = localStorage.getItem("yuzu-theme"); } catch (e) {}
-  var theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  document.documentElement.dataset.theme = theme;
+  if (stored === "dark" || stored === "light") document.documentElement.dataset.theme = stored;
 })();
 </script>
 {% endif %}</head>

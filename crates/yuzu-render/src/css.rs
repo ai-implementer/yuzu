@@ -15,6 +15,21 @@ use crate::error::RenderError;
 use crate::highlight::CLASS_STYLE;
 
 const DARK_SCOPE: &str = "html[data-theme=\"dark\"]";
+/// OS 追従のスコープ: 切替の選択が無い（data-theme が無い）とき
+const OS_DARK_SCOPE: &str = "html:not([data-theme])";
+
+/// ダーク側の CSS を 2 系統で出す（Phase 79）。1 つ目は切替ボタンでの明示の選択
+/// （`html[data-theme="dark"]`）、2 つ目は選択が無いときの OS 追従
+/// （`prefers-color-scheme: dark` の `html:not([data-theme])`。JS 無効でも効く）。
+/// どちらも画面専用（`@media screen`）。中身は同じ生成関数から作るので食い違わない
+/// （theme.css の手書きの 2 ブロックは yuzu-theme のテストが一致を縛る）
+fn dark_two_ways(render: impl Fn(&str) -> String) -> String {
+    format!(
+        "@media screen {{\n{}}}\n@media screen and (prefers-color-scheme: dark) {{\n{}}}\n",
+        render(DARK_SCOPE),
+        render(OS_DARK_SCOPE)
+    )
+}
 
 /// 設定されたライト/ダークのテーマ名から `syntect.css` の中身を生成する
 pub(crate) fn generate_syntect_css(light: &str, dark: &str) -> Result<String, RenderError> {
@@ -30,12 +45,11 @@ pub(crate) fn generate_syntect_css(light: &str, dark: &str) -> Result<String, Re
     let light_css = css_for_theme_with_class_style(get(light)?, CLASS_STYLE)?;
     let dark_css = css_for_theme_with_class_style(get(dark)?, CLASS_STYLE)?;
 
-    // ダークは画面専用。scope_css 自体は触らず外から包む＝出力差分が
-    // 「@media screen { の前置と閉じ } の追加」だけになり、画面側の
-    // リグレッション有無を目視しやすい
+    // ダークは画面専用で、明示の選択と OS 追従の 2 系統（dark_two_ways）。
+    // scope_css 自体は触らず外から包む
     Ok(format!(
-        "/* yuzu build が生成（light: {light} / dark: {dark}）。手で編集しない */\n\n{light_css}\n@media screen {{\n{}}}\n",
-        scope_css(&dark_css, DARK_SCOPE)
+        "/* yuzu build が生成（light: {light} / dark: {dark}）。手で編集しない */\n\n{light_css}\n{}",
+        dark_two_ways(|scope| scope_css(&dark_css, scope))
     ))
 }
 
@@ -101,13 +115,12 @@ pub(crate) fn generate_theme_var_overrides(
         }
     };
 
-    // ダーク側は画面専用（syntect.css・theme.css のダーク定義と同じ規律）。
-    // 空のときに空の at-rule を出さない
-    let dark_block = block(DARK_SCOPE, dark_vars);
-    let dark_block = if dark_block.is_empty() {
-        dark_block
+    // ダーク側は画面専用で、明示の選択と OS 追従の 2 系統（syntect.css・theme.css の
+    // ダーク定義と同じ規律）。空のときに空の at-rule を出さない
+    let dark_block = if block(DARK_SCOPE, dark_vars).is_empty() {
+        String::new()
     } else {
-        format!("@media screen {{\n{dark_block}}}\n")
+        dark_two_ways(|scope| block(scope, dark_vars))
     };
     let css = format!("{}{}", block(":root", vars), dark_block);
     (!css.is_empty()).then_some(css)
@@ -140,6 +153,16 @@ mod tests {
         assert!(
             css.find("@media screen").unwrap() < css.find("html[data-theme=\"dark\"]").unwrap(),
             "ダークスコープが @media screen の内側にない"
+        );
+        // OS 追従（Phase 79）: 選択が無いときは prefers-color-scheme で同じ配色を当てる
+        let os = css
+            .find("@media screen and (prefers-color-scheme: dark) {")
+            .expect("OS 追従のブロックが無い");
+        assert!(os < css.find("html:not([data-theme]) ").unwrap());
+        // 2 系統は同じ規則数（同じダーク CSS から作る）
+        assert_eq!(
+            css.matches("html[data-theme=\"dark\"] ").count(),
+            css.matches("html:not([data-theme]) ").count()
         );
     }
 
@@ -175,6 +198,10 @@ mod tests {
         assert!(css.contains("  --accent: #7fb2ff;"));
         // ダーク側の上書きは画面専用（印刷ではライトの :root 値が生きる）
         assert!(css.contains("@media screen {"));
+        // OS 追従の側にも同じ上書きが入る（Phase 79）
+        assert!(css.contains(
+            "@media screen and (prefers-color-scheme: dark) {\nhtml:not([data-theme]) {\n  --accent: #7fb2ff;\n}\n}"
+        ));
     }
 
     #[test]
