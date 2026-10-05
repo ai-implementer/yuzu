@@ -282,37 +282,63 @@ Phase に束ね、`CACHE_FORMAT_VERSION` を 22 → 23 の 1 回で済ませた�
   - **未確認**: ブラウザで hover 無しに Tab だけで `#` に到達し、Enter で見出しへ移ること
     （この環境にブラウザが無い。Phase 80 の dogfooding で見る）
 
-### 79 OS ダーク追従（JS 無効時・`theme.dark = false` 時） ⬜
+### 79 OS ダーク追従（JS 無効時・`theme.dark = false` 時） ✅
 
-**概要**: JS が無効でも、切替ボタンを出さない設定でも、OS のダーク設定に追従させる。
-`data-theme="light"` のハードコードを外して「未設定 = OS 追従」を作り、CSS に
-`prefers-color-scheme` のフォールバックを足す。候補中最重量で、主な判断点は
-`theme.dark` の 3 値化と CSS 2 系統化の範囲。
+**概要**: JS が無効でも、切替ボタンを出さない設定でも、OS のダーク設定に従うようにした。
+`data-theme` を付けない状態を「OS の設定に従う」にし、ダーク定義を CSS の
+`prefers-color-scheme` 側にも置いた。`theme.dark` は 3 値（`"toggle"` / `"auto"` /
+`"light"`）にし、旧形式の bool も同じ見た目になる値で読む。判断点 2 つはユーザ確認の
+うえ推奨案（3 値化・旧値も受ける / CSS は 3 か所とも 2 系統化）。本文 HTML は変えない
+（キャッシュ形式の bump なし）。
 
-- 現状（実測）
+- 着手時の実測
   - `base.jinja` が `data-theme="light"` を無条件で書き、`theme.dark = true` のときだけ
-    インライン script が localStorage → OS 設定の順で `data-theme` を差し替える。
-    **JS 無効なら常にライト、`theme.dark = false` なら OS がダークでもライト**
-  - ダーク定義は 3 箇所に散っている: `theme.css` の変数ブロック（55〜81 行の 27 行）/
-    `css.rs` の `css_vars_dark` 生成 / `generate_syntect_css` のダーク配色
-    （いずれも `html[data-theme="dark"]` スコープ）。syntect.css は 21 KB（gzip 2 KB）
-  - `theme.dark` の意味は「ダークモード切替ボタンを出す」（config リファレンス）
-- やること
-  - `data-theme` の未設定状態（= OS 設定に従う）を作り、CSS に
-    `@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) … }` の
-    フォールバックを足す。JS が動けば従来どおり localStorage の選択が勝つ
-- 判断点
-  - **`theme.dark` の意味** — 現状の bool（ボタンの有無）のまま「OS 追従は常に有効」に
-    するか、3 値（`"toggle"` = ボタン＋ OS 追従 / `"auto"` = OS 追従のみ /
-    `"light"` = ライト固定）にするか。bool のまま「`false` でも OS がダークならダーク」は
-    設定キーの意味の再定義になる
-  - **CSS の 2 系統化の範囲** — 3 箇所すべてを `@media` 側にも複製する（syntect.css は
-    21 KB → 42 KB。gzip では 2 KB → 4 KB 程度）か、変数ブロックだけ複製して syntect は
-    JS 必須のままにするか（コードブロックだけライトのまま残る = 中途半端）
-  - **`data-theme="light"` のハードコードを外すか** — 外すと `html:not([data-theme])` が
-    「未設定 = OS 追従」になり、FOUC 回避 script は「保存済みがあるときだけ書く」形に
-    減る。`theme.dark = false` の既存サイトはライト固定を明示する必要が出る
-    （3 値化とセット）
+    head のインライン script が localStorage → OS の設定の順で `data-theme` を差し替えて
+    いた。**JS 無効なら常にライト、`theme.dark = false` なら OS がダークでもライト**
+  - ダーク定義は 3 か所: `theme.css` の変数ブロック / yuzu.toml の `css_vars_dark`
+    （`css.rs` が生成）/ `syntect.css` のダーク配色（`css.rs` が生成）。いずれも
+    `@media screen` 内の `html[data-theme="dark"]` スコープ
+  - `data-theme` を見る JS は `theme.js`（ボタン）と `mermaid-init.js`（クライアント描画の
+    図の配色・属性の変化を監視して再描画）
+- やったこと
+  1. 設定: `theme.dark` を `DarkMode`（`Toggle` 既定 / `Auto` / `Light`）にした。
+     codec は bool も受け、`true` = toggle、`false` = light（従来の false と同じ見た目）。
+     不正値は位置付きの設定エラー（指定できる値の一覧入り）
+  2. テンプレート: `<html>` に `data-theme` を付けないのを既定にし、light のときだけ
+     `data-theme="light"`。head の script（toggle のときだけ）は**保存済みの選択が
+     あるときだけ**付ける。切替ボタンも toggle のときだけ
+  3. JS: `theme.js` は「今見えている配色」（明示の選択が無ければ OS の設定）の反対へ
+     切り替える。`mermaid-init.js` は同じ規則で配色を決め、明示の選択が無いときは
+     OS 側の切替（`matchMedia` の change）でも再描画する
+  4. CSS: ダーク定義を 2 系統にした。1 つ目は明示の選択（`html[data-theme="dark"]`）、
+     2 つ目は選択が無いときの OS 追従（`@media screen and (prefers-color-scheme: dark)` の
+     `html:not([data-theme])`）。どちらも画面専用で、印刷は従来どおりライト
+     - `theme.css` の手書きの変数ブロックは 2 つ並べ、中身の一致を yuzu-theme の
+       テストが縛る。両方に `color-scheme: dark` を足した（スクロールバー・フォーム部品）
+     - `syntect.css` と `css_vars_dark` は `css.rs` の `dark_two_ways` が同じ生成関数から
+       2 系統を出す。syntect.css は docs サイトで 26 KB（gzip 2.4 KB）
+  5. docs: デプロイガイドに「ダークモード」の節（3 値の表・JS 無効でも効くこと・旧値の
+     読み方）、config リファレンスの `dark` の行と全キー例、雛形と docs の yuzu.toml を
+     `dark = "toggle"` に。ci.yml の docs ゲートと verify スキル
+- 決めたこと
+  - **`theme.dark` は 3 値にし、旧形式の bool も受ける** — bool のまま「false でも OS が
+    ダークならダーク」にすると、ライト固定のつもりで false にしていたサイトの見た目が
+    変わる。旧 `true` / `false` は従来と同じ見た目になる値（toggle / light）で読む
+  - **CSS は 3 か所とも 2 系統** — 変数だけにすると JS 無効でコードブロックだけライトの
+    配色が残る。生成側は 1 つの関数から作るので食い違わない。手書きの theme.css だけは
+    テストで一致を縛る
+  - **`data-theme` を付けない状態を「OS 追従」にする** — 以前の script のように OS の
+    値を `data-theme` に書き込むと、JS 無効では効かず、表示中の OS の切替にも追従しない
+  - ダーク固定（`"dark"`）は足していない（要望が無い）
+- 確認
+  - 設定の読み込み（3 値・旧 bool・不正値）・3 値ごとの `<html>` とボタンと script の
+    出し分け・CSS 生成（2 系統が同じ規則数・`css_vars_dark` の OS 側）・theme.css の
+    2 ブロックの一致の各テスト。スナップショット 4 件（`<html>` と head の script だけが
+    変わる）を目視して更新
+  - docs サイトのビルドとゲート
+  - **未確認**: ブラウザでの実際の切り替わり（OS のダーク設定・JS 無効・各値・ボタンでの
+    切替と再読込後の保持・クライアント描画の図の追従）。この環境にブラウザが無いので
+    Phase 80 の dogfooding で見る
 
 ### 80 dogfooding ⬜
 

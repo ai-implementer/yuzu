@@ -45,7 +45,7 @@ clean = true
 
 [theme]
 name = "default"
-dark = true
+dark = "toggle"
 reading_time = true
 
 [theme.css_vars]
@@ -178,7 +178,7 @@ glob 評価が想定外になるため）。
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
 | `name` | string / `"default"` | テーマ名 |
-| `dark` | bool / `true` | ダークモード切替ボタンを出す |
+| `dark` | string / `"toggle"` | ダークモードの扱い。`"toggle"`（切替ボタンを出し、選んでいなければ OS の設定に従う）/ `"auto"`（ボタンなしで OS の設定に従う）/ `"light"`（ライト固定）。旧形式の `true` は `"toggle"`、`false` は `"light"` として読む（[ダークモード](../guide/deploy.md#ダークモード)） |
 | `css_vars` | table / `{}` | テーマ CSS 変数の上書き（キーは `--` 省略可）。`[theme.css_vars]` のテーブルで書く |
 | `css_vars_dark` | table / `{}` | ダークモード時のみの上書き |
 | `toc.levels` | string / `"2-3"` | ページ内 TOC に載せる見出しレベルの範囲（`"2-4"` / `"2"` の形。h1〜h6 = 1〜6） |

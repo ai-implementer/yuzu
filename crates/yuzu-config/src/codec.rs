@@ -18,7 +18,7 @@ use kabosu::{
 };
 
 use crate::schema::{
-    BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DevConfig,
+    BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DarkMode, DevConfig,
     GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,
     MarkdownConfig, MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig,
     SearchConfig, ShardConfig, SiteConfig, ThemeConfig, TocConfig, TypoToleranceConfig,
@@ -218,6 +218,34 @@ impl Decode for CrossrefNumbering {
 }
 
 impl Encode for CrossrefNumbering {
+    fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+        encoder.string(self.as_str());
+        Ok(())
+    }
+}
+
+/// `theme.dark`。v0.18 まで bool（ボタンの有無）だったので、旧形式も同じ見た目になる値で
+/// 読む: `true` = toggle（ボタン＋ OS 追従）、`false` = light（ライト固定。旧 false は
+/// OS がダークでも常にライトだった）
+impl Decode for DarkMode {
+    fn decode(node: &Node, cx: &mut DecodeContext<'_>) -> Option<Self> {
+        match node.value() {
+            kabosu::Value::Boolean(true) => Some(Self::Toggle),
+            kabosu::Value::Boolean(false) => Some(Self::Light),
+            _ => decode_choice(
+                node,
+                cx,
+                &[
+                    ("toggle", Self::Toggle),
+                    ("auto", Self::Auto),
+                    ("light", Self::Light),
+                ],
+            ),
+        }
+    }
+}
+
+impl Encode for DarkMode {
     fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
         encoder.string(self.as_str());
         Ok(())

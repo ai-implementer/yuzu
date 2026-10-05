@@ -19,7 +19,7 @@ pub use discover::find_project_root;
 pub use error::{ConfigError, ConfigIssue};
 pub use resolve::{CONFIG_RULES, ConfigDiagnostic, ResolvedConfig, load, normalize_base_url};
 pub use schema::{
-    BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DevConfig,
+    BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DarkMode, DevConfig,
     GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,
     MarkdownConfig, MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig,
     SearchConfig, ShardConfig, SiteConfig, ThemeConfig, TocConfig, TypoToleranceConfig,

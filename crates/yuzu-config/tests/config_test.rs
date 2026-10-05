@@ -141,6 +141,32 @@ fn mermaid_backend_を読み込める() {
     assert!(err.to_string().contains(":2:11:"), "{err}");
 }
 
+/// `theme.dark` は 3 値。旧形式の bool も同じ見た目になる値で読む（Phase 79）
+#[test]
+fn theme_dark_は_3_値で旧形式の_bool_も読む() {
+    use yuzu_config::DarkMode;
+
+    for (text, expected) in [
+        ("", DarkMode::Toggle),
+        ("[theme]\ndark = \"toggle\"\n", DarkMode::Toggle),
+        ("[theme]\ndark = \"auto\"\n", DarkMode::Auto),
+        ("[theme]\ndark = \"light\"\n", DarkMode::Light),
+        // 旧形式: true = ボタン＋ OS 追従、false = ライト固定（従来の false と同じ見た目）
+        ("[theme]\ndark = true\n", DarkMode::Toggle),
+        ("[theme]\ndark = false\n", DarkMode::Light),
+    ] {
+        let dir = project(text);
+        let rc = load(dir.path()).unwrap();
+        assert_eq!(rc.config.theme.dark, expected, "{text:?}");
+    }
+
+    // 不正値は設定エラー（位置付き・指定できる値の一覧入り）
+    let dir = project("[theme]\ndark = \"dark\"\n");
+    let err = load(dir.path()).expect_err("不正値は拒否する");
+    assert!(matches!(err, ConfigError::Invalid { .. }), "{err:?}");
+    assert!(err.to_string().contains("`toggle`"), "{err}");
+}
+
 #[test]
 fn math_設定を読み込める() {
     let dir = project("[markdown.math]\nenabled = false\n");

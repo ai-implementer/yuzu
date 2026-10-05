@@ -228,6 +228,12 @@ jobs:
           grep -q '.anchor:focus-visible' docs/dist/_assets/css/theme.css
           # Phase 78: 読了時間と文字数（既定で表示）
           grep -q 'class="page-meta-reading">約 [0-9]* 分で読めます' docs/dist/guide/writing/index.html
+          # Phase 79: OS ダーク追従。toggle（docs の設定）では data-theme を付けず、
+          # theme.css と syntect.css に prefers-color-scheme の系統がある
+          grep -q '<html lang="ja">' docs/dist/index.html
+          grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/theme.css
+          grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/syntect.css
+          grep -q 'id="ダークモード"' docs/dist/guide/deploy/index.html
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）

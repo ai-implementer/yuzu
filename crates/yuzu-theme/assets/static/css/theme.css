@@ -1,6 +1,9 @@
 /* yuzu デフォルトテーマ
- * カラーは CSS 変数で定義し、html[data-theme="dark"] で上書きする
- * （ダークは @media screen 内 = 画面専用。印刷は常に :root のライト値）。
+ * カラーは CSS 変数で定義し、ダークは 2 系統で上書きする:
+ * html[data-theme="dark"]（切替ボタンでの明示の選択）と、data-theme が無いときの
+ * @media (prefers-color-scheme: dark)（OS の設定。JS 無効でも効く）。
+ * 2 つのブロックは同じ中身にする（yuzu-theme のテストが一致を縛る）。
+ * どちらも @media screen 内 = 画面専用で、印刷は常に :root のライト値。
  * シンタックスハイライトの配色は syntect.css（ビルド時生成）が担う。 */
 
 :root {
@@ -50,9 +53,45 @@
 }
 
 /* ダークは画面専用（@media screen）。印刷は常に :root のライト値になり、
-   @media print 側での変数の再指定は不要（Phase 55。詳細度は包んでも不変） */
+   @media print 側での変数の再指定は不要（Phase 55。詳細度は包んでも不変）。
+   ↓ 1 つ目: 切替ボタンでの明示の選択。2 つ目（この後）: 選択が無いときの OS 追従
+   （Phase 79）。中身を変えるときは両方を同じに直す */
 @media screen {
   html[data-theme="dark"] {
+    color-scheme: dark; /* スクロールバー・フォーム部品もダークに */
+    /* ダーク: ネイビー（ライトの明度構造を保ち、色相を構造ブルーの 213° に揃えて導出） */
+    --bg: #0c1c2f;
+    --bg-outer: #060f1a; /* .layout の外側（左右余白）。本文パネルより濃く */
+    --bg-subtle: #142740;
+    --bg-hover: #1c3452;
+    --bg-code: #0a1726;
+    --code-hl-bg: #16304e; /* コードの行ハイライト（--bg-code より一段明るい面） */
+    --fg: #dce7f5;
+    --fg-muted: #93a9c9;
+    --border: #2b4467;
+    --border-muted: #20304b;
+    --border-strong: #3e5d8c;
+    --accent: #4e8fe0; /* 明ブルー（暗地では明るい側を装飾に立てる） */
+    --accent-fg: #85b6f2;
+    --accent-subtle: #153357;
+    --accent-2: #ff6b47;
+    --accent-2-fg: #ff9973;
+    --accent-2-subtle: #46231a;
+    --link: #66b3e8;
+    /* --alert-note は --accent-fg 参照のため上書き不要（実体 #85b6f2、AA 8.15） */
+    --alert-tip: #3fb950; /* AA 6.76 */
+    --alert-important: #ab7df8; /* AA 5.74 */
+    --alert-warning: #d29922; /* AA 6.80 */
+    --alert-caution: #f85149; /* AA 5.12 */
+    --shadow: 0 0 14px rgba(0, 0, 0, 0.55); /* 暗地ではライト用の淡い影が見えないため濃く */
+  }
+}
+
+/* OS 追従（Phase 79）: data-theme が無いとき（切替の選択なし・theme.dark = "auto"・JS 無効）は
+   OS の設定に従う。中身は上の html[data-theme="dark"] と同じにする（テストが一致を縛る） */
+@media screen and (prefers-color-scheme: dark) {
+  html:not([data-theme]) {
+    color-scheme: dark; /* スクロールバー・フォーム部品もダークに */
     /* ダーク: ネイビー（ライトの明度構造を保ち、色相を構造ブルーの 213° に揃えて導出） */
     --bg: #0c1c2f;
     --bg-outer: #060f1a; /* .layout の外側（左右余白）。本文パネルより濃く */

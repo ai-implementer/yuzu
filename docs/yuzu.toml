@@ -17,7 +17,7 @@ clean = true
 
 [theme]
 name = "default"
-dark = true
+dark = "toggle"
 
 [nav]
 auto = true
