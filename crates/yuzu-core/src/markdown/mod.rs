@@ -4,8 +4,9 @@
 //! - パス2: [`render_body_html`] — コードブロック差し替え・URL 書き換えを
 //!   AST 上で行ってから HTML 化
 //!
-//! ⚠️ アンカー ID の同期: comrak の `header_ids` 拡張は HTML 化時に内部の
-//! `Anchorizer` で ID を採番する。TOC 側も**全見出しを文書順で**採番することで
+//! ⚠️ アンカー ID の同期: HTML 化時の見出し id は `heading.rs` の
+//! `PermalinkHeadings`（comrak の HeadingAdapter）が comrak の header_ids と同じ入力・
+//! 同じ `Anchorizer` で採番する。TOC 側も**全見出しを文書順で**採番することで
 //! 重複サフィックス（`-1` 等）を一致させている。片方だけ見出しを飛ばすとずれる。
 
 pub(crate) mod collapse;
@@ -13,6 +14,8 @@ pub(crate) mod crossref;
 pub(crate) mod fence;
 pub(crate) mod fragment;
 pub(crate) mod glossary;
+mod heading;
+mod reading;
 pub(crate) mod suppress_comment;
 pub(crate) mod tabs;
 
@@ -36,13 +39,17 @@ pub(crate) fn escape_html(text: &str) -> String {
 use std::path::Path;
 
 use comrak::nodes::{AstNode, NodeHtmlBlock, NodeValue};
-use comrak::{Anchorizer, Arena, Options, format_commonmark, format_html, parse_document};
+use comrak::{
+    Anchorizer, Arena, Options, format_commonmark, format_html_with_plugins, parse_document,
+};
 
 use crate::MarkdownOptions;
 use crate::error::CoreError;
 use crate::frontmatter::{looks_like_misread_thematic_break, parse_frontmatter};
 use crate::markdown::fence::parse_fence_info;
-use crate::model::{CrossrefLabel, Frontmatter, Page, PlainSection, SourceSpan, TocEntry};
+use crate::model::{
+    CrossrefLabel, Frontmatter, Page, PlainSection, ReadingStats, SourceSpan, TocEntry,
+};
 use crate::traits::{CodeBlockRenderer, UrlRewriter};
 
 /// comrak のオプションを組み立てる（凍結: GFM 拡張＋YAML frontmatter＋header_ids）。
@@ -258,6 +265,9 @@ pub struct RenderedBody {
     /// コード引用の `file=` は yuzu-render 側の `external_deps` が担い、
     /// こちらは core 展開ぶんを補完する。片方だけ見ると v15 の事故が再演する）
     pub used_fragment: bool,
+    /// 本文の分量（読了時間・文字数）。Markdown 断片を展開した後の本文で数える
+    /// （断片を使うページは本文キャッシュに載らないので、参照先だけの編集でも数え直る）
+    pub reading: ReadingStats,
 }
 
 pub(crate) fn render_body_html(
@@ -338,6 +348,11 @@ pub(crate) fn render_body_html(
             }
         }
     }
+
+    // 本文の分量はここで数える: 断片を展開した後（取り込んだ文章も数える）で、
+    // かつパス1 がコードブロック・キャプション等を HtmlBlock へ差し替える前
+    // （差し替え後は文章ノードが消える。コードブロックは元から数えない）
+    let reading = reading::count(root);
 
     // 相互参照の解決表（`#fig:deps` → 「図 1」）。ラベルはメタ抽出時に
     // 同じ規則で採番済みなので、ここでは引くだけ
@@ -534,11 +549,17 @@ pub(crate) fn render_body_html(
         }
     }
 
+    // 見出しは HeadingAdapter で描く（id を見出し自身に・パーマリンクを末尾に
+    // aria-label 付きで。採番は comrak の header_ids と同じ = heading.rs）
+    let headings = heading::PermalinkHeadings::new();
+    let mut plugins = comrak::options::Plugins::default();
+    plugins.render.heading_adapter = Some(&headings);
     let mut out = String::new();
-    format_html(root, &options, &mut out)?;
+    format_html_with_plugins(root, &options, &mut out, &plugins)?;
     Ok(RenderedBody {
         html: out,
         used_fragment,
+        reading,
     })
 }
 

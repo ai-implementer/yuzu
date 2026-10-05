@@ -48,8 +48,8 @@ pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
 pub use markdown::fragment::FRAGMENT_LANG;
 pub use markdown::{FenceBlock, RenderedBody, extract_fence_blocks};
 pub use model::{
-    CrossrefLabel, Frontmatter, GeneratedKind, NavNode, Page, PlainSection, SiteModel, SourceSpan,
-    TocEntry,
+    CrossrefLabel, Frontmatter, GeneratedKind, NavNode, Page, PlainSection, ReadingStats,
+    SiteModel, SourceSpan, TocEntry,
 };
 pub use nav::{NavGroup, nav_groups, route_group_key};
 pub use output::{OutputTracker, WriteOutcome};

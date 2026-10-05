@@ -23,6 +23,7 @@ clean = true
 [theme]
 name = "default"
 dark = true # ダークモード切替ボタンを出す
+reading_time = true # ページ末尾に読了時間の目安と文字数を出す（ページ単位は frontmatter の readingTime: false で消せる）
 # テーマ CSS 変数の上書き（変数名は theme.css の :root を参照）
 # [theme.css_vars]
 # accent = "#0a6cff"

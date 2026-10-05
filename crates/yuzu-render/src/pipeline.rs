@@ -192,11 +192,11 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             // 本文 HTML はキャッシュヒットなら comrak パースごとスキップする。
             // 進捗の 1 ページ 1 行はここで出す（並列ループ内なので行順は非決定。
             // 成果物のバイト同一性には関与しない）
-            let (body, mermaid_fallback) =
+            let (body, mermaid_fallback, reading) =
                 match ctx.cache.and_then(|c| c.body(&page.rel, &page.source)) {
                     Some(cached) => {
                         tracing::info!(page = %page.rel.display(), "レンダ（キャッシュ）");
-                        (cached.html, cached.mermaid_fallback)
+                        (cached.html, cached.mermaid_fallback, cached.reading)
                     }
                     None => {
                         tracing::info!(page = %page.rel.display(), "レンダ");
@@ -222,10 +222,11 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                                 CachedBody {
                                     html: rendered.html.clone(),
                                     mermaid_fallback: fallback,
+                                    reading: rendered.reading,
                                 },
                             );
                         }
-                        (rendered.html, fallback)
+                        (rendered.html, fallback, rendered.reading)
                     }
                 };
             // 「このページで mermaid.js を読み込むか」。client は従来どおり常に読み、
@@ -269,7 +270,15 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             };
             let html = tpl.render(context! {
                 site => site_ctx,
-                page => PageCtx::new(page, &body, &resolver, last_updated, edit_url, &toc_levels),
+                page => PageCtx::new(
+                    page,
+                    &body,
+                    &resolver,
+                    last_updated,
+                    edit_url,
+                    &toc_levels,
+                    cfg.theme.reading_time.then_some(reading),
+                ),
                 nav => NavCtx::build(&params.site.nav, nav_trails.trail(&page.route), &resolver),
                 nav_collapse => cfg.nav.collapse,
                 pager => nav_order.pager(&page.route, &resolver),

@@ -91,6 +91,7 @@ table_codec!(ThemeConfig {
     "css_vars" => css_vars,
     "css_vars_dark" => css_vars_dark,
     "toc" => toc,
+    "reading_time" => reading_time,
 });
 
 table_codec!(TocConfig {

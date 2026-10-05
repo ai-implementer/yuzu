@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use yuzu_core::{NavNode, Page, TocEntry};
+use yuzu_core::{NavNode, Page, ReadingStats, TocEntry};
 
 use crate::urls::UrlResolver;
 
@@ -133,6 +133,18 @@ pub(crate) struct PageCtx<'a> {
     /// sitemap の `<loc>` と同じゲート）
     pub canonical_url: Option<String>,
     pub toc: Vec<TocCtx<'a>>,
+    /// 読了時間の目安と文字数（`theme.reading_time` かつ frontmatter `readingTime` が
+    /// 有効で、文章があるページだけ Some。合成ページには出さない）
+    pub reading: Option<ReadingCtx>,
+}
+
+/// ページメタに出す本文の分量
+#[derive(Serialize)]
+pub(crate) struct ReadingCtx {
+    /// 読了時間の目安（分）
+    pub minutes: usize,
+    /// 文字数（3 桁区切り済みの表示用文字列）
+    pub chars: String,
 }
 
 impl<'a> PageCtx<'a> {
@@ -143,6 +155,8 @@ impl<'a> PageCtx<'a> {
         last_updated: Option<String>,
         edit_url: Option<String>,
         toc_levels: &std::ops::RangeInclusive<u8>,
+        // 本文の分量（断片展開後に数えた値）。`theme.reading_time` が false なら None
+        reading: Option<ReadingStats>,
     ) -> Self {
         let visible: Vec<&TocEntry> = page
             .toc
@@ -162,8 +176,27 @@ impl<'a> PageCtx<'a> {
                 .is_absolute_base()
                 .then(|| resolver.page_url(&page.route)),
             toc: build_toc(&visible),
+            reading: reading
+                .filter(|r| page.frontmatter.reading_time && !page.is_generated() && r.minutes > 0)
+                .map(|r| ReadingCtx {
+                    minutes: r.minutes,
+                    chars: group_digits(r.chars),
+                }),
         }
     }
+}
+
+/// 3 桁ごとにカンマで区切る（`12345` → `12,345`）
+fn group_digits(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// route → nav 上の祖先チェーン（先頭 = トップレベル、末尾 = 当該ノード自身。
@@ -363,6 +396,15 @@ pub(crate) fn build_breadcrumbs<'a>(
 mod tests {
     use super::*;
     use yuzu_core::SiteModel;
+
+    #[test]
+    fn 文字数は_3_桁ごとに区切る() {
+        assert_eq!(group_digits(0), "0");
+        assert_eq!(group_digits(999), "999");
+        assert_eq!(group_digits(1000), "1,000");
+        assert_eq!(group_digits(12345), "12,345");
+        assert_eq!(group_digits(1234567), "1,234,567");
+    }
 
     /// og:locale は地域サブタグがある lang だけ `language_TERRITORY` にし、地域の推測はしない
     #[test]

@@ -29,9 +29,13 @@ pub struct Frontmatter {
     /// の warning になる
     #[serde(rename = "lintDisable")]
     pub lint_disable: Vec<String>,
+    /// false ならこのページに読了時間・文字数を出さない（サイト全体の
+    /// `theme.reading_time` が true のときだけ意味を持つ）
+    #[serde(rename = "readingTime")]
+    pub reading_time: bool,
 }
 
-// llms の既定を true にするため derive ではなく手書き
+// llms・readingTime の既定を true にするため derive ではなく手書き
 // （serde のコンテナ #[serde(default)] もこの Default を使う）
 impl Default for Frontmatter {
     fn default() -> Self {
@@ -43,8 +47,21 @@ impl Default for Frontmatter {
             llms: true,
             aliases: Vec::new(),
             lint_disable: Vec::new(),
+            reading_time: true,
         }
     }
+}
+
+/// 本文の分量（ページメタの読了時間・文字数）。
+/// 数えるのは本文の文章だけ（コードブロック・図・数式・生 HTML・画像の代替テキスト・
+/// frontmatter は数えない）。Markdown 断片は展開した後で数える。
+/// 数え方は `markdown/reading.rs`、数える場所は本文 HTML 化（`RenderedBody::reading`）
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadingStats {
+    /// 空白を除いた文字数
+    pub chars: usize,
+    /// 読了時間の目安（分。切り上げ。文章が無ければ 0）
+    pub minutes: usize,
 }
 
 /// ソース上の位置（1 始まりの行・列）。将来の Linter 診断用に保持する

@@ -147,6 +147,57 @@ fn 数式の_html_スナップショット() {
     insta::assert_snapshot!("math_html", html);
 }
 
+/// 見出しのパーマリンク（Phase 78）: id は見出し自身・リンクは末尾に aria-label 付き。
+/// aria-hidden を付けない（キーボード・支援技術から到達できるように）。
+/// id は TOC（extract_meta）の採番と一致し、ラベルの見出し文はエスケープする
+#[test]
+fn 見出しのパーマリンクは末尾に_aria_label_付きで置く() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("index.md"),
+        "# 概要\n\n## A & \"B\" < C\n\n## `code` と **強調**\n\n## 概要\n",
+    )
+    .unwrap();
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let page = &site.pages[0];
+    let html = render_body_html(
+        page,
+        &MarkdownOptions::default(),
+        &MermaidOnlyRenderer,
+        &NoopUrlRewriter,
+        None,
+    )
+    .unwrap()
+    .html;
+
+    assert!(!html.contains("aria-hidden"), "{html}");
+    assert!(
+        html.contains(
+            r##"<h1 id="概要">概要<a class="anchor" href="#概要" aria-label="「概要」へのリンク"></a></h1>"##
+        ),
+        "{html}"
+    );
+    // 見出し文の記号は属性用にエスケープする（id は Anchorizer が記号を落とす）
+    assert!(
+        html.contains(r#"aria-label="「A &amp; &quot;B&quot; &lt; C」へのリンク""#),
+        "{html}"
+    );
+    // 装飾は平らにした文字列でラベルにする
+    assert!(
+        html.contains(r#"aria-label="「code と 強調」へのリンク""#),
+        "{html}"
+    );
+    // TOC の id と本文の id が文書順で一致する（重複見出しの -1 も含めて）
+    for entry in &page.toc {
+        assert!(
+            html.contains(&format!(r#"id="{}">"#, entry.id)),
+            "TOC の id {} が本文に無い:\n{html}",
+            entry.id
+        );
+    }
+    assert!(page.toc.iter().any(|e| e.id == "概要-1"), "{:?}", page.toc);
+}
+
 #[test]
 fn alerts_と脚注の_html_スナップショット() {
     let dir = tempfile::tempdir().unwrap();
@@ -475,6 +526,40 @@ fn タブが一枚だけならグループにしない() {
 }
 
 /// 断片テスト用: プロジェクトルート（content/ と snippets/ を持つ）を作る
+/// 読了時間・文字数は断片を展開した後で数える（直接書いた本文と同じ値になる。
+/// PR #25 のレビュー指摘: 原文だけを数えると取り込んだ文章が丸ごと抜けていた）
+#[test]
+fn 読了時間は断片を展開した本文で数える() {
+    let body = "あ".repeat(1200);
+    let reading_of = |root: &std::path::Path, page_src: &str| {
+        fs::write(root.join("content/index.md"), page_src).unwrap();
+        let site =
+            build_site_model(&root.join("content"), &[], &MarkdownOptions::default()).unwrap();
+        render_body_html(
+            &site.pages[0],
+            &MarkdownOptions::default(),
+            &MermaidOnlyRenderer,
+            &NoopUrlRewriter,
+            Some(root),
+        )
+        .unwrap()
+        .reading
+    };
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("content")).unwrap();
+    fs::create_dir_all(root.path().join("snippets")).unwrap();
+    fs::write(root.path().join("snippets/body.md"), &body).unwrap();
+
+    let direct = reading_of(root.path(), &format!("# 直接\n\n{body}\n"));
+    let included = reading_of(
+        root.path(),
+        "# 取込\n\n```include file=\"snippets/body.md\"\n```\n",
+    );
+    assert_eq!(direct.chars, 1202);
+    assert_eq!(included, direct);
+    assert_eq!(included.minutes, 3);
+}
+
 fn fragment_fixture(page_src: &str, fragment_src: &str) -> (tempfile::TempDir, String) {
     let root = tempfile::tempdir().unwrap();
     fs::create_dir_all(root.path().join("content")).unwrap();
@@ -739,8 +824,10 @@ fn 用語集_見出しで初出を使い切らない() {
     );
     assert_eq!(html.matches("<abbr").count(), 1, "{html}");
     // 見出しは素のまま（アンカー ID の採番も従来どおり）
-    assert!(html.contains(r#"id="ssg-とは""#), "{html}");
-    assert!(html.contains("></a>SSG とは</h1>"), "{html}");
+    assert!(
+        html.contains(r#"<h1 id="ssg-とは">SSG とは<a class="anchor""#),
+        "{html}"
+    );
 }
 
 #[test]

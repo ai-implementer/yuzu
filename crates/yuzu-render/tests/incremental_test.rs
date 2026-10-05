@@ -524,3 +524,32 @@ fn 用語集を無効にすると生成ページが孤児掃除される() {
         "生成ページが孤児掃除されない"
     );
 }
+
+/// 読了時間・文字数は Markdown 断片を展開した後で数える。断片を使うページは本文ごと
+/// キャッシュしないので、参照先だけを編集しても数え直る（PR #25 のレビュー指摘）
+#[test]
+fn 読了時間は断片の参照先だけの編集でも数え直る() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_project(dir.path());
+    write(dir.path(), "snippets/body.md", &"あ".repeat(1200));
+    write(
+        dir.path(),
+        "content/inc.md",
+        "# 取込\n\n```include file=\"snippets/body.md\"\n```\n",
+    );
+    let cache_dir = dir.path().join(".yuzu/cache");
+    let page = dir.path().join("dist/inc/index.html");
+
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    // 見出し 2 字 + 断片 1200 字
+    let html = fs::read_to_string(&page).unwrap();
+    assert!(html.contains("約 3 分で読めます（1,202 文字）"), "{html}");
+
+    // 参照先だけを書き換える（ページの source は変わらない）
+    write(dir.path(), "snippets/body.md", &"い".repeat(2400));
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    let html = fs::read_to_string(&page).unwrap();
+    assert!(html.contains("約 5 分で読めます（2,402 文字）"), "{html}");
+}

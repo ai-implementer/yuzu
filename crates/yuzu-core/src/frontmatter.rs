@@ -12,6 +12,7 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "llms",
     "aliases",
     "lintDisable",
+    "readingTime",
 ];
 
 /// comrak の front matter extension が切り出した生テキスト
