@@ -1,5 +1,4 @@
-# yuzu 自身のドキュメントサイト。
-# このリポジトリの yuzu でビルドし、GitHub Pages へ公開する
+# yuzu 自身のドキュメントサイト。このリポジトリの yuzu でビルドし、GitHub Pages へ公開する
 # （.github/workflows/docs.yml。base_url は CI が --base-url で注入する）。
 
 [site]
@@ -7,6 +6,7 @@ title = "yuzu"
 description = "Markdown の設計書を静的 HTML ドキュメントサイトへ変換する Rust 製ツール"
 lang = "ja"
 logo = "/images/yuzu-logo.svg"
+image = "/images/og.png" # 共有カード（og:image）。base_url がフル URL の公開ビルドでだけ出る
 
 [input]
 dir = "content"

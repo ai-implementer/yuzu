@@ -1305,17 +1305,17 @@ fn 読了時間は既定で出し_設定と_frontmatter_で消せる() {
     let long = fs::read_to_string(dir.path().join("dist/long/index.html")).unwrap();
     // 見出し 5 字 + 本文 1200 字 = 1205 字 → 1205 / 500 = 2.41 → 3 分
     assert!(
-        long.contains(r#"<span class="page-meta-reading">約 3 分で読めます（1,205 文字）</span>"#),
+        long.contains(r#"<p class="page-reading">約 3 分で読めます（1,205 文字）</p>"#),
         "{long}"
     );
     let quiet = fs::read_to_string(dir.path().join("dist/quiet/index.html")).unwrap();
-    assert!(!quiet.contains("page-meta-reading"), "{quiet}");
+    assert!(!quiet.contains("page-reading"), "{quiet}");
 
     let off = build_fixture_with_config(LiveReloadMode::None, |rc| {
         rc.config.theme.reading_time = false;
     });
     let index = fs::read_to_string(off.path().join("dist/index.html")).unwrap();
-    assert!(!index.contains("page-meta-reading"), "{index}");
+    assert!(!index.contains("page-reading"), "{index}");
 }
 
 #[test]

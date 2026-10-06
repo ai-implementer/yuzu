@@ -35,9 +35,11 @@ yuzu build --base-url "https://example.com/docs/"  # フル URL も可
 GitHub Pages への自動デプロイが動きます。必要な操作はリポジトリの
 **Settings \> Pages \> Source を「GitHub Actions」にする**ことだけです。
 
-ワークフローは `actions/configure-pages` が返す base path を
-`yuzu build --base-url` へ渡すため、project pages のサブパス
-（`/<リポジトリ名>/`）も設定なしで正しく配信されます。
+ワークフローは `actions/configure-pages` が返すホスト名と base path から公開先の
+フル URL（`https://<ホスト名>/<リポジトリ名>/`）を組み立てて `yuzu build --base-url`
+へ渡します。そのため project pages のサブパスも設定なしで正しく配信され、
+[canonical と共有カード](#共有カードogpと-canonical)・[sitemap.xml](#sitemapxml) も
+自動で出ます。
 
 ワークフローがインストールする yuzu は、`yuzu new` を実行した yuzu と同じ版に
 固定されています（`cargo install` の `--tag v0.18.0` のような指定）。リリース前の

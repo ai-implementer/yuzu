@@ -43,13 +43,17 @@ jobs:
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: ビルド
+        # 公開先のフル URL を渡す（--base-url は yuzu.toml の base_url 設定より優先される）。
+        # フル URL だと canonical・共有カード（og:url / site.image の og:image）・
+        # sitemap.xml が出て、llms.txt のリンクも絶対 URL になる。
         # base_path は user/org pages なら空・project pages なら /<リポジトリ名>。
-        # --base-url は yuzu.toml の base_url 設定より優先される。
+        # configure-pages の base_url 出力は「Enforce HTTPS」が無効だと http:// を返すため
+        # 使わず、スキームを https に固定して host + base_path から組み立てる。
         # 既存リポジトリのサブディレクトリ（例: docs/）に生成した場合は、このファイルを
         # リポジトリルートの .github/workflows/ へ移し、--root でプロジェクトを指定する:
-        #   run: yuzu build --root docs --base-url "${{ steps.pages.outputs.base_path }}/"
+        #   run: yuzu build --root docs --base-url "https://${{ steps.pages.outputs.host }}${{ steps.pages.outputs.base_path }}/"
         #   （下の upload-pages-artifact の path も docs/dist にする）
-        run: yuzu build --base-url "${{ steps.pages.outputs.base_path }}/"
+        run: yuzu build --base-url "https://${{ steps.pages.outputs.host }}${{ steps.pages.outputs.base_path }}/"
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

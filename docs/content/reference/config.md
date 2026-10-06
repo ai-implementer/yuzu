@@ -182,7 +182,7 @@ glob 評価が想定外になるため）。
 | `css_vars` | table / `{}` | テーマ CSS 変数の上書き（キーは `--` 省略可）。`[theme.css_vars]` のテーブルで書く |
 | `css_vars_dark` | table / `{}` | ダークモード時のみの上書き |
 | `toc.levels` | string / `"2-3"` | ページ内 TOC に載せる見出しレベルの範囲（`"2-4"` / `"2"` の形。h1〜h6 = 1〜6） |
-| `reading_time` | bool / `true` | ページ末尾に読了時間の目安と文字数を出す。ページ単位では frontmatter `readingTime: false` で消せる（[読了時間と文字数](../guide/writing.md#読了時間と文字数)） |
+| `reading_time` | bool / `true` | ページの先頭に読了時間の目安と文字数を出す。ページ単位では frontmatter `readingTime: false` で消せる（[読了時間と文字数](../guide/writing.md#読了時間と文字数)） |
 
 ## nav
 

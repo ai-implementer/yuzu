@@ -605,8 +605,20 @@ body {
   color: var(--accent-fg);
 }
 
-/* ページメタ（最終更新日・読了時間・編集リンク。それぞれ有効時のみ）。
-   情報は左に並べ、編集リンクだけ右端に寄せる */
+/* 読了時間の目安と文字数（theme.reading_time）。読む前の目安なので本文の前に置く
+   （Phase 80 でページ末尾の .page-meta から移した） */
+.page-reading {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+
+.draft-banner + .page-reading {
+  margin-top: 0.75rem;
+}
+
+/* ページメタ（最終更新日・編集リンク。それぞれ有効時のみ）。
+   最終更新日は左、編集リンクだけ右端に寄せる */
 .page-meta {
   display: flex;
   flex-wrap: wrap;

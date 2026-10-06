@@ -108,7 +108,7 @@ pub struct ThemeConfig {
     pub css_vars_dark: BTreeMap<String, String>,
     /// ページ内 TOC の表示設定
     pub toc: TocConfig,
-    /// ページフッターに読了時間の目安と文字数を出すか。ページ単位では
+    /// ページの先頭（本文の前）に読了時間の目安と文字数を出すか。ページ単位では
     /// frontmatter `readingTime: false` で消せる
     pub reading_time: bool,
 }

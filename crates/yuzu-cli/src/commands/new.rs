@@ -96,6 +96,13 @@ mod tests {
         let tag = format!("--tag v{}", env!("CARGO_PKG_VERSION"));
         assert!(filled.contains(&tag), "{tag} が無い:\n{filled}");
         assert!(filled.contains("cargo install --locked --git"), "{filled}");
+        // 公開先のフル URL を渡す（canonical・共有カード・sitemap が出る。Phase 80）
+        assert!(
+            filled.contains(
+                r#"run: yuzu build --base-url "https://${{ steps.pages.outputs.host }}${{ steps.pages.outputs.base_path }}/""#
+            ),
+            "{filled}"
+        );
     }
 
     /// 印の埋め忘れが無い（雛形のどのファイルにも生成後に印が残らない）

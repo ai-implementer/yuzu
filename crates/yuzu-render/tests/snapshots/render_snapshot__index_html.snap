@@ -155,6 +155,7 @@ expression: index
 
 
 
+<p class="page-reading">約 1 分で読めます（37 文字）</p>
 <article class="markdown-body" data-md-url="/docs/index.md">
 <h1 id="fixture-docs">Fixture Docs<a class="anchor" href="#fixture-docs" aria-label="「Fixture Docs」へのリンク"></a></h1>
 <p><a href="/docs/guide/getting-started/">はじめに</a>を読む。</p>
@@ -182,9 +183,6 @@ expression: index
 </pre>
 
 </article>
-<div class="page-meta">
-<span class="page-meta-reading">約 1 分で読めます（37 文字）</span>
-</div>
 <nav class="pager" aria-label="前後のページ">
 <a class="pager-next" rel="next" href="/docs/guide/"><span class="pager-dir">次のページ</span><span class="pager-title">ガイド</span></a>
 </nav>
