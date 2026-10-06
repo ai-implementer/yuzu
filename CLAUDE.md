@@ -400,6 +400,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     次の行へ進む（= ゲートになっていない）
   - `if cmd; then echo "…" >&2; exit 1; fi` の形で明示的に落とす（PR #7 のレビュー指摘で
     既存 7 箇所を置換済み）
+- **ci.yml の `run:` に GitHub Actions の式の開始記号（`$` と `{{`）を書かない**
+  - 雛形 deploy.yml の中身を grep で縛るときなどに、`${{ steps… }}` を文字列として
+    書くと Actions が bash より先に評価して空文字に置き換え、照合が別物になる。
+    式を含まない断片（`steps.pages.outputs.host }}`）を `grep -F` で見る
 - **MSRV の検査は `RUSTUP_TOOLCHAIN` で版を指定する**（ci.yml の `msrv` ジョブ）
   - リポジトリの `rust-toolchain.toml`（stable）が rustup の既定より優先されるので、
     `dtolnay/rust-toolchain` で古い版を入れるだけでは stable で検査してしまう

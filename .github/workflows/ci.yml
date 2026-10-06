@@ -227,7 +227,7 @@ jobs:
           fi
           grep -q '.anchor:focus-visible' docs/dist/_assets/css/theme.css
           # Phase 78: 読了時間と文字数（既定で表示）
-          grep -q 'class="page-meta-reading">約 [0-9]* 分で読めます' docs/dist/guide/writing/index.html
+          grep -q '<p class="page-reading">約 [0-9]* 分で読めます' docs/dist/guide/writing/index.html
           # Phase 79: OS ダーク追従。toggle（docs の設定）では data-theme を付けず、
           # theme.css と syntect.css に prefers-color-scheme の系統がある
           grep -q '<html lang="ja">' docs/dist/index.html
@@ -288,6 +288,11 @@ jobs:
           # （版指定なしだと利用者のサイトが main の最新でビルドされる）
           version=$("$GITHUB_WORKSPACE/target/debug/yuzu" --version | awk '{print $2}')
           grep -q -- "--locked --git https://github.com/ai-implementer/yuzu --tag v$version yuzu-cli" .github/workflows/deploy.yml
+          # Phase 80: 公開先のフル URL を渡す（canonical・共有カード・sitemap が出る）。
+          # この run の中に GitHub Actions の式の開始記号（ドル記号と波括弧 2 つ）を書くと
+          # Actions が bash より先に評価して空文字に置き換えるので、式を含まない断片で見る
+          grep -qF 'run: yuzu build --base-url "https://' .github/workflows/deploy.yml
+          grep -qF 'steps.pages.outputs.host }}' .github/workflows/deploy.yml
           if grep -q '__YUZU_VERSION__' .github/workflows/deploy.yml; then
             echo "deploy.yml に版の印が残っている" >&2
             exit 1

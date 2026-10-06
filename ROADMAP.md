@@ -272,6 +272,7 @@ Phase に束ね、`CACHE_FORMAT_VERSION` を 22 → 23 の 1 回で済ませた�
     `FORMAT_VERSION` の話になるため）
   - **表示は `.page-meta`（ページ末尾）** — 当初の計画どおり。ページ先頭のほうが
     読む前の目安として役に立つので、Phase 80 の dogfooding で位置を見直す
+    → **Phase 80 でページ先頭（パンくずの下・本文の前）の `.page-reading` へ移した**
 - 確認
   - 単体テスト（数え方 4 件・3 桁区切り）・本文の結合テスト（ラベルのエスケープ・
     装飾を平らにしたラベル・TOC と本文の id の一致・断片で取り込んだ文章を直接書いた
@@ -342,18 +343,42 @@ Phase に束ね、`CACHE_FORMAT_VERSION` を 22 → 23 の 1 回で済ませた�
 
 ### 80 dogfooding ⬜
 
-**概要**: Phase 76・78・79 を docs サイト・scaffold・CI ゲートで実運用し、SNS カードや
-キーボード操作の実物を確認する。
+**概要**: Phase 76〜79 を docs サイト・雛形（`yuzu new`）・CI で実際に使って仕上げる。
+読了時間をページ先頭へ移し、雛形の deploy.yml でも共有カードが出るようにし、雛形の
+原稿に新機能の実例を足した。ブラウザが要る確認（Tab 操作・ダーク表示・SNS カード）は
+開発環境にブラウザが無いのでユーザが行い、結果をここに記録する。判断点 3 つは
+ユーザ確認のうえ推奨案（og:image の PNG はユーザが用意し雛形には同梱しない /
+読了時間は先頭へ / 雛形 deploy.yml はフル URL）。
 
-- docs サイトで実運用する: og:image の素材（`public/images/` に PNG）を用意して
-  SNS カードの実物を確認、キーボードでパーマリンクへ到達できること（hover 無しで Tab
-  だけで `#` に届き、Enter で見出しへ移る）、読了時間の表示（ページ末尾のままか、
-  読む前の目安として先頭へ移すか）、OS ダーク追従（JS 無効・`theme.dark` の各値）
-- scaffold（`yuzu new`）の `yuzu.toml` と原稿に新キーの実例を足す
-- ci.yml の docs ゲート（canonical / `og:` / `aria-label` / 読了時間 /
-  `prefers-color-scheme`）と verify スキルの追随
-- 判断点: og:image を docs の `public/` に置くか（リポジトリにバイナリを足す）、
-  scaffold にも同梱するか
+- 着手時の実測
+  - 画像を作る道具（rsvg-convert・ImageMagick・Inkscape）が開発環境に無く、og:image の
+    PNG は作れない
+  - リダイレクト HTML の canonical（Phase 76 で「Phase 80 で要否を見る」とした件）は、
+    移動先が `resolver.page_url()` なので base がフル URL なら既に絶対 URL。**変更不要**
+  - docs.yml は既に `https://<host><base_path>/` を渡しているが、雛形の deploy.yml は
+    base path だけを渡しており、利用者のサイトには canonical・共有カード・sitemap.xml が
+    出ていなかった
+- やったこと
+  1. 読了時間をページ先頭へ: `page.jinja` で draft バナーの後・本文の前に
+     `<p class="page-reading">` として出し、`.page-meta`（最終更新日・編集リンク）からは
+     外した。CSS は `.page-reading`。テンプレートだけの変更なのでキャッシュ形式は
+     変わらない。スナップショット 2 件（読了時間の行が本文の前へ移るだけ）を目視して更新
+  2. 雛形 deploy.yml: docs.yml と同じく `https://<host><base_path>/` を渡す（configure-pages の
+     `base_url` 出力は Enforce HTTPS が無効だと http になるので host から組み立てる）。
+     雛形のテストと ci.yml の e2e で形を縛る。デプロイガイドの GitHub Pages 節も直した
+  3. 雛形の原稿（getting-started.md）: frontmatter の例に `readingTime: false`、
+     「見出しへのリンク」「読了時間」の節、「ダークモード」節を 3 値と OS 追従に
+  4. 文言: 執筆ガイド・config リファレンス・雛形 yuzu.toml・schema のコメントの
+     「ページ末尾」を「ページの先頭」に。ci.yml の docs ゲートと verify スキルの
+     読了時間の grep を新しい class に
+- 残り
+  - **og:image**: ユーザが `docs/public/images/og.png`（1200×630）を置いたら、
+    `docs/yuzu.toml` の `[site]` に `image = "/images/og.png"` を足す（25〜45 行目は
+    インクルードの `lines=` で引用されているので行番号を動かさない）。ci.yml の docs
+    ゲートに `test -f docs/dist/images/og.png`
+  - **ユーザによるブラウザ確認**: Tab だけで見出しの `#` に届き Enter で移るか / 読了時間の
+    見た目 / ダーク（OS 追従・JS 無効・◐ の切替と再読み込み後の保持・`"auto"` と
+    `"light"`・クライアント描画の図の追従）/ SNS カード（og.png を置いて公開した後）
 
 ## v0.10.1 レビューの持ち越し
 

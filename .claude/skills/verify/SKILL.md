@@ -90,7 +90,7 @@ grep -q 'yuzu と同じ版に' docs/dist/guide/deploy/index.html                
 grep -q '<h2 id="frontmatter">frontmatter<a class="anchor" href="#frontmatter" aria-label=' docs/dist/guide/writing/index.html  # 見出しのパーマリンク（Phase 78）
 ! grep -rl 'aria-hidden="true" class="anchor"' docs/dist/ --include="*.html"        # 旧形式のアンカーが残っていない（Phase 78）
 grep -q '.anchor:focus-visible' docs/dist/_assets/css/theme.css                     # フォーカスで # を出す（Phase 78）
-grep -q 'class="page-meta-reading">約 [0-9]* 分で読めます' docs/dist/guide/writing/index.html  # 読了時間（Phase 78）
+grep -q '<p class="page-reading">約 [0-9]* 分で読めます' docs/dist/guide/writing/index.html  # 読了時間（Phase 78）
 grep -q '<html lang="ja">' docs/dist/index.html                                    # toggle では data-theme を付けない（Phase 79）
 grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/theme.css               # OS ダーク追従（Phase 79）
 grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/syntect.css             # コードの配色も OS 追従（Phase 79）
