@@ -3,401 +3,14 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在: v0.18（Phase 76〜80）
+## 現在
 
-**v0.17 まで公開済み**（kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 も crates.io で
-公開済み。yuzu のリリースとは非同期。kabosu の publish 前に fuzz を回す規律は
-CLAUDE.md にある）。
-
-軸は「**公開サイトの仕上げ**」。v0.13 から持ち越していた 4 件（`<head>` メタ /
-パーマリンクの到達性 / ページメタ / OS ダーク追従）を 4 つの Phase で消化する。
-本文 HTML が変わる 2 件は Phase 78 に束ね、キャッシュ形式の bump を 1 回で済ませる。
-その前に、10-04 の見直しで見つかった「初めて使う人が最初に踏む不具合」6 件を
-Phase 77 で直す。
-
-**Phase 76〜80 はすべて完了（10-06。ブラウザでの確認も済み）**。残りは v0.18.0 の
-リリース（`release` スキル）。
-
-以下は策定の詳細。
-
-- 動機: 公開物（HTML）の質は v0.12「読む体験の完成」以来手を入れておらず、
-  v0.13 Phase 61 からの持ち越し 4 件（`<head>` メタ / 見出しパーマリンクのキーボード
-  到達性 / ページメタ / OS ダーク追従）が候補欄に 4 版分残っている。v0.16・v0.17 は
-  内部と CLI で、サイトの見え方は変わっていない
-- ゴール: 共有（SNS カード）・検索エンジン（canonical）・支援技術（キーボード到達性）・
-  OS 設定（ダーク追従）の 4 方向から「公開サイトとして過不足ない」状態にする。
-  新しい記法は足さない
-- **本文 HTML が変わるのは Phase 78 だけ**にまとめ、`CACHE_FORMAT_VERSION` の bump と
-  スナップショット全更新を 1 回で済ませる（Phase 76・79 はテンプレート・CSS・JS だけ。
-  Phase 77 の不具合修正も本文 HTML とキャッシュ形式を変えない）
-- Phase は「テンプレートだけ → 不具合修正 → 本文 HTML（bump 1 回）→ CSS の 2 系統化 →
-  dogfooding」の順。着手時に判断点を決めてから実装する
-- 追加（10-04）: Phase 76 の完了後、上級プログラマー・上級マネージャー・一般利用者の
-  3 つの視点でプロジェクト全体を見直した。Linux で `yuzu dev` の再ビルドが止まらない・
-  Mermaid の入力でビルドが落ちる等、初めて使う人が最初の数分で踏む不具合が見つかり、
-  公開サイトの仕上げより先に直すと決めて Phase 77 として差し込んだ
-  （旧 77〜79 は 78〜80 へ繰り下げ）
-
-### 76 `<head>` メタ（canonical / OGP） ✅
-
-**概要**: `base.jinja` の `<head>` に canonical と OGP（`og:*` / `twitter:card`）と
-`generator` を足した。新しい設定キーは `site.image`（og:image の素材）の 1 つ。
-canonical / `og:url` / パス指定の og:image は `base_url` がフル URL のときだけ出す
-（sitemap と同じゲート）。判断点 4 つはすべてユーザ確認のうえ推奨案。
-
-- 着手時の実測
-  - `<head>` にあるメタは `<title>` と `description` だけ。素材は `site.title` /
-    `site.description` / `page.description` / `site.lang` / `site.logo`（docs では SVG）が
-    既にあり、og:image だけ素材が無かった
-  - sitemap.xml の「`base_url` がフル URL のときだけ生成」の判定が `pipeline.rs` に
-    文字列比較で直書きされていた
-  - `<head>` を含む insta スナップショットは 4 件
-- やったこと
-  - `site.image` を追加（schema / codec / config リファレンス / scaffold のコメント）。
-    パスは `site.logo` と同じ `public_url` で解決し、パス指定は base がフル URL のときだけ
-    `og:image` に出す。フル URL 指定は base に依らず出す
-  - `UrlResolver::is_absolute_base` を足し、sitemap のゲートもこれに揃えた
-  - `PageCtx::canonical_url`（フル URL 時だけ Some）と `SiteCtx` の `image_url` /
-    `locale` / `generator`。404 ページは URL を持たないので canonical / og:url を出さない
-  - `base.jinja`: meta description をページ → サイトの順にフォールバック（og:description と
-    同じ値）、`og:type` = website / `og:site_name` / `og:title` / `og:description` /
-    canonical ＋ `og:url` / `og:image` / `og:locale` / `twitter:card` = summary /
-    `generator`。空行を混ぜないよう `{% set %}` とコメントは行末に置いた
-  - テスト: パスだけの base では URL 系を出さない / フル URL なら canonical・og:url・
-    og:image が絶対 URL / フル URL 指定の image は base に依らず出る / description の
-    フォールバック（404 で見る）/ `og_locale` の単体テスト。スナップショット 4 件更新
-  - docs: `guide/deploy.md` に「共有カード（OGP）と canonical」の節、config リファレンスの
-    `site` 表。ci.yml の docs ゲートと e2e（パス base で og:image 無し → フル URL で
-    canonical / og:url / og:image / description フォールバック）
-- 決めたこと
-  - **og:image は新キー `site.image`** — `site.logo` は docs も scaffold も SVG で、SVG を
-    受け付けないクローラが多い。利用者が PNG / JPEG を用意する
-  - **`og:type` は全ページ website** — ドキュメントサイトのページは記事ではなくサイトの
-    一部。`article` は公開日・著者などの付随プロパティを期待されるが素材が無い
-  - **`twitter:card` は summary 固定で出す** — 1 行で済み、og:image が無くてもタイトルと
-    説明のカードは出る。他の値は `og:*` にフォールバックするので `twitter:*` を増やさない
-  - **フル URL 無しの canonical は出さない** — RFC 6596 §3 は相対 IRI を許すが、ホストが
-    分からない状態の canonical は同一性の宣言として弱く、`og:url`（絶対 URL 必須）とも
-    揃わない。絶対 URL で出すのをプロジェクト方針にする
-  - **`og:locale` は `site.lang` が地域付きのときだけ** — `ja` から `ja_JP` を推測すると
-    `en` → `en_US` か `en_GB` かで誤りうる。推測しない
-  - **`generator` にバージョンを含めない** — 含めるとリリースのバンプごとに HTML
-    スナップショット 4 件が動き、「バンプコミットは Cargo.toml と Cargo.lock だけ」の
-    規律と衝突する。ビルドの識別は `__yuzu/build_id` が担う
-  - エイリアスのリダイレクト HTML が出している相対 canonical（移動先ページ）は今回
-    触らない — 移動先の宣言としては相対でも機能しており、フル URL 時だけ絶対にする
-    変更は Phase 80 の dogfooding で要否を見る
-  - レビュー指摘 2 件: **`| url` フィルタは HTML 属性専用にして `&` を `&amp;` に**
-    （生のままだと `?label=a&copy;b` がパーサで `a©b` に化けて別の画像 URL になる。
-    `<script>` 内の文字列は実体参照がデコードされないので `| url_js` を新設して
-    リダイレクト HTML の `location.replace` はそちら）/ **`og:locale` は地域サブタグ
-    （2 文字のアルファベットか 3 桁の数字）があるときだけ**（`zh-Hant` の `Hant` は
-    文字体系で、`zh_HANT` を出していた。`zh-Hant-TW` は `zh_TW`）
-
-### 77 初めて使う人が最初に踏む不具合の修正 ✅
-
-**概要**: 10-04 の見直しで見つかった、初めて使う人が最初の数分で踏む 6 件を直した。
-Linux での再ビルドの繰り返し / Mermaid の入力によるビルドの停止 / frontmatter の
-閉じ忘れ / 雛形 deploy.yml の版指定なし / 1.85 で動いていなかった MSRV ジョブ /
-異常な `base_url` での panic と panic 時の終了コード。本文 HTML とキャッシュ形式は
-変えていない（`CACHE_FORMAT_VERSION` の bump は Phase 78 の 1 回のまま）。判断点 7 つの
-うち 4 つはユーザ確認のうえ推奨案、残り 3 つは確認の応答が無かったので推奨案で進めた。
-
-- 着手時の実測（コードを読んで確認し、1・2・3・6 は開発コンテナで実行して再現した）
-  1. **Linux で `yuzu dev` / `build --watch` の再ビルドが止まらない** — notify 8.2 の
-     inotify は監視マスクに `OPEN`（ファイルを開いただけ）を含む（`inotify.rs:427`）。
-     notify-debouncer-mini はイベントの種類を捨ててパスだけを渡し、yuzu 側も種類で
-     絞っていなかったので、ビルドが原稿を読むたびに「変更」と判定された。`yuzu new`
-     直後の `yuzu dev` で 10 秒に 33 回（Linux 6.18・ext4）。macOS（FSEvents）では
-     起きないため気付かなかった
-  2. **Mermaid の入力でビルドが落ちる（tankan）** — gantt は `parse_duration_days` が
-     末尾 1 バイトで単位を切るため `5日` で panic（exit 101）。state は `state A {` の
-     内側で `state A {` を開くと親子が循環し、レイアウトのスコープの辿り上げが
-     メモリを使い切る。yuzu 側は `render_svg` の Err はクライアント描画へ切り替えるが、
-     panic は受け止めていなかった
-  3. **frontmatter の閉じ忘れが無言で、`yuzu fmt` すると痕跡が消える**。一方で先頭の
-     `---` は CommonMark では正当な区切り線でもあり、「先頭が `---` で閉じが無い」だけ
-     では区別できない。さらに comrak は 1 行目が `---` で後ろに `---` だけの行があれば
-     中身を問わず frontmatter とみなすため、区切り線を 2 本使う文書は、YAML が壊れて
-     exit 2 になるか、**間が YAML のコメントとして通って本文が黙って消える**
-     （後者は着手後に見つけた）
-  4. **雛形 deploy.yml が main を版指定なしでインストールする**（リリース前の非互換が
-     利用者のデプロイに届く）
-  5. **MSRV ジョブが 1.85 で動いていない** — `rust-toolchain.toml`（stable）が rustup の
-     既定より優先され、実際は stable で検査していた。**1.85 で通すと、mikan の依存
-     ruzstd 0.8.2 が 1.87 で安定化した API（`is_multiple_of`）を使っていて通らない**。
-     1.87 ならワークスペース全体が通り、kabosu・tankan は 1.85 でも通る
-  6. **`base_url = "/:x/"` で `yuzu preview` が panic** — axum 0.8 は `:` / `*` で始まる
-     セグメントを旧構文としてルート登録時に panic で拒む。`{` / `}` はルートの
-     パラメータ構文。panic 時の終了コードは 101。`dev` / `build --watch` の再ビルドは
-     監視スレッドで動くため、そこでの panic は main に届かず、監視だけが止まって配信が
-     残る
-- やったこと
-  1. 監視（yuzu-server `watch.rs`）: notify-debouncer-mini を外し、notify を直接使う。
-     監視スレッドで「受信 → 種類で絞る → 静かになるまで待つ」を行う。開いた・読んだ
-     だけのイベントは捨て、書き込みを終えて閉じた（`CLOSE_WRITE`）は残す。変更が
-     途切れず届いても debounce 間隔の 10 倍で区切る。依存が 1 つ減った
-  2. 監視スレッドの panic: コールバックを `catch_unwind` で受けて監視を止め、
-     `WatchHandle::take_failure` の合図（`WatchFailure`）で `serve` に知らせる。
-     `serve` は配信を止めて `ServerError::WatchStopped` を返し、`dev` / `build --watch`
-     は exit 2 で終わる。執筆中の構文エラーのような Err は従来どおりログだけで続ける
-  3. tankan: gantt は `strip_suffix` で単位を判定（有限でない値も拒否）。state は
-     複合状態を開くとき、新しい親から辿った鎖に自分が含まれればパースエラー
-     （`is_within`）。flowchart レイアウトの `scope_chain` にクラスタ数の上限を付けた
-     （万一の循環でも止まる）。回帰テストは公開 API（`render_svg`）経由で 3 件
-  4. panic の回収（yuzu-core `recover.rs`）: `catch` と、回収区間にいるかを示す
-     スレッドごとの印 `is_recovering`。Mermaid の SSR（yuzu-render）と comrak の整形
-     （`catch_formatter_panic`）の 2 か所で使う。後者はこれまで hook を差し替えて
-     黙らせていたが、並列に動く他スレッドの本物の panic まで黙らせるのでこちらに
-     寄せた。描画の panic は警告 1 行を出してクライアント描画へ切り替える
-  5. CLI（`main.rs`）: `run_catching` で panic を exit 2 に（rayon の並列処理中の panic
-     もここで受かることをテストで確認）。`install_panic_hook` は回収区間では何も出さず、
-     それ以外は「内部エラー（yuzu の不具合）」を 1 行で出す。**hook の中では終了
-     させない**。stderr へ書けなくても panic しない
-  6. frontmatter（yuzu-core `frontmatter.rs` の `detect_unrecognized`）: lint の新ルール
-     `frontmatter-unrecognized`（error・抑制不可。lint で唯一の error）で 3 つを報告し、
-     build でも警告する。fmt はそのページを書き換えない
-     - 閉じ忘れ: 1 行目が `---` ちょうどで、2 行目が「ASCII のキーとコロン」の形
-       （`title:` 等）なのに閉じが無い。2 行目が空行・見出し・日本語の文なら対象外
-     - TOML 形式: `+++` で始まり 2 行目が `キー =`
-     - 区切り線の誤読: 1 行目が `---` で、comrak が切り出した中身が YAML のマッピングと
-       して読めない（見出しだけ = コメント扱いで null・本文の文・箇条書き）。YAML が
-       壊れて exit 2 になる側は、エラー文に「先頭の区切り線は `***` で」の案内を足した
-  7. 雛形 deploy.yml: `cargo install --locked --git … --tag v<版> yuzu-cli`。版は
-     `yuzu new` が雛形の印（`__YUZU_VERSION__`）を自分の `CARGO_PKG_VERSION` で埋める
-  8. MSRV: ワークスペースの `rust-version` を 1.87 に上げ、kabosu・tankan は各
-     Cargo.toml で 1.85 を宣言。ci.yml の `msrv` ジョブを 2 段（1.85 で kabosu・
-     tankan、1.87 でワークスペース全体）にし、`RUSTUP_TOOLCHAIN` で版を指定して
-     `rustc --version` も確かめる。README・リリースノート・docs の「1.85」を直し、
-     インストール手順に `--locked` を付けた
-  9. `base_url`: preview / dev のルート登録で `without_v07_checks` を使い、`{` / `}` は
-     `%7B` / `%7D` にする（`literal_route`）。`/:x/`・`/*x/` は字句どおり、`/a{b}/` は
-     ブラウザが送るエンコード済みの `/a%7Bb%7D/` で配信する（どれも panic しない）
-  10. docs: 診断ルール一覧（`frontmatter-unrecognized` の節）・デプロイガイド（版の固定）・
-      内部設計（監視イベントの種類と panic）。ci.yml に docs ゲート 2 行と e2e
-      （deploy.yml のタグ・`build --watch` を 6 秒動かして再ビルド 0 回・frontmatter の
-      閉じ忘れが check で error / 区切り線の文書は誤検出しない）
-- 決めたこと
-  - **監視は notify を直接使う**（debouncer-full に替えない）— 依存を増やさず、監視
-    スレッドが自前になるのでコールバックの panic もそこで受けられる
-  - **雛形は `--tag` を埋め込む**（バイナリ取得にしない）— 変更が小さく、rust-cache が
-    `~/.cargo` を保存するので 2 回目以降は「インストール済み」で飛ばされる。版を雛形に
-    直書きしないのは「バンプコミットは Cargo.toml と Cargo.lock だけ」の規律のため。
-    未リリースの main からビルドした `yuzu new` は直前のリリースのタグを指す
-  - **frontmatter は「キーらしい行」なら error** — 既知キーに限ると `titel:` のような
-    打ち間違いを拾えない。日本語の文（`用語: 説明`）は ASCII キーの形に当たらないので
-    候補にならない。区切り線のつもりで 2 行目に英字のキーの形を書いた文書は誤検出
-    するが、`---` の次に空行を入れれば外れる（文面で案内）
-  - **区切り線の誤読は判定を変えずに報告だけ足す** — comrak の切り出しを前段で
-    上書きすると、空行やコメントで始まる正しい frontmatter を壊しうる。誤読の判定は
-    中身を YAML として読んだ結果で行う（マッピングなら正しい frontmatter）。当初は
-    「キーの形の行が 1 つも無い」で判定していたが、引用符付きキー `"title": x` や
-    フロー形式 `{title: x}` の正しい frontmatter を誤検出した（PR #22 のレビュー指摘）
-  - **MSRV は本体と mikan を 1.87、kabosu・tankan は 1.85** — 公開ライブラリの対応範囲を
-    不必要に狭めない。ruzstd を古い版に固定する案は、`cargo install`（`--locked` なし）が
-    最新を選ぶので利用者の環境では効かない
-  - **panic の出力は回収区間だけ黙らせ、それ以外は 1 行**。回帰テストは単体テストだけ
-    （本番コードにテスト専用の口を作らない）
-  - **`base_url` は検証して拒むのでなく、字句どおりに配信する** — `/:x/` は URL として
-    正当で build の出力にも問題が無いので、preview / dev 側を直した（ROADMAP の当初案
-    「設定の読み込みで設定エラー」から変更）。`{` / `}` は `{{` で重ねてただの文字にする
-    方法もあるが、axum はエンコードされたままのパスで照合し、ブラウザは `{` / `}` を
-    必ずエンコードして送るので、エンコード済みの形でマウントしないと一致しない
-  - **監視の停止は graceful shutdown にしない** — 接続が閉じるまで待つので、ライブ
-    リロードの WebSocket が開いている限り終わらない。プロセスはすぐ終わるので打ち切る
-- 確認
-  - 開発コンテナ（Linux）で `yuzu new` 直後の `build --watch` / `dev` を 8 秒ずつ
-    動かして再ビルド 0 回、1 回保存すると 1 回だけ再ビルド
-  - ホスト（macOS）でも `yuzu dev` が動くことをユーザが確認
-  - CI の `msrv` ジョブが rustc 1.85.1（kabosu・tankan）と 1.87.0（ワークスペース）で通ることを確認
-
-### 78 本文 HTML の到達性とページメタ（CACHE bump を 1 回に束ねる） ✅
-
-**概要**: 見出しのパーマリンクをキーボードと支援技術から到達できる形にし、読了時間と
-文字数をページメタに出した。どちらも本文 HTML / キャッシュ形式が変わるので 1 つの
-Phase に束ね、`CACHE_FORMAT_VERSION` を 22 → 23 の 1 回で済ませた。判断点 3 つは
-確認の応答が無かったので推奨案で進めた（作り方は comrak の HeadingAdapter / id は
-見出し自身・リンクは末尾 / 読了時間は既定で表示・速度は固定）。
-
-- 着手時の実測
-  - comrak の `header_ids` の出力は見出しの先頭に
-    `<a href="#id" aria-hidden="true" class="anchor" id="id"></a>` で固定（comrak 0.53
-    `html.rs:623`）。`theme.css` が `.anchor` を `visibility: hidden` にしており、
-    `aria-hidden` と合わせてキーボードからも支援技術からも到達できなかった
-  - comrak には見出しの描画を差し替える `HeadingAdapter`（`plugins.render.heading_adapter`）
-    がある。渡される見出し文（`HeadingMeta::content`）は comrak 自身の採番と同じ
-    `collect_text` で作られる
-  - id を探す JS は `scrollspy.js`（`getElementById` → `closest("h1…h6")`）と
-    `details-target.js`（`getElementById` → 祖先の details を開く）。どちらも id が
-    見出し自身に移っても動く。`scroll-margin-top` は `.anchor` に掛けていた
-  - ページメタの表示場所は `page.jinja` の `.page-meta`（最終更新・編集リンク）
-- やったこと
-  1. 見出しの描画（yuzu-core `markdown/heading.rs` の `PermalinkHeadings`）: comrak の
-     HeadingAdapter で `<h2 id="x">見出し<a class="anchor" href="#x" aria-label="「見出し」へのリンク"></a></h2>`
-     を出す。id は comrak の既定と同じ入力を同じ `Anchorizer` に文書順で通すので、
-     既存の `#id` リンク・TOC・検索の位置情報は変わらない（重複見出しの `-1` も同じ）。
-     ラベルの見出し文は属性用にエスケープする
-  2. CSS: `.anchor` を `visibility: hidden` から `opacity: 0` にし、見出しの `:hover` と
-     `.anchor:focus-visible` で出す（`#` は見出しの右）。`scroll-margin-top` は id を
-     持つ見出しへ移した。`scrollspy.js` はコメントだけ直した（`closest` は自身も含む）
-  3. 本文の分量（yuzu-core `markdown/reading.rs`）: 本文 HTML 化（`render_body_html`）の
-     中で、Markdown 断片を展開した直後・パス1 がコードブロック等を HtmlBlock へ差し替える
-     前に、`Text` と行内コードを数える（コードブロック・図・数式・生 HTML・frontmatter は
-     ノードの種類で外れ、画像の代替テキストは配下を除外）。日本語（かな・漢字・和文の
-     約物・全角英数）は 1 分 500 字、英数字は 1 分 200 語として足して切り上げる。
-     `RenderedBody::reading` と本文キャッシュ（`CachedBody.reading`）に載せる。
-     断片を使うページは本文ごとキャッシュしないので、参照先だけの編集でも数え直る
-     - 当初は `extract_meta`（原文だけを読む）で数えており、` ```include ` で取り込んだ
-       文章が丸ごと抜けていた（同じ 1,200 字が直接なら 1,202 字、取り込むと 2 字。
-       PR #25 のレビュー指摘）
-  4. 表示: `.page-meta` に「約 N 分で読めます（M 文字）」（文字数は 3 桁区切り）。
-     `theme.reading_time`（既定 true）と frontmatter `readingTime`（既定 true）の両方が
-     有効で、文章があり、合成ページでないときだけ。`.page-meta` は情報を左に並べ、
-     編集リンクだけ右端に寄せる形にした
-  5. 設定: `theme.reading_time`（schema / codec / 雛形 yuzu.toml / config リファレンスの
-     2 箇所）と frontmatter `readingTime`（`KNOWN_KEYS`・執筆ガイドの frontmatter 一覧）
-  6. `CACHE_FORMAT_VERSION` 22 → 23。スナップショットは本文 4 件・ページ 3 件を目視して
-     更新（見出しの形と読了時間の行だけが変わり、検索結果ページには読了時間が出ない）
-  7. docs: 執筆ガイドに「見出しへのリンク」「読了時間と文字数」の節。ci.yml の docs
-     ゲート（見出しの新しい形・旧形式の `aria-hidden` アンカーが残っていない・
-     `.anchor:focus-visible`・読了時間の行）と verify スキル
-- 決めたこと
-  - **パーマリンクは comrak の HeadingAdapter で描く** — 出力 HTML の文字列を後処理すると
-    comrak の出力形式に依存し、ラベル用の見出し文を id から引き直す必要がある。
-    HeadingAdapter なら採番の入力が comrak 自身と同じで、Anchorizer の 4 経路目も
-    作らない
-  - **id は見出し自身に付け、リンクは末尾に置く** — 飛んだ先が見出しそのものになり、
-    読み上げも「見出し文 → リンク名」の順になる。リンクを見出しの外に出す案は、
-    見出しごとに包む要素が要り本文の CSS やテーマ上書きへの影響が大きいので採らない。
-    見出しの読み上げにリンク名が混ざる点は残る
-  - **読了時間は既定で表示し、速度は固定** — 設定キーは表示の有無（`theme.reading_time`）
-    だけにした。文字数は検索の manifest と llms.txt には載せない（検索の
-    `FORMAT_VERSION` の話になるため）
-  - **表示は `.page-meta`（ページ末尾）** — 当初の計画どおり。ページ先頭のほうが
-    読む前の目安として役に立つので、Phase 80 の dogfooding で位置を見直す
-    → **Phase 80 でページ先頭（パンくずの下・本文の前）の `.page-reading` へ移した**
-- 確認
-  - 単体テスト（数え方 4 件・3 桁区切り）・本文の結合テスト（ラベルのエスケープ・
-    装飾を平らにしたラベル・TOC と本文の id の一致・断片で取り込んだ文章を直接書いた
-    ときと同じに数える）・描画の結合テスト（既定で表示 / frontmatter で消える /
-    `theme.reading_time = false` で消える）・インクリメンタルビルドのテスト（断片の
-    参照先だけを書き換えても読了時間・文字数が数え直る）
-  - docs サイトのビルドとゲート（執筆ガイドで「約 10 分で読めます（5,611 文字）」）
-  - ブラウザで hover 無しに Tab だけで `#` に到達し、Enter で見出しへ移ること
-    → Phase 80 の dogfooding でユーザが確認した（問題なし）
-
-### 79 OS ダーク追従（JS 無効時・`theme.dark = false` 時） ✅
-
-**概要**: JS が無効でも、切替ボタンを出さない設定でも、OS のダーク設定に従うようにした。
-`data-theme` を付けない状態を「OS の設定に従う」にし、ダーク定義を CSS の
-`prefers-color-scheme` 側にも置いた。`theme.dark` は 3 値（`"toggle"` / `"auto"` /
-`"light"`）にし、旧形式の bool も同じ見た目になる値で読む。判断点 2 つはユーザ確認の
-うえ推奨案（3 値化・旧値も受ける / CSS は 3 か所とも 2 系統化）。本文 HTML は変えない
-（キャッシュ形式の bump なし）。
-
-- 着手時の実測
-  - `base.jinja` が `data-theme="light"` を無条件で書き、`theme.dark = true` のときだけ
-    head のインライン script が localStorage → OS の設定の順で `data-theme` を差し替えて
-    いた。**JS 無効なら常にライト、`theme.dark = false` なら OS がダークでもライト**
-  - ダーク定義は 3 か所: `theme.css` の変数ブロック / yuzu.toml の `css_vars_dark`
-    （`css.rs` が生成）/ `syntect.css` のダーク配色（`css.rs` が生成）。いずれも
-    `@media screen` 内の `html[data-theme="dark"]` スコープ
-  - `data-theme` を見る JS は `theme.js`（ボタン）と `mermaid-init.js`（クライアント描画の
-    図の配色・属性の変化を監視して再描画）
-- やったこと
-  1. 設定: `theme.dark` を `DarkMode`（`Toggle` 既定 / `Auto` / `Light`）にした。
-     codec は bool も受け、`true` = toggle、`false` = light（従来の false と同じ見た目）。
-     不正値は位置付きの設定エラー（指定できる値の一覧入り）
-  2. テンプレート: `<html>` に `data-theme` を付けないのを既定にし、light のときだけ
-     `data-theme="light"`。head の script（toggle のときだけ）は**保存済みの選択が
-     あるときだけ**付ける。切替ボタンも toggle のときだけ
-  3. JS: `theme.js` は「今見えている配色」（明示の選択が無ければ OS の設定）の反対へ
-     切り替える。`mermaid-init.js` は同じ規則で配色を決め、明示の選択が無いときは
-     OS 側の切替（`matchMedia` の change）でも再描画する
-  4. CSS: ダーク定義を 2 系統にした。1 つ目は明示の選択（`html[data-theme="dark"]`）、
-     2 つ目は選択が無いときの OS 追従（`@media screen and (prefers-color-scheme: dark)` の
-     `html:not([data-theme])`）。どちらも画面専用で、印刷は従来どおりライト
-     - `theme.css` の手書きの変数ブロックは 2 つ並べ、中身の一致を yuzu-theme の
-       テストが縛る。両方に `color-scheme: dark` を足した（スクロールバー・フォーム部品）
-     - `syntect.css` と `css_vars_dark` は `css.rs` の `dark_two_ways` が同じ生成関数から
-       2 系統を出す。syntect.css は docs サイトで 26 KB（gzip 2.4 KB）
-  5. docs: デプロイガイドに「ダークモード」の節（3 値の表・JS 無効でも効くこと・旧値の
-     読み方）、config リファレンスの `dark` の行と全キー例、雛形と docs の yuzu.toml を
-     `dark = "toggle"` に。ci.yml の docs ゲートと verify スキル
-- 決めたこと
-  - **`theme.dark` は 3 値にし、旧形式の bool も受ける** — bool のまま「false でも OS が
-    ダークならダーク」にすると、ライト固定のつもりで false にしていたサイトの見た目が
-    変わる。旧 `true` / `false` は従来と同じ見た目になる値（toggle / light）で読む
-  - **CSS は 3 か所とも 2 系統** — 変数だけにすると JS 無効でコードブロックだけライトの
-    配色が残る。生成側は 1 つの関数から作るので食い違わない。手書きの theme.css だけは
-    テストで一致を縛る
-  - **`data-theme` を付けない状態を「OS 追従」にする** — 以前の script のように OS の
-    値を `data-theme` に書き込むと、JS 無効では効かず、表示中の OS の切替にも追従しない
-  - ダーク固定（`"dark"`）は足していない（要望が無い）
-- 確認
-  - 設定の読み込み（3 値・旧 bool・不正値）・3 値ごとの `<html>` とボタンと script の
-    出し分け・CSS 生成（2 系統が同じ規則数・`css_vars_dark` の OS 側）・theme.css の
-    2 ブロックの一致の各テスト。スナップショット 4 件（`<html>` と head の script だけが
-    変わる）を目視して更新
-  - docs サイトのビルドとゲート
-  - ブラウザでの実際の切り替わり（OS のダーク設定・JS 無効・各値・ボタンでの
-    切替と再読込後の保持・クライアント描画の図の追従）
-    → Phase 80 の dogfooding でユーザが確認した（問題なし）
-
-### 80 dogfooding ✅
-
-**概要**: Phase 76〜79 を docs サイト・雛形（`yuzu new`）・CI で実際に使って仕上げる。
-読了時間をページ先頭へ移し、雛形の deploy.yml でも共有カードが出るようにし、雛形の
-原稿に新機能の実例を足した。ブラウザが要る確認（Tab 操作・ダーク表示・SNS カード）は
-開発環境にブラウザが無いのでユーザが行い、結果をここに記録する。判断点 3 つは
-ユーザ確認のうえ推奨案（og:image の PNG はユーザが用意し雛形には同梱しない /
-読了時間は先頭へ / 雛形 deploy.yml はフル URL）。
-
-- 着手時の実測
-  - 画像を作る道具（rsvg-convert・ImageMagick・Inkscape）が開発環境に無く、og:image の
-    PNG は作れない
-  - リダイレクト HTML の canonical（Phase 76 で「Phase 80 で要否を見る」とした件）は、
-    移動先が `resolver.page_url()` なので base がフル URL なら既に絶対 URL。**変更不要**
-  - docs.yml は既に `https://<host><base_path>/` を渡しているが、雛形の deploy.yml は
-    base path だけを渡しており、利用者のサイトには canonical・共有カード・sitemap.xml が
-    出ていなかった
-- やったこと
-  1. 読了時間をページ先頭へ: `page.jinja` で draft バナーの後・本文の前に
-     `<p class="page-reading">` として出し、`.page-meta`（最終更新日・編集リンク）からは
-     外した。CSS は `.page-reading`。テンプレートだけの変更なのでキャッシュ形式は
-     変わらない。スナップショット 2 件（読了時間の行が本文の前へ移るだけ）を目視して更新
-  2. 雛形 deploy.yml: docs.yml と同じく `https://<host><base_path>/` を渡す（configure-pages の
-     `base_url` 出力は Enforce HTTPS が無効だと http になるので host から組み立てる）。
-     雛形のテストと ci.yml の e2e で形を縛る。デプロイガイドの GitHub Pages 節も直した
-  3. 雛形の原稿（getting-started.md）: frontmatter の例に `readingTime: false`、
-     「見出しへのリンク」「読了時間」の節、「ダークモード」節を 3 値と OS 追従に
-  4. 文言: 執筆ガイド・config リファレンス・雛形 yuzu.toml・schema のコメントの
-     「ページ末尾」を「ページの先頭」に。ci.yml の docs ゲートと verify スキルの
-     読了時間の grep を新しい class に
-  5. og:image: `docs/public/images/og.png`（1200×630・231 KB）を作り、`docs/yuzu.toml` の
-     `[site]` に `image = "/images/og.png"` を足した。画像はネイビーの背景に、ロゴの
-     ゆずの実（陰影と葉を足して拡大）・線で描いたワードマーク「yuzu」・
-     「Markdown マーク → ブラウザ窓」の絵。開発環境にフォントも画像変換ツールも無いので、
-     SVG を手で描き、使い捨ての resvg で PNG に書き出した（文字はフォントを使わず線で
-     描いた）。`docs/yuzu.toml` の 25〜45 行目（インクルードの `lines=` で引用）は、冒頭の
-     コメントを 1 行まとめて行番号を保った。ci.yml の docs ゲートに
-     `test -f docs/dist/images/og.png`
-     - 注意: `twitter:card` は summary（Phase 76 の判断）なので、X では画像が正方形に
-       切り抜かれた小さなサムネイルになる（中央の 630×630 = 実の右半分と「yu」あたり）。
-       Slack・Facebook・LinkedIn などは横長のまま出る
-- 確認
-  - 公開サイト（https://ai.implementer.net/yuzu/ 、PR #27 のマージ後のデプロイ）の HTML:
-    `og:image` がフル URL（`…/yuzu/images/og.png`）・og.png が 200 / `image/png` で配信・
-    読了時間が本文の前・見出しのパーマリンクが新しい形・`<html>` に `data-theme` が無い
-  - **ユーザによるブラウザ確認（10-06、すべて問題なし）**:
-    1. Tab だけで見出しの `#` に届き、Enter でその見出しへ移る（ヘッダーに隠れない）。
-       hover でも `#` が出る
-    2. 読了時間がパンくずの下・本文の前に出て、ライト / ダーク・狭い幅で違和感がない
-    3. ダーク: OS の外観の切替にその場で追従（コードブロックも）/ JS 無効でも OS に従う /
-       ◐ の選択が再読み込み後も保たれ、OS より優先される / 図が追従する（SSR の docs と、
-       クライアント描画の雛形）/ 雛形で `"auto"`（ボタンなしで OS 追従）と `"light"`
-       （常にライト）/ ダーク表示のままの印刷はライト
-    4. SNS カード: 公開サイトの URL を貼ると画像・タイトル・説明のカードが出る
+**v0.18 まで公開済み**。次の版（v0.19）は未策定で、候補は下の
+「[10-04 見直しの持ち越し](#10-04-見直しの持ち越し)」と
+「[v0.19 以降の候補](#v019-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
+kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 は crates.io で公開済み（yuzu のリリースとは
+非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある。v0.18 の Phase 77 で
+直した tankan の 2 件は、まだ公開版に入っていない）。
 
 ## v0.10.1 レビューの持ち越し
 
@@ -650,8 +263,8 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
 ### dogfooding 候補（v0.13 Phase 61 からの持ち越し）
 
 - ~~**OS ダーク追従** / **見出しパーマリンクのキーボード到達性** / **`<head>` メタ** /
-  **ページメタの拡充（読了時間・文字数）**~~ — 4 件とも v0.18 の Phase 76・78・79 へ移した
-  （上の「現在」を参照。実測と判断点もそちらに移設）
+  **ページメタの拡充（読了時間・文字数）**~~ — 4 件とも v0.18 の Phase 76・78・79 で
+  実装済み（内訳は「これまでのリリース」の「完了済み: v0.18」）
 
 ### その他の候補
 
@@ -793,12 +406,97 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
   - **記法・テーマ・レンダリング結果は変えていない**（`CACHE_FORMAT_VERSION` の bump 無し）
   - Phase 外の修正 — stderr への書き込みに失敗するとビルドが途中で落ちていた
     （`yuzu build 2>&1 | head` で再現。`--force` なら `_search` が消えたまま残る）
+- **v0.18**（Phase 76〜80）公開サイトの仕上げ
+  - `<head>` に canonical・共有カード（OGP）・`generator`（新キー `site.image`）
+  - 初めて使う人が最初に踏む不具合 6 件の修正（10-04 の見直しで発見）— Linux で
+    `yuzu dev` の再ビルドが止まらない / Mermaid の入力でビルドが落ちる / frontmatter の
+    読み違い（新ルール `frontmatter-unrecognized`）/ 雛形 deploy.yml の版の固定 /
+    MSRV の検査（ワークスペースは 1.87 へ）/ `base_url` での panic と panic 時の終了コード
+  - 見出しのパーマリンクをキーボードと支援技術から届く形に・読了時間と文字数
+    （`theme.reading_time` / frontmatter `readingTime`）
+  - OS ダーク追従 — JS 無効でも切替ボタンなしでも OS の設定に従う。`theme.dark` を
+    `"toggle"` / `"auto"` / `"light"` の 3 値に（旧形式の bool も読む）
+  - dogfooding — 読了時間を本文の前へ・雛形 deploy.yml でも共有カードが出る・
+    docs サイトの og:image
+  - `CACHE_FORMAT_VERSION` 22 → 23（Phase 78 の 1 回）
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、
 mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
 
 各版の Phase 内訳:
+
+<details>
+<summary>完了済み: v0.18（Phase 76〜80）の内訳</summary>
+
+軸は「**公開サイトの仕上げ**」。公開物（HTML）の質は v0.12 以来手を入れておらず、
+v0.13 Phase 61 からの持ち越し 4 件（`<head>` メタ / 見出しパーマリンクのキーボード到達性 /
+ページメタ / OS ダーク追従）が候補欄に 4 版分残っていた。共有（SNS カード）・
+検索エンジン（canonical）・支援技術（キーボード到達性）・OS 設定（ダーク追従）の 4 方向から
+「公開サイトとして過不足ない」状態にした。Phase 76 の完了後、上級プログラマー・
+上級マネージャー・一般利用者の 3 つの視点でプロジェクト全体を見直し、初めて使う人が
+最初の数分で踏む不具合を Phase 77 として先に直した（残りの指摘は
+「10-04 見直しの持ち越し」）。本文 HTML が変わる 2 件は Phase 78 に束ね、
+`CACHE_FORMAT_VERSION` の bump は 22 → 23 の 1 回で済ませた。ブラウザが要る確認
+（Tab 操作・ダーク表示・SNS カード）は、開発環境にブラウザが無いのでユーザが行った。
+
+- **76 `<head>` メタ（canonical / OGP）** — `base.jinja` の `<head>` に canonical・
+  `og:*`・`twitter:card`・`generator` を足し、新キー `site.image`（og:image の素材。
+  `site.logo` は SVG で受け付けないクローラが多い）を追加。canonical / `og:url` /
+  パス指定の og:image は `base_url` がフル URL のときだけ出す（sitemap と同じゲートを
+  `UrlResolver::is_absolute_base` に揃えた。相対の canonical は同一性の宣言として弱い）。
+  `og:type` は全ページ website、`twitter:card` は summary 固定、`og:locale` は `site.lang`
+  が地域付きのときだけ（推測しない）、`generator` に版を含めない（バンプごとに
+  スナップショットが動く）。レビュー指摘で `| url` を HTML 属性専用（`&` を `&amp;`）にし、
+  `<script>` 内用の `| url_js` を新設した
+- **77 初めて使う人が最初に踏む不具合の修正** — 6 件。
+  (1) Linux の inotify は開いた・読んだだけのイベントも届け、種類を捨てる
+  notify-debouncer-mini では `yuzu dev` の再ビルドが止まらなかった（10 秒に 33 回。macOS
+  では起きない）→ notify を直接使い、監視スレッドで種類を絞って debounce する。
+  監視スレッドの panic は `WatchFailure` で `serve` に知らせて配信ごと止め exit 2。
+  (2) tankan の gantt が `5日` で panic・state の入れ子の循環でメモリを使い切った →
+  パースエラーにし、描画側で panic を回収してクライアント描画へ（回収の仕組みは
+  yuzu-core の `recover`。comrak の整形もこれに揃え、hook の差し替えをやめた。
+  **hook の中では終了させない**）。
+  (3) frontmatter の閉じ忘れが無言で、`yuzu fmt` が痕跡を消した → 新ルール
+  `frontmatter-unrecognized`（error）で閉じ忘れ・TOML 形式・区切り線の誤読（comrak が
+  切り出した中身が YAML のマッピングでない）を報告し、fmt はそのページを書き換えない。
+  先頭の区切り線で始まる正常な文書は誤検出しない（レビュー指摘で、引用符付きキーや
+  フロー形式の frontmatter を誤読と判定しないよう YAML として読む判定に直した）。
+  (4) 雛形 deploy.yml が main を版指定なしでインストールしていた → `yuzu new` した版の
+  `--locked --tag v<版>` に固定。
+  (5) MSRV ジョブが `rust-toolchain.toml` に負けて stable で動いていた →
+  `RUSTUP_TOOLCHAIN` で版を指定。1.85 では mikan の依存 ruzstd 0.8.2 が通らないので
+  ワークスペースは 1.87、kabosu・tankan は 1.85。
+  (6) `base_url = "/:x/"` で preview が panic・panic 時の終了コードが 101 →
+  `without_v07_checks` と `{` `}` のエンコードで拒まずに配信し、panic は exit 2
+- **78 本文 HTML の到達性とページメタ** — comrak の header_ids の既定出力（先頭の
+  `aria-hidden` 付き空 `<a>`）は CSS の `visibility: hidden` と合わせてキーボードからも
+  支援技術からも届かなかった。comrak の HeadingAdapter（yuzu-core の
+  `markdown/heading.rs`）で id を見出し自身に付け、パーマリンクを末尾に `aria-label` 付きで
+  出す（採番の入力は comrak と同じなので既存の `#id` は変わらない）。CSS は opacity と
+  `:focus-visible`。読了時間と文字数は `markdown/reading.rs` が本文の文章を数え（日本語
+  1 分 500 字・英数 200 語。コード・図・数式は数えない）、`theme.reading_time` と
+  frontmatter `readingTime` で消せる。レビュー指摘で、数える場所を Markdown 断片の展開後
+  （`render_body_html` の中）へ移し、本文キャッシュに載せた（原文で数えると ` ```include `
+  で取り込んだ文章が抜けていた）
+- **79 OS ダーク追従** — `data-theme="light"` を無条件で書いていたため、JS 無効や
+  `theme.dark = false` では OS がダークでもライトだった。`data-theme` を付けない状態を
+  「OS に従う」にし、ダーク定義を明示の選択（`html[data-theme="dark"]`）と OS 追従
+  （`prefers-color-scheme` の `html:not([data-theme])`）の 2 系統にした（theme.css の
+  手書きの 2 ブロックはテストで一致を縛り、syntect.css と `css_vars_dark` は `css.rs` の
+  `dark_two_ways` が同じ生成関数から出す）。`theme.dark` は 3 値で、旧 `true` は toggle、
+  `false` は light として読む（既存サイトの見た目は変わらない）
+- **80 dogfooding** — 読了時間を本文の前（パンくずの下）へ移した。雛形 deploy.yml も
+  docs.yml と同じく `https://<host><base_path>/` を渡し、利用者のサイトでも canonical・
+  共有カード・sitemap.xml が出るようにした。雛形の原稿に新機能の実例を足し、docs サイトの
+  og:image（`docs/public/images/og.png`。開発環境にフォントも画像ツールも無いので SVG を
+  手で描いて resvg で書き出した）を設定。リダイレクト HTML の canonical は既に絶対 URL で
+  変更不要と確認。ci.yml の `run:` に GitHub Actions の式を書くと bash より先に評価される
+  罠を踏みかけ、CLAUDE.md に記録した。ユーザがブラウザで Tab 到達・読了時間・ダークの
+  各経路・SNS カードを確認した（問題なし）
+
+</details>
 
 <details>
 <summary>完了済み: v0.17（Phase 72〜75）の内訳</summary>
