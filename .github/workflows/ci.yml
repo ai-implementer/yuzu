@@ -234,6 +234,9 @@ jobs:
           grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/theme.css
           grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/syntect.css
           grep -q 'id="ダークモード"' docs/dist/guide/deploy/index.html
+          # Phase 80: 共有カードの画像（site.image）が配信物に入っている
+          # （og:image タグ自体はフル URL の公開ビルドでだけ出るので、ここではファイルを見る）
+          test -f docs/dist/images/og.png
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）

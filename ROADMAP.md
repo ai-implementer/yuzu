@@ -371,11 +371,18 @@ Phase に束ね、`CACHE_FORMAT_VERSION` を 22 → 23 の 1 回で済ませた�
   4. 文言: 執筆ガイド・config リファレンス・雛形 yuzu.toml・schema のコメントの
      「ページ末尾」を「ページの先頭」に。ci.yml の docs ゲートと verify スキルの
      読了時間の grep を新しい class に
+  5. og:image: `docs/public/images/og.png`（1200×630・231 KB）を作り、`docs/yuzu.toml` の
+     `[site]` に `image = "/images/og.png"` を足した。画像はネイビーの背景に、ロゴの
+     ゆずの実（陰影と葉を足して拡大）・線で描いたワードマーク「yuzu」・
+     「Markdown マーク → ブラウザ窓」の絵。開発環境にフォントも画像変換ツールも無いので、
+     SVG を手で描き、使い捨ての resvg で PNG に書き出した（文字はフォントを使わず線で
+     描いた）。`docs/yuzu.toml` の 25〜45 行目（インクルードの `lines=` で引用）は、冒頭の
+     コメントを 1 行まとめて行番号を保った。ci.yml の docs ゲートに
+     `test -f docs/dist/images/og.png`
+     - 注意: `twitter:card` は summary（Phase 76 の判断）なので、X では画像が正方形に
+       切り抜かれた小さなサムネイルになる（中央の 630×630 = 実の右半分と「yu」あたり）。
+       Slack・Facebook・LinkedIn などは横長のまま出る
 - 残り
-  - **og:image**: ユーザが `docs/public/images/og.png`（1200×630）を置いたら、
-    `docs/yuzu.toml` の `[site]` に `image = "/images/og.png"` を足す（25〜45 行目は
-    インクルードの `lines=` で引用されているので行番号を動かさない）。ci.yml の docs
-    ゲートに `test -f docs/dist/images/og.png`
   - **ユーザによるブラウザ確認**: Tab だけで見出しの `#` に届き Enter で移るか / 読了時間の
     見た目 / ダーク（OS 追従・JS 無効・◐ の切替と再読み込み後の保持・`"auto"` と
     `"light"`・クライアント描画の図の追従）/ SNS カード（og.png を置いて公開した後）
