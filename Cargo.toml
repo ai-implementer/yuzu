@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.17.0"
+version = "0.18.0"
 edition = "2024"
 # 1.87: mikan が使う ruzstd 0.8.2 が 1.87 で安定化した API（is_multiple_of）を使う。
 # kabosu・tankan は依存が軽く 1.85 で通るので、各 Cargo.toml で 1.85 を宣言する
