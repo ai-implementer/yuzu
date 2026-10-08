@@ -150,14 +150,25 @@ CLAUDE.md にある。v0.18 の Phase 77 で直した tankan の 2 件は、Phas
     `_assets/vendor/README.md` に出る（このサイトでも
     `https://ai.implementer.net/yuzu/_assets/vendor/README.md` が 200 を返す）。
     検索資産（`yuzu-index`）はファイル名を列挙してコピーしているので README は出ない
+  - dist には検索の wasm も出る。`yuzu-index/src/builder.rs:354` の `copy_wasm_assets` が
+    `_search/search_bg.wasm` と、wasm-bindgen が生成した `search.js` を書き出す。この wasm に
+    入る wasm32 向けの依存は約 40 crate（`cargo tree -p mikan-wasm --target
+    wasm32-unknown-unknown -e normal`。10-08 に確認）で、mikan・vaporetto・fst
+    （Unlicense/MIT）・ruzstd・serde_json・wasm-bindgen・foldhash（Zlib）などを含む。
+    利用者のサイトへ配る第三者のコードは、vendor の JS・CSS・フォント・モデルだけではない
+    （PR #29 のレビュー指摘）
   - 3 crate（tankan / mikan / kabosu）とも `cargo package --list` に LICENSE が 0 件
     （`license.workspace = true` だけで、ファイルはワークスペース直下にしか無い）
 - やること
   - 第三者 crate のライセンス一覧（著作権表示と許諾文）を作り、アーカイブに入れる
     （ファイル名は仮に `THIRD-PARTY-LICENSES`）。two-face の acknowledgement も含める
-  - dist に vendor 資産のライセンス文を出す。書き込みは `write_under` を通し、
-    出力マニフェストに載せる。mermaid に束ねられた各 OSS のライセンス文は、
-    `scripts/vendor-mermaid.sh` で mermaid と一緒に取得する
+  - dist に、利用者のサイトへ配る第三者のコードのライセンス文を出す。対象は vendor 資産と、
+    検索の wasm に入る wasm32 向けの依存。書き込みは `write_under` を通し、出力マニフェストに
+    載せる。mermaid に束ねられた各 OSS のライセンス文は、`scripts/vendor-mermaid.sh` で
+    mermaid と一緒に取得する
+  - 一覧の棚卸しは 2 つの対象で行う: バイナリ（ネイティブの通常依存。アーカイブ用）と、
+    検索の wasm（`mikan-wasm` の wasm32 向けの依存。dist 用）。生成ツールの設定と CI の
+    照合も、この 2 つを対象にする
   - tankan の corpus は `exclude` で crate から外すか、出所を書いた README を corpus に置く
   - `static/vendor/README.md` を rust-embed の対象から外す（`#[exclude]`）。既存サイトの
     dist に残っている分は、次の build の孤児掃除で消える
@@ -171,9 +182,9 @@ CLAUDE.md にある。v0.18 の Phase 77 で直した tankan の 2 件は、Phas
     （CI にツールのインストールが要る）か、(b) リポジトリにコミットして CI で
     最新かを照合する（依存の更新ごとに差分が PR に出る）か。どちらも build の既定経路に
     ネットワーク I/O を入れない規律とは衝突しない
-  - **dist に何を出すか** — vendor 資産のライセンス文だけか、yuzu 自身と第三者 crate の
-    一覧まで出すか（利用者のサイトに出るのは vendor の JS・CSS・フォント・モデルなので、
-    前者で足りる見込み）。テキストファイルにするか HTML のページにするか
+  - **dist に何を出すか** — vendor 資産と検索 wasm の依存の分は必須。加えてバイナリの
+    一覧まで出すか（バイナリは利用者のサイトに出ないので、出さない案が有力）。
+    テキストファイルにするか HTML のページにするか
   - mikan / kabosu も LICENSE だけのためにパッチ版を出すか（mikan は分かち書きモデルを
     同梱している）
 
@@ -397,6 +408,13 @@ docs サイトを main とタグのどちらから公開するか。
     `remove_orphans`。render の後に走る）が前回の `Guide/index.html` として消す。
     route の衝突検査は文字列の完全一致だけで、`Guide.md` と `guide/index.md` の組を
     見逃す（並列の書き込みで勝者が実行ごとに変わる）
+  - 同じ FS では、消されなかったとしても dist のディレクトリ名は前回の `Guide/` のまま
+    残る（既存のディレクトリへ書き込むため）。大文字小文字を区別するサーバへ上げると
+    `/guide/` が 404 になる（実機未確認）
+  - 逆に大文字小文字を区別する FS（Linux 等）では、`Guide/index.html` と
+    `guide/index.html` は別のファイルで、今の孤児掃除が旧出力を正しく消している。
+    「大文字小文字を無視して一致したら消さない」とすると、旧出力が残ったうえ、次回の
+    出力マニフェストから落ちて二度と掃除されない（PR #29 のレビュー指摘）
   - 同伴アセットの存在判定が食い違う: check は `content_dir.join(..).is_file()`
     （`linkcheck.rs:198`。リンクを辿り、隠しファイルや `input.ignore` の対象も「ある」）、
     build のコピー（`scan.rs:78` の `scan_content_assets`）はそれらを除く。check が通るのに
@@ -414,8 +432,17 @@ docs サイトを main とタグのどちらから公開するか。
   - Mermaid の構文エラーの警告にページ名を付ける
   - build のログ: 色コードは端末のときだけ、キャッシュの内訳（`body_hits` 等）は
     `-v` のときだけにする（`-q` / `-v` の扱いは v0.17 Phase 73 のとおり）
-  - 孤児掃除は、今回書いたパスと大文字小文字を無視して一致するものを消さない。route と
-    エイリアスの衝突検査に、大文字小文字を無視した比較（警告）を足す
+  - 孤児掃除で消す旧パスが、今回書いたファイルと**同じファイルを指すときだけ**削除しない
+    （大文字小文字を無視した文字列の一致では判定しない。Unix は dev と inode、Windows は
+    ファイル ID で比べる）。そのときは、パスの大文字小文字を今回の出力に合わせて付け直す
+    （大文字小文字だけの改名は、区別しない FS では一時名を経由して rename する）。
+    別のファイルなら、従来どおり旧出力を削除する
+  - route とエイリアスの衝突検査に、大文字小文字を無視した比較（警告）を足す
+  - 検証は両方の FS で行う: 区別する FS（Linux の CI）では、改名後に旧 `Guide/index.html`
+    が消えて新しい `guide/index.html` だけが残ること。区別しない FS（macOS の既定の
+    APFS・Windows）では、新しい出力が残り、dist のパスが `guide/` になること。CI は
+    Linux だけなので、区別しない側は手元で確かめるか、持ち越しの「CI の穴」の
+    macOS / Windows の matrix で確かめる
   - check の画像の存在判定に、build のコピー対象（`scan_content_assets` の結果）を使う
   - 原稿の書き込みを同じディレクトリへの tmp → rename にし（パーミッションを引き継ぐ）、
     書く直前に内容が読み込み時から変わっていないかを照合する
@@ -679,8 +706,15 @@ Phase、検索の順位は既知の「2 文字の語」とあわせて v0.20 の
   - 旧モデルで作った索引に対して、ブラウザだけが新モデルでクエリする。CLAUDE.md の
     「検索の最重要制約」（index と query で同じモデルバイト）に反する。dev 中に辞書を
     差し替えたときだけ起き、再起動で直る
-  - 対処案: 再ビルドのたびに辞書の指紋を比べ、違えばセッションを作り直す。または
-    Tokenizer をモデルのハッシュをキーにして保持する
+  - 検索処理は `BuildCache::search` のヒットを先に判定し、全ページがヒットすると
+    Tokenizer を呼ばない（`yuzu-index/src/builder.rs:186-197`）。原稿を変えずに辞書だけを
+    差し替えると、旧辞書で数えた節がそのまま再利用される
+  - 対処案: 辞書の指紋が変わったら、検索キャッシュを無効にして全ページを
+    トークナイズし直すことを必須にする。再ビルドのたびに辞書の指紋を比べ、違えば
+    セッションを作り直せば満たせる（envKey が辞書の指紋を含む = `commands/build.rs:318` の
+    `env_key`。envKey が変わるとキャッシュ全体が無効になる）。Tokenizer をモデルの
+    ハッシュをキーにして保持するだけでは、キャッシュに当たったページが残るので足りない
+    （PR #29 のレビュー指摘）
 - ~~**B6 `yuzu fmt` / `lint --fix` が原稿を直接上書きする**~~ → v0.19 Phase 85
 - ~~**B7 外部リンク検査の curl が `~/.curlrc` を読む**~~ → v0.18.1
 - ⬜ **B8 用語集の合成で、用語を Markdown として解釈する**（工数: 小。**実機未確認**）
