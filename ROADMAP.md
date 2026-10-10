@@ -5,10 +5,10 @@ yuzu の開発計画と、これまでのリリースの内訳。**このファ�
 
 ## 現在: v0.19（Phase 81〜86）
 
-**v0.18.1 まで公開済み**（kabosu 0.2.0 / tankan 0.2.0 / mikan 0.2.0 も crates.io で
+**v0.18.1 まで公開済み**（kabosu 0.2.0 / tankan 0.2.1 / mikan 0.2.1 も crates.io で
 公開済み。yuzu のリリースとは非同期。kabosu の publish 前に fuzz を回す規律は
-CLAUDE.md にある。v0.18 の Phase 77 で直した tankan の 2 件は、Phase 81 で公開版に
-入れる）。
+CLAUDE.md にある。tankan 0.2.1・mikan 0.2.1 は Phase 81 で 10-10 に公開した = LICENSE の
+同梱、tankan は v0.18 の Phase 77 で直した 2 件、mikan は分かち書きモデルのライセンス文）。
 
 v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-07-見直し)」）で 3 者が
 一致した結論に沿って、同梱 mermaid・KaTeX の脆弱性勧告への対応と、工数が小さく黙って
@@ -56,7 +56,7 @@ v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-0
   | 作業 | Phase | 時期 |
   | --- | --- | --- |
   | private vulnerability reporting・secret scanning・push protection を有効にする | 82 | 82 のマージ前 |
-  | tankan 0.2.1・mikan 0.2.1 を crates.io へ publish する（`cargo login` が要る） | 81 | 81 のマージ後 |
+  | tankan 0.2.1・mikan 0.2.1 を crates.io へ publish する（`cargo login` が要る） | 81 | 済み（10-10） |
   | 各 Phase の判断点を決める | 81〜86 | 着手時 |
   | ブラウザでの確認（Host の検査・雛形 deploy.yml の実行・ライセンス文の表示） | 86 | リリース前 |
 
