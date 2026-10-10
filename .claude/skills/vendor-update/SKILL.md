@@ -14,6 +14,20 @@ scripts/build-search-wasm.sh
 ```
 
 - 前提ツール: wasm32 target（`rustup target add wasm32-unknown-unknown`）、wasm-bindgen-cli、binaryen（wasm-opt）、cargo-about（版は `scripts/third-party-licenses.sh` の `ABOUT_VERSION`。`--features cli` で入れる）。
+- 開発コンテナでも作れる（Dockerfile には焼いていないので、使うときに入れる。コンテナを作り直すと消える）。
+  binaryen は前回と同じ版（`crates/yuzu-index/assets/search/README.md` に記録）を公式リリースから取る。
+  apt の binaryen は古い（bookworm は version_108）ので使わない:
+  ```bash
+  cargo install wasm-bindgen-cli --version <Cargo.toml の = の版> --locked
+  d="$(mktemp -d)"   # 取ってきたアーカイブは空のディレクトリへ
+  gh release download version_131 --repo WebAssembly/binaryen --dir "$d" \
+    --pattern 'binaryen-version_131-aarch64-linux.tar.gz*'
+  (cd "$d" && sha256sum -c binaryen-version_131-aarch64-linux.tar.gz.sha256)
+  mkdir -p ~/.local/opt ~/.local/bin
+  tar -xzf "$d/binaryen-version_131-aarch64-linux.tar.gz" -C ~/.local/opt
+  ln -sf ~/.local/opt/binaryen-version_131/bin/wasm-opt ~/.local/bin/wasm-opt
+  ```
+  スクリプトは `CARGO_TARGET_DIR`（コンテナでは `/cargo-target`）の成果物を読む。
 - wasm と一緒に `THIRD-PARTY-LICENSES.txt`（wasm に入る crate とモデルのライセンス文。dist の `_search/` へ出る）を作り直す。wasm を変えずに文だけ作り直すなら `scripts/third-party-licenses.sh wasm`。
 - **最重要: wasm-bindgen-cli は workspace の `wasm-bindgen = "=x.y.z"`（Cargo.toml でピン留め）と完全同一バージョン必須**。スクリプトが照合して不一致なら失敗する。crate 側を上げるときは
   ```bash
