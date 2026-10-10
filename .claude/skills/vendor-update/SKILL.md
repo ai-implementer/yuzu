@@ -96,5 +96,5 @@ scripts/vendor-toml-test.sh
   パッケージ@版の組）が外れる。残った勧告を読み直し、影響しないものだけ理由を書いて足し直す。
   deps.yml が週次で同じ照合をする。
 - 検索 wasm の依存（vaporetto・fst・serde_json など）の版が Cargo.lock で変わったら、
-  wasm を作り直す（`scripts/third-party-licenses.sh check` が通知の版と Cargo.lock を照合して知らせる）。
+  wasm を作り直す（`scripts/third-party-licenses.sh check` が通知の crate と版を wasm の依存と照合して知らせる）。
 - 最後に `verify` スキルの一式（特に wasm check と e2e の検索）を通す。

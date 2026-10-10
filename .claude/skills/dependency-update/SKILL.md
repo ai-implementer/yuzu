@@ -34,7 +34,7 @@ PR のブランチを取ってきて、落ちた検査ごとに直してから�
 | --- | --- | --- |
 | insta スナップショットの差分 | comrak・syntect・two-face 等で本文 HTML・ハイライトが変わった | 差分を目視 → `INSTA_UPDATE=always cargo test -p <crate>` → `git diff` で確認。本文 HTML が変わるなら `yuzu-core/src/cache.rs` の `CACHE_FORMAT_VERSION` を上げる（上げ忘れは CI で検出できない） |
 | `third-party-licenses.sh check`: two-face の版 | two-face を上げた | `licenses/README.md` の手順で two-face の一覧を作り直し、スクリプトの `TWO_FACE_VERSION` を更新 |
-| `third-party-licenses.sh check`: 検索 wasm の通知の版 | 検索 wasm に入る crate（serde_json・fst・vaporetto 等）の版が Cargo.lock で変わった | `scripts/build-search-wasm.sh` で wasm と通知を作り直す（vendor-update スキル。wasm-bindgen-cli・binaryen・cargo-about が要る）。`yuzu build` → `yuzu search` で整合を確かめる。vaporetto の更新はトークナイザが変わるので特に必須 |
+| `third-party-licenses.sh check`: 検索 wasm の通知が今の依存と合わない | 検索 wasm に入る crate（serde_json・fst・vaporetto 等）の版が Cargo.lock で変わった・増えた・外れた | `scripts/build-search-wasm.sh` で wasm と通知を作り直す（vendor-update スキル。wasm-bindgen-cli・binaryen・cargo-about が要る）。`yuzu build` → `yuzu search` で整合を確かめる。vaporetto の更新はトークナイザが変わるので特に必須 |
 | deps.yml の `licenses-notice` | `licenses/about.toml` の clarify の checksum が合わない・crate の本文が無く雛形に戻った | `licenses/README.md`「雛形に戻る crate の扱い」 |
 | `deny` の licenses | 許可していないライセンスの crate が入った | 配布してよいライセンスか確かめ、`licenses/about.toml` の `accepted` と `deny.toml` の `allow` の**両方**に足す（`third-party-licenses.sh check` が一致を照合する） |
 | `deny` の bans | 禁止した crate（onig・TLS・HTTP クライアント）が入った | feature の指定を見直す。CLAUDE.md の凍結判断に反するので、入れる方向で直さない |

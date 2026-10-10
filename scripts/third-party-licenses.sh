@@ -11,8 +11,9 @@
 #   binary <出力>    リリースのアーカイブに入れる通知（release.yml が呼ぶ）。バイナリの
 #                    依存 crate（配布する 4 ターゲット）・two-face と syntect の同梱データ・
 #                    バイナリに埋め込んだ上の 2 つの通知をまとめる
-#   check            licenses/ に置いた記録と検索 wasm の通知が Cargo.lock の版と合っているか、
-#                    使ってよいライセンスの一覧が about.toml と deny.toml で同じか（CI が呼ぶ）
+#   check            licenses/ に置いた記録が Cargo.lock の版と、検索 wasm の通知が wasm の依存と
+#                    合っているか、使ってよいライセンスの一覧が about.toml と deny.toml で同じか
+#                    （CI が呼ぶ）
 #
 # vendor と wasm の生成物はコミットする（バイナリに埋め込むため。build の既定経路に
 # ネットワーク I/O を入れない）。binary はリリースのたびに生成し、コミットしない。
@@ -85,27 +86,40 @@ check_license_lists() {
   fi
 }
 
-# 検索 wasm の通知に載っている crate の版が、すべて Cargo.lock にあるか（Phase 82）。
-# wasm と通知はコミットしてあるので、依存の更新（dependabot など）で Cargo.lock だけが
-# 進むと、ネイティブ側と同梱の wasm が別の版の crate を使うことになる（vaporetto なら
-# index 時と query 時のトークナイザがずれる）。通知の版は wasm を作ったときの依存の版
+# 検索 wasm の通知に載っている crate と版の集合が、今の依存（mikan-wasm の wasm32 向け
+# 通常依存の解決結果）と一致するか（Phase 82）。wasm と通知はコミットしてあるので、依存の
+# 更新（dependabot など）で Cargo.lock だけが進むと、ネイティブ側と同梱の wasm が別の版の
+# crate を使うことになる（vaporetto なら index 時と query 時のトークナイザがずれる）。
+# 通知の版は wasm を作ったときの依存の版なので、通知との一致を「wasm が今の依存で作られて
+# いる」ことの代わりに見る。
+# Cargo.lock のどこかに版があるかだけを見ると、同じ crate の旧版がネイティブ側に残っている
+# とき（bincode 1.3.3 / 2.0.1 など）に見逃す（PR #32 のレビュー指摘）ので、依存グラフと
+# 集合で比べる。新しく入った crate も、外れた crate もここで分かる
 check_wasm_notice() {
-  local notice="$ROOT/crates/yuzu-index/assets/search/THIRD-PARTY-LICENSES.txt" pairs missing
-  pairs="$(sed -n 's/^  - \([^ ]*\) \([0-9][^（ ]*\)（.*/\1 \2/p' "$notice")"
-  if [ -z "$pairs" ]; then
+  local notice="$ROOT/crates/yuzu-index/assets/search/THIRD-PARTY-LICENSES.txt"
+  local notice_set private tree_set
+  notice_set="$(sed -n 's/^  - \([^ ]*\) \([0-9][^（ ]*\)（.*/\1 \2/p' "$notice" | sort -u)"
+  if [ -z "$notice_set" ]; then
     echo "$notice から crate の一覧を読めません" >&2
     exit 1
   fi
-  missing="$(awk '
-    NR == FNR { want[$0] = 1; next }
-    /^name = / { name = $0; gsub(/name = |"/, "", name); next }
-    /^version = / && name != "" { v = $0; gsub(/version = |"/, "", v); have[name " " v] = 1; name = "" }
-    END { for (p in want) if (!(p in have)) print p }
-  ' <(printf '%s\n' "$pairs") "$ROOT/Cargo.lock" | sort)"
-  if [ -n "$missing" ]; then
-    echo "検索 wasm の通知（_search/THIRD-PARTY-LICENSES.txt）にある crate の版が Cargo.lock にありません:" >&2
-    printf '%s\n' "$missing" | sed 's/^/  /' >&2
-    echo "依存の版が変わったので、scripts/build-search-wasm.sh で wasm と通知を作り直してください" >&2
+  command -v jq >/dev/null || { echo "jq が必要です" >&2; exit 1; }
+  # 第三者でない crate（publish = false の mikan-wasm 等）は数えない（about.toml の
+  # private.ignore と同じ）
+  private="$(cargo metadata --manifest-path "$ROOT/Cargo.toml" --locked --no-deps --format-version 1 \
+    | jq -r '.packages[] | select(.publish == []) | .name')"
+  # 「name vX.Y.Z」に、path 依存は「 (<パス>)」、2 回目以降の出現は「 (*)」が付く。
+  # CARGO_TERM_COLOR=always（ci.yml）だと「(*)」に色が付いて取り除けないので --color never
+  tree_set="$(cargo tree --color never --manifest-path "$ROOT/Cargo.toml" --locked -p mikan-wasm \
+      --target wasm32-unknown-unknown -e normal --prefix none --format '{p}' \
+    | sed 's/ (\*)$//; s/ (.*)$//; s/ v\([0-9]\)/ \1/' | sort -u \
+    | awk 'NR == FNR { skip[$0] = 1; next } !($1 in skip)' <(printf '%s\n' "$private") -)"
+  if [ "$notice_set" != "$tree_set" ]; then
+    echo "検索 wasm の通知（_search/THIRD-PARTY-LICENSES.txt）が、今の依存" >&2
+    echo "（mikan-wasm の wasm32 向け通常依存）と合いません:" >&2
+    comm -23 <(printf '%s\n' "$notice_set") <(printf '%s\n' "$tree_set") | sed 's/^/  通知だけ: /' >&2
+    comm -13 <(printf '%s\n' "$notice_set") <(printf '%s\n' "$tree_set") | sed 's/^/  依存だけ: /' >&2
+    echo "依存が変わったので、scripts/build-search-wasm.sh で wasm と通知を作り直してください" >&2
     echo "（vendor-update スキル。作り直したら yuzu search で検索の整合を確かめる）" >&2
     exit 1
   fi
@@ -318,7 +332,7 @@ case "${1:-}" in
     check_pins
     check_license_lists
     check_wasm_notice
-    echo "licenses/ の記録・許可するライセンスの一覧・検索 wasm の通知は Cargo.lock と一致しています"
+    echo "licenses/ の記録・許可するライセンスの一覧・検索 wasm の通知は今の依存と一致しています"
     ;;
   *) usage ;;
 esac

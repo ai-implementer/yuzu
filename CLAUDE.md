@@ -83,7 +83,9 @@ cargo build -p yuzu-cli
     片方だけ足すと生成か CI の片方だけが通る（`third-party-licenses.sh check` が一致を照合）
   - **検索 wasm に入る crate の版が Cargo.lock で変わったら wasm を作り直す**（コミット済みの
     wasm が古い版のまま残り、vaporetto ならトークナイザがずれる）。`third-party-licenses.sh check` が
-    `_search/THIRD-PARTY-LICENSES.txt` の版と Cargo.lock を照合して知らせる（Phase 82）
+    `_search/THIRD-PARTY-LICENSES.txt` の crate と版の集合を、mikan-wasm の wasm32 向け依存
+    （`cargo tree`）と照合して知らせる（Phase 82）。**Cargo.lock に版があるかだけで照合しない** =
+    同じ crate の旧版がネイティブ側に残ると見逃す（PR #32 のレビュー指摘）
   - vendor 資産の勧告は `scripts/vendor-advisories.sh`（deps.yml が週次）。版は
     `crates/yuzu-theme/licenses/` の記録から読み、除外は「GHSA の ID とパッケージ@版」の組
 

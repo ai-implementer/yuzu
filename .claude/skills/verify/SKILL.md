@@ -49,7 +49,8 @@ scripts/third-party-licenses.sh check
   tankan に `tests/corpus` が入らないことを見る。
 - `third-party-licenses.sh check` は two-face の一覧の版（Phase 81）に加えて、使ってよい
   ライセンスの一覧が `licenses/about.toml` と `deny.toml` で同じか、検索 wasm の通知に載った
-  crate の版が Cargo.lock にあるか（= wasm が今の依存で作られているか）を見る（Phase 82）。
+  crate と版の集合が mikan-wasm の wasm32 向け依存（`cargo tree`）と一致するか
+  （= wasm が今の依存で作られているか）を見る（Phase 82）。
   kabosu は加えて package 後 manifest の依存ゼロ検査（CI）と
   `cargo check -p kabosu --target thumbv7em-none-eabi`（no_std 担保）がある。
   **作業ツリーが dirty だと拒否される**ので、コミット後に走らせるか意図を確認して `--allow-dirty`。

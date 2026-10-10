@@ -195,8 +195,10 @@ dependabot の運用（頻度・まとめ方・対象から外す依存）。
     「GHSA の ID とパッケージ@版」の組で理由付きで除外した（mermaid 12 へ上げるときに見直す。
     下の「v0.20 以降の候補」）
   - 依存を上げたときに古いまま残るものを CI で知らせるようにした: `third-party-licenses.sh check` が
-    検索 wasm の通知に載った crate の版と Cargo.lock を照合する（コミット済みの wasm が古い版の
-    まま残るのを防ぐ。vaporetto ならトークナイザがずれる）・使ってよいライセンスの一覧が
+    検索 wasm の通知に載った crate と版の集合を、mikan-wasm の wasm32 向け依存の解決結果と
+    照合する（コミット済みの wasm が古い版のまま残るのを防ぐ。vaporetto ならトークナイザが
+    ずれる。PR #32 のレビュー指摘で、Cargo.lock に版があるかだけの照合から改めた = 同じ crate の
+    旧版がネイティブ側に残ると見逃した）・使ってよいライセンスの一覧が
     about.toml と deny.toml で同じかを照合する。deps.yml の `licenses-notice` がアーカイブ用の
     通知の生成を試す（clarify の checksum 不一致に、タグを打つ前に気付く）
   - ci.yml・fuzz.yml・container.yml（ROADMAP の現状に無かったが同じ穴）に
