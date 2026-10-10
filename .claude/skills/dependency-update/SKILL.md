@@ -15,7 +15,8 @@ description: 依存の更新と監視の扱い（dependabot の PR・deps.yml �
 
 ## dependabot の PR
 
-組は 3 つ。PR のタイトルに組の名前が出る。
+組は 3 つ。PR のタイトルに組の名前が出る。組に入るのは minor・patch の更新だけで、major の
+更新は依存ごとに 1 本ずつの PR になる（API の変更で 1 つが壊れても組を止めないため）。
 
 - **render-output**（comrak・syntect・two-face）— 本文 HTML が変わりうる。別の PR にしてあるので、
   ほかの組のマージを止めない
@@ -41,13 +42,15 @@ PR のブランチを取ってきて、落ちた検査ごとに直してから�
 | deps.yml の `advisories` | 上げた版に勧告がある | 下の「勧告が出たとき」 |
 | コンパイルエラー | 0.x の破壊的変更（`0.53` → `0.54` など Cargo.toml の要件ごと上がる更新） | 手で直す。すぐ直せないなら PR を閉じ、`dependabot.yml` の `ignore` に版を足して見送る（理由を書く） |
 | MSRV のジョブ | 依存の新しい版が MSRV（ワークスペース 1.87・kabosu と tankan 1.85）より新しい rustc を要求した | 依存を上げないか、MSRV を上げる判断をする（README・release.yml・docs も直す。CLAUDE.md） |
+| ci.yml の `scaffold actions pins` | actions の PR が `.github/workflows/` だけを上げ、雛形 `crates/yuzu-cli/scaffold/deploy.yml` が古い SHA のまま | 雛形の `uses:` を同じ SHA・版のコメントに揃える（dependabot は `.github/` の外を見ない） |
 
 マージ前に `verify` スキルの一式を通す。
 
 ### actions の PR
 
 - `uses:` の SHA と行末のコメント（`# v7.0.0`）がそろっているかを見る
-- 同じ action はすべてのワークフローで同じ SHA にする（docs-links.yml・docs.yml・release.yml も）
+- 同じ action はすべてのワークフローで同じ SHA にする（docs-links.yml・docs.yml・release.yml も）。
+  雛形 `crates/yuzu-cli/scaffold/deploy.yml` も同じ SHA に揃える（CI の `scaffold actions pins` が照合する）
 - `EmbarkStudios/cargo-deny-action` を上げたら、action の `Dockerfile` の `deny_version` を見て、
   手元の cargo-deny と verify スキルの版の記載をそろえる
 - `dtolnay/rust-toolchain` はタグではなくブランチ（`stable`・`1.85` 等）を SHA で固定している。

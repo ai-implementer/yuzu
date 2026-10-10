@@ -71,6 +71,20 @@ jobs:
       - name: third-party licenses pins
         run: scripts/third-party-licenses.sh check
 
+      # 雛形 deploy.yml（yuzu new が作る）の actions は、このリポジトリのワークフローと同じ
+      # SHA・版のコメントにする。dependabot は .github/ の外を見ないので、actions の更新 PR で
+      # 雛形だけが古い版に残るのを止める（Phase 82 の後、dependabot の最初の PR で判明）
+      - name: scaffold actions pins
+        run: |
+          status=0
+          while read -r ref; do
+            if ! grep -rqF -- "uses: $ref" .github/workflows/; then
+              echo "雛形 deploy.yml の「$ref」が .github/workflows に無い（同じ SHA・コメントに揃える）" >&2
+              status=1
+            fi
+          done < <(sed -n 's/^[ -]*uses: //p' crates/yuzu-cli/scaffold/deploy.yml)
+          exit "$status"
+
       # kabosu の依存ゼロ検査: package 後の正規化 manifest に通常依存・build 依存・
       # ターゲット固有依存のセクションが無いことを縛る（dev 依存だけは許可）
       - name: kabosu dependency-free check
