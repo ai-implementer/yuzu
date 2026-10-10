@@ -56,7 +56,7 @@ v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-0
 
   | 作業 | Phase | 時期 |
   | --- | --- | --- |
-  | private vulnerability reporting・secret scanning・push protection を有効にする（Dependabot alerts も推奨） | 82 | 82 のマージ前 |
+  | private vulnerability reporting・secret scanning・push protection を有効にする（Dependabot alerts も推奨） | 82 | 済み（10-10） |
   | tankan 0.2.1・mikan 0.2.1 を crates.io へ publish する（`cargo login` が要る） | 81 | 済み（10-10） |
   | 各 Phase の判断点を決める | 81〜86 | 着手時 |
   | ブラウザでの確認（Host の検査・雛形 deploy.yml の実行・ライセンス文の表示） | 86 | リリース前 |
@@ -161,7 +161,7 @@ v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-0
   - mikan / kabosu も LICENSE だけのためにパッチ版を出すか（mikan は分かち書きモデルを
     同梱している）
 
-### 82 脆弱性の窓口と依存の監視 ⬜
+### 82 脆弱性の窓口と依存の監視 ✅
 
 **概要**: 脆弱性の報告先（SECURITY.md と GitHub の private vulnerability reporting）を
 用意し、依存の監視（dependabot・cargo-deny）と CI の権限の絞り込みを入れる。
@@ -203,8 +203,9 @@ dependabot の運用（頻度・まとめ方・対象から外す依存）。
     `permissions: contents: read`、ci.yml の cargo に `--locked`、`.gitignore` に
     `.claude/settings.local.json`。追随作業の見分け方は新しい `dependency-update` スキルに書き、
     verify・release・vendor-update スキルと CLAUDE.md を追随させた
-  - ユーザの作業（マージ前）: private vulnerability reporting・secret scanning・push protection を
-    有効にする。Dependabot alerts も有効にすると、定期実行が止まっても通知が届く
+  - ユーザの作業: private vulnerability reporting・secret scanning・push protection と
+    Dependabot alerts を 10-10 に有効にした（`gh api` で確認。公開リポジトリなので無料）。
+    Dependabot alerts は定期実行が止まっていても勧告を通知する
 
 - 現状（実測。10-06 時点）
   - `SECURITY.md` / `.github/dependabot.yml` / `deny.toml` が無い。
