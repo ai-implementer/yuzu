@@ -43,7 +43,9 @@ README の License 節から取り、著作権表示と許諾文がそろわな�
 
 two-face は一覧を実行時の API（`two_face::acknowledgement::listing().to_md()`）でしか出さないので、
 使い捨てのプログラムで書き出してコミットする。版を上げたら次のとおり作り直し、
-`scripts/third-party-licenses.sh` の `TWO_FACE_VERSION` も合わせる。
+`scripts/third-party-licenses.sh` の `TWO_FACE_VERSION` も合わせる。`<版>` は Cargo.lock の
+`version` をそのまま使う（0.5.2 からは `0.5.2+bat-0.26.1` のように同梱データの bat の版が付く。
+ファイル名と `TWO_FACE_VERSION` もこの形）。
 
 ```bash
 mkdir -p /tmp/twoface-ack/src && cd /tmp/twoface-ack
