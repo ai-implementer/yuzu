@@ -31,8 +31,8 @@ fn to_toml_datetime(dt: Datetime) -> toml::value::Datetime {
         time: dt.time().map(|t| toml::value::Time {
             hour: t.hour(),
             minute: t.minute(),
-            second: t.second(),
-            nanosecond: t.nanosecond(),
+            second: Some(t.second()),
+            nanosecond: Some(t.nanosecond()),
         }),
         // kabosu はオフセットを分単位でしか持たない（`Z` と `+00:00` は同じ値）。
         // canon が参照実装側の `Custom { minutes: 0 }` も `Z` へ寄せて比較する
@@ -56,12 +56,19 @@ fn table_to_toml(table: &Table) -> toml::Value {
 /// - オフセット 0 は `Z` に寄せる。参照実装は `+00:00` / `-00:00` を
 ///   `Custom { minutes: 0 }` として `Z` と区別するが、kabosu は分単位の数値しか
 ///   持たない（意図的な差。正規化出力ではどちらも `Z` になる）
+/// - 時刻の秒・小数秒の省略（`None`）は 0 に寄せる。参照実装は toml 1.x から省略を
+///   `None` で表すが、kabosu は数値しか持たない（`07:32:00` と `07:32:00.0` は同じ値。
+///   toml 0.9 までは参照実装も 0 で持っていたので、比較の意味は変わらない）
 fn canon(v: toml::Value) -> toml::Value {
     match v {
         toml::Value::Float(f) if f.is_nan() => toml::Value::String(String::from("<nan>")),
         toml::Value::Datetime(mut dt) => {
             if dt.offset == Some(toml::value::Offset::Custom { minutes: 0 }) {
                 dt.offset = Some(toml::value::Offset::Z);
+            }
+            if let Some(time) = dt.time.as_mut() {
+                time.second.get_or_insert(0);
+                time.nanosecond.get_or_insert(0);
             }
             toml::Value::Datetime(dt)
         }
