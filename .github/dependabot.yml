@@ -1,5 +1,10 @@
 # 依存の更新 PR（Phase 82）。1 人の運用で PR が溜まらないよう、月次で組にまとめる。
 # PR が来たときの追随作業の見分け方は dependency-update スキル。
+#
+# 組に入れるのは minor・patch の更新だけにする。major の更新（similar 2 → 3・toml 0.9 → 1.1 等）は
+# 1 本ずつの PR になり、API の変更で 1 つが壊れても組のほかの更新を止めない（最初の実行で、
+# 16 個の組が major 2 つのコンパイルエラーで丸ごと止まった）。0.x の版上げ（0.29 → 0.30）を
+# dependabot が major と minor のどちらに数えるかは未確認（次の実行で確かめる）
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -20,11 +25,19 @@ updates:
           - comrak
           - syntect
           - two-face
+        update-types:
+          - minor
+          - patch
       cargo:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
 
-  # actions はフルコミット SHA でピン留めしたまま、SHA と版のコメントを上げてもらう
+  # actions はフルコミット SHA でピン留めしたまま、SHA と版のコメントを上げてもらう。
+  # 雛形 crates/yuzu-cli/scaffold/deploy.yml は対象外なので、PR のブランチで同じ SHA に揃える
+  # （ci.yml の scaffold actions pins が食い違いを止める）
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -35,3 +48,6 @@ updates:
       actions:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
