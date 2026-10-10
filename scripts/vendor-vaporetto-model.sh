@@ -32,12 +32,22 @@ fi
 tar xJf "$TMP/model.tar.xz" -C "$TMP"
 MODEL_FILE="$(find "$TMP" -name '*.model.zst' | head -1)"
 
+# モデルと同梱のライセンス文（MIT OR Apache-2.0）。mikan の crate と、dist の
+# `_search/THIRD-PARTY-LICENSES.txt`（scripts/build-search-wasm.sh が組む）の両方が使う
+LICENSE_MIT="$(find "$TMP" -name 'LICENSE-MIT' | head -1)"
+LICENSE_APACHE="$(find "$TMP" -name 'LICENSE-APACHE' | head -1)"
+if [ -z "$LICENSE_MIT" ] || [ -z "$LICENSE_APACHE" ]; then
+  echo "アーカイブに LICENSE-MIT / LICENSE-APACHE が見つかりません" >&2
+  exit 1
+fi
+
 mkdir -p "$DEST_DIR"
 cp "$MODEL_FILE" "$STAGING"
 mv "$STAGING" "$DEST_DIR/${MODEL}.model.zst"
+cp "$LICENSE_MIT" "$DEST_DIR/LICENSE-MIT"
+cp "$LICENSE_APACHE" "$DEST_DIR/LICENSE-APACHE"
 
-echo "vendored: $DEST_DIR/${MODEL}.model.zst"
+echo "vendored: $DEST_DIR/${MODEL}.model.zst（+ LICENSE-MIT / LICENSE-APACHE）"
 echo "archive:  $ACTUAL"
 echo "model:    $(shasum -a 256 "$DEST_DIR/${MODEL}.model.zst" | cut -d' ' -f1)"
 echo "size:     $(du -h "$DEST_DIR/${MODEL}.model.zst" | cut -f1)"
-find "$TMP" -iname 'LICENSE*' -o -iname 'README*' | head -5
