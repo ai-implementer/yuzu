@@ -43,7 +43,7 @@ clap_complete = "4.6"
 # unified diff（`yuzu fmt --diff`）。純 Rust・推移依存なし。
 # insta（dev 依存）が既に同じバージョンを引いているため Cargo.lock は増えない。
 # 既定 feature の text（TextDiff）だけあれば足りる（inline / bytes / serde は不要）
-similar = { version = "2.7", default-features = false, features = ["text"] }
+similar = { version = "3.2", default-features = false, features = ["text"] }
 # 設定（yuzu.toml）は自作の kabosu で読む（下の内部 crate 参照）。serde はキャッシュ・
 # 検索索引・診断の JSON 出力・frontmatter の YAML 用で、設定には使わない
 serde = { version = "1", features = ["derive"] }
