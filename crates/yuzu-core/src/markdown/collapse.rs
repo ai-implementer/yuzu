@@ -9,6 +9,7 @@
 //! `yuzu fmt` は `[!NOTE] - タイトル` の形へ正規化するが、解釈は変わらず冪等。
 
 use comrak::nodes::AlertType;
+use comrak::options::AlertStyleType;
 
 use crate::markdown::escape_html;
 
@@ -44,9 +45,11 @@ pub(crate) fn open_tag(kind: AlertType, collapse: Collapse, title: &str) -> Stri
         Collapse::Open => " open",
         Collapse::Closed => "",
     };
+    // 折りたたまない Admonition は comrak が既定の Specific 形式（`markdown-alert-<種別>`）で
+    // 描くので、クラス名をそれに揃える（comrak 0.54 で形式を選べるようになった）
     format!(
         "<details class=\"markdown-alert {}\"{open_attr}>\n<summary class=\"markdown-alert-title\">{title}</summary>\n",
-        kind.css_class(),
+        kind.css_class(AlertStyleType::Specific),
     )
 }
 

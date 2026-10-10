@@ -31,7 +31,7 @@ trap 'if [ -n "$NEW_FILE" ]; then rm -f "$NEW_FILE"; fi' EXIT
 
 ABOUT_VERSION="0.9.2"
 # licenses/ に記録した two-face の一覧の版（Cargo.lock と一致させる。check が照合する）
-TWO_FACE_VERSION="0.5.1"
+TWO_FACE_VERSION="0.5.2+bat-0.26.1"
 BINARY_TARGETS=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu x86_64-pc-windows-msvc)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RULE="================================================================================"

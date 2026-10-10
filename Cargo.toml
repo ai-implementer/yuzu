@@ -15,7 +15,7 @@ authors = ["ai-implementer"]
 [workspace.dependencies]
 # Markdown パース（凍結: comrak）。default features には cli(clap) と
 # syntect-onig(C の oniguruma) が含まれるため、必ず default-features = false にする
-comrak = { version = "0.53", default-features = false }
+comrak = { version = "0.55", default-features = false }
 # シンタックスハイライト（凍結: syntect + fancy-regex）。default(onig) との同居を
 # 避けるため default-features = false にし、使う feature だけを並べる。
 # default-fancy は使わない = 実行時に読むのは同梱の読み込み済みデータ（dump）だけで、
