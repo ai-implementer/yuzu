@@ -17,8 +17,16 @@ authors = ["ai-implementer"]
 # syntect-onig(C の oniguruma) が含まれるため、必ず default-features = false にする
 comrak = { version = "0.53", default-features = false }
 # シンタックスハイライト（凍結: syntect + fancy-regex）。default(onig) との同居を
-# 避けるため default-features = false + default-fancy のみ
-syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
+# 避けるため default-features = false にし、使う feature だけを並べる。
+# default-fancy は使わない = 実行時に読むのは同梱の読み込み済みデータ（dump）だけで、
+# plist-load・yaml-load は要らない。入れると plist 経由の quick-xml・time と yaml-rust に
+# 勧告が出る（Phase 82 の cargo-deny で判明。time の修正版は MSRV 1.87 では上げられない）
+syntect = { version = "5.3", default-features = false, features = [
+  "default-syntaxes",
+  "default-themes",
+  "html",
+  "regex-fancy",
+] }
 # syntect の拡張構文セット（bat のアセット由来。TypeScript/TSX/TOML/Dockerfile 等を補完）。
 # default は onig を引くため必ず default-features = false + syntect-fancy
 two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
