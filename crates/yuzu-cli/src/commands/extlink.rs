@@ -149,39 +149,53 @@ fn probe_all(urls: &[&str]) -> anyhow::Result<Vec<Probe>> {
         .collect())
 }
 
-/// curl で 1 URL を GET し、最終ステータスを読む。
+/// 1 URL を GET する curl のコマンド。
 /// `-o` で本文を捨て `-w %{http_code}` だけを標準出力に出させる
 /// （HEAD は拒否するサーバが多いので使わない）
-fn probe(url: &str) -> std::io::Result<Probe> {
+fn curl_command(url: &str) -> Command {
     let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
-    let output = Command::new("curl")
-        .args([
-            "-sS",
-            // URL のグロブ展開を止める。`?q=[1-2]` は 2 回取得されて `%{http_code}` が
-            // `404404` に連結され、`?filter[name]=x` は構文エラーになり、どちらも
-            // 壊れたリンクなのに skipped 扱いになる（レビュー指摘）
-            "--globoff",
-            "-o",
-            null,
-            "-L",
-            "--max-redirs",
-            "10",
-            "--connect-timeout",
-            CONNECT_TIMEOUT_SECS,
-            "--max-time",
-            MAX_TIME_SECS,
-            "-A",
-            USER_AGENT,
-            // crates.io はブラウザ相当の Accept が無いと 404 を返す（docs 自身の
-            // dogfooding で判明）。他のサイトでも「HTML を求めている」ことを明示する
-            "-H",
-            ACCEPT,
-            "-w",
-            "%{http_code}",
-            "--",
-            url,
-        ])
-        .output()?;
+    let mut command = Command::new("curl");
+    command.args([
+        // 利用者の `~/.curlrc` を読まない。`-q` は**最初の引数のときだけ**効く。
+        // `.curlrc` に `--fail` があると 4xx で終了コード 22 になり、壊れたリンクが
+        // skipped として通ってしまう（実行環境で検査結果が変わる）
+        "-q",
+        "-sS",
+        // URL のグロブ展開を止める。`?q=[1-2]` は 2 回取得されて `%{http_code}` が
+        // `404404` に連結され、`?filter[name]=x` は構文エラーになり、どちらも
+        // 壊れたリンクなのに skipped 扱いになる（レビュー指摘）
+        "--globoff",
+        // 取得もリダイレクト先も http / https に限る（file:// 等へ飛ばない）
+        "--proto",
+        "=http,https",
+        "--proto-redir",
+        "=http,https",
+        "-o",
+        null,
+        "-L",
+        "--max-redirs",
+        "10",
+        "--connect-timeout",
+        CONNECT_TIMEOUT_SECS,
+        "--max-time",
+        MAX_TIME_SECS,
+        "-A",
+        USER_AGENT,
+        // crates.io はブラウザ相当の Accept が無いと 404 を返す（docs 自身の
+        // dogfooding で判明）。他のサイトでも「HTML を求めている」ことを明示する
+        "-H",
+        ACCEPT,
+        "-w",
+        "%{http_code}",
+        "--",
+        url,
+    ]);
+    command
+}
+
+/// curl で 1 URL を GET し、最終ステータスを読む
+fn probe(url: &str) -> std::io::Result<Probe> {
+    let output = curl_command(url).output()?;
     let code = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -372,6 +386,27 @@ mod tests {
             outcome.diags
         );
         assert_eq!(outcome.skipped, 0, "グロブ由来の失敗が skipped に化けない");
+    }
+
+    /// 利用者の `.curlrc` に `--fail` があっても、4xx を終了コード 22 ではなく
+    /// 応答コードとして読む（読んでしまうと壊れたリンクが skipped に化ける）。
+    /// 環境変数はプロセス全体ではなくこのコマンドにだけ渡す
+    #[test]
+    fn 利用者の_curlrc_を読まない() {
+        let base = serve();
+        let home = tempfile::tempdir().unwrap();
+        std::fs::write(home.path().join(".curlrc"), "--fail\n").unwrap();
+        let output = curl_command(&format!("{base}/missing"))
+            .env("CURL_HOME", home.path())
+            .env("HOME", home.path())
+            .output()
+            .expect("curl が動く");
+        assert!(
+            output.status.success(),
+            "curl が失敗した（.curlrc の --fail が効いている）: {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "404");
     }
 
     #[test]

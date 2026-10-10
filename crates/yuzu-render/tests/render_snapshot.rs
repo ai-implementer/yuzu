@@ -95,7 +95,7 @@ fn 生成物一式が揃っている() {
     // ダーク配色は画面専用（@media screen）＝印刷は常にライト（Phase 55）
     assert!(syntect_css.contains("@media screen"));
 
-    // テーマアセット・public パススルー・build_id
+    // テーマアセット・public パススルー
     assert!(dist.join("_assets/css/theme.css").is_file());
     assert!(dist.join("_assets/js/theme.js").is_file());
     assert!(dist.join("_assets/vendor/mermaid.min.js").is_file());
@@ -106,7 +106,8 @@ fn 生成物一式が揃っている() {
             .is_file()
     );
     assert!(dist.join("images/logo.svg").is_file());
-    assert!(dist.join("__yuzu/build_id").is_file());
+    // build_id は `build --watch` 専用。通常ビルドの dist には出さない（毎回変わるため）
+    assert!(!dist.join("__yuzu/build_id").exists());
     assert!(dist.join("llms.txt").is_file());
     assert!(dist.join("llms-full.txt").is_file());
     assert!(dist.join("404.html").is_file());
@@ -625,6 +626,8 @@ fn poll_モードはオートリフレッシュが注入される() {
     assert!(index.contains("autorefresh.js"));
     assert!(index.contains("data-base=\"/docs/\""));
     assert!(!index.contains("livereload.js"));
+    // autorefresh.js がポーリングする build_id はこのモードだけで書く
+    assert!(dir.path().join("dist/__yuzu/build_id").is_file());
 }
 
 #[test]

@@ -45,7 +45,7 @@ pub(crate) struct SiteCtx<'a> {
 
 /// `<meta name="generator">` の値。**バージョンは含めない** — 含めるとリリースの
 /// バンプごとに HTML スナップショット 4 件が動き、「バンプコミットは Cargo.toml と
-/// Cargo.lock だけ」の規律と衝突する。ビルドの識別は `__yuzu/build_id` が担う
+/// Cargo.lock だけ」の規律と衝突する
 pub(crate) const GENERATOR: &str = "yuzu";
 
 /// `site.lang` から `og:locale` を作る。OGP の locale は `language_TERRITORY` で、

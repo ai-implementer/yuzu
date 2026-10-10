@@ -30,9 +30,10 @@ Phase 39（コードブロック表示メタ）/ 40（エイリアス）/ 42（�
 
 ### 3. クロスページ依存があれば routesKey へ
 
-先行ページの状態で後続ページの出力が変わる機能は、`crates/yuzu-cli/src/commands/build.rs` の
-routesKey にキーを足して本文キャッシュを無効化する。前例は
-`crossref.numbering: "site"` のときの「ラベル個数」。
+先行ページの状態で後続ページの出力が変わる機能は、`crates/yuzu-core/src/model.rs` の
+`SiteModel::routes_key`（routesKey の唯一の定義）に入力を足して本文キャッシュを
+無効化する。前例は `crossref.numbering: "site"` のときの各ページの採番開始位置
+（`crossref_offset`）。個数だけでは並び順の変更や種別の差し替えを取りこぼす。
 
 ### 4. `yuzu fmt` の温存を確認
 

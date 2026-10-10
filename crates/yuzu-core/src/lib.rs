@@ -263,7 +263,8 @@ pub fn build_site_model_cached(
 /// 各ページの採番開始オフセットを**サイドバー表示順**で割り当てる。
 ///
 /// ページ本文 HTML はキャッシュされるため、オフセットが変わると古い番号が
-/// 残る。cli は routesKey にラベル個数を含めて全 body を無効化すること
+/// 残る。[`SiteModel::routes_key`] が各ページのオフセットを含めるので、
+/// オフセットが 1 つでも変われば全 body が無効化される
 fn assign_crossref_offsets(pages: &mut [Page], nav: &[NavNode]) {
     // nav（表示順）のフラットな route 列 → ページの並び替え順を作る
     let mut order: Vec<&str> = Vec::new();

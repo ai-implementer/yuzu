@@ -299,7 +299,7 @@ mod tests {
     /// （監視だけが止まり配信が残る状態にしない）
     #[test]
     fn 監視の_panic_で配信を止めて_watch_stopped_を返す() {
-        let tmp = crate::watch::tests::visible_tempdir();
+        let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().canonicalize().unwrap();
         std::fs::write(root.join("index.html"), "<html>home</html>").unwrap();
         std::thread::sleep(Duration::from_millis(200));

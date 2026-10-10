@@ -256,4 +256,27 @@ impl SiteModel {
             .find(|p| crate::urlpath::rel_to_slash(&p.rel) == rel)
             .map(|p| p.route.as_str())
     }
+
+    /// 本文 HTML キャッシュの routesKey（[`crate::BuildCache::set_routes_key`] に渡す）。
+    ///
+    /// 入力は、本文 HTML がページ自身の原文以外から受ける影響の全部:
+    /// rel→route の集合（`.md` リンクの解決先）と、各ページの図表番号の開始位置
+    /// （サイト通し番号のとき。先行ページの図表の増減・並び順の変更で変わる。
+    /// 個数だけでは図⇄表の差し替えや `order` の変更を取りこぼす）。
+    /// cli とテストが同じ組み立てを通るよう、ここを唯一の定義にする
+    pub fn routes_key(&self) -> String {
+        let lines: Vec<String> = self
+            .pages
+            .iter()
+            .map(|p| {
+                format!(
+                    "{}\t{}\t{}",
+                    crate::urlpath::rel_to_slash(&p.rel),
+                    p.route,
+                    p.crossref_offset.key()
+                )
+            })
+            .collect();
+        crate::BuildCache::sha256_hex_parts(&[lines.join("\n").as_bytes()])
+    }
 }

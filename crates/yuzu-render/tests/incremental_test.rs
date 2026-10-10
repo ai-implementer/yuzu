@@ -53,14 +53,8 @@ fn build_incremental(root: &Path, cache: &BuildCache) -> (BTreeSet<String>, Cach
     )
     .unwrap();
 
-    let routes: Vec<String> = site
-        .pages
-        .iter()
-        .map(|p| format!("{}\t{}", p.rel.display(), p.route))
-        .collect();
-    cache.set_routes_key(BuildCache::sha256_hex_parts(&[routes
-        .join("\n")
-        .as_bytes()]));
+    // routesKey も cli と同じ 1 実装（SiteModel::routes_key）を通す
+    cache.set_routes_key(site.routes_key());
 
     let tracker = OutputTracker::new(&rc.output_dir).unwrap();
     render_site(&RenderParams {
@@ -425,6 +419,79 @@ fn file_参照先のネストした_ref_の変更も反映される() {
     assert!(
         html.contains("ネスト説明v2"),
         "ネスト参照の変更が反映される"
+    );
+}
+
+/// サイト通し番号の検証用: A・B に図を 1 つずつ置き、B は自分の図を参照する
+fn setup_site_numbering(root: &Path, a_order: i64, a_caption: &str) {
+    write(
+        root,
+        "yuzu.toml",
+        &format!("{BASE_CONFIG}\n[markdown.crossref]\nnumbering = \"site\"\n"),
+    );
+    write(
+        root,
+        "content/index.md",
+        "---\ntitle: ホーム\norder: 1\n---\n# ようこそ\n\n本文。\n",
+    );
+    write(
+        root,
+        "content/guide/a.md",
+        &format!("---\ntitle: ページA\norder: {a_order}\n---\n# A\n\n{a_caption}\n"),
+    );
+    write(
+        root,
+        "content/guide/b.md",
+        "---\ntitle: ページB\norder: 2\n---\n# B\n\nFigure: B の図 {#fig:b}\n\n[](#fig:b) を見る。\n",
+    );
+}
+
+fn page_b_html(root: &Path) -> String {
+    fs::read_to_string(root.join("dist/guide/b/index.html")).unwrap()
+}
+
+#[test]
+fn サイト通し番号は先行ページの順序変更で後続ページの番号を更新する() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_site_numbering(dir.path(), 1, "Figure: A の図 {#fig:a}");
+    let cache_dir = dir.path().join(".yuzu/cache");
+
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    assert!(
+        page_b_html(dir.path()).contains("図 2"),
+        "A → B の順で B は図 2"
+    );
+
+    // A の order だけを変えて B より後ろへ。B の原文も rel→route も変わらない
+    setup_site_numbering(dir.path(), 3, "Figure: A の図 {#fig:a}");
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    let html = page_b_html(dir.path());
+    assert!(
+        html.contains("図 1") && !html.contains("図 2"),
+        "B → A の順になったので B は図 1（キャッシュの古い番号が残らない）"
+    );
+}
+
+#[test]
+fn サイト通し番号は先行ページの図を表へ替えると後続ページの番号を更新する() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_site_numbering(dir.path(), 1, "Figure: A の図 {#fig:a}");
+    let cache_dir = dir.path().join(".yuzu/cache");
+
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    assert!(page_b_html(dir.path()).contains("図 2"));
+
+    // ラベルの個数は同じまま、種別だけが図 → 表に変わる
+    setup_site_numbering(dir.path(), 1, "Table: A の表 {#tbl:a}");
+    let cache = BuildCache::load(&cache_dir, "env1");
+    build_incremental(dir.path(), &cache);
+    let html = page_b_html(dir.path());
+    assert!(
+        html.contains("図 1") && !html.contains("図 2"),
+        "先行ページの図が 0 個になったので B は図 1"
     );
 }
 
