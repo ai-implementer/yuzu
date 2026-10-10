@@ -45,7 +45,27 @@ jobs:
       # crates.io 公開対象（tankan・mikan・kabosu）のパッケージ検証。メタデータ・
       # 同梱内容の回帰を PR で検出する。実公開は手動 cargo publish（CLAUDE.md「リリース手順」）
       - name: package (tankan, mikan, kabosu)
-        run: cargo package --locked -p tankan -p mikan -p kabosu
+        run: |
+          cargo package --locked -p tankan -p mikan -p kabosu
+          # 3 crate とも LICENSE を同梱する（ワークスペース直下のコピーを各 crate に置く。
+          # Phase 81）。tankan のテスト用コーパスは配布物に含めない
+          for c in tankan mikan kabosu; do
+            list="$(cargo package --locked --list -p "$c")"
+            for f in LICENSE-MIT LICENSE-APACHE; do
+              if ! printf '%s\n' "$list" | grep -qx "$f"; then
+                echo "$c の配布物に $f が無い" >&2
+                exit 1
+              fi
+            done
+          done
+          if cargo package --locked --list -p tankan | grep -q '^tests/corpus'; then
+            echo "tankan の配布物に tests/corpus が入っている" >&2
+            exit 1
+          fi
+
+      # 第三者ライセンスの記録（licenses/）が Cargo.lock の版と合っているか（Phase 81）
+      - name: third-party licenses pins
+        run: scripts/third-party-licenses.sh check
 
       # kabosu の依存ゼロ検査: package 後の正規化 manifest に通常依存・build 依存・
       # ターゲット固有依存のセクションが無いことを縛る（dev 依存だけは許可）
@@ -305,6 +325,13 @@ jobs:
           test -f dist/guide/getting-started/index.html
           test -f dist/_search/manifest.json
           test -f dist/_search/search_bg.wasm
+          # 第三者ライセンスの通知を資産の隣に配り、vendor の開発用メモは配らない（Phase 81）
+          test -s dist/_assets/vendor/THIRD-PARTY-LICENSES.txt
+          test -s dist/_search/THIRD-PARTY-LICENSES.txt
+          if [ -e dist/_assets/vendor/README.md ]; then
+            echo "vendor の更新メモ（README.md）が dist に出ている" >&2
+            exit 1
+          fi
           # scaffold は検索結果ページ（search.page）を有効にして配る（Phase 54）
           test -f dist/search/index.html
           # --base-url は設定より優先して配信パスを差し替える（deploy.yml が使う契約）

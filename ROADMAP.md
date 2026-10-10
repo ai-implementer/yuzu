@@ -56,7 +56,7 @@ v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-0
   | 作業 | Phase | 時期 |
   | --- | --- | --- |
   | private vulnerability reporting・secret scanning・push protection を有効にする | 82 | 82 のマージ前 |
-  | tankan 0.2.1 を crates.io へ publish する（`cargo login` が要る） | 81 | 81 のマージ後 |
+  | tankan 0.2.1・mikan 0.2.1 を crates.io へ publish する（`cargo login` が要る） | 81 | 81 のマージ後 |
   | 各 Phase の判断点を決める | 81〜86 | 着手時 |
   | ブラウザでの確認（Host の検査・雛形 deploy.yml の実行・ライセンス文の表示） | 86 | リリース前 |
 
@@ -64,12 +64,32 @@ v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-0
   84 の docs をタグで公開する変更 / 85 の client 描画の Mermaid 構文チェックと、
   check の整形差分を外す設定 / `yuzu init`
 
-### 81 第三者ライセンスの表記 ⬜
+### 81 第三者ライセンスの表記 ✅
 
 **概要**: リリースのアーカイブ・利用者のサイトの dist・crates.io の 3 crate に、
 同梱している第三者のライセンス表記を入れる。あわせて、テーマ資産として配信されて
 いる vendor の更新メモ（`_assets/vendor/README.md`）を配信対象から外す。
 主な判断点は一覧の生成方法（ツールと生成のタイミング）と、dist に何を出すか。
+
+- 決定（10-10。判断点 4 つともユーザが推奨案で確定）と実装
+  - **アーカイブ用**は cargo-about（0.9.2）で release.yml の `licenses` ジョブがリリースのたびに
+    生成し、artifact で 4 つの build へ渡す（コミットしない = Cargo.lock の更新で差分を出さない）。
+    中身は配布する 4 ターゲットの依存 crate（201）・two-face の一覧（`licenses/` に記録し、
+    版ずれは CI の `third-party-licenses.sh check`）・syntect の既定テーマ（InspiredGitHub・base16）・
+    下の dist 用 2 枚。約 525 KB
+  - **dist 用**は資産の隣にテキスト 2 枚。`_assets/vendor/THIRD-PARTY-LICENSES.txt`（mermaid と
+    束ねた 60 パッケージ・KaTeX と katex-fonts。約 67 KB）と `_search/THIRD-PARTY-LICENSES.txt`
+    （wasm の依存 41 crate・分かち書きモデル。約 40 KB）。バイナリに埋め込むので vendor
+    スクリプトで生成してコミットする。mermaid は npm の tarball（sha256 固定）に切り替え、
+    同梱の source map から束ねたパッケージを取り出して各 tarball の LICENSE を集める
+    （npm の integrity を照合。同じ本文は 1 回だけ載せる）
+  - `static/vendor/README.md` は rust-embed の `#[exclude]` で配信対象から外した
+    （`include-exclude` feature）。yuzu-index にも build.rs を足した
+  - 3 crate に LICENSE をコピーで置き、tankan の corpus は `exclude`＋出所の README。
+    分かち書きモデルのアーカイブ同梱の LICENSE も mikan に保存。tankan・mikan を 0.2.1 に
+    上げた（publish はユーザ。kabosu は次の変更時）
+  - release.yml のアーカイブ検証・ci.yml の e2e（通知の有無と README の不在）・package の
+    LICENSE 確認は、Phase 86 から前倒しでここで入れた
 
 - 現状（実測。10-06 時点）
   - アーカイブに入れているのは `README.md` と yuzu 自身の `LICENSE-MIT` /
@@ -422,10 +442,10 @@ verify・release スキルを追随させる。最後に「v0.19 の方針」の
 
 - docs サイト: dist のライセンス文と `_assets/vendor/README.md` が出ないことを確かめる。
   ライセンスの扱い（利用者のサイトに何が出るか）を docs に書く
-- release.yml: アーカイブにライセンス一覧が入っていることを検証条件に足す
-  （release スキルの検証条件も）
-- ci.yml の e2e: 雛形の build が件数の警告を出さないこと・ライセンス文が出ること・
-  vendor の README が出ないこと・`.md` を止める設定で `.md` が出ないことを照合する。
+- ~~release.yml: アーカイブにライセンス一覧が入っていることを検証条件に足す
+  （release スキルの検証条件も）~~ → Phase 81 で実施済み
+- ci.yml の e2e: 雛形の build が件数の警告を出さないこと・`.md` を止める設定で `.md` が
+  出ないことを照合する（ライセンス文が出ること・vendor の README が出ないことは Phase 81 で実施済み）。
   dev / preview に許可していない Host を送って 403 になることを確かめる。docs ゲートに
   新しい節の grep を足す
 - 雛形 deploy.yml を実際の GitHub リポジトリで動かし、リリースのバイナリでデプロイ

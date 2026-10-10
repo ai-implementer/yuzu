@@ -39,4 +39,10 @@ cargo publish -p <crate>
   manifest を検査する（依存を足すと落ちる）
 - yuzu 側の `Cargo.lock` はバンプの `cargo build` で追随する。yuzu のリリースタグとは
   無関係に進めてよい（非同期）
+- 3 crate とも crate のディレクトリに `LICENSE-MIT` / `LICENSE-APACHE` の**コピー**を置いている
+  （`license.workspace = true` だけでは package にライセンス文が入らない。シンボリックリンクは
+  Windows の checkout で壊れるので使わない）。ワークスペース直下の LICENSE を変えたら 3 つとも
+  合わせる。mikan は分かち書きモデルのライセンス文（`assets/model/LICENSE-*`）も同梱する
+- tankan のテスト用コーパス（`tests/corpus`・`corpus_test.rs`・`snapshots`）は `exclude` で
+  配布物から外している（kabosu の toml-test と同じ形。CI が `cargo package --list` で確かめる）
 - 公開後は CLAUDE.md / README / docs（`development/kabosu.md` 等）の版表記を追随させる

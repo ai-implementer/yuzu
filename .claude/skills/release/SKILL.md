@@ -81,6 +81,11 @@ git push origin vX.Y.Z
   gh release view vX.Y.Z --json isDraft,assets
   ```
   アセットは 4 バイナリ ＋ SHA256SUMS の 5 件、`isDraft: false` になる
+- 各アーカイブには `THIRD-PARTY-LICENSES`（バイナリに入る第三者のソフトウェアのライセンス表記）が
+  入る。release.yml の `licenses` ジョブが cargo-about で 1 回作り、各 build ジョブへ artifact で
+  渡す（Phase 81）。このジョブが落ちると build も止まる（新しいライセンスの crate が入ったら
+  `licenses/about.toml` の `accepted` に足すか確かめる。two-face の版ずれは CI の
+  `third-party-licenses.sh check` が先に知らせる）
 
 ## 罠
 
