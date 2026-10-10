@@ -9,8 +9,14 @@
   （ビルドは失敗させない。`yuzu search` のネイティブ検索は wasm なしで動く）
 - 更新手順: `rustup target add wasm32-unknown-unknown`、
   `cargo install wasm-bindgen-cli --version <crates/mikan-wasm の wasm-bindgen と同一>`、
-  binaryen（wasm-opt）を用意して `scripts/build-search-wasm.sh` を実行し、
+  binaryen（wasm-opt）・cargo-about を用意して `scripts/build-search-wasm.sh` を実行し、
   本ファイルにサイズを記録する
+- `THIRD-PARTY-LICENSES.txt`: wasm に入る第三者 crate（mikan-wasm の wasm32 向け通常依存）と
+  分かち書きモデルのライセンス文。`build-search-wasm.sh` が wasm と一緒に作り直す
+  （文だけなら `scripts/third-party-licenses.sh wasm`）。`dist/_search/` へ一緒に出る
+  - 2026-10-10 に追加したときは wasm を作り直さず、その時点の Cargo.lock から生成した。
+    wasm の生成時（2026-08-01）と依存の版が一部違う可能性がある（crate の顔ぶれと
+    ライセンスは同じ）。次に wasm を作り直すと揃う
 
 ## 現在の成果物
 

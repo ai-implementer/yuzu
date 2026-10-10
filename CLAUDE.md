@@ -69,6 +69,15 @@ cargo build -p yuzu-cli
   - `scripts/vendor-mermaid.sh` / `scripts/vendor-katex.sh` / `scripts/vendor-vaporetto-model.sh`
   - `scripts/vendor-toml-test.sh` — kabosu のテスト。**タグはスイートの版で仕様の版ではない**
     = 1.0 の選別は上流の `files-toml-1.0.0`
+  - **vendor 資産を更新したら第三者ライセンスの通知も作り直される**（`scripts/third-party-licenses.sh`。
+    Phase 81）。dist 用の 2 枚（`_assets/vendor/`・`_search/` の `THIRD-PARTY-LICENSES.txt`）は
+    バイナリに埋め込むのでコミットし、アーカイブ用は release.yml の `licenses` ジョブが毎回作る
+    （コミットしない）。cargo-about は版を固定（`--features cli` が要る）、mermaid の
+    束ねたパッケージの取得に jq が要る。設定と two-face の一覧は `licenses/`（`README.md` 参照）
+  - **cargo-about は本文の無い・認識できない crate で SPDX の雛形に戻り、`--fail` でも止まらない**
+    （著作権表示が `<year> <copyright holders>` のまま出る）。スクリプトは雛形が残ると失敗するので、
+    ファイルがあれば `licenses/about.toml` の clarify、無ければ `licenses/supplements.tsv` で補う。
+    npm 側は LICENSE が無ければ README の License 節から取り、無ければ止まる
 
 ## アーキテクチャ
 
@@ -335,10 +344,12 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     yuzu-theme は build.rs の `rerun-if-changed=assets` で監視している
   - これが無いと「debug では動くのに release が古い埋め込みを使い回して template not found」
     になる。埋め込み crate を増やすときは同じ build.rs を付けること
-- **`yuzu-index` は rust-embed（`assets/search/`）を使うのに build.rs が無い**
-  - 既存ファイルの更新は追跡されるので vendor スクリプトの通常運用では問題ない
-  - **新規ファイルを足すと release が古い埋め込みを使う**恐れがある（上記 yuzu-theme と
-    同じ罠。足すときは build.rs を付ける）
+- `yuzu-index`（rust-embed で `assets/search/` を埋め込む）にも同じ build.rs がある
+  （Phase 81 で `THIRD-PARTY-LICENSES.txt` を足すときに付けた）。**埋め込み crate を増やすときは
+  同じ build.rs を付ける**
+- テーマの `static/` 配下は全部 `dist/_assets/` へ出るので、開発用の記録は `#[exclude]` で
+  埋め込みから外す（`static/vendor/README.md`。ワークスペースの rust-embed は `include-exclude`
+  feature 付き）
 
 ### 合成ページ
 

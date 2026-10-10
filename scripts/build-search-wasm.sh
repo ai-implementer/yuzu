@@ -6,7 +6,12 @@
 #   cargo install wasm-bindgen-cli --version <crates/mikan-wasm の wasm-bindgen と同一>
 #   binaryen（wasm-opt）が PATH にあること（例: brew install binaryen）
 #
+#   cargo-about（wasm に入る crate のライセンス文を作る。版は scripts/third-party-licenses.sh の
+#   ABOUT_VERSION と同一）
+#
 # 実行後、crates/yuzu-index/assets/search/README.md にサイズを記録すること。
+# wasm と一緒に、dist の _search/ へ出るライセンス文（THIRD-PARTY-LICENSES.txt）も作り直す
+# （wasm を変えずに文だけ作り直すなら scripts/third-party-licenses.sh wasm）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,6 +40,8 @@ wasm-opt -Oz --strip-debug -o "$DEST/search_bg.wasm" "$DEST/search_bg.wasm"
 # 手書きの JS クライアント（フェッチ ＋ OPFS キャッシュ ＋ wasm 起動）は
 # crates/mikan-wasm/js/ に同居しており、生成物と同じ vendor 先へコピーする
 cp "$ROOT/crates/mikan-wasm/js/"*.js "$DEST/"
+
+"$ROOT/scripts/third-party-licenses.sh" wasm
 
 echo "vendored:"
 ls -lh "$DEST"/search.js "$DEST"/search_bg.wasm "$DEST"/search-client.js "$DEST"/opfs-cache.js \

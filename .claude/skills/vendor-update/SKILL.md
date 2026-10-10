@@ -13,7 +13,8 @@ description: vendor 資産（検索 wasm 成果物・mermaid.min.js・KaTeX・va
 scripts/build-search-wasm.sh
 ```
 
-- 前提ツール: wasm32 target（`rustup target add wasm32-unknown-unknown`）、wasm-bindgen-cli、binaryen（wasm-opt）。
+- 前提ツール: wasm32 target（`rustup target add wasm32-unknown-unknown`）、wasm-bindgen-cli、binaryen（wasm-opt）、cargo-about（版は `scripts/third-party-licenses.sh` の `ABOUT_VERSION`。`--features cli` で入れる）。
+- wasm と一緒に `THIRD-PARTY-LICENSES.txt`（wasm に入る crate とモデルのライセンス文。dist の `_search/` へ出る）を作り直す。wasm を変えずに文だけ作り直すなら `scripts/third-party-licenses.sh wasm`。
 - **最重要: wasm-bindgen-cli は workspace の `wasm-bindgen = "=x.y.z"`（Cargo.toml でピン留め）と完全同一バージョン必須**。スクリプトが照合して不一致なら失敗する。crate 側を上げるときは
   ```bash
   cargo install wasm-bindgen-cli --version <同一バージョン>
@@ -28,6 +29,11 @@ scripts/vendor-mermaid.sh
 ```
 
 - 約 3.4MB。`backend: "ssr"` 運用でも未対応図種のフォールバック用に同梱は継続する。
+- npm の tarball（sha256 固定）から取る。mermaid.min.js は約 60 の npm パッケージを束ねているので、
+  スクリプトが tarball 同梱の source map から束ねたパッケージを取り出し、各パッケージの
+  LICENSE を集めて `crates/yuzu-theme/licenses/mermaid.txt` を書き、`THIRD-PARTY-LICENSES.txt`
+  （dist の `_assets/vendor/`）を組み直す。**jq が要る**。LICENSE ファイルが無いパッケージは README の
+  License 節から取り、著作権表示と許諾文がそろわなければ止まる（手で調べて対処する）
 - 更新後は client 描画ページ（`run` スキル参照）で図が描画されることを確認。
 
 ## 3. KaTeX（crates/yuzu-theme/assets/static/vendor/katex/）
@@ -40,6 +46,8 @@ scripts/vendor-katex.sh
 - css が `url(fonts/...)` を相対参照するため `katex/` のディレクトリ構造を崩さないこと。
 - 更新後は `run` スキルで数式ページ（scaffold の getting-started「記法サンプル > 数式」）のライト/ダーク描画と、fonts が 404 なく取得されることを確認。
 - 未取得でもビルド・テストは通り、数式は原文（TeX ソース）表示になるだけ。
+- ライセンス文（本体の LICENSE とフォントの生成元 katex-fonts の LICENSE）を
+  `crates/yuzu-theme/licenses/katex.txt` に書き、`THIRD-PARTY-LICENSES.txt` を組み直す。
 
 ## 4. vaporetto モデル（crates/mikan/assets/model/）
 
@@ -48,6 +56,8 @@ scripts/vendor-vaporetto-model.sh
 ```
 
 - 現行: bccwj-suw_c1.0（圧縮 372KB、MIT OR Apache-2.0）。ライセンスが再配布可能なものだけを使う。
+- アーカイブ同梱の `LICENSE-MIT` / `LICENSE-APACHE` もモデルの隣に保存する（mikan の crate と
+  dist の `_search/THIRD-PARTY-LICENSES.txt` が使う）。モデルを替えたら `scripts/third-party-licenses.sh wasm` も流す。
 - **モデルのバイト列が変わると索引（index 時）と検索（query 時）の整合が崩れる**。更新後は必ずサイトを再ビルドし、`yuzu search`（誤字クエリ込み）で確認する。ブラウザは初回検索時にモデルを遅延ダウンロードする設計。
 
 ## 5. 公式 toml-test（crates/kabosu/tests/toml-test/）

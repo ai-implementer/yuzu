@@ -13,8 +13,13 @@ use rust_embed::RustEmbed;
 
 /// デフォルトテーマのアセット一式。
 /// パス例: `templates/base.jinja` / `static/css/theme.css` / `static/vendor/mermaid.min.js`
+///
+/// `static/` 配下は全部 `dist/_assets/` へ出るので、開発用の記録（vendor の取得元・
+/// ハッシュのメモ）は埋め込まない。ライセンス文は `static/vendor/THIRD-PARTY-LICENSES.txt`
+/// として配る
 #[derive(RustEmbed)]
 #[folder = "assets"]
+#[exclude = "static/vendor/README.md"]
 pub struct DefaultTheme;
 
 /// アセットを読む。存在しなければ None
@@ -94,8 +99,16 @@ mod tests {
             "static/vendor/katex/katex.min.js",
             "static/vendor/katex/katex.min.css",
             "static/vendor/katex/fonts/KaTeX_Main-Regular.woff2",
+            "static/vendor/THIRD-PARTY-LICENSES.txt",
         ] {
             assert!(super::get(path).is_some(), "{path} が同梱されていない");
         }
+    }
+
+    #[test]
+    fn vendor_の更新メモは埋め込まない() {
+        // static/ 配下は dist/_assets/ へそのまま出る。取得元・ハッシュの記録は配信しない
+        assert!(super::get("static/vendor/README.md").is_none());
+        assert!(!super::iter().any(|p| p.ends_with("README.md")));
     }
 }

@@ -36,6 +36,9 @@ cargo package --locked -p tankan -p mikan -p kabosu
 ```
 
 - `cargo package` は公開対象 3 crate のメタデータ・同梱内容の回帰を検出する（CI にもある）。
+  CI は加えて `cargo package --list` で 3 crate とも `LICENSE-MIT` / `LICENSE-APACHE` を含み、
+  tankan に `tests/corpus` が入らないことを見る。第三者ライセンスの記録の版は
+  `scripts/third-party-licenses.sh check`（Phase 81）。
   kabosu は加えて package 後 manifest の依存ゼロ検査（CI）と
   `cargo check -p kabosu --target thumbv7em-none-eabi`（no_std 担保）がある。
   **作業ツリーが dirty だと拒否される**ので、コミット後に走らせるか意図を確認して `--allow-dirty`。
@@ -127,6 +130,9 @@ test -f .github/workflows/deploy.yml   # Pages デプロイ雛形の同梱
 grep -q -- "--tag v$(<repo>/target/debug/yuzu --version | awk '{print $2}') yuzu-cli" .github/workflows/deploy.yml && echo "OK deploy tag"
 <repo>/target/debug/yuzu build
 test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_search/search_bg.wasm
+# 第三者ライセンスの通知を資産の隣に配り、vendor の開発用メモは配らない（Phase 81）
+test -s dist/_assets/vendor/THIRD-PARTY-LICENSES.txt && test -s dist/_search/THIRD-PARTY-LICENSES.txt
+test ! -e dist/_assets/vendor/README.md
 <repo>/target/debug/yuzu search "はじめに" | grep "はじめに"
 # タイポトレランス（出力の有無だけでなくヒット内容まで見る）とフレーズ検索の正/逆順
 <repo>/target/debug/yuzu search "ダーくモード" | grep -q "ダークモード"

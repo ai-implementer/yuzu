@@ -1,6 +1,7 @@
 # yuzu-cli のリリースバイナリをビルドし GitHub Release へ添付する（Phase 37）。
 # v* タグ push で 4 プラットフォームをビルドし、draft Release に集約 →
-# SHA256SUMS 添付後に公開する。テストは回さない（main の CI を信頼し、
+# SHA256SUMS 添付後に公開する。アーカイブには第三者ライセンスの通知
+# （THIRD-PARTY-LICENSES。licenses ジョブが生成。Phase 81）も入れる。テストは回さない（main の CI を信頼し、
 # 代わりに「タグが main に含まれる」「タグとバージョンの一致」「--version smoke」で担保）。
 # 部分失敗は Actions の「Re-run failed jobs」だけで復旧できる（--clobber で上書き・
 # 公開まで draft のため外部には見えない）。
@@ -85,10 +86,43 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
             --title "yuzu $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
 
+  # 第三者ライセンスの通知（THIRD-PARTY-LICENSES）を 1 回だけ作り、各アーカイブへ配る。
+  # 配布する 4 ターゲットの依存の和集合を cargo-about で数えるので、どのランナーでも同じ
+  # ファイルになる。生成物はコミットしない（Cargo.lock が動くたびに差分を出さないため）。
+  # workflow_dispatch でも動かす（アーカイブの中身を Release なしで確かめられる）
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: licenses
+      - name: cargo-about を入れる（版は scripts/third-party-licenses.sh の ABOUT_VERSION）
+        run: |
+          VERSION="$(grep -m1 '^ABOUT_VERSION=' scripts/third-party-licenses.sh | cut -d'"' -f2)"
+          if [ "$(cargo about --version 2>/dev/null | awk '{print $2}')" != "$VERSION" ]; then
+            cargo install cargo-about --version "$VERSION" --locked --features cli
+          fi
+      - name: 通知を生成
+        run: |
+          # cargo-about は --frozen（ネットワークに出ない）で動くので、全ターゲット分の
+          # crate を先に取っておく
+          cargo fetch --locked
+          scripts/third-party-licenses.sh binary THIRD-PARTY-LICENSES
+          test -s THIRD-PARTY-LICENSES
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: third-party-licenses
+          path: THIRD-PARTY-LICENSES
+          if-no-files-found: error
+
   build:
-    needs: create-release
+    needs: [create-release, licenses]
     # workflow_dispatch では create-release が skip されるため、その場合もビルドは通す
-    if: ${{ !cancelled() && (needs.create-release.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ !cancelled() && needs.licenses.result == 'success' && (needs.create-release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     strategy:
       # 1 プラットフォームの失敗で他を巻き添えにしない（失敗した job だけ再実行できる）
       fail-fast: false
@@ -133,6 +167,11 @@ jobs:
           case "${{ matrix.target }}" in *windows*) BIN="$BIN.exe" ;; esac
           test "$("$BIN" --version)" = "yuzu $VERSION"
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: third-party-licenses
+          path: licenses-artifact
+
       - name: アーカイブ作成
         id: archive
         run: |
@@ -140,6 +179,9 @@ jobs:
           NAME="yuzu-v$VERSION-${{ matrix.target }}"
           mkdir stage
           cp README.md LICENSE-MIT LICENSE-APACHE stage/
+          # バイナリに入っている第三者のソフトウェアのライセンス表記（licenses ジョブが生成）
+          cp licenses-artifact/THIRD-PARTY-LICENSES stage/
+          test -s stage/THIRD-PARTY-LICENSES
           case "${{ matrix.target }}" in
             *windows*)
               cp "target/${{ matrix.target }}/release/yuzu.exe" stage/

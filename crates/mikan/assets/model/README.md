@@ -6,6 +6,9 @@
   （`bccwj-suw_c1.0.tar.xz` に同梱の `.model.zst`）
 - ライセンス: **MIT OR Apache-2.0**（アーカイブ同梱の LICENSE-MIT / LICENSE-APACHE を確認済み。
   BCCWJ 由来だが NINJAL との共同研究成果としてこのライセンスで配布されている）
+- ライセンス文: アーカイブ同梱の `LICENSE-MIT` / `LICENSE-APACHE` をこのディレクトリに
+  そのまま置いている（2026-10-10 から。スクリプトがモデルと一緒に取り出す）。mikan の
+  crate に入り、dist の `_search/THIRD-PARTY-LICENSES.txt` にも載る
 - 取得日: 2026-07-04
 - アーカイブ（`bccwj-suw_c1.0.tar.xz`）sha256:
   `bf90e5c25bbb9db013c2f077fc08be5e8b68b3b8f6555cf936ee784cca0ec6aa`

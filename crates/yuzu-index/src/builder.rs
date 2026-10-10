@@ -357,6 +357,9 @@ fn copy_wasm_assets(_search_dir: &Path, write: &WriteFn<'_>) -> Result<(), Index
         "search_bg.wasm",
         "search-client.js",
         "opfs-cache.js",
+        // wasm に入る第三者 crate と分かち書きモデルのライセンス文
+        // （scripts/build-search-wasm.sh が wasm と一緒に生成する）
+        "THIRD-PARTY-LICENSES.txt",
     ];
     let missing: Vec<&str> = required
         .iter()

@@ -941,7 +941,7 @@ checksum = "38d1115007560874e373613744c6fba374c17688327a71c1476d1a5954cc857b"
 
 [[package]]
 name = "mikan"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "fst",
  "insta",
@@ -1311,6 +1311,7 @@ version = "8.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5bcdef0be6fe7f6fa333b1073c949729274b05f123a0ad7efcb8efd878e5c3b1"
 dependencies = [
+ "globset",
  "sha2 0.10.9",
  "walkdir",
 ]
@@ -1590,7 +1591,7 @@ dependencies = [
 
 [[package]]
 name = "tankan"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "insta",
  "roxmltree",
