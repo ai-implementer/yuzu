@@ -11,6 +11,9 @@ on:
   pull_request:
     paths: [".devcontainer/**", ".github/workflows/container.yml"]
 
+permissions:
+  contents: read
+
 jobs:
   build-image:
     runs-on: ubuntu-latest

@@ -85,6 +85,11 @@ cargo fmt --all --check
 クレート構成・依存方向・凍結した設計判断は
 [開発ドキュメント](https://ai.implementer.net/yuzu/development/)にまとまっている。
 
+## 脆弱性の報告
+
+公開の issue には書かず、GitHub の private vulnerability reporting で報告してください。
+対象の版と対応の目安は [SECURITY.md](SECURITY.md) にあります。
+
 ## ライセンス
 
 MIT または Apache-2.0 のデュアルライセンス（お好きな方でどうぞ）。

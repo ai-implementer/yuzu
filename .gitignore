@@ -15,4 +15,7 @@ dist/
 # macOS
 .DS_Store
 
+# Claude Code の個人設定（.claude/skills/ はコミットする）
+/.claude/settings.local.json
+
 /docs/design

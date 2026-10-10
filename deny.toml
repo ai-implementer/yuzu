@@ -1,0 +1,80 @@
+# cargo-deny の設定（Phase 82）。CI での使い分け:
+#   - licenses・bans・sources … ci.yml の deny ジョブ（PR ごと。結果は Cargo.lock だけで決まる）
+#   - advisories              … deps.yml（週次の定期実行・依存を変える PR・手動起動。
+#                               新しい勧告で無関係な PR を落とさないため分けている）
+# 手元では `cargo deny check`（版は ci.yml・deps.yml の cargo-deny-action が使う版に合わせる）。
+
+[graph]
+# 配布する 4 ターゲット ＋ 検索 wasm（licenses/about.toml・scripts/third-party-licenses.sh と同じ）
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "wasm32-unknown-unknown",
+]
+all-features = true
+
+[advisories]
+# 勧告を除外するときは、影響しない理由と見直す条件を必ず書く
+ignore = [
+  # bincode はメンテナンス終了（脆弱性ではない）。1 系は syntect が同梱の読み込み済みデータ
+  # （dump）を読むのに、2 系は vaporetto が分かち書きモデルを読むのに使う。どちらも
+  # yuzu が同梱したデータだけを読み、原稿や読者の入力は渡らない。代わりの版が無いので、
+  # syntect・vaporetto が bincode を外したら除外をやめる
+  { id = "RUSTSEC-2025-0141", reason = "syntect・vaporetto が同梱データの読み込みに使う。代わりの版が無い" },
+]
+
+[licenses]
+# 使ってよいライセンス。licenses/about.toml の accepted と同じ集合にする
+# （scripts/third-party-licenses.sh check が一致を照合する）
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "BSL-1.0",
+  "CC0-1.0",
+  "Unlicense",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+]
+# yuzu 自身の crate（publish = false）は第三者ではない
+private = { ignore = true }
+# about.toml と同じ集合にしているため、今の依存に無いライセンスがあっても警告しない
+# （Apache-2.0 WITH LLVM-exception は選択肢の 1 つとして持つ crate があるが、MIT で満たされる）
+unused-allowed-license = "allow"
+
+[bans]
+# 同じ crate の複数の版（sha2 0.10 / 0.11 など）は警告だけにする
+multiple-versions = "warn"
+wildcards = "deny"
+# publish = false の crate 同士の path 依存は版を書かない
+allow-wildcard-paths = true
+deny = [
+  # comrak・syntect・two-face は C の oniguruma を引かないよう default-features = false にしている
+  # （CLAUDE.md「凍結した設計判断」）。feature の指定を誤って onig が入ったら止める
+  { crate = "onig", reason = "C 依存を入れない（comrak・syntect・two-face は default-features = false）" },
+  { crate = "onig_sys", reason = "C 依存を入れない（comrak・syntect・two-face は default-features = false）" },
+  # HTTP クライアント・TLS は依存に持ち込まない。外部リンク検査の HTTP は curl コマンドへ
+  # 委ねている（CLAUDE.md「凍結した設計判断」・yuzu-cli の commands/extlink.rs）
+  { crate = "reqwest", reason = "HTTP クライアントを持ち込まない（外部リンク検査は curl へ委ねる）" },
+  { crate = "ureq", reason = "HTTP クライアントを持ち込まない（外部リンク検査は curl へ委ねる）" },
+  { crate = "isahc", reason = "HTTP クライアントを持ち込まない（外部リンク検査は curl へ委ねる）" },
+  { crate = "curl", reason = "HTTP クライアントを持ち込まない（外部リンク検査は curl コマンドへ委ねる）" },
+  { crate = "curl-sys", reason = "HTTP クライアントを持ち込まない（外部リンク検査は curl コマンドへ委ねる）" },
+  { crate = "hyper-tls", reason = "TLS を持ち込まない" },
+  { crate = "hyper-rustls", reason = "TLS を持ち込まない" },
+  { crate = "native-tls", reason = "TLS を持ち込まない" },
+  { crate = "openssl", reason = "TLS を持ち込まない" },
+  { crate = "openssl-sys", reason = "TLS を持ち込まない" },
+  { crate = "rustls", reason = "TLS を持ち込まない" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

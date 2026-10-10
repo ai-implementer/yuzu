@@ -1,0 +1,37 @@
+# 依存の更新 PR（Phase 82）。1 人の運用で PR が溜まらないよう、月次で組にまとめる。
+# PR が来たときの追随作業の見分け方は dependency-update スキル。
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: deps
+    ignore:
+      # wasm-bindgen-cli と完全に同じ版で検索の wasm を作り直す必要がある（Cargo.toml で `=` 固定）。
+      # 上げるときは vendor-update スキルの手順で手動
+      - dependency-name: wasm-bindgen
+    groups:
+      # 本文 HTML が変わりうる依存。スナップショットの確認と CACHE_FORMAT_VERSION の bump が
+      # 要るので、ほかの依存のマージを止めないよう別の PR にする（組は上から順に当てはめる）
+      render-output:
+        patterns:
+          - comrak
+          - syntect
+          - two-face
+      cargo:
+        patterns:
+          - "*"
+
+  # actions はフルコミット SHA でピン留めしたまま、SHA と版のコメントを上げてもらう
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - "*"

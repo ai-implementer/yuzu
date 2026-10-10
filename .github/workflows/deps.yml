@@ -1,0 +1,78 @@
+# 依存の検査（Phase 82）。結果がリポジトリの外（勧告のデータベース）で変わる検査と、
+# 時間のかかる通知の生成を ci.yml から分けている。
+#   - advisories        … Rust の依存の勧告（cargo-deny。設定は deny.toml）
+#   - vendor-advisories … 同梱の vendor 資産（mermaid・束ねた npm パッケージ・KaTeX）の勧告
+#                         （scripts/vendor-advisories.sh。dependabot は vendor したファイルを見ない）
+#   - licenses-notice   … リリースのアーカイブに入れる通知の生成を試す。依存を上げると
+#                         licenses/about.toml の clarify の checksum が合わなくなることがあり、
+#                         release.yml だけで作っているとタグを打つまで気付かない
+# 新しい勧告で無関係な PR を落とさないよう、PR では依存と記録を変えたときだけ動く。
+# 失敗したときの扱いは dependency-update スキル。
+# actions はフルコミット SHA でピン留めする（ci.yml と同じ値に揃える）
+name: deps
+
+on:
+  schedule:
+    # 毎週月曜 10:00 JST（01:00 UTC。docs-links.yml の 1 時間後）
+    - cron: "0 1 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/*/Cargo.toml"
+      - "deny.toml"
+      - "licenses/**"
+      - "crates/yuzu-theme/licenses/**"
+      - "scripts/third-party-licenses.sh"
+      - "scripts/vendor-advisories.sh"
+      - ".github/workflows/deps.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # ci.yml の deny ジョブと同じ action・同じ版
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          command-arguments: advisories
+
+  vendor-advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: vendor 資産の勧告を照合
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/vendor-advisories.sh
+
+  # release.yml の licenses ジョブと同じ手順（生成物は捨てる）
+  licenses-notice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: licenses
+      - name: cargo-about を入れる（版は scripts/third-party-licenses.sh の ABOUT_VERSION）
+        run: |
+          VERSION="$(grep -m1 '^ABOUT_VERSION=' scripts/third-party-licenses.sh | cut -d'"' -f2)"
+          if [ "$(cargo about --version 2>/dev/null | awk '{print $2}')" != "$VERSION" ]; then
+            cargo install cargo-about --version "$VERSION" --locked --features cli
+          fi
+      - name: 通知を生成
+        run: |
+          cargo fetch --locked
+          scripts/third-party-licenses.sh binary "$RUNNER_TEMP/THIRD-PARTY-LICENSES"
+          test -s "$RUNNER_TEMP/THIRD-PARTY-LICENSES"

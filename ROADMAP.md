@@ -44,7 +44,8 @@ v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-0
   83 は 84 の docs（社内で公開する節）が前提にするので 84 の前。
   着手時に判断点を決めてから実装する
 - **リリース判定**（すべて満たしたらリリースする）
-  - cargo-deny（検査の範囲は Phase 82 で決める）が CI で成功している
+  - cargo-deny が CI で成功している（licenses・bans・sources は ci.yml の deny ジョブ、
+    advisories は deps.yml。タグの前に deps.yml を手動で流す）
   - release.yml がアーカイブ内のライセンス一覧の有無を検証している
   - ci.yml の e2e が、dist のライセンス文・vendor の README が出ないこと・`.md` の配信の
     設定を照合している
@@ -55,14 +56,13 @@ v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-0
 
   | 作業 | Phase | 時期 |
   | --- | --- | --- |
-  | private vulnerability reporting・secret scanning・push protection を有効にする | 82 | 82 のマージ前 |
+  | private vulnerability reporting・secret scanning・push protection を有効にする（Dependabot alerts も推奨） | 82 | 済み（10-10） |
   | tankan 0.2.1・mikan 0.2.1 を crates.io へ publish する（`cargo login` が要る） | 81 | 済み（10-10） |
   | 各 Phase の判断点を決める | 81〜86 | 着手時 |
   | ブラウザでの確認（Host の検査・雛形 deploy.yml の実行・ライセンス文の表示） | 86 | リリース前 |
 
-- **時間が足りなければ v0.20 へ回すもの**: 82 の vendor 資産の勧告の定期照合 /
-  84 の docs をタグで公開する変更 / 85 の client 描画の Mermaid 構文チェックと、
-  check の整形差分を外す設定 / `yuzu init`
+- **時間が足りなければ v0.20 へ回すもの**: 84 の docs をタグで公開する変更 /
+  85 の client 描画の Mermaid 構文チェックと、check の整形差分を外す設定 / `yuzu init`
 
 ### 81 第三者ライセンスの表記 ✅
 
@@ -161,12 +161,53 @@ v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-0
   - mikan / kabosu も LICENSE だけのためにパッチ版を出すか（mikan は分かち書きモデルを
     同梱している）
 
-### 82 脆弱性の窓口と依存の監視 ⬜
+### 82 脆弱性の窓口と依存の監視 ✅
 
 **概要**: 脆弱性の報告先（SECURITY.md と GitHub の private vulnerability reporting）を
 用意し、依存の監視（dependabot・cargo-deny）と CI の権限の絞り込みを入れる。
 mermaid・KaTeX の更新は v0.18.1 で出した。主な判断点は cargo-deny の検査範囲と、
 dependabot の運用（頻度・まとめ方・対象から外す依存）。
+
+- 決定（10-10。判断点 4 つと、初回の実行で見つかった勧告の扱い 2 つをユーザが推奨案で確定）と実装
+  - **SECURITY.md** — 報告先は GitHub の private vulnerability reporting。対象は最新のリリースと
+    crates.io の 3 crate の最新版。受領の返信は 7 日以内、修正はパッチ版で 90 日以内が目安。
+    原稿・yuzu.toml・テーマを書く人は信頼する前提（生 HTML はそのまま出る）を書いた。README に導線
+  - **dependabot**（`.github/dependabot.yml`）— 月次。cargo は本文 HTML が変わりうる
+    comrak・syntect・two-face の組（`render-output`）とそれ以外の 2 PR、actions は 1 PR。
+    wasm-bindgen は ignore（`=` 固定と wasm-bindgen-cli を揃えて手で上げる）。対象は直接依存だけ
+  - **cargo-deny**（0.20.2・`deny.toml`）— licenses・bans・sources は ci.yml の `deny` ジョブで
+    PR ごと。advisories は新しい勧告で無関係な PR を落とさないよう deps.yml（週次・依存を変える
+    PR・手動）に分けた。bans は重複版を警告だけにし（sha2 0.10 / 0.11 など 8 件）、onig・TLS・
+    HTTP クライアントの混入を禁止（凍結した設計判断を機械で照合）。graph は配布する 4 ターゲット
+    ＋ wasm32 で dev 依存も含む（含めても違反が無かった）
+  - 初回の advisories で syntect 経由の勧告が 5 件出た（quick-xml 0.38.4 に 2 件・time 0.3.45 に
+    1 件・yaml-rust と bincode のメンテナンス終了）。time の修正版（0.3.46 以上）は rustc 1.88 が
+    要り MSRV 1.87 では上げられない。どれも yuzu が使っていない syntect の plist-load・yaml-load
+    から入っていたので、`default-fancy` をやめて使う feature だけを並べた（plist・quick-xml・time・
+    yaml-rust など 10 crate が依存から消え、スナップショットは不変）。bincode（syntect と
+    vaporetto が同梱データの読み込みに使う。代わりの版が無い）だけ理由付きで除外
+  - **vendor 資産の勧告**（`scripts/vendor-advisories.sh`。deps.yml が週次）— mermaid・束ねた
+    60 パッケージ・KaTeX の版を `crates/yuzu-theme/licenses/` の記録から読み（版の一覧を別に
+    持たない）、GitHub の advisory database と照合する。初回で mermaid 11.17.2 が束ねる
+    DOMPurify 3.4.12（IN_PLACE の 2 件）・js-yaml 4.3.0（DoS 2 件）・KaTeX 0.16.47（1 件）が
+    見つかった。11 系は 11.17.2 が最新で直せず、束ねたコードを調べると mermaid は IN_PLACE を
+    使わず、js-yaml は 4 か所とも JSON_SCHEMA（マージキー・`!!omap` を解釈しない）で読むので、
+    「GHSA の ID とパッケージ@版」の組で理由付きで除外した（mermaid 12 へ上げるときに見直す。
+    下の「v0.20 以降の候補」）
+  - 依存を上げたときに古いまま残るものを CI で知らせるようにした: `third-party-licenses.sh check` が
+    検索 wasm の通知に載った crate と版の集合を、mikan-wasm の wasm32 向け依存の解決結果と
+    照合する（コミット済みの wasm が古い版のまま残るのを防ぐ。vaporetto ならトークナイザが
+    ずれる。PR #32 のレビュー指摘で、Cargo.lock に版があるかだけの照合から改めた = 同じ crate の
+    旧版がネイティブ側に残ると見逃した）・使ってよいライセンスの一覧が
+    about.toml と deny.toml で同じかを照合する。deps.yml の `licenses-notice` がアーカイブ用の
+    通知の生成を試す（clarify の checksum 不一致に、タグを打つ前に気付く）
+  - ci.yml・fuzz.yml・container.yml（ROADMAP の現状に無かったが同じ穴）に
+    `permissions: contents: read`、ci.yml の cargo に `--locked`、`.gitignore` に
+    `.claude/settings.local.json`。追随作業の見分け方は新しい `dependency-update` スキルに書き、
+    verify・release・vendor-update スキルと CLAUDE.md を追随させた
+  - ユーザの作業: private vulnerability reporting・secret scanning・push protection と
+    Dependabot alerts を 10-10 に有効にした（`gh api` で確認。公開リポジトリなので無料）。
+    Dependabot alerts は定期実行が止まっていても勧告を通知する
 
 - 現状（実測。10-06 時点）
   - `SECURITY.md` / `.github/dependabot.yml` / `deny.toml` が無い。
@@ -871,6 +912,10 @@ Phase、検索の順位は既知の「2 文字の語」とあわせて v0.20 の
 
 ### その他の候補
 
+- **mermaid 12 系への更新** — v0.18.1 で 11 系に留めた（12.x は tankan の互換対象の版と
+  あわせて決める）。Phase 82 の照合で、11 系の最新の 11.17.2 が束ねる DOMPurify・js-yaml・
+  KaTeX に勧告が 5 件見つかり、影響しない理由を書いて `scripts/vendor-advisories.sh` で
+  除外している（10-10）。12 系へ上げるときに除外を外して照合し直す
 - **i18n** — テーマ UI 文字列の多言語化
   - 規模（実測）: jinja 18 ＋ テーマ JS 19 ＋ apispec 35 ＋ crossref 3 文字列。
     `site.lang` は `<html lang>` の 2 箇所でしか使われていない

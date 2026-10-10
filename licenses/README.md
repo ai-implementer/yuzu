@@ -6,7 +6,7 @@ yuzu が配るもの（リリースのアーカイブ・利用者のサイトの
 
 | ファイル | 中身 | 更新のきっかけ |
 | --- | --- | --- |
-| `about.toml` | cargo-about の設定（使ってよいライセンスの一覧と、crate のファイルを cargo-about が認識できないときの `clarify`） | 新しいライセンスの crate が入ったとき・clarify した crate のファイルが変わったとき（生成が失敗して知らせる） |
+| `about.toml` | cargo-about の設定（使ってよいライセンスの一覧と、crate のファイルを cargo-about が認識できないときの `clarify`） | 新しいライセンスの crate が入ったとき（リポジトリ直下の `deny.toml` の `allow` にも同じものを足す。`third-party-licenses.sh check` が一致を照合する）・clarify した crate のファイルが変わったとき（生成が失敗して知らせる。deps.yml が依存を変える PR で生成を試す） |
 | `supplements.tsv` ＋ `supplements/` | crate にライセンスの本文が無いもの（ruzstd・vaporetto・vaporetto_rules・siphasher）の原文。取得元は版・コミットで固定 | 生成が「雛形のプレースホルダーが残っている」で失敗したとき |
 | `two-face-<版>-acknowledgements.md` | two-face が同梱する構文定義・テーマのライセンス一覧 | two-face の版が変わったとき（CI の `third-party-licenses.sh check` が知らせる） |
 | `syntect-default-themes.txt` | syntect の既定テーマのうち two-face の一覧に無いもの（InspiredGitHub・base16）のライセンス文 | syntect の既定テーマが変わったとき |
