@@ -50,6 +50,11 @@ fn 生成物一式が_search_に揃う() {
     assert!(search.join("terms.fst").is_file());
     assert!(search.join("model.zst").is_file());
     assert!(search.join("index/0000.bin").is_file());
+    // wasm 成果物と、wasm の依存・モデルのライセンス文（検索の資産と一緒に出す）
+    assert!(search.join("search_bg.wasm").is_file());
+    let notice = fs::read_to_string(search.join("THIRD-PARTY-LICENSES.txt")).unwrap();
+    assert!(notice.contains("vaporetto"), "モデルの節が無い");
+    assert!(notice.contains("fst "), "wasm の依存 crate が無い");
     // doc = セクション: index/theme はリードのみ、getting-started はリード + h2 で 2
     for doc_id in 0..4 {
         assert!(search.join(format!("fragment/{doc_id}.json")).is_file());

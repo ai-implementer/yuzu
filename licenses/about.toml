@@ -1,0 +1,32 @@
+# cargo-about の設定（第三者ライセンスの一覧を作る。scripts/third-party-licenses.sh が使う）
+#
+# 対象は 2 つ:
+#   - バイナリ（yuzu-cli のネイティブの通常依存）→ リリースのアーカイブの THIRD-PARTY-LICENSES
+#   - 検索 wasm（mikan-wasm の wasm32 向けの通常依存）→ dist の _search/THIRD-PARTY-LICENSES.txt
+# ターゲットは呼び出し側が --target で渡す（バイナリは配布する 4 つ、wasm は wasm32）。
+
+# 使ってよいライセンス（SPDX）。新しいライセンスの crate が入ったら、配布できるかを
+# 確かめてからここへ足す（足さないと生成が失敗する）
+accepted = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "BSL-1.0",
+  "CC0-1.0",
+  "Unlicense",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+]
+
+# 配布物に入らない依存は数えない
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+# yuzu 自身の crate（publish = false）は第三者ではない
+private = { ignore = true }
+# ネットワークに出ないよう、呼び出し側は --frozen（--locked ＋ --offline）を付ける
+# （ライセンス文は cargo のレジストリに展開済みの crate のソースから読む）

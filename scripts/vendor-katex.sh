@@ -36,9 +36,30 @@ mkdir -p "$STAGING/fonts"
 cp "$TMP/package/dist/katex.min.js" "$TMP/package/dist/katex.min.css" "$STAGING/"
 cp "$TMP"/package/dist/fonts/*.woff2 "$STAGING/fonts/"
 
+# ライセンス文: KaTeX 本体（tarball の LICENSE）と、フォントの生成元 katex-fonts の LICENSE
+# （コミットで固定。フォントは katex-fonts のスクリプトで作られ、同じく MIT）。
+# scripts/third-party-licenses.sh vendor が dist 用の通知へ組み込む
+NOTICE="$ROOT/crates/yuzu-theme/licenses/katex.txt"
+KATEX_FONTS_LICENSE_URL="https://raw.githubusercontent.com/KaTeX/katex-fonts/feee984b451fea029d921ea0d41b917f56c8b7f6/LICENSE"
+curl -fsSL "$KATEX_FONTS_LICENSE_URL" -o "$TMP/katex-fonts-LICENSE"
+{
+  echo "KaTeX ${KATEX_VERSION}（https://github.com/KaTeX/KaTeX。npm の katex@${KATEX_VERSION}）"
+  echo
+  tr -d '\r' < "$TMP/package/LICENSE"
+  echo
+  echo "--------------------------------------------------------------------------------"
+  echo "KaTeX のフォント（fonts/*.woff2）は katex-fonts（https://github.com/KaTeX/katex-fonts）の"
+  echo "スクリプトで作られている。katex-fonts の LICENSE:"
+  echo "--------------------------------------------------------------------------------"
+  echo
+  tr -d '\r' < "$TMP/katex-fonts-LICENSE"
+} > "$TMP/katex-notice.txt"
+
 # ここまで成功して初めて既存の同梱物を置き換える
 rm -rf "$DEST"
 mv "$STAGING" "$DEST"
+mv "$TMP/katex-notice.txt" "$NOTICE"
+"$ROOT/scripts/third-party-licenses.sh" vendor
 
 echo "vendored: ${DEST} (KaTeX ${KATEX_VERSION})"
 echo "archive:  $ACTUAL"

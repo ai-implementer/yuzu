@@ -105,6 +105,10 @@ fn 生成物一式が揃っている() {
         dist.join("_assets/vendor/katex/fonts/KaTeX_Main-Regular.woff2")
             .is_file()
     );
+    // vendor 資産のライセンス文は配り、取得元・ハッシュの開発用メモは配らない
+    let notice = fs::read_to_string(dist.join("_assets/vendor/THIRD-PARTY-LICENSES.txt")).unwrap();
+    assert!(notice.contains("mermaid") && notice.contains("KaTeX") && notice.contains("dompurify"));
+    assert!(!dist.join("_assets/vendor/README.md").exists());
     assert!(dist.join("images/logo.svg").is_file());
     // build_id は `build --watch` 専用。通常ビルドの dist には出さない（毎回変わるため）
     assert!(!dist.join("__yuzu/build_id").exists());

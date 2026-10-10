@@ -26,7 +26,8 @@ two-face = { version = "0.5", default-features = false, features = ["syntect-fan
 minijinja = { version = "2.21", features = ["loader"] }
 # ページ並列レンダリング（凍結: rayon。ワークスティーリングのデータ並列）
 rayon = "1.11"
-rust-embed = "8.11"
+# include-exclude: テーマの vendor 更新メモ（static/vendor/README.md）を埋め込みから外す
+rust-embed = { version = "8.11", features = ["include-exclude"] }
 clap = { version = "4.6", features = ["derive"] }
 # シェル補完スクリプトの生成（`yuzu completions`）。clap と同じリポジトリの公式クレートで、
 # default features の依存は clap だけ（動的補完の unstable-dynamic は使わない）
