@@ -3,8 +3,8 @@
 #
 # 組に入れるのは minor・patch の更新だけにする。major の更新（similar 2 → 3・toml 0.9 → 1.1 等）は
 # 1 本ずつの PR になり、API の変更で 1 つが壊れても組のほかの更新を止めない（最初の実行で、
-# 16 個の組が major 2 つのコンパイルエラーで丸ごと止まった）。0.x の版上げ（0.29 → 0.30）を
-# dependabot が major と minor のどちらに数えるかは未確認（次の実行で確かめる）
+# 16 個の組が major 2 つのコンパイルエラーで丸ごと止まった）。0.x の版上げ（tokio-tungstenite
+# 0.29 → 0.30）も major と数えられ、組から外れる（10-10 の再実行で確認）
 version: 2
 updates:
   - package-ecosystem: cargo
