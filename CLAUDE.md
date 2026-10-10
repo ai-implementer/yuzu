@@ -22,6 +22,7 @@ yuzu は Markdown の設計書を静的 HTML ドキュメントサイトに変�
 | テーマ JS / アセットの追加 | `add-theme-asset` |
 | tankan の図種追加 | `tankan-add-diagram` |
 | vendor 資産更新 | `vendor-update` |
+| 依存の更新と監視（dependabot の PR・勧告・cargo-deny の失敗） | `dependency-update` |
 | 開発コンテナ操作 | `dev-container` |
 
 apple container CLI 自体の汎用リファレンスはユーザスキル `apple-container`。
@@ -78,6 +79,13 @@ cargo build -p yuzu-cli
     （著作権表示が `<year> <copyright holders>` のまま出る）。スクリプトは雛形が残ると失敗するので、
     ファイルがあれば `licenses/about.toml` の clarify、無ければ `licenses/supplements.tsv` で補う。
     npm 側は LICENSE が無ければ README の License 節から取り、無ければ止まる
+  - **使ってよいライセンスの一覧は `licenses/about.toml` と `deny.toml`（cargo-deny）の 2 か所**。
+    片方だけ足すと生成か CI の片方だけが通る（`third-party-licenses.sh check` が一致を照合）
+  - **検索 wasm に入る crate の版が Cargo.lock で変わったら wasm を作り直す**（コミット済みの
+    wasm が古い版のまま残り、vaporetto ならトークナイザがずれる）。`third-party-licenses.sh check` が
+    `_search/THIRD-PARTY-LICENSES.txt` の版と Cargo.lock を照合して知らせる（Phase 82）
+  - vendor 資産の勧告は `scripts/vendor-advisories.sh`（deps.yml が週次）。版は
+    `crates/yuzu-theme/licenses/` の記録から読み、除外は「GHSA の ID とパッケージ@版」の組
 
 ## アーキテクチャ
 
@@ -141,7 +149,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   JSONC の互換読み込みは作らない）
 - rayon（ページ並列化。出力はスレッド数に依らずバイト同一）
 - comrak・syntect・two-face は onig（C 依存）を引かないよう **必ず
-  `default-features = false`**（Cargo.toml のコメント参照）
+  `default-features = false`**（Cargo.toml のコメント参照）。`deny.toml` の bans が onig・
+  TLS・HTTP クライアントの混入を止める。syntect は `default-fancy` も使わず feature を並べる
+  （plist-load・yaml-load が勧告付きの依存を引く。Phase 82）
 - **ネットワーク I/O は build / check / dev の既定経路に入れない** — 外部リンク検査は
   `yuzu check --external-links` の opt-in で、HTTP は curl へ委譲 = HTTP クライアント・
   TLS を依存に持ち込まない（`commands/extlink.rs`）

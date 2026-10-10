@@ -54,7 +54,14 @@ git add Cargo.toml Cargo.lock
 ```bash
 git push origin main
 gh run list --branch main --limit 2   # CI と docs の両方が success になるまで待つ
+gh workflow run deps.yml --ref main   # 依存の勧告と通知の生成（Phase 82）
+gh run list --workflow deps.yml --limit 1   # success になるまで待つ
 ```
+
+- deps.yml は週次の定期実行だが、勧告はいつでも増えるのでタグの前に流し直す
+  （Rust の依存の勧告・同梱の vendor 資産の勧告・アーカイブ用の通知の生成）。
+  失敗したら `dependency-update` スキルで直すか、影響しない理由を書いて除外してから進める
+  （v0.19 のリリース判定「cargo-deny が CI で成功している」はこれと ci.yml の deny ジョブ）
 
 ## 4. 注釈付きタグを push
 

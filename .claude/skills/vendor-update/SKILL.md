@@ -90,4 +90,11 @@ scripts/vendor-toml-test.sh
   - `crates/mikan/assets/model/README.md` — 取得元 URL・ライセンス・取得日・**sha256**・圧縮サイズ
   - `crates/yuzu-theme/assets/static/vendor/README.md` — mermaid / KaTeX の取得バージョンと日付
 - vendor 更新は生成物の差分が大きい。コミットは vendor 更新単独で分け、由来（スクリプト・バージョン）をコミットメッセージに書く。
+- mermaid / KaTeX を更新したら `scripts/vendor-advisories.sh` で既知の勧告を照合する（Phase 82。
+  照合する版は `crates/yuzu-theme/licenses/` の記録から読むので、vendor スクリプトの後に流す）。
+  mermaid の版が変わると、束ねたパッケージの版も変わってスクリプト冒頭の `IGNORE`（勧告と
+  パッケージ@版の組）が外れる。残った勧告を読み直し、影響しないものだけ理由を書いて足し直す。
+  deps.yml が週次で同じ照合をする。
+- 検索 wasm の依存（vaporetto・fst・serde_json など）の版が Cargo.lock で変わったら、
+  wasm を作り直す（`scripts/third-party-licenses.sh check` が通知の版と Cargo.lock を照合して知らせる）。
 - 最後に `verify` スキルの一式（特に wasm check と e2e の検索）を通す。

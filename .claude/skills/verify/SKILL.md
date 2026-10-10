@@ -12,17 +12,25 @@ CI（.github/workflows/ci.yml）と同等＋実機 e2e。上から順に実行�
 ```bash
 cargo fmt --all --check
 cargo machete   # 未使用依存の検出（要 cargo install cargo-machete。CI にもある）
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo deny check bans licenses sources   # 要 cargo-deny（版は下記）。CI の deny ジョブと同じ
 ```
 
 - machete の false positive は該当 crate の Cargo.toml に
   `[package.metadata.cargo-machete] ignored = ["<crate>"]` を書いて抑制する。
+- CI の cargo は `--locked` 付き（Phase 82）。Cargo.lock の更新が要る変更は、手元で lock を
+  更新してコミットに含める（CI では lock を書き換えられず失敗する）。
+- cargo-deny は CI の `EmbarkStudios/cargo-deny-action` が使う版に合わせる
+  （v2.1.1 → cargo-deny 0.20.2。`cargo install cargo-deny --version 0.20.2 --locked`）。
+  設定は `deny.toml`。依存（Cargo.toml・Cargo.lock）を触ったら `cargo deny check advisories` と
+  `scripts/vendor-advisories.sh` も流す（CI では deps.yml が PR で動く）。
+  失敗したときの扱いは `dependency-update` スキル。
 
 ## 2. テスト
 
 ```bash
-cargo test --workspace --exclude yuzu-server
-cargo test -p yuzu-server   # ← サンドボックス外で実行する
+cargo test --locked --workspace --exclude yuzu-server
+cargo test --locked -p yuzu-server   # ← サンドボックス外で実行する
 ```
 
 - **yuzu-server はサンドボックス外必須**: serve テストが TCP バインドするため、サンドボックス内では PermissionDenied で落ちる（コード起因ではない）。
@@ -31,14 +39,17 @@ cargo test -p yuzu-server   # ← サンドボックス外で実行する
 ## 3. ビルドと crates.io パッケージ検証
 
 ```bash
-cargo build --workspace
+cargo build --locked --workspace
 cargo package --locked -p tankan -p mikan -p kabosu
+scripts/third-party-licenses.sh check
 ```
 
 - `cargo package` は公開対象 3 crate のメタデータ・同梱内容の回帰を検出する（CI にもある）。
   CI は加えて `cargo package --list` で 3 crate とも `LICENSE-MIT` / `LICENSE-APACHE` を含み、
-  tankan に `tests/corpus` が入らないことを見る。第三者ライセンスの記録の版は
-  `scripts/third-party-licenses.sh check`（Phase 81）。
+  tankan に `tests/corpus` が入らないことを見る。
+- `third-party-licenses.sh check` は two-face の一覧の版（Phase 81）に加えて、使ってよい
+  ライセンスの一覧が `licenses/about.toml` と `deny.toml` で同じか、検索 wasm の通知に載った
+  crate の版が Cargo.lock にあるか（= wasm が今の依存で作られているか）を見る（Phase 82）。
   kabosu は加えて package 後 manifest の依存ゼロ検査（CI）と
   `cargo check -p kabosu --target thumbv7em-none-eabi`（no_std 担保）がある。
   **作業ツリーが dirty だと拒否される**ので、コミット後に走らせるか意図を確認して `--allow-dirty`。
@@ -46,8 +57,8 @@ cargo package --locked -p tankan -p mikan -p kabosu
 ## 4. wasm32 チェック
 
 ```bash
-cargo check -p mikan-wasm --target wasm32-unknown-unknown
-cargo check -p tankan --target wasm32-unknown-unknown
+cargo check --locked -p mikan-wasm --target wasm32-unknown-unknown
+cargo check --locked -p tankan --target wasm32-unknown-unknown
 ```
 
 ## 5. docs サイト検証（このリポジトリ自身のドキュメントサイト）
