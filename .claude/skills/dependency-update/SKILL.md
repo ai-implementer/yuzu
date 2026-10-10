@@ -17,6 +17,9 @@ description: 依存の更新と監視の扱い（dependabot の PR・deps.yml �
 
 組は 3 つ。PR のタイトルに組の名前が出る。組に入るのは minor・patch の更新だけで、major の
 更新は依存ごとに 1 本ずつの PR になる（API の変更で 1 つが壊れても組を止めないため）。
+0.x の版上げ（0.29 → 0.30）も major に数えられる。組を閉じて作り直したときは、元の組に
+入っていた major の更新は「処理済み」として後回しになり、次の実行まで個別の PR が来ない
+（すぐ欲しければ https://github.com/ai-implementer/yuzu/network/updates から手動で実行する）。
 
 - **render-output**（comrak・syntect・two-face）— 本文 HTML が変わりうる。別の PR にしてあるので、
   ほかの組のマージを止めない
