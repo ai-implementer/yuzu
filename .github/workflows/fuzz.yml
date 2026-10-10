@@ -11,6 +11,9 @@ on:
         required: false
         default: "300"
 
+permissions:
+  contents: read
+
 jobs:
   fuzz:
     runs-on: ubuntu-latest

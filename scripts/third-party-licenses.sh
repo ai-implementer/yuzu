@@ -11,7 +11,8 @@
 #   binary <出力>    リリースのアーカイブに入れる通知（release.yml が呼ぶ）。バイナリの
 #                    依存 crate（配布する 4 ターゲット）・two-face と syntect の同梱データ・
 #                    バイナリに埋め込んだ上の 2 つの通知をまとめる
-#   check            licenses/ に置いた記録が Cargo.lock の版と合っているか（CI が呼ぶ）
+#   check            licenses/ に置いた記録と検索 wasm の通知が Cargo.lock の版と合っているか、
+#                    使ってよいライセンスの一覧が about.toml と deny.toml で同じか（CI が呼ぶ）
 #
 # vendor と wasm の生成物はコミットする（バイナリに埋め込むため。build の既定経路に
 # ネットワーク I/O を入れない）。binary はリリースのたびに生成し、コミットしない。
@@ -53,6 +54,61 @@ check_pins() {
     exit 1
   fi
   test -f "$ROOT/licenses/two-face-${TWO_FACE_VERSION}-acknowledgements.md"
+}
+
+# TOML の文字列の配列（`キー = [` から `]` まで）の要素を 1 行ずつ、並べ替えて出す
+toml_string_array() {
+  awk -v key="$2" '
+    $0 ~ "^" key " = \\[" { inside = 1; next }
+    inside && /^\]/ { exit }
+    inside {
+      while (match($0, /"[^"]*"/)) {
+        print substr($0, RSTART + 1, RLENGTH - 2)
+        $0 = substr($0, RSTART + RLENGTH)
+      }
+    }
+  ' "$1" | sort -u
+}
+
+# 使ってよいライセンスは licenses/about.toml の accepted（通知の生成）と deny.toml の allow
+# （CI の cargo-deny）の 2 か所にある。片方だけに足すと生成か CI の片方だけが通るので、
+# 同じ集合であることを照合する（Phase 82）
+check_license_lists() {
+  local about deny
+  about="$(toml_string_array "$ROOT/licenses/about.toml" accepted)"
+  deny="$(toml_string_array "$ROOT/deny.toml" allow)"
+  if [ -z "$about" ] || [ "$about" != "$deny" ]; then
+    echo "licenses/about.toml の accepted と deny.toml の allow が一致しません" >&2
+    echo "（< は about.toml だけ、> は deny.toml だけにあるライセンス）:" >&2
+    diff <(printf '%s\n' "$about") <(printf '%s\n' "$deny") | grep '^[<>]' | sed 's/^/  /' >&2 || true
+    exit 1
+  fi
+}
+
+# 検索 wasm の通知に載っている crate の版が、すべて Cargo.lock にあるか（Phase 82）。
+# wasm と通知はコミットしてあるので、依存の更新（dependabot など）で Cargo.lock だけが
+# 進むと、ネイティブ側と同梱の wasm が別の版の crate を使うことになる（vaporetto なら
+# index 時と query 時のトークナイザがずれる）。通知の版は wasm を作ったときの依存の版
+check_wasm_notice() {
+  local notice="$ROOT/crates/yuzu-index/assets/search/THIRD-PARTY-LICENSES.txt" pairs missing
+  pairs="$(sed -n 's/^  - \([^ ]*\) \([0-9][^（ ]*\)（.*/\1 \2/p' "$notice")"
+  if [ -z "$pairs" ]; then
+    echo "$notice から crate の一覧を読めません" >&2
+    exit 1
+  fi
+  missing="$(awk '
+    NR == FNR { want[$0] = 1; next }
+    /^name = / { name = $0; gsub(/name = |"/, "", name); next }
+    /^version = / && name != "" { v = $0; gsub(/version = |"/, "", v); have[name " " v] = 1; name = "" }
+    END { for (p in want) if (!(p in have)) print p }
+  ' <(printf '%s\n' "$pairs") "$ROOT/Cargo.lock" | sort)"
+  if [ -n "$missing" ]; then
+    echo "検索 wasm の通知（_search/THIRD-PARTY-LICENSES.txt）にある crate の版が Cargo.lock にありません:" >&2
+    printf '%s\n' "$missing" | sed 's/^/  /' >&2
+    echo "依存の版が変わったので、scripts/build-search-wasm.sh で wasm と通知を作り直してください" >&2
+    echo "（vendor-update スキル。作り直したら yuzu search で検索の整合を確かめる）" >&2
+    exit 1
+  fi
 }
 
 require_about() {
@@ -258,6 +314,11 @@ case "${1:-}" in
   vendor) vendor_notice ;;
   wasm) wasm_notice ;;
   binary) [ $# -eq 2 ] || usage; binary_notice "$2" ;;
-  check) check_pins && echo "licenses/ の記録は Cargo.lock と一致しています" ;;
+  check)
+    check_pins
+    check_license_lists
+    check_wasm_notice
+    echo "licenses/ の記録・許可するライセンスの一覧・検索 wasm の通知は Cargo.lock と一致しています"
+    ;;
   *) usage ;;
 esac
