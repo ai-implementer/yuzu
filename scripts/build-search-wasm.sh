@@ -30,10 +30,12 @@ if ! wasm-bindgen --version | grep -q "$WB_VERSION"; then
   exit 1
 fi
 
-cargo build -p mikan-wasm --profile wasm-release --target wasm32-unknown-unknown
+cargo build --locked -p mikan-wasm --profile wasm-release --target wasm32-unknown-unknown
 
+# 開発コンテナは CARGO_TARGET_DIR=/cargo-target（.devcontainer）なので、成果物の場所はそれに従う
+TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 wasm-bindgen --target web --no-typescript --out-name search --out-dir "$DEST" \
-  "$ROOT/target/wasm32-unknown-unknown/wasm-release/mikan_wasm.wasm"
+  "$TARGET_DIR/wasm32-unknown-unknown/wasm-release/mikan_wasm.wasm"
 
 wasm-opt -Oz --strip-debug -o "$DEST/search_bg.wasm" "$DEST/search_bg.wasm"
 
