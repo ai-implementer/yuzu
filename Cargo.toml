@@ -87,7 +87,7 @@ insta = { version = "1.48", features = ["filters"] }
 tempfile = "3"
 # kabosu の差分テスト専用の dev 依存（kabosu と参照実装の解釈一致を検証する）。
 # Cargo.lock には toml_parser / toml_writer / toml_datetime / serde_spanned / winnow が新規に増える
-toml = "0.9"
+toml = "1.1"
 # WS 統合テスト用（axum 0.8 の内部依存と同版に合わせる）
 tokio-tungstenite = "0.29"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
