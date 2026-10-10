@@ -90,6 +90,12 @@ v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-0
     上げた（publish はユーザ。kabosu は次の変更時）
   - release.yml のアーカイブ検証・ci.yml の e2e（通知の有無と README の不在）・package の
     LICENSE 確認は、Phase 86 から前倒しでここで入れた
+  - PR #31 のレビュー指摘: cargo-about は crate に本文が無い・認識できないと SPDX の雛形に戻り
+    （著作権表示が `<year> <copyright holders>`）、`--fail` でも止まらない。該当はバイナリ側で
+    windows 系 6・comrak（ファイルはあるが認識できない → `about.toml` の clarify で sha256 固定）と
+    ruzstd・vaporetto・vaporetto_rules・siphasher（本文が無い → 公開コミットの原文を
+    `licenses/supplements/` に保存）。npm の fastdom は LICENSE が無く README の License 節に
+    本文があった（README から取るようにした）。生成物に雛形が残ると失敗するようにした
 
 - 現状（実測。10-06 時点）
   - アーカイブに入れているのは `README.md` と yuzu 自身の `LICENSE-MIT` /

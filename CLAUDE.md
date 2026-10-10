@@ -74,6 +74,10 @@ cargo build -p yuzu-cli
     バイナリに埋め込むのでコミットし、アーカイブ用は release.yml の `licenses` ジョブが毎回作る
     （コミットしない）。cargo-about は版を固定（`--features cli` が要る）、mermaid の
     束ねたパッケージの取得に jq が要る。設定と two-face の一覧は `licenses/`（`README.md` 参照）
+  - **cargo-about は本文の無い・認識できない crate で SPDX の雛形に戻り、`--fail` でも止まらない**
+    （著作権表示が `<year> <copyright holders>` のまま出る）。スクリプトは雛形が残ると失敗するので、
+    ファイルがあれば `licenses/about.toml` の clarify、無ければ `licenses/supplements.tsv` で補う。
+    npm 側は LICENSE が無ければ README の License 節から取り、無ければ止まる
 
 ## アーキテクチャ
 

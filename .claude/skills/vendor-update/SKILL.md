@@ -32,8 +32,8 @@ scripts/vendor-mermaid.sh
 - npm の tarball（sha256 固定）から取る。mermaid.min.js は約 60 の npm パッケージを束ねているので、
   スクリプトが tarball 同梱の source map から束ねたパッケージを取り出し、各パッケージの
   LICENSE を集めて `crates/yuzu-theme/licenses/mermaid.txt` を書き、`THIRD-PARTY-LICENSES.txt`
-  （dist の `_assets/vendor/`）を組み直す。**jq が要る**。LICENSE ファイルも `package.json` の
-  license も無いパッケージに当たると止まる（手で調べて対処する）
+  （dist の `_assets/vendor/`）を組み直す。**jq が要る**。LICENSE ファイルが無いパッケージは README の
+  License 節から取り、著作権表示と許諾文がそろわなければ止まる（手で調べて対処する）
 - 更新後は client 描画ページ（`run` スキル参照）で図が描画されることを確認。
 
 ## 3. KaTeX（crates/yuzu-theme/assets/static/vendor/katex/）

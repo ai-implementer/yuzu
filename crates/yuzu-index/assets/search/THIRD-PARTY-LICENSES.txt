@@ -261,35 +261,6 @@ SOFTWARE.
 MIT License（MIT）
 
 この本文で配布されている crate:
-  - ruzstd 0.8.2（https://github.com/KillingSpark/zstd-rs）
-  - vaporetto 0.6.5（https://github.com/daac-tools/vaporetto）
-  - vaporetto_rules 0.6.5（https://github.com/daac-tools/vaporetto）
---------------------------------------------------------------------------------
-
-MIT License
-
-Copyright (c) <year> <copyright holders>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
-following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial
-portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
-LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
-EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
-================================================================================
-MIT License（MIT）
-
-この本文で配布されている crate:
   - unty 0.0.4（https://github.com/bincode-org/unty）
 --------------------------------------------------------------------------------
 
@@ -606,7 +577,69 @@ the following restrictions:
 
 3. This notice may not be removed or altered from any source distribution.
 
+================================================================================
+MIT（crate に本文が無いため、取得元の原文を載せる）
 
+この本文で配布されている crate:
+  - ruzstd 0.8.2（https://github.com/KillingSpark/zstd-rs）
+取得元: https://raw.githubusercontent.com/KillingSpark/zstd-rs/fcc40ba1bc766ba38eca852cb64550c827d7068d/LICENSE（ruzstd 0.8.2 の公開コミット。sha256 d715eb0d…）
+--------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2019 Moritz Borcherding
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+================================================================================
+MIT（crate に本文が無いため、取得元の原文を載せる）
+
+この本文で配布されている crate:
+  - vaporetto 0.6.5（https://github.com/daac-tools/vaporetto）
+  - vaporetto_rules 0.6.5（https://github.com/daac-tools/vaporetto）
+取得元: https://raw.githubusercontent.com/daac-tools/vaporetto/134795643b1ceb210266ccf7543f07d19d7d0a5f/LICENSE-MIT（vaporetto 0.6.5 の公開コミット。上流の本文に著作権行は無い。sha256 23f18e03…） / https://raw.githubusercontent.com/daac-tools/vaporetto/134795643b1ceb210266ccf7543f07d19d7d0a5f/LICENSE-MIT（vaporetto_rules 0.6.5 の公開コミット。vaporetto と同じリポジトリ）
+--------------------------------------------------------------------------------
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 ================================================================================
 分かち書きモデル（_search/model.zst）

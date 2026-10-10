@@ -28,5 +28,56 @@ ignore-build-dependencies = true
 ignore-dev-dependencies = true
 # yuzu 自身の crate（publish = false）は第三者ではない
 private = { ignore = true }
+
+# --- crate にライセンスのファイルはあるのに、cargo-about が本文を認識できないもの ---
+# 認識できないと SPDX の雛形（著作権表示が `<year> <copyright holders>`）に戻ってしまう
+# （PR #31 のレビュー指摘）。ファイルの sha256 で固定して、そのファイルの本文を使わせる。
+# crate の版が上がってファイルが変わると checksum が合わなくなり、生成が失敗して知らせる。
+# crate に本文そのものが無いものは supplements.tsv で補う。
+# 設定はバイナリと検索 wasm で共有しているので、wasm の生成ではここの crate が依存に無く
+# 「config found for a crate not present in the graph」の警告が出る（問題ない）
+
+# windows-rs の各 crate は字下げした license-mit を持つ（Copyright (c) Microsoft Corporation.）
+[windows-link.clarify]
+license = "MIT OR Apache-2.0"
+[[windows-link.clarify.files]]
+path = "license-mit"
+license = "MIT"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows-sys.clarify]
+license = "MIT OR Apache-2.0"
+[[windows-sys.clarify.files]]
+path = "license-mit"
+license = "MIT"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows-targets.clarify]
+license = "MIT OR Apache-2.0"
+[[windows-targets.clarify.files]]
+path = "license-mit"
+license = "MIT"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows_x86_64_gnu.clarify]
+license = "MIT OR Apache-2.0"
+[[windows_x86_64_gnu.clarify.files]]
+path = "license-mit"
+license = "MIT"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows_x86_64_msvc.clarify]
+license = "MIT OR Apache-2.0"
+[[windows_x86_64_msvc.clarify.files]]
+path = "license-mit"
+license = "MIT"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+# comrak の COPYING は本体の BSD-2-Clause に、同梱物の MIT 表記などが続く 1 ファイル
+[comrak.clarify]
+license = "BSD-2-Clause"
+[[comrak.clarify.files]]
+path = "COPYING"
+checksum = "27293e2353ce5d83e07331ffc423051908b062787d148193b8927d50d9873bd5"
 # ネットワークに出ないよう、呼び出し側は --frozen（--locked ＋ --offline）を付ける
 # （ライセンス文は cargo のレジストリに展開済みの crate のソースから読む）

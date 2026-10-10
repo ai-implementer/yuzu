@@ -1,0 +1,9 @@
+# crate の配布物にライセンスの本文が無いもの（cargo-about が SPDX の雛形に戻り、著作権表示が
+# 欠ける）に、取得元を固定した原文を補う。scripts/third-party-licenses.sh が読む。
+# crate にファイルはあるのに cargo-about が認識しないものは、about.toml の clarify で扱う。
+#
+# 列（タブ区切り）: crate 名	ライセンス（SPDX）	本文（licenses/ からの相対パス）	取得元（版・コミットで固定）
+ruzstd	MIT	supplements/ruzstd-LICENSE	https://raw.githubusercontent.com/KillingSpark/zstd-rs/fcc40ba1bc766ba38eca852cb64550c827d7068d/LICENSE（ruzstd 0.8.2 の公開コミット。sha256 d715eb0d…）
+vaporetto	MIT	supplements/vaporetto-LICENSE-MIT	https://raw.githubusercontent.com/daac-tools/vaporetto/134795643b1ceb210266ccf7543f07d19d7d0a5f/LICENSE-MIT（vaporetto 0.6.5 の公開コミット。上流の本文に著作権行は無い。sha256 23f18e03…）
+vaporetto_rules	MIT	supplements/vaporetto-LICENSE-MIT	https://raw.githubusercontent.com/daac-tools/vaporetto/134795643b1ceb210266ccf7543f07d19d7d0a5f/LICENSE-MIT（vaporetto_rules 0.6.5 の公開コミット。vaporetto と同じリポジトリ）
+siphasher	MIT	supplements/siphasher-COPYING-and-MIT	https://raw.githubusercontent.com/jedisct1/rust-siphash/451f67d73a772cba325728109bbfa247750ed076/COPYING（siphasher 1.0.3 の公開コミット。sha256 c962ee4d…）に MIT の許諾文を添えたもの（上流は本文を持たない）

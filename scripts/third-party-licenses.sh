@@ -22,6 +22,10 @@ set -euo pipefail
 # 並び順（sort・awk）を呼び出し元のロケールに左右させない（生成物はコミットするので、
 # 実行環境ごとに意味のない差分が出ないようにする）
 export LC_ALL=C
+# 失敗したときに書きかけの通知を残さない（dist 用は rust-embed の埋め込みフォルダに置くので、
+# 残ると次のビルドに紛れ込む）
+NEW_FILE=""
+trap 'if [ -n "$NEW_FILE" ]; then rm -f "$NEW_FILE"; fi' EXIT
 
 ABOUT_VERSION="0.9.2"
 # licenses/ に記録した two-face の一覧の版（Cargo.lock と一致させる。check が照合する）
@@ -62,13 +66,70 @@ require_about() {
 }
 
 # cargo-about で crate の一覧を出す（引数は -m と --target）
+#
+# cargo-about は crate にライセンスの本文が無い・認識できないと SPDX の雛形に戻り、
+# --fail でも止まらない（PR #31 のレビュー指摘）。そこで JSON を出して、
+#   - 認識できないファイルは about.toml の clarify で本文を指定し
+#   - 本文が無い crate は licenses/supplements.tsv の原文に差し替え
+# てからテキストに描き、雛形のプレースホルダーが 1 つでも残っていたら失敗させる
 about() {
-  NO_COLOR=1 cargo about generate -c "$ROOT/licenses/about.toml" --frozen --fail \
-    "$@" "$ROOT/licenses/about.hbs"
+  local json supplements
+  json="$(NO_COLOR=1 cargo about generate -c "$ROOT/licenses/about.toml" --frozen --fail \
+    --format json "$@")"
+  supplements="$(supplements_json)"
+  local out
+  out="$(jq -r --argjson sup "$supplements" "$RENDER_JQ" <<<"$json")"
+  check_placeholders "$out" "cargo-about の出力（$*）"
+  printf '%s\n' "$out"
 }
+
+# supplements.tsv → {"crate": {"license", "source", "text"}}
+supplements_json() {
+  local tsv="$ROOT/licenses/supplements.tsv"
+  grep -v -e '^#' -e '^[[:space:]]*$' "$tsv" |
+    while IFS=$'\t' read -r crate license file source; do
+      jq -n --arg c "$crate" --arg l "$license" --arg s "$source" \
+        --rawfile t "$ROOT/licenses/$file" '{($c): {license: $l, source: $s, text: $t}}'
+    done | jq -s 'add // {}'
+}
+
+# 雛形のプレースホルダー（SPDX の MIT・BSD・ISC 等の `<year>` `<copyright holders>` `<owner>`）。
+# Apache-2.0 の付録にある `[yyyy] [name of copyright owner]` は本文の一部なので対象外
+check_placeholders() {
+  local text="$1" what="$2" hits
+  hits="$(grep -n -i -E '<year>|<copyright holders?>|<owner>|<organization>' <<<"$text" || true)"
+  if [ -n "$hits" ]; then
+    echo "$what にライセンスの雛形のプレースホルダーが残っています（著作権表示が欠けている）:" >&2
+    echo "$hits" | head -5 >&2
+    echo "crate にファイルがあれば licenses/about.toml の clarify、無ければ licenses/supplements.tsv で補ってください" >&2
+    exit 1
+  fi
+}
+
+# cargo-about の JSON をテキストに描く（同じ本文は 1 回だけ載せ、その本文で配布されている
+# crate を列挙する）。supplements.tsv の crate は元の項目から外し、原文の項目として足す
+RENDER_JQ='
+def rule: "================================================================================";
+def dash: "--------------------------------------------------------------------------------";
+def line: "  - \(.name) \(.version)" + (if .repository then "（\(.repository)）" else "" end);
+( .licenses
+  | map(.used_by |= map(select((.crate.name as $n | $sup | has($n)) | not)))
+  | map(select(.used_by | length > 0)) ) as $lics
+| ( [ .licenses[].used_by[].crate | select(.name as $n | $sup | has($n)) | {name, version, repository} ]
+    | unique_by("\(.name) \(.version)") | group_by($sup[.name].text) ) as $supd
+| ( $lics[]
+    | rule + "\n" + .name + "（" + .id + "）\n\nこの本文で配布されている crate:\n"
+      + ([ .used_by[].crate | line ] | join("\n")) + "\n" + dash + "\n\n" + .text + "\n" ),
+  ( $supd[]
+    | . as $cs | $sup[$cs[0].name] as $s
+    | rule + "\n" + $s.license + "（crate に本文が無いため、取得元の原文を載せる）\n\nこの本文で配布されている crate:\n"
+      + ([ $cs[] | line ] | join("\n")) + "\n取得元: " + ([ $cs[] | $sup[.name].source ] | unique | join(" / "))
+      + "\n" + dash + "\n\n" + $s.text + "\n" )
+'
 
 vendor_notice() {
   local out="$ROOT/crates/yuzu-theme/assets/static/vendor/THIRD-PARTY-LICENSES.txt"
+  NEW_FILE="$out.new"
   local parts="$ROOT/crates/yuzu-theme/licenses"
   local part
   for part in mermaid katex; do
@@ -93,7 +154,9 @@ vendor_notice() {
     echo
     cat "$parts/katex.txt"
   } > "$out.new"
+  check_placeholders "$(cat "$out.new")" "$out"
   mv "$out.new" "$out"
+  NEW_FILE=""
   echo "notice: $out"
 }
 
@@ -118,6 +181,7 @@ model_section() {
 wasm_notice() {
   require_about
   local out="$ROOT/crates/yuzu-index/assets/search/THIRD-PARTY-LICENSES.txt"
+  NEW_FILE="$out.new"
   {
     echo "yuzu のブラウザ検索（_search/search_bg.wasm・search.js）と分かち書きモデル"
     echo "（_search/model.zst）に含まれる第三者のソフトウェアのライセンス表記"
@@ -131,12 +195,15 @@ wasm_notice() {
     echo
     model_section
   } > "$out.new"
+  check_placeholders "$(cat "$out.new")" "$out"
   mv "$out.new" "$out"
+  NEW_FILE=""
   echo "notice: $out"
 }
 
 binary_notice() {
   local out="$1"
+  NEW_FILE="$out"
   require_about
   check_pins
   local version targets=()
@@ -182,6 +249,8 @@ binary_notice() {
     echo
     cat "$ROOT/crates/yuzu-index/assets/search/THIRD-PARTY-LICENSES.txt"
   } > "$out"
+  check_placeholders "$(cat "$out")" "$out"
+  NEW_FILE=""
   echo "notice: $out（$(wc -c < "$out" | tr -d ' ') bytes）"
 }
 

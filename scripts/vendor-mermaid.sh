@@ -82,12 +82,30 @@ while read -r name version; do
     # 改行コードを揃え、末尾の空行を落とす（同じ本文を 1 回にまとめるため）
     tr -d '\r' < "$file" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$text"
   else
-    # LICENSE ファイルが無いパッケージは SPDX の本文を載せ、その旨を書く（著作権行は無い）
-    { echo "（このパッケージに LICENSE ファイルは無い。package.json の license は ${license}。"
-      echo "  以下は SPDX のライセンス本文）"
+    # LICENSE ファイルが無いパッケージは、README の License 節（`## License` 等の見出しから
+    # 次の見出しまで）に本文が書かれていることが多い（例: fastdom）。そこから取り、
+    # 著作権表示と許諾文の両方がそろっていなければ止める。SPDX の雛形で代用すると
+    # 著作権表示が `<year> <copyright holders>` のまま残る（PR #31 のレビュー指摘）
+    readme="$(find "$dir"/*/ -maxdepth 1 -type f -iname 'readme*' | sort | head -1)"
+    : > "$text"
+    if [ -n "$readme" ]; then
+      tr -d '\r' < "$readme" | awk '
+        /^#+[[:space:]]*[Ll]icen[cs]e/ { on = 1; next }
+        on && /^#+[[:space:]]/ { exit }
+        on { print }
+      ' | sed -e '/./,$!d' -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$text"
+    fi
+    if ! grep -qi 'copyright' "$text" ||
+       ! grep -qiE 'permission is hereby granted|redistribution and use|permission to use, copy' "$text"; then
+      echo "$name@$version: LICENSE ファイルが無く、README の License 節にも著作権表示と許諾文がそろっていません。" >&2
+      echo "  取得元を調べて対処してください（license: ${license}）" >&2
+      exit 1
+    fi
+    { echo "（このパッケージに LICENSE ファイルは無い。以下は同梱の README の License 節）"
       echo
-      curl -fsSL "https://raw.githubusercontent.com/spdx/license-list-data/main/text/${license}.txt"
-    } > "$text"
+      cat "$text"
+    } > "$text.with-note"
+    mv "$text.with-note" "$text"
   fi
   hash="$(shasum -a 256 "$text" | cut -d' ' -f1)"
   [ -f "$TMP/texts/$hash" ] || cp "$text" "$TMP/texts/$hash"
