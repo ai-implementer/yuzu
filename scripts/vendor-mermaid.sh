@@ -7,8 +7,8 @@ set -euo pipefail
 
 # メジャーだけの指定（`11`）にすると実行時期で中身が変わって再現性が無くなるため、
 # vendor-katex.sh / vendor-vaporetto-model.sh と同じくパッチまで固定する
-MERMAID_VERSION="${MERMAID_VERSION:-11.16.0}"
-MERMAID_SHA256="${MERMAID_SHA256:-74d7c46dabca328c2294733910a8aa1ed0c37451776e8d5295da38a2b758fb9b}"
+MERMAID_VERSION="${MERMAID_VERSION:-11.17.2}"
+MERMAID_SHA256="${MERMAID_SHA256:-581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/crates/yuzu-theme/assets/static/vendor/mermaid.min.js"
 TMP="$(mktemp -d)"
