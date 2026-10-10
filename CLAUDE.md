@@ -187,9 +187,11 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 - キャッシュするのは高価なページ派生物（メタ・本文 HTML・検索 tf・llms 正規化 md）だけ。
   nav / fst / llms 連結などの集約は毎回全実行する（クロスページ依存を依存解析なしで
   正しく保つための分離。docs `development/internals-build.md` 参照）
-- **クロスページ依存を持ち込むときは routesKey へ入れる** — 例:
-  `markdown.crossref.numbering: "site"` は先行ページの図表増減で後続ページの番号が
-  変わるため、cli が routesKey にラベル個数を含めて本文キャッシュを無効化している
+- **クロスページ依存を持ち込むときは routesKey へ入れる** — 組み立ては core の
+  `SiteModel::routes_key` が唯一の定義（cli とテストが同じ関数を通る）。例:
+  `markdown.crossref.numbering: "site"` は先行ページの図表の増減・並び順で後続ページの
+  番号が変わるため、各ページの採番開始位置（`crossref_offset`）を含めている
+  （v0.18.1 まではラベル個数だけで、`order` の変更や図⇄表の差し替えを取りこぼした）
 
 ### tankan の設計原則
 
@@ -279,9 +281,11 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - **サーバや監視スレッドへ起動時に渡す設定を増やしたらこの関数にも足す**
 - yuzu-server の serve テストは TCP バインドするため、サンドボックス内では
   PermissionDenied で落ちる（コード起因ではない）
-- 監視のテストで実ディレクトリを使うときは `tempfile::tempdir()` を使わない
-  （既定名が `.tmpXXXX` = 隠しディレクトリで、監視が常に無視する）。
-  `watch::tests::visible_tempdir` を使う
+- **監視の隠しディレクトリ判定は監視ルートからの相対パスで行う**（`WatchIgnore::is_ignored`）。
+  イベントは絶対パスで届くので、全構成要素を見るとルートの祖先（`~/.config/notes/`・
+  `.claude/worktrees/…`・`tempfile::tempdir()` の `.tmpXXXX`）に `.` 始まりがあるだけで
+  dev が黙って再ビルドしなくなる（v0.18.1 で修正。それまではテストだけが
+  `.tmpXXXX` を避けて回避していた）
 
 ### 検索インデックスと wasm
 

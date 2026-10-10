@@ -362,26 +362,10 @@ pub(crate) fn build_once(
         include_drafts,
     )?;
 
-    // routesKey: 非 draft ページの rel→route 集合（`.md` リンク解決の入力）。
-    // 変化時はキャッシュ層が本文 HTML だけを安全側で全破棄する。
-    // サイト通し番号（crossref）では**先行ページの図表個数**も本文 HTML に効くので、
-    // ラベル数もキーへ含める（あるページの図の増減で後続ページの番号がずれるため）
-    let routes: Vec<String> = site
-        .pages
-        .iter()
-        .map(|p| {
-            if md_opts.crossref_site_numbering {
-                format!("{}\t{}\t{}", p.rel.display(), p.route, p.labels.len())
-            } else {
-                format!("{}\t{}", p.rel.display(), p.route)
-            }
-        })
-        .collect();
-    session
-        .cache
-        .set_routes_key(BuildCache::sha256_hex_parts(&[routes
-            .join("\n")
-            .as_bytes()]));
+    // routesKey: 本文 HTML がページ自身の原文以外から受ける影響（rel→route 集合と、
+    // サイト通し番号の各ページの開始位置）。変化時はキャッシュ層が本文 HTML だけを
+    // 安全側で全破棄する。組み立ては core の SiteModel::routes_key が唯一の定義
+    session.cache.set_routes_key(site.routes_key());
 
     // ⚠️ ページの検証は**破壊的な clean より前**に行う。render_site の中でも
     // 検証するが、そこへ到達する前に dist を消してしまうと「不正なページのせいで

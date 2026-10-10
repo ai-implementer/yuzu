@@ -8,11 +8,11 @@
 # 参照するが、モダンブラウザは woff2 しか取得しないため ≈500KB 削減できる）。
 set -euo pipefail
 
-KATEX_VERSION="${KATEX_VERSION:-0.17.0}"
+KATEX_VERSION="${KATEX_VERSION:-0.18.11}"
 # **展開する前**にアーカイブ自体を照合する。中身のファイル単位で検証しても、
 # 悪意あるアーカイブの展開そのものは防げない（パストラバーサル等）。
 # アーカイブが一致すれば中身は一意に決まるので、fonts 20 ファイルもこれで覆える
-KATEX_ARCHIVE_SHA256="${KATEX_ARCHIVE_SHA256:-252efd48f892d178136fe3ba3530d3718b2b087ea81c3a40a877227bc61d5256}"
+KATEX_ARCHIVE_SHA256="${KATEX_ARCHIVE_SHA256:-a11d6ab44180c6e25a09108c6c391866d0600b49a61ef725368d567f4918ffc3}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/crates/yuzu-theme/assets/static/vendor/katex"
 # 完成形は DEST の隣で組んでから差し替える（$TMPDIR は別ファイルシステムの

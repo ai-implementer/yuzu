@@ -130,6 +130,11 @@ impl Numbering {
             CaptionKind::Listing => self.listing,
         }
     }
+
+    /// routesKey へ入れる文字列表現（種別ごとの値を全部含める）
+    pub(crate) fn key(&self) -> String {
+        format!("{}/{}/{}", self.figure, self.table, self.listing)
+    }
 }
 
 /// キャプション行の HTML（採番済み）。ラベルがあればアンカー id を付ける

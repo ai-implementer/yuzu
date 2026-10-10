@@ -1,5 +1,5 @@
 //! ビルドパイプライン: clean → ページ HTML（rayon 並列） → テーマアセット →
-//! syntect CSS → public パススルー → build_id
+//! syntect CSS → public パススルー → build_id（`build --watch` のときだけ）
 //!
 //! ページ生成はページ間に依存が無いため並列化している（Phase 32）。
 //! 集約出力（nav は各ページに埋まるが構築は事前・llms / 404 / アセット）は
@@ -423,7 +423,11 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     // public/ のファイルがあればそちらが上書きして優先される（テーマ上書きと同じ思想）
     assets::copy_content_assets(&rc.content_dir, &cfg.input.ignore, output_dir, ctx.outputs)?;
     assets::copy_public(rc.public_dir.as_deref(), output_dir, ctx.outputs)?;
-    assets::write_build_id(output_dir, ctx.outputs)?;
+    // build_id を読むのは `build --watch` の autorefresh.js だけ。通常の build で書くと
+    // dist が毎回 1 ファイル変わり、ビルド時刻も公開される
+    if params.live_reload == LiveReloadMode::Poll {
+        assets::write_build_id(output_dir, ctx.outputs)?;
+    }
 
     tracing::info!(
         pages = params.site.pages.len(),

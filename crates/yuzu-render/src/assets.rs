@@ -94,7 +94,8 @@ pub(crate) fn copy_content_assets(
 }
 
 /// オートリフレッシュ用のビルド ID を `dist/__yuzu/build_id` に書く。
-/// HTML には埋め込まない（通常ビルドの出力を決定的に保つため）。
+/// 呼ぶのは `build --watch`（ポーリング）のときだけ。HTML には埋め込まず、
+/// 通常ビルドでは書かない（出力を決定的に保つため）。
 /// 内容が毎回変わるため常に書き込まれる（--watch のポーリング変更シグナル）
 pub(crate) fn write_build_id(
     output_dir: &Path,

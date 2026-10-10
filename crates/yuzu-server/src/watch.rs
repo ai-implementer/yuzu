@@ -81,6 +81,9 @@ const MAX_BATCH_FACTOR: u32 = 10;
 pub struct WatchIgnore {
     dirs: Vec<PathBuf>,
     extra: Option<ExtraRule>,
+    /// 監視ルート（[`watch`] が設定する）。隠しディレクトリの判定はここからの
+    /// 相対パスで行う
+    roots: Vec<PathBuf>,
 }
 
 /// 追加の除外述語（true なら除外）
@@ -89,7 +92,10 @@ type ExtraRule = Box<dyn Fn(&Path) -> bool + Send>;
 impl WatchIgnore {
     /// `dirs` 配下（絶対パス。出力ディレクトリ等）を除外する
     pub fn new(dirs: Vec<PathBuf>) -> Self {
-        Self { dirs, extra: None }
+        Self {
+            dirs,
+            ..Self::default()
+        }
     }
 
     /// 追加の除外述語（true なら除外）。呼び出し側の glob 判定を挿す口
@@ -99,12 +105,22 @@ impl WatchIgnore {
     }
 
     /// 監視対象外のパスか。`dirs` 配下・構成要素に隠しディレクトリ
-    /// （`.` 始まり）を含むパス・追加述語に当たるパスを無視する
+    /// （`.` 始まり）を含むパス・追加述語に当たるパスを無視する。
+    ///
+    /// 隠しディレクトリは**監視ルートからの相対パス**で判定する。イベントは絶対パスで
+    /// 届くので、全構成要素を見るとルートの祖先（`~/.config/notes/` や
+    /// `.claude/worktrees/…`）に `.` 始まりがあるだけで全イベントを捨て、
+    /// 再ビルドが黙って止まる。ルート外のパスは全構成要素で判定する
     pub fn is_ignored(&self, path: &Path) -> bool {
         if self.dirs.iter().any(|dir| path.starts_with(dir)) {
             return true;
         }
-        if path.components().any(|c| {
+        let rel = self
+            .roots
+            .iter()
+            .find_map(|root| path.strip_prefix(root).ok())
+            .unwrap_or(path);
+        if rel.components().any(|c| {
             c.as_os_str()
                 .to_str()
                 .is_some_and(|name| name.starts_with('.') && name.len() > 1)
@@ -124,10 +140,11 @@ impl WatchIgnore {
 /// メッセージを送る
 pub fn watch(
     paths: &[PathBuf],
-    ignore: WatchIgnore,
+    mut ignore: WatchIgnore,
     debounce: Duration,
     on_change: impl FnMut(&[PathBuf]) + Send + 'static,
 ) -> Result<WatchHandle, ServerError> {
+    ignore.roots = paths.to_vec();
     for dir in &ignore.dirs {
         tracing::debug!("監視除外: {}", dir.display());
     }
@@ -231,7 +248,7 @@ fn panic_message(payload: &(dyn Any + Send)) -> &str {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
     #[test]
@@ -252,6 +269,22 @@ pub(crate) mod tests {
         assert!(ignore.is_ignored(Path::new("/proj/content/.swp")));
         // カレント表記（"."）は無視対象にしない
         assert!(!ignore.is_ignored(Path::new("content/a.md")));
+    }
+
+    #[test]
+    fn 監視ルートの祖先にある隠しディレクトリでは無視しない() {
+        // ルートが `~/.config/notes` のような隠しディレクトリ配下にあっても、
+        // ルートより下に `.` 始まりが無ければ変更として扱う
+        let ignore = WatchIgnore {
+            roots: vec![PathBuf::from("/home/u/.config/notes")],
+            ..WatchIgnore::default()
+        };
+        assert!(!ignore.is_ignored(Path::new("/home/u/.config/notes/content/a.md")));
+        // ルートより下の隠しディレクトリ・隠しファイルは従来どおり無視する
+        assert!(ignore.is_ignored(Path::new("/home/u/.config/notes/.git/index")));
+        assert!(ignore.is_ignored(Path::new("/home/u/.config/notes/content/.swp")));
+        // ルート外（シンボリックリンク先など）は全構成要素で判定する
+        assert!(ignore.is_ignored(Path::new("/other/.cache/x.md")));
     }
 
     #[test]
@@ -383,21 +416,16 @@ pub(crate) mod tests {
         assert!(waited.is_err(), "正常終了で合図が出た: {waited:?}");
     }
 
-    /// 隠しディレクトリにならない一時ディレクトリ。`tempfile::tempdir()` の既定名は
-    /// `.tmpXXXX` で、監視は隠しディレクトリ配下を常に無視するため使えない
-    pub(crate) fn visible_tempdir() -> tempfile::TempDir {
-        tempfile::Builder::new()
-            .prefix("yuzu-watch-")
-            .tempdir()
-            .unwrap()
-    }
-
     /// 実際のファイルシステムで、読むだけでは呼ばれず書けば呼ばれることを確かめる
-    /// （Linux では inotify の open イベントが届く経路そのもの）
+    /// （Linux では inotify の open イベントが届く経路そのもの）。
+    /// `tempfile::tempdir()` の既定名は `.tmpXXXX` なので、ルートの祖先に隠し
+    /// ディレクトリがある配置の確認も兼ねる
     #[test]
     fn 実ファイルを読むだけでは呼ばれず_書けば呼ばれる() {
-        let tmp = visible_tempdir();
-        let root = tmp.path().canonicalize().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        std::fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
         let file = root.join("a.md");
         std::fs::write(&file, "# a\n").unwrap();
         // 監視開始より前の作成イベントを拾わないよう間を置く（FSEvents の遅延対策）
