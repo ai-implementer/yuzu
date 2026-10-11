@@ -62,6 +62,9 @@ pub struct PageCodeRenderer<'a> {
     mermaid_counter: Cell<usize>,
     /// このページで外部ファイル参照を使ったか（= 本文キャッシュ不可の印）
     external_deps: Cell<bool>,
+    /// 描画中のページ（content 相対）。警告にページ名を付ける（Phase 85。Mermaid の
+    /// 構文エラーは行番号が図の中の行なので、ページ名が無いとどの図か探せなかった）
+    page: Option<&'a Path>,
 }
 
 /// apispec への仕様ファイル読み込み口。canonicalize によるルート配下の強制と、
@@ -131,6 +134,7 @@ impl SyntectCodeRenderer {
             mermaid_fallback: Cell::new(false),
             mermaid_counter: Cell::new(0),
             external_deps: Cell::new(false),
+            page: None,
         }
     }
 
@@ -233,7 +237,20 @@ fn split_lines_balanced(html: &str) -> Vec<String> {
     result
 }
 
-impl PageCodeRenderer<'_> {
+impl<'a> PageCodeRenderer<'a> {
+    /// 警告に付けるページ（content 相対）を設定する
+    pub fn for_page(mut self, rel: &'a Path) -> Self {
+        self.page = Some(rel);
+        self
+    }
+
+    /// 警告の `page=` に出す名前（単体テスト等でページが無ければ空）
+    fn page_label(&self) -> String {
+        self.page
+            .map(|p| p.display().to_string())
+            .unwrap_or_default()
+    }
+
     /// このページでクライアント描画へのフォールバックが発生したか
     /// （= このページに mermaid.js が必要か）
     pub fn mermaid_fallback_occurred(&self) -> bool {
@@ -265,7 +282,7 @@ impl PageCodeRenderer<'_> {
                 &files,
             )),
             Err(yuzu_core::SpecRefError { rel, message }) => {
-                tracing::warn!(file = rel, "{message}");
+                tracing::warn!(page = %self.page_label(), file = rel, "{message}");
                 Some(apispec::error_box(&message, code))
             }
         }
@@ -294,11 +311,15 @@ impl PageCodeRenderer<'_> {
                 }
                 Ok(Err(e)) => {
                     // 構文エラー: 書き間違いの可能性が高いので可視化する
-                    tracing::warn!("mermaid の構文エラー（クライアント描画へフォールバック): {e}");
+                    tracing::warn!(
+                        page = %self.page_label(),
+                        "mermaid の構文エラー（クライアント描画へフォールバック。行は図の中の行）: {e}"
+                    );
                     self.mermaid_fallback.set(true);
                 }
                 Err(message) => {
                     tracing::warn!(
+                        page = %self.page_label(),
                         "mermaid の SSR 中に内部エラーが起きました（クライアント描画へフォールバック。tankan の不具合です）: {message}"
                     );
                     self.mermaid_fallback.set(true);
@@ -353,7 +374,7 @@ impl CodeBlockRenderer for PageCodeRenderer<'_> {
                 match yuzu_core::resolve_include(root, spec) {
                     Ok(text) => Some(text),
                     Err(message) => {
-                        tracing::warn!(file = %spec.path, "{message}");
+                        tracing::warn!(page = %self.page_label(), file = %spec.path, "{message}");
                         return Some(include_error_box(&message, &spec.path));
                     }
                 }

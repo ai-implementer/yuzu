@@ -11,7 +11,7 @@ mod out;
 // 依存方向（cli → index）の配線。Phase 3 で実体を使う
 use yuzu_index as _;
 
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::process::ExitCode;
 
@@ -29,12 +29,19 @@ fn main() -> ExitCode {
         Ok(cli) => cli,
         Err(err) => err.exit(),
     };
-    tracing_subscriber::fmt()
+    let subscriber = tracing_subscriber::fmt()
         .with_env_filter(log_filter(
             cli.global.verbosity(),
             std::env::var("RUST_LOG").ok().as_deref(),
         ))
         .with_target(false)
+        // 色コードは stderr が端末のときだけ（Phase 85）。tracing-subscriber の既定は
+        // NO_COLOR しか見ず、`yuzu build 2>&1 | tee build.log` のようなパイプ先や CI の
+        // ログにも制御文字が入っていた
+        .with_ansi(log_ansi(
+            std::io::stderr().is_terminal(),
+            std::env::var_os("NO_COLOR").as_deref(),
+        ))
         // ログは必ず stderr へ。tracing-subscriber の既定は stdout で、
         // `yuzu check --format json` の「標準出力へ JSON 以外を書かない」契約を破る
         // （yuzu.toml の警告が JSON の前に出てパースが失敗していた）
@@ -45,8 +52,14 @@ fn main() -> ExitCode {
         // 読み手が先に閉じると（EPIPE）ビルドが途中で落ち、`--force` なら dist を
         // 作り直した後なので `_search` が消えたままになる。ログは stdout（out.rs）と
         // 同じく「書けなければ捨てる」
-        .log_internal_errors(false)
-        .init();
+        .log_internal_errors(false);
+    // 時刻は dev / build --watch だけに出す（再ビルドの区切りとして役に立つ）。1 回で
+    // 終わるコマンドでは行頭の時刻が長いだけなので出さない（Phase 85）
+    if cli.command.watches() {
+        subscriber.init();
+    } else {
+        subscriber.without_time().init();
+    }
 
     let code = run_catching(|| run(cli));
     // 標準出力の I/O エラー（ディスクフル等）は実行エラー扱い。
@@ -119,6 +132,12 @@ fn log_filter(verbosity: cli::Verbosity, rust_log: Option<&str>) -> EnvFilter {
     }
 }
 
+/// ログに色コードを付けるか。stderr が端末で、`NO_COLOR` が未設定（または空）のときだけ
+/// （NO_COLOR の扱いは https://no-color.org/ と tracing-subscriber の既定に合わせる）
+fn log_ansi(stderr_is_terminal: bool, no_color: Option<&std::ffi::OsStr>) -> bool {
+    stderr_is_terminal && no_color.is_none_or(|v| v.is_empty())
+}
+
 fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
     let ok = |()| ExitCode::SUCCESS;
     // グローバル引数の解決はここ 1 回だけ（`--root` の正規化を含む）
@@ -172,8 +191,18 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
 mod tests {
     use std::process::ExitCode;
 
-    use super::{log_filter, run_catching};
+    use super::{log_ansi, log_filter, run_catching};
     use crate::cli::Verbosity;
+
+    /// 色コードは端末のときだけ。NO_COLOR は空でない値のときだけ効く（no-color.org）
+    #[test]
+    fn ログの色は端末で_no_color_が無いときだけ() {
+        use std::ffi::OsStr;
+        assert!(log_ansi(true, None));
+        assert!(!log_ansi(false, None), "パイプ先には色コードを出さない");
+        assert!(!log_ansi(true, Some(OsStr::new("1"))));
+        assert!(log_ansi(true, Some(OsStr::new(""))));
+    }
 
     /// panic は既定の 101 ではなく規約の 2（実行エラー）
     #[test]

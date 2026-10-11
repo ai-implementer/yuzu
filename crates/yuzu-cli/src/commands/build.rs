@@ -372,6 +372,7 @@ pub(crate) fn build_once(
         Some(&session.cache),
         include_drafts,
     )?;
+    warn_if_no_pages(rc, &site);
 
     // routesKey: 本文 HTML がページ自身の原文以外から受ける影響（rel→route 集合と、
     // サイト通し番号の各ページの開始位置）。変化時はキャッシュ層が本文 HTML だけを
@@ -485,8 +486,15 @@ pub(crate) fn build_once(
         .save()
         .context("ビルドキャッシュを保存できません")?;
 
+    // 数えられなくてもビルドは成功のまま（終了コードを変えない。dev では失敗扱いにすると
+    // ブラウザの再読み込みまで止まる）
+    if let Err(e) = report_broken(rc, &site, &md_opts, include_drafts) {
+        tracing::warn!("リンク切れの件数を数えられませんでした: {e:#}");
+    }
+
+    // キャッシュの内訳は開発者向けの値なので -v のときだけ（Phase 85）
     let stats = session.cache.stats();
-    tracing::info!(
+    tracing::debug!(
         body_hits = stats.body_hits,
         body_misses = stats.body_misses,
         search_hits = stats.search_hits,
@@ -496,6 +504,99 @@ pub(crate) fn build_once(
         "インクリメンタルビルド"
     );
     Ok(())
+}
+
+/// ビルドしたページが 0 件なら知らせる（ビルドは成功のまま）。何も言わないと、原稿の
+/// 置き場所や `input.dir` の書き間違いに気づけない（`pages=0` の INFO だけだった）
+fn warn_if_no_pages(rc: &ResolvedConfig, site: &yuzu_core::SiteModel) {
+    if site.pages.iter().any(|p| !p.is_generated()) {
+        return;
+    }
+    let input = &rc.config.input.dir;
+    let mut message = if rc.content_dir.is_dir() {
+        format!(
+            "ビルドしたページが 0 件です（原稿のディレクトリ `{input}` に公開する .md がありません。\
+             draft のページは --drafts のときだけビルドします）"
+        )
+    } else {
+        format!(
+            "原稿のディレクトリ `{input}`（input.dir）がありません。ビルドしたページは 0 件です"
+        )
+    };
+    let at_root = fs::read_dir(&rc.root)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+                .count()
+        })
+        .unwrap_or(0);
+    if at_root > 0 {
+        message.push_str(&format!(
+            "。プロジェクトルート直下に .md が {at_root} 件あります。原稿を `{input}` へ移すか、\
+             input.dir で原稿のあるディレクトリを指定してください（ルート自身は指定できません）"
+        ));
+    }
+    tracing::warn!("{message}");
+}
+
+/// ビルドしたページのリンク切れ・取り込みの失敗を数えて、1 件以上なら 1 行で知らせる
+/// （Phase 85。画像切れ・見出しへのリンクも含む。終了コードは変えない = 成功のまま。
+/// 詳細と CI の判定は `yuzu check`）。
+///
+/// check と同じ判定（`check_links` / `validate_includes` / `validate_spec_refs`）を、
+/// ビルドのページ集合（draft を除く。`--drafts` なら含む）で回す。描画中の検出を
+/// 数えないのは、本文キャッシュに当たったページは描き直さず、2 回目以降の build で
+/// 同じリンク切れが黙るため（数えるには検出結果をキャッシュに載せる = キャッシュ形式の
+/// 変更が要る）。docs の規模で数十ミリ秒
+fn report_broken(
+    rc: &ResolvedConfig,
+    site: &yuzu_core::SiteModel,
+    md_opts: &yuzu_core::MarkdownOptions,
+    include_drafts: bool,
+) -> anyhow::Result<()> {
+    let links = yuzu_core::check_links(
+        &site.pages,
+        rc.public_dir.as_deref(),
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        include_drafts,
+        md_opts,
+    )?
+    .diags
+    .len();
+    let includes = yuzu_core::validate_includes(&site.pages, &rc.root, md_opts).len()
+        + yuzu_core::validate_spec_refs(&site.pages, &rc.root, md_opts).len();
+    if links + includes == 0 {
+        return Ok(());
+    }
+    let mut counts = Vec::new();
+    if links > 0 {
+        counts.push(format!("リンク切れ {links} 件"));
+    }
+    if includes > 0 {
+        counts.push(format!("取り込みの失敗 {includes} 件"));
+    }
+    tracing::warn!(
+        "{}があります。詳細は `{}` で確認できます",
+        counts.join("・"),
+        check_command(&rc.root)
+    );
+    Ok(())
+}
+
+/// build と同じプロジェクトを check するコマンド。cwd がプロジェクトの中なら
+/// 上方向の探索で見つかるので `yuzu check`、外（`--root` で指定した）なら `--root` を付ける
+fn check_command(root: &std::path::Path) -> String {
+    let inside = std::env::current_dir()
+        .and_then(|cwd| cwd.canonicalize())
+        .is_ok_and(|cwd| cwd.starts_with(root));
+    if inside {
+        "yuzu check".to_string()
+    } else {
+        format!("yuzu check --root {}", root.display())
+    }
 }
 
 /// content 配下ファイルの最終コミット日（YYYY-MM-DD）を 1 回の `git log` で収集する。

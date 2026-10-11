@@ -264,6 +264,14 @@ pub enum Command {
     },
 }
 
+impl Command {
+    /// 監視して再ビルドを繰り返すコマンド（`dev` / `build --watch`）か。
+    /// ログの時刻はこのときだけ出す（再ビルドの区切りになる）
+    pub fn watches(&self) -> bool {
+        matches!(self, Self::Dev { .. } | Self::Build { watch: true, .. })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Cli, Command, Verbosity};
