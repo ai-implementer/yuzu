@@ -462,14 +462,15 @@ pub(crate) fn build_once(
     let unpublished = yuzu_render::unpublished_outputs(rc, &site);
     removed += output::remove_orphans(&rc.output_dir, &unpublished, &written)
         .context("止めた生成物の削除に失敗しました")?;
-    let search_prefix = format!("{}/", yuzu_index::SEARCH_DIR_NAME);
-    if !rc.config.search.enabled && !written.iter().any(|p| p.starts_with(&search_prefix)) {
-        let search_dir = rc.output_dir.join(yuzu_index::SEARCH_DIR_NAME);
-        if output::remove_dir_all_under(&rc.output_dir, &search_dir).with_context(|| {
-            format!("検索インデックスを削除できません: {}", search_dir.display())
-        })? {
-            removed += 1;
-        }
+    // 検索インデックスはファイルの顔ぶれが索引の大きさで変わるので、`_search/` にある
+    // ファイルを列挙して今回書かなかったものを消す。ディレクトリごとは消さない
+    // （public/_search/ に置いた利用者のファイルを残すため。残っていると索引の削除まで
+    // 飛ばしていた = PR #42 の再レビューの指摘）
+    if !rc.config.search.enabled {
+        let stale = output::list_files_under(&rc.output_dir, yuzu_index::SEARCH_DIR_NAME)
+            .context("検索インデックスの出力を列挙できません")?;
+        removed += output::remove_orphans(&rc.output_dir, &stale, &written)
+            .context("検索インデックスの削除に失敗しました")?;
     }
     output::save_manifest(&session.manifest_path, &written)
         .context("出力マニフェストを保存できません")?;
@@ -741,5 +742,46 @@ mod tests {
             std::fs::read_to_string(dist.join("llms.txt")).unwrap(),
             "手書きの llms.txt\n"
         );
+    }
+
+    /// PR #42 の再レビューの指摘: public/_search/ に利用者のファイルがあっても、止めた
+    /// 検索インデックス（manifest・索引・本文断片）は消し、利用者のファイルだけ残す
+    #[test]
+    fn 止めた検索インデックスは_public_のファイルを残して消える() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("content/index.md", "# トップ\n\n検索される本文です。\n");
+        write("public/_search/readme.txt", "利用者のファイル\n");
+        write("yuzu.toml", "[output]\nclean = false\n");
+        let build = |force: bool| {
+            let rc = yuzu_config::load(&root).unwrap();
+            let mut session = BuildSession::new(&rc, force).unwrap();
+            build_once(&rc, LiveReloadMode::None, &mut session, false).unwrap();
+        };
+        let search = root.join("dist/_search");
+
+        build(false);
+        assert!(search.join("manifest.json").is_file());
+        assert!(search.join("readme.txt").is_file());
+
+        write(
+            "yuzu.toml",
+            "[output]\nclean = false\n[search]\nenabled = false\n",
+        );
+        build(true);
+        let left: Vec<String> = std::fs::read_dir(&search)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left, ["readme.txt"], "索引が残った: {left:?}");
+        // 後続の通常ビルドでも戻らない
+        build(false);
+        assert!(!search.join("manifest.json").exists());
+        assert!(search.join("readme.txt").is_file());
     }
 }

@@ -265,7 +265,9 @@ llms の扱い。
     （`yuzu_render::unpublished_outputs`。書き出し側の条件を裏返したもの）と今回書いたものの差を
     記録の有無に関係なく消す。llms.txt / llms-full.txt・sitemap.xml・`_search/` も同じ扱いにした
     （こちらは Phase 83 以前から残っていたが、docs の「止め方」の表に載せたので揃えた）。
-    public/ に置いた同じパスのファイルは今回書いているので消さない。判定は `Page::emits_page_md` に
+    public/ に置いた同じパスのファイルは今回書いているので消さない。`_search/` は中のファイルを
+    列挙して今回書いたもの以外を消す（最初は「中に今回書いたものがあれば丸ごと飛ばす」にしていて、
+    public/_search/ にファイルがあると索引が残った。再レビューの指摘）。判定は `Page::emits_page_md` に
     サイトの値を引数で渡す形で 1 か所に集め、書き出し・コピーボタン・llms.txt の 3 か所が通る。
     frontmatter が増えたので `CACHE_FORMAT_VERSION` を 23 → 24（v0.19 の方針の「bump なし」を
     改めた。envKey に yuzu の版が入るので利用者に実害は無い）

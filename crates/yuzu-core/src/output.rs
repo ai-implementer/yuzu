@@ -270,6 +270,36 @@ impl OutputTracker {
     }
 }
 
+/// `root` 配下の `rel_dir` にある通常ファイルを、`root` 相対の `/` 区切りで列挙する。
+/// `rel_dir` が無ければ空。シンボリックリンクは辿らず、リンク自体も挙げない
+/// （[`remove_orphans`] に渡して「今回書かなかったものだけ消す」ために使う。
+/// 止めた検索インデックスの掃除。ディレクトリごと消すと、public/ から同じ場所へ
+/// 置いた利用者のファイルまで消えてしまう）
+pub fn list_files_under(root: &Path, rel_dir: &str) -> std::io::Result<BTreeSet<String>> {
+    let dir = resolve_output_rel(root, rel_dir)?;
+    ensure_no_symlink_under(root, &dir)?;
+    let mut files = BTreeSet::new();
+    if !dir.is_dir() {
+        return Ok(files);
+    }
+    for entry in walkdir::WalkDir::new(&dir).follow_links(false) {
+        let entry = entry.map_err(std::io::Error::other)?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let rel = entry
+            .path()
+            .strip_prefix(root)
+            .map_err(std::io::Error::other)?
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        files.insert(rel);
+    }
+    Ok(files)
+}
+
 /// 前回書き出したが今回書き出さなかったファイルを削除し、
 /// 空になったディレクトリを root 直前まで剪定する。削除件数を返す
 pub fn remove_orphans(
