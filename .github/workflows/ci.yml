@@ -289,6 +289,13 @@ jobs:
           grep -q 'id="client-と-ssr-の選び方"' docs/dist/guide/diagrams/index.html
           grep -q 'github.com/ai-implementer/yuzu/issues' docs/dist/index.html
           grep -q 'github.com/ai-implementer/yuzu/issues' docs/dist/guide/faq/index.html
+          # Phase 85: build の報告・check --no-fmt・大文字小文字だけが違う URL・ログの書式・
+          # fmt が変える書き方の一覧が原稿に載っている
+          grep -q -- '--no-fmt' docs/dist/reference/cli/index.html
+          grep -q 'NO_COLOR' docs/dist/reference/cli/index.html
+          grep -q 'route-case-conflict' docs/dist/reference/rules/index.html
+          grep -q '取り込みの失敗' docs/dist/guide/quality/index.html
+          grep -q 'end list' docs/dist/guide/quality/index.html
           # 設定例は TOML で書く（JSON / YAML 風の `markdown.mermaid.backend: "ssr"` や
           # `"abbr": false` はコピーすると設定エラーになる）。原稿・README・雛形・スキルを見る
           if grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/; then
@@ -733,6 +740,67 @@ jobs:
           grep -q 'config-path-outside-root\|プロジェクトルート配下ではありません' "$RUNNER_TEMP/outside.err"
           "$GITHUB_WORKSPACE/target/debug/yuzu" check --format json 2>/dev/null \
             | grep -q '"rule": "config-path-outside-root"'
+
+      # Phase 85: build が壊れたページを黙って出さない（件数の 1 行・原稿 0 件の警告）・
+      # ログの書式・大文字小文字だけが違う URL・check --no-fmt・原稿の書き込み。
+      # 上の e2e のプロジェクトは最後に設定を書き換えているので、別のプロジェクトで見る
+      - name: e2e (build の報告とログ)
+        run: |
+          yuzu="$GITHUB_WORKSPACE/target/debug/yuzu"
+          "$yuzu" new "$RUNNER_TEMP/report"
+          cd "$RUNNER_TEMP/report"
+          # リンク切れ・画像切れは build の最後に 1 行で知らせ、終了コードは 0 のまま。
+          # 2 回目の build（本文キャッシュに当たる）でも黙らない
+          printf '# 素のページ\n\n[壊れ](missing.md)\n\n![無い](nai.png)\n' > content/plain.md
+          for _ in 1 2; do
+            "$yuzu" build 2> "$RUNNER_TEMP/report.err"
+            grep -q 'リンク切れ 2 件があります' "$RUNNER_TEMP/report.err"
+          done
+          rm content/plain.md
+          # ログ: パイプ先には色コードを出さず、1 回で終わる build は行頭に時刻を出さない。
+          # キャッシュの内訳は -v のときだけ。壊れたページが無ければ件数の行も出さない
+          "$yuzu" build 2> "$RUNNER_TEMP/plain.err"
+          if grep -q $'\e' "$RUNNER_TEMP/plain.err"; then
+            echo "パイプ先のログに色コードが出た" >&2
+            exit 1
+          fi
+          if grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$RUNNER_TEMP/plain.err"; then
+            echo "build のログに時刻が出た" >&2
+            exit 1
+          fi
+          if grep -q 'インクリメンタルビルド\|リンク切れ' "$RUNNER_TEMP/plain.err"; then
+            echo "既定の build にキャッシュの内訳か件数の行が出た" >&2
+            exit 1
+          fi
+          "$yuzu" build -v 2>&1 | grep -q 'インクリメンタルビルド'
+          # 大文字小文字だけが違う URL は build を止めずに警告し、check は warning で報告する
+          printf '# 大文字\n' > content/Guide.md
+          "$yuzu" build 2> "$RUNNER_TEMP/case.err"
+          grep -q '大文字小文字だけが違います' "$RUNNER_TEMP/case.err"
+          "$yuzu" check --format json 2>/dev/null | grep -q '"rule": "route-case-conflict"'
+          rm content/Guide.md
+          # check --no-fmt は整形差分だけを外す。fmt はパーミッションを引き継ぎ、一時ファイルを残さない
+          printf '# 整形前\n\n* a\n' > content/unformatted.md
+          chmod 600 content/unformatted.md
+          if "$yuzu" check; then
+            echo "check が整形差分を検出しなかった" >&2
+            exit 1
+          fi
+          "$yuzu" check --no-fmt
+          "$yuzu" fmt
+          test "$(stat -c '%a' content/unformatted.md)" = 600
+          if ls -a content | grep -q 'yuzu-tmp'; then
+            echo "fmt の一時ファイルが残った" >&2
+            exit 1
+          fi
+          "$yuzu" check
+          # 原稿が 0 件の build は成功のまま警告し、ルート直下の .md も知らせる
+          mkdir -p "$RUNNER_TEMP/empty-project"
+          printf '' > "$RUNNER_TEMP/empty-project/yuzu.toml"
+          printf '# ルートの原稿\n' > "$RUNNER_TEMP/empty-project/notes.md"
+          "$yuzu" build --root "$RUNNER_TEMP/empty-project" 2> "$RUNNER_TEMP/empty.err"
+          grep -q '原稿のディレクトリ `content`（input.dir）がありません' "$RUNNER_TEMP/empty.err"
+          grep -q 'プロジェクトルート直下に .md が 1 件あります' "$RUNNER_TEMP/empty.err"
 
   # cargo-deny の licenses・bans・sources（設定は deny.toml。Phase 82）。結果が Cargo.lock だけで
   # 決まる検査なので PR ごとに回す。advisories は新しい勧告で無関係な PR を落とさないよう
