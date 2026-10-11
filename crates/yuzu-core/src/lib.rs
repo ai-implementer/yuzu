@@ -34,7 +34,7 @@ pub mod urlpath;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub use aliases::{alias_routes, validate_aliases};
+pub use aliases::{alias_routes, validate_aliases, validate_url_case};
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{DiagBase, Diagnostic, Severity};
 pub use error::CoreError;

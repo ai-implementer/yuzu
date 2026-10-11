@@ -78,7 +78,8 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 ## yuzu check が追加するルール
 
-深刻度は `external-link-broken` を除いてすべて error で、常時有効・`--fix` では直せません。
+深刻度は `external-link-broken` と `route-case-conflict` を除いてすべて error で、常時有効・
+`--fix` では直せません。
 
 | ルール | 検出内容 |
 | --- | --- |
@@ -88,6 +89,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 | `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない（`#` `?` を含む・出力パスに使えない文字を含む等） |
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |
 | `route-conflict` | 2 つ以上のページが同じ URL になる（`x.md` と `x/index.md`）。自動生成されるページ（[用語集](../guide/writing.md#用語集と略語)・[検索結果ページ](../guide/search.md#検索結果ページ)）との衝突もここで報告します |
+| `route-case-conflict` | 大文字小文字だけが違う URL（`Guide.md` と `guide/index.md`、エイリアスとの組も）。大文字小文字を区別しないファイルシステム（macOS・Windows の既定）では出力が同じ場所になり、片方のページが失われます。区別する環境では別の URL として動くので warning で、`yuzu build` も止めずに警告します。`lintDisable`・行コメント・`lint.rules` で抑制できます |
 | `unsafe-page-path` | ファイル名（または `markdown.glossary.page` / `search.page`）に出力パスとして使えない文字（`\` と制御文字）。`#` `?` `%` 空白・日本語は URL 化のときにパーセントエンコードされるので対象外です。設定由来の `markdown.glossary.page` / `search.page` と `aliases` は、どの OS でビルドしても同じ出力パスを作るため、Windows で使えない `< > : " \| ? *` も全 OS で拒否します |
 | `include-error` | コンテンツインクルード（`file=`）の参照先が読めない・範囲外。Markdown 断片（\`\`\`include）の散文違反（見出し・キャプション行・脚注・frontmatter・`file=` の入れ子）もここで報告 |
 | `spec-error` | `openapi` / `jsonschema` の `file:` 参照が読めない・仕様が壊れている・未対応バージョン・`$ref` 先が解決できない |

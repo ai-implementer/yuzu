@@ -383,6 +383,19 @@ pub(crate) fn build_once(
     // 検証するが、そこへ到達する前に dist を消してしまうと「不正なページのせいで
     // 既存の正常な成果物を失う」ことになる
     yuzu_render::validate_pages(&site, rc)?;
+    // 大文字小文字だけが違う URL は止めずに知らせる（区別する FS とサーバでは別の URL と
+    // して動くため warning。check と同じく lint.rules で外したら出さない）
+    if rc
+        .config
+        .lint
+        .rules
+        .get(yuzu_core::rules::ROUTE_CASE_CONFLICT.id)
+        != Some(&false)
+    {
+        for d in yuzu_core::validate_url_case(&site.pages, &md_opts) {
+            tracing::warn!(page = %d.rel.display(), "{}", d.message);
+        }
+    }
 
     // 前回の出力マニフェスト。無い（初回・--force 後・破損）なら既知状態がないので、
     // output.clean に従い dist を作り直してから全書き出しする

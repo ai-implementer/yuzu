@@ -189,6 +189,72 @@ fn line_span(fm_span: &SourceSpan, idx: usize, line: &str) -> SourceSpan {
     }
 }
 
+/// URL（ページの route とエイリアス）のうち、大文字小文字だけが違う組を warning で報告する
+/// （`route-case-conflict`。Phase 85）。
+///
+/// 大文字小文字を区別しない FS（macOS・Windows の既定）では 2 つの出力先が同じファイルに
+/// なり、片方がもう片方を上書きする（ページの並列の書き込みで、どちらが残るかは実行ごとに
+/// 変わる）。区別する FS とサーバでは別の URL として動くので error にはしない
+/// （build も止めない）。文字列として一致する衝突は [`validate_aliases`] と
+/// `validate_routes` が error で報告するので、ここでは見ない
+pub fn validate_url_case(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    // 大文字小文字を畳んだ URL → 最初に見つけた（書かれたままの URL, ページ）
+    let mut seen: HashMap<String, (String, &Page)> = HashMap::new();
+    for page in pages {
+        let fm = (!page.is_generated())
+            .then(|| markdown::frontmatter_raw(&page.source, opts))
+            .flatten();
+        let aliases = page
+            .frontmatter
+            .aliases
+            .iter()
+            .filter(|_| !page.is_generated())
+            .filter_map(|raw| {
+                normalize_alias(raw)
+                    .ok()
+                    .map(|url| (url, Some(raw.as_str())))
+            });
+        for (url, alias_raw) in std::iter::once((page.route.clone(), None)).chain(aliases) {
+            let Some((first_url, first)) = seen.get(&url.to_lowercase()) else {
+                seen.insert(url.to_lowercase(), (url, page));
+                continue;
+            };
+            if *first_url == url {
+                continue;
+            }
+            // 報告は実ページ側に付ける（合成ページの rel は実在しない）
+            let (at, other, other_url) = if page.is_generated() {
+                (*first, page, &url)
+            } else {
+                (page, *first, first_url)
+            };
+            let what = match alias_raw {
+                Some(_) => format!("エイリアス /{url}"),
+                None => format!("URL /{url}"),
+            };
+            let span = match (alias_raw, &fm) {
+                (Some(raw), Some((text, fm_span))) if std::ptr::eq(at, page) => {
+                    Some(alias_span(text, fm_span, raw))
+                }
+                _ => None,
+            };
+            diags.push(diag(
+                at,
+                span,
+                rules::ROUTE_CASE_CONFLICT,
+                format!(
+                    "{what} と {} の /{other_url} は大文字小文字だけが違います。大文字小文字を区別しない\
+                     ファイルシステム（macOS・Windows の既定）では出力が同じ場所になり、片方が\
+                     失われます。どちらかのファイル名（エイリアス）を変えてください",
+                    other.rel.display()
+                ),
+            ));
+        }
+    }
+    diags
+}
+
 fn diag(page: &Page, span: Option<SourceSpan>, rule: rules::Rule, message: String) -> Diagnostic {
     Diagnostic {
         rule: rule.id,
@@ -205,7 +271,7 @@ fn diag(page: &Page, span: Option<SourceSpan>, rule: rules::Rule, message: Strin
 mod tests {
     use super::*;
     use crate::model::Frontmatter;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn page(rel: &str, route: &str, aliases: &[&str]) -> Page {
         // 実 frontmatter 込みの source を持たせる（span 特定の検証用。
@@ -239,6 +305,42 @@ mod tests {
 
     fn validate(pages: &[Page]) -> Vec<Diagnostic> {
         validate_aliases(pages, &MarkdownOptions::default())
+    }
+
+    /// `Guide.md` と `guide/index.md` は文字列としては別の URL だが、大文字小文字を区別しない
+    /// FS では出力先が同じになる（Phase 85）。エイリアスとの組も見る。完全一致は別のルール
+    #[test]
+    fn 大文字小文字だけが違う_url_を警告する() {
+        let opts = MarkdownOptions::default();
+        let pages = [
+            page("Guide.md", "Guide/", &[]),
+            page("guide/index.md", "guide/", &[]),
+            page("a.md", "a/", &["Old/"]),
+            page("old.md", "old/", &[]),
+            page("same.md", "same/", &[]),
+        ];
+        let diags = validate_url_case(&pages, &opts);
+        let found: Vec<(&str, &Path, bool)> = diags
+            .iter()
+            .map(|d| (d.rule, d.rel.as_path(), d.span.is_some()))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                ("route-case-conflict", Path::new("guide/index.md"), false),
+                ("route-case-conflict", Path::new("old.md"), false),
+            ],
+            "{diags:?}"
+        );
+        assert_eq!(diags[0].severity, crate::diagnostics::Severity::Warning);
+        assert!(
+            diags[0].message.contains("Guide.md"),
+            "{}",
+            diags[0].message
+        );
+        // 大文字小文字まで同じ組（完全一致の衝突）はここでは報告しない
+        let exact = [page("x.md", "x/", &[]), page("x/index.md", "x/", &[])];
+        assert!(validate_url_case(&exact, &opts).is_empty());
     }
 
     #[test]

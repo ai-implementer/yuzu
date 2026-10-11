@@ -72,6 +72,9 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 walkdir = "2"
+# 孤児掃除で「旧パスと今回のパスが同じファイルか」を見る（大文字小文字を区別しない FS。
+# Unix は dev / inode、Windows はファイル ID）。walkdir の依存として既に入っている crate
+same-file = "1"
 globset = "0.4"
 # 9.0 は rc 段階のため 8.2 に固定。debounce とイベントの種類の絞り込みは
 # yuzu-server の監視スレッドで行う（debouncer は種類を捨てるので使わない。

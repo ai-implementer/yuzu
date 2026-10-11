@@ -50,6 +50,8 @@ pub fn run(
     // ページ URL の一意性（`x.md` と `x/index.md` は同じ URL になる）。
     // alias と同じく draft 込みで検証する（公開前に矛盾を検出する）
     diags.extend(yuzu_core::validate_routes(&pages));
+    // 大文字小文字だけが違う URL（warning。区別しない FS で出力が 1 つにまとまる）
+    diags.extend(yuzu_core::validate_url_case(&pages, &opts));
     // コンテンツインクルード（file=）の参照切れ・ルート外・行範囲外
     diags.extend(super::diag::config_diagnostics(&rc));
     diags.extend(yuzu_core::validate_includes(&pages, root, &opts));
