@@ -247,6 +247,7 @@ impl WatchBuild {
 ///   配信中のディレクトリでもある
 /// - `base_url` / `dev.host` / `dev.port` — 起動済みサーバの bind と URL 接頭辞
 /// - `dev.live_reload` — 注入済みの JS と WS 通知の有無
+/// - `dev.allowed_hosts` — 起動済みサーバの Host / Origin の検査に渡している
 /// - `build.watch_ignore` — 監視除外の glob（起動時に監視スレッドへ渡している）
 fn pin_restart_only(next: &mut ResolvedConfig, current: &ResolvedConfig) {
     let mut pinned: Vec<&str> = Vec::new();
@@ -276,6 +277,10 @@ fn pin_restart_only(next: &mut ResolvedConfig, current: &ResolvedConfig) {
     if next.config.dev.live_reload != current.config.dev.live_reload {
         pinned.push("dev.live_reload");
         next.config.dev.live_reload = current.config.dev.live_reload;
+    }
+    if next.config.dev.allowed_hosts != current.config.dev.allowed_hosts {
+        pinned.push("dev.allowed_hosts");
+        next.config.dev.allowed_hosts = current.config.dev.allowed_hosts.clone();
     }
     if !pinned.is_empty() {
         tracing::warn!(

@@ -80,6 +80,7 @@ pub fn run(
         base_url: rc.base_url.clone(),
         live_reload: notifier,
         path_guard: Some(super::preview::symlink_guard(&rc.root)),
+        allowed_hosts: rc.config.dev.allowed_hosts.clone(),
         watch_failure: watch_handle.take_failure(),
     })?;
     Ok(())

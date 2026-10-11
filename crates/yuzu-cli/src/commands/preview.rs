@@ -50,6 +50,7 @@ pub(crate) fn serve_dist(
         base_url: rc.base_url.clone(),
         live_reload: None,
         path_guard: Some(symlink_guard(&rc.root)),
+        allowed_hosts: rc.config.dev.allowed_hosts.clone(),
         watch_failure,
     })?;
     Ok(())
