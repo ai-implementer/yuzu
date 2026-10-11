@@ -28,7 +28,7 @@ scripts/dev-container.sh down     # 停止・削除（volume 保持）
 ```
 
 - ラッパー経路は**ホスト同一パス構成**: ホストのユーザ名・uid・HOME・リポジトリ実パスで
-  イメージを焼き、リポジトリ・`~/.claude`・`~/.codex`・`~/.config/gh`・skills symlink の実体を
+  イメージを焼き、リポジトリ・`~/.claude`・`~/.codex`・`~/.config/gh`・skills と CLAUDE.md の symlink の実体を
   同一パスへ bind mount する。認証の渡し方（claude=初回 OAuth / codex=ファイル共有 /
   gh=exec 時 GH_TOKEN 注入 / git=env＋--ssh）は `.devcontainer/README.md`「認証の仕組み」参照
 - **gh を使うコマンドはラッパーの shell / claude / codex 経由で入る**こと。素の

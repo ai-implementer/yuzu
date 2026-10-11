@@ -25,10 +25,11 @@ scripts/dev-container.sh codex   # コンテナ内で Codex CLI を起動
 scripts/dev-container.sh down    # 停止・削除（ビルドキャッシュ volume は残る）
 ```
 
-ラッパー経路はリポジトリと `~/.claude` / `~/.codex` / `~/.config/gh`（＋ `~/.claude/skills` が
-symlink ならその実体）を**ホストと同一の絶対パスへ bind mount** する。これにより skills の
-絶対 symlink・hooks の絶対パス・codex の projects トラスト・Claude / Codex のプロジェクト
-履歴がホストとそのまま共有される。
+ラッパー経路はリポジトリと `~/.claude` / `~/.codex` / `~/.config/gh`（＋ `~/.claude/skills`・
+`~/.claude/CLAUDE.md` が symlink ならその実体。リンク先がファイルなら親ディレクトリ）を
+**ホストと同一の絶対パスへ bind mount** する。これにより skills・CLAUDE.md の絶対 symlink・
+hooks の絶対パス・codex の projects トラスト・Claude / Codex のプロジェクト履歴が
+ホストとそのまま共有される。
 
 ### 認証の仕組み（ラッパー経路）
 
@@ -107,8 +108,8 @@ cargo build -p yuzu-cli
   cargo-binstall / codex は release 資産の実測値。`cargo-insta` は `Cargo.lock` の `insta` と版を
   揃え、codex はホストの `codex --version` と揃える
 - **`~/.claude` は rw で共有される**（ラッパー経路）: コンテナ内のプロセスはホストの
-  Claude Code 設定・hooks・skills を書き換えられる。VM による隔離はホスト認証・設定には
-  及ばない前提で使う（GH_TOKEN も `container inspect` の env には出ないが exec へは渡る）
+  Claude Code 設定・hooks・skills を書き換えられる（symlink の実体としてマウントした dotfiles 側の
+  ディレクトリも rw）。VM による隔離はホスト認証・設定には及ばない前提で使う（GH_TOKEN も `container inspect` の env には出ないが exec へは渡る）
 - **`~/.claude.json` は共有しない**: `CLAUDE_CONFIG_DIR=~/.claude` により Linux 側の
   状態ファイルは `~/.claude/` 配下に入り、ホスト mac の `~/.claude.json` と書き込み競合しない
 - **テレメトリはラッパーの shell / claude / codex だけ**: OTEL 設定は exec 時の注入で、run には焼かない
@@ -137,7 +138,7 @@ cargo build -p yuzu-cli
 | ユーザ / HOME / workspace | ARG `DEV_USER` / `DEV_UID` / `DEV_GID` / `DEV_HOME` / `DEV_WORKSPACE`。既定 = devcontainer 経路（`vscode` 1000:1000 / `/home/vscode` / `/workspaces/yuzu`）、ラッパー経路 = ホスト値（gid は uid と同値） | Dockerfile の ARG（ラッパーが `--build-arg` で上書き） |
 | env | `PATH` / `CARGO_TARGET_DIR` / `CLAUDE_CONFIG_DIR` / `CARGO_TERM_COLOR` | Dockerfile の ENV のみ（containerEnv で再定義しない。ラッパーの `-e` は認証・identity・テレメトリの**追加**のみ） |
 | volume | `yuzu-cargo-registry:$DEV_HOME/.cargo/registry` / `yuzu-target:/cargo-target` | devcontainer.json の mounts ＝ ラッパーの VOLUMES（名前一致・マウント先は DEV_HOME 依存） |
-| claude / codex / gh 設定 | devcontainer 経路 = volume（`yuzu-claude` / `yuzu-codex` / `yuzu-gh`）、ラッパー経路 = ホストの実ディレクトリを同一パスへ bind mount | devcontainer.json の mounts / ラッパー `cmd_up` |
+| claude / codex / gh 設定 | devcontainer 経路 = volume（`yuzu-claude` / `yuzu-codex` / `yuzu-gh`）、ラッパー経路 = ホストの実ディレクトリを同一パスへ bind mount（`~/.claude` 直下の skills・CLAUDE.md の symlink は実体も同一パスで） | devcontainer.json の mounts / ラッパー `cmd_up` |
 | ポート | 5173（devcontainer は forwardPorts、ラッパーは `-p 127.0.0.1:5173:5173`） | 意味差あり: forward は動的トンネル、publish は静的公開 |
 | ライフサイクル | `post-create.sh`（冪等） | postCreateCommand ＝ ラッパー up 内の exec |
 | 常駐 | `sleep infinity` | Dockerfile の CMD |

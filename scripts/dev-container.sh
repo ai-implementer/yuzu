@@ -4,7 +4,7 @@
 #
 # この経路は「ホスト同一パス」構成: ユーザ名・uid・HOME・リポジトリパスをホストと
 # 一致させてイメージを焼き、~/.claude / ~/.codex / ~/.config/gh を同一パスへ bind mount
-# する（skills の絶対 symlink・hooks・codex の projects トラストが無傷で動く）。
+# する（skills・CLAUDE.md の絶対 symlink・hooks・codex の projects トラストが無傷で動く）。
 # devcontainer.json の Docker 経路は ARG 既定値（vscode/1000）のまま。詳細は
 # .devcontainer/README.md「認証の仕組み」。
 # shell / claude / codex は New Relic への OTEL 送信設定も exec 時に注入する
@@ -194,14 +194,22 @@ cmd_up() {
       echo "warn: $dir が無いためマウントしません" >&2
     fi
   done
-  # ~/.claude/skills が symlink なら実体（dotfiles 等）も同一パスでマウントして symlink を生かす
-  if [ -L "$HOME/.claude/skills" ]; then
-    local skills
-    skills="$(readlink -f "$HOME/.claude/skills" || true)"
-    if [ -d "$skills" ]; then
-      args+=(-v "$skills:$skills")
+  # ~/.claude 直下の symlink（skills・CLAUDE.md）は実体（dotfiles 等）も同一パスでマウントして
+  # symlink を生かす。リンク先がファイルなら親ディレクトリをマウントする（ファイル単体の
+  # bind mount はエディタの置き換え保存で古い中身が残る）
+  local link target mounted=""
+  for link in "$HOME/.claude/skills" "$HOME/.claude/CLAUDE.md"; do
+    [ -L "$link" ] || continue
+    target="$(readlink -f "$link" || true)"
+    if [ -f "$target" ]; then
+      target="$(dirname "$target")"
     fi
-  fi
+    [ -d "$target" ] || continue
+    # 同じディレクトリを 2 回マウントしない（配列だと bash 3.2 の set -u で空展開がエラーになる）
+    case ":$mounted:" in *":$target:"*) continue ;; esac
+    mounted="$mounted:$target"
+    args+=(-v "$target:$target")
+  done
   # git identity は run 時にも焼いておく（ラッパーを介さない素の `container exec` 用。
   # ラッパーの shell/claude/codex は exec 時にも注入する。GH_TOKEN は inspect の env に
   # 残さないよう run には焼かず exec 時のみ）
