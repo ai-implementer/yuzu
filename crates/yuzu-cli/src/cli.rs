@@ -9,13 +9,25 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
     name = "yuzu",
     version,
     about = "Markdown で書いたドキュメントを静的 HTML サイトに変換するツール",
-    long_about = "yuzu 🍊 — Markdown で書いた設計書をプロダクション品質の\n\
-                  静的 HTML ドキュメントサイトに変換するツール。\n\
-                  ロードマップと設計は README.md を参照。"
+    long_about = "yuzu 🍊 — Markdown で書いた設計書を静的 HTML のドキュメントサイトに\n\
+                  変換するツール。\n\
+                  使い方: https://ai.implementer.net/yuzu/",
+    // clap が自動で足す -h / -V / help サブコマンドは説明が英語で、変える手段が無い
+    // （`mut_arg("help", …)` は組み込みの引数が build 時に足されるため panic する）。
+    // 自動の分を止め、同じ動作の引数とサブコマンドを自前で定義する
+    disable_help_flag = true,
+    disable_version_flag = true,
+    disable_help_subcommand = true
 )]
 pub struct Cli {
     #[command(flatten)]
     pub global: GlobalArgs,
+
+    /// 版を表示する
+    // clap が表示して終了するので値は読まない。自動の -V と同じくトップレベルだけに置く
+    #[arg(short = 'V', long, action = clap::ArgAction::Version, display_order = 2000)]
+    #[allow(dead_code)]
+    version: Option<bool>,
 
     #[command(subcommand)]
     pub command: Command,
@@ -35,6 +47,9 @@ impl Cli {
         T: Into<std::ffi::OsString> + Clone,
     {
         let cli = Self::try_parse_from(args)?;
+        if let Command::Help { command } = &cli.command {
+            return Err(help_for(command.as_deref()));
+        }
         if cli.global.quiet && cli.global.verbose {
             return Err(Self::command().error(
                 clap::error::ErrorKind::ArgumentConflict,
@@ -43,6 +58,15 @@ impl Cli {
         }
         Ok(cli)
     }
+}
+
+/// `yuzu help [コマンド]` の表示。`yuzu [コマンド] --help` として読み直し、表示と終了コード
+/// （0）を clap のヘルプ表示に任せる。知らないコマンド名は clap の使い方エラー（2）になる
+fn help_for(command: Option<&str>) -> clap::Error {
+    let argv = ["yuzu"].into_iter().chain(command).chain(["--help"]);
+    Cli::command()
+        .try_get_matches_from(argv)
+        .expect_err("--help を付けたパースはヘルプの表示で終わる")
 }
 
 /// サブコマンドをまたいで効く引数。`--root` の解決結果は [`crate::cx::Cx`] が持ち、
@@ -54,7 +78,8 @@ impl Cli {
 #[command(next_display_order = 1000)]
 pub struct GlobalArgs {
     /// プロジェクトルート（yuzu.toml のあるディレクトリ）。
-    /// 指定するとカレントディレクトリからの上方向探索を行わない
+    /// 指定するとカレントディレクトリからの上方向探索を行わない。
+    /// new・completions では使えない
     #[arg(long, global = true, value_name = "DIR")]
     pub root: Option<PathBuf>,
 
@@ -67,6 +92,13 @@ pub struct GlobalArgs {
     /// 詳細ログ（debug）も出す。RUST_LOG より優先
     #[arg(short, long, global = true)]
     pub verbose: bool,
+
+    /// ヘルプを表示する
+    // 自動の -h / --help の代わり（`Cli` の disable_help_flag を参照）。global なので
+    // 全サブコマンドで使える。clap が表示して終了するので値は読まない
+    #[arg(short = 'h', long, global = true, action = clap::ArgAction::Help)]
+    #[allow(dead_code)]
+    help: Option<bool>,
 }
 
 impl GlobalArgs {
@@ -103,11 +135,12 @@ pub enum Command {
 
     /// content/ をビルドして dist/ に静的サイトを出力する
     Build {
-        /// content/・theme/ を監視して自動再ビルドし、配信＋オートリフレッシュする
+        /// プロジェクトを監視して自動で再ビルドし、配信する
+        /// （ブラウザは定期的に確認して再読み込みする。yuzu dev が使えない環境向け）
         #[arg(long)]
         watch: bool,
-        /// baseUrl を上書きする（site/build の設定より優先。
-        /// CI から configure-pages の base_path を渡す用途）
+        /// 公開先の URL かパス（例: https://example.com/docs/ ・ /docs/）。yuzu.toml の
+        /// base_url より優先する（CI から渡す用途）。./ のような相対パスは使えない
         #[arg(long)]
         base_url: Option<String>,
         /// インクリメンタルキャッシュ（.yuzu/cache/）を破棄してフルビルドする
@@ -135,7 +168,7 @@ pub enum Command {
         host: Option<String>,
     },
 
-    /// 開発サーバ（監視ビルド＋配信＋WS ライブリロード）
+    /// 開発サーバ（変更を監視して再ビルドし、配信中のブラウザを自動で再読み込みする）
     Dev {
         /// ポート番号（既定: 設定の dev.port）
         #[arg(long)]
@@ -184,12 +217,12 @@ pub enum Command {
         #[arg(long)]
         check: bool,
         /// 書き換えず、整形前後の unified diff を標準出力へ出す（--check を含意）。
-        /// そのまま `patch -p1` / `git apply` に食わせられる
+        /// そのまま `patch -p1` / `git apply` に渡せる
         #[arg(long)]
         diff: bool,
     },
 
-    /// 文書規約の診断（見出し・frontmatter）。違反があれば非ゼロ終了
+    /// 文書規約（見出し・frontmatter）と表記ゆれを診断する。違反があれば非ゼロ終了
     Lint {
         /// 表記ゆれ（全角英数字・半角カナ・長音符ゆれ・lint.terms）の
         /// 変換候補をソースへ自動適用する（修正できない違反は残り、従来どおり報告）
@@ -220,6 +253,15 @@ pub enum Command {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+
+    /// コマンドのヘルプを表示する（`yuzu help build` は `yuzu build --help` と同じ）
+    // clap の自動の help サブコマンドの代わり（`Cli` の disable_help_subcommand を参照）。
+    // 実行はせず、`Cli::parse_validated` がヘルプの表示に変える
+    Help {
+        /// ヘルプを表示するコマンド（省略すると yuzu 全体）
+        #[arg(value_name = "コマンド")]
+        command: Option<String>,
+    },
 }
 
 #[cfg(test)]
@@ -235,6 +277,51 @@ mod tests {
     #[test]
     fn 引数定義に矛盾がない() {
         Cli::command().debug_assert();
+    }
+
+    /// `-h` / `-V` / `help` サブコマンドの説明は日本語（clap の自動の分は英語なので
+    /// 自前で定義している）。サブコマンドの `-h` も同じ説明になる（global）
+    #[test]
+    fn ヘルプと版の説明は日本語() {
+        for args in [vec!["yuzu", "-h"], vec!["yuzu", "build", "-h"]] {
+            let err = Cli::parse_validated(args.clone()).err().unwrap();
+            assert_eq!(err.kind(), ErrorKind::DisplayHelp, "{args:?}");
+            let text = err.render().to_string();
+            assert!(text.contains("ヘルプを表示する"), "{args:?}:\n{text}");
+            assert!(
+                !text.contains("Print"),
+                "{args:?} に英語の説明が残る:\n{text}"
+            );
+        }
+        let top = Cli::parse_validated(["yuzu", "--help"]).err().unwrap();
+        assert!(top.render().to_string().contains("版を表示する"));
+        let version = Cli::parse_validated(["yuzu", "-V"]).err().unwrap();
+        assert_eq!(version.kind(), ErrorKind::DisplayVersion);
+        assert_eq!(version.exit_code(), 0);
+    }
+
+    /// `yuzu help <コマンド>` は `yuzu <コマンド> --help` と同じ表示・終了コード 0。
+    /// 知らないコマンド名は使い方エラー（終了コード 2）
+    #[test]
+    fn help_サブコマンドは_help_フラグと同じ表示になる() {
+        for (sub, flag) in [
+            (
+                vec!["yuzu", "help", "build"],
+                vec!["yuzu", "build", "--help"],
+            ),
+            (vec!["yuzu", "help"], vec!["yuzu", "--help"]),
+        ] {
+            let a = Cli::parse_validated(sub.clone()).err().unwrap();
+            let b = Cli::parse_validated(flag).err().unwrap();
+            assert_eq!(a.kind(), ErrorKind::DisplayHelp, "{sub:?}");
+            assert_eq!(a.exit_code(), 0, "{sub:?}");
+            assert_eq!(a.render().to_string(), b.render().to_string(), "{sub:?}");
+        }
+        let err = Cli::parse_validated(["yuzu", "help", "nosuch"])
+            .err()
+            .unwrap();
+        assert_eq!(err.kind(), ErrorKind::InvalidSubcommand);
+        assert_eq!(err.exit_code(), 2);
     }
 
     /// `--root` はサブコマンドの前後どちらでも書ける（`global = true` の効果）

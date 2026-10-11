@@ -77,7 +77,7 @@ pub fn run(cx: &crate::cx::Cx, dir: &Path) -> anyhow::Result<()> {
     outln!();
     outln!("次の一歩:");
     outln!("  cd {}", dir.display());
-    outln!("  yuzu dev            # 開発サーバ（監視＋WS ライブリロード）で執筆");
+    outln!("  yuzu dev            # 開発サーバで執筆（保存するとブラウザが自動で再読み込み）");
     outln!("  yuzu build          # dist/ に静的サイトを出力");
     outln!("  yuzu preview        # dist/ をブラウザで確認");
     outln!();
