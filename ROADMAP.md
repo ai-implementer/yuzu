@@ -259,8 +259,13 @@ llms の扱い。
 - 決定（10-10。判断点 3 つともユーザが推奨案で確定）と実装
   - **`.md` を止める設定** — サイト全体は新キー `llms.page_md`、ページ単位は frontmatter
     `pageMd`（どちらも既定 true = 今までどおり配信）。止めたページは `.md` を出さず、
-    コピーボタン（`data-md-url`）も出さない。前回出した `.md` は出力マニフェストの孤児掃除で
-    消える（`output.clean = false` でも消えることを確認）。判定は `Page::emits_page_md` に
+    コピーボタン（`data-md-url`）も出さない。前回出した `.md` は次の build で消す。出力
+    マニフェストが無いとき（`--force`・`.yuzu` の削除の後）は通常の孤児掃除が働かず、
+    `output.clean = false` だと残り続けていた（PR #42 のレビュー指摘）ので、止めた生成物の一覧
+    （`yuzu_render::unpublished_outputs`。書き出し側の条件を裏返したもの）と今回書いたものの差を
+    記録の有無に関係なく消す。llms.txt / llms-full.txt・sitemap.xml・`_search/` も同じ扱いにした
+    （こちらは Phase 83 以前から残っていたが、docs の「止め方」の表に載せたので揃えた）。
+    public/ に置いた同じパスのファイルは今回書いているので消さない。判定は `Page::emits_page_md` に
     サイトの値を引数で渡す形で 1 か所に集め、書き出し・コピーボタン・llms.txt の 3 か所が通る。
     frontmatter が増えたので `CACHE_FORMAT_VERSION` を 23 → 24（v0.19 の方針の「bump なし」を
     改めた。envKey に yuzu の版が入るので利用者に実害は無い）

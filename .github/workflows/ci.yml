@@ -385,6 +385,20 @@ jobs:
           sed -i '/^pageMd: false$/d' content/guide/getting-started.md
           "$GITHUB_WORKSPACE/target/debug/yuzu" build
           test -f dist/guide/getting-started.md
+          # PR #42 のレビュー指摘: output.clean = false のサイトで止めてから --force
+          # （出力マニフェストも消える）でビルドしても、止めた .md を dist に残さない
+          sed -i 's/^clean = true$/clean = false/' yuzu.toml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          test -f dist/index.md
+          sed -i 's/^page_md = true$/page_md = false/' yuzu.toml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build --force
+          if find dist -name '*.md' | grep -q .; then
+            echo "clean = false で --force した後も止めた .md が dist に残っている" >&2
+            exit 1
+          fi
+          sed -i 's/^page_md = false$/page_md = true/; s/^clean = false$/clean = true/' yuzu.toml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          test -f dist/index.md
           # scaffold は検索結果ページ（search.page）を有効にして配る（Phase 54）
           test -f dist/search/index.html
           # --base-url は設定より優先して配信パスを差し替える（deploy.yml が使う契約）

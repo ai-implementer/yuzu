@@ -246,6 +246,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   `cargo build -p yuzu-cli` を忘れない
 - `yuzu build` / `dev` は常時インクリメンタル（`.yuzu/cache/`）
   - キャッシュ起因の不具合を疑うときは `--force`（または `.yuzu/cache/` 削除。いつでも安全）
+  - **`--force` / `.yuzu` の削除は出力マニフェストも消す** = `output.clean = false` だと孤児掃除の
+    材料が無くなる。設定で止めた生成物（原稿の `.md`・llms・sitemap・`_search/`）は記録に頼らず
+    `yuzu_render::unpublished_outputs` と今回書いたものの差で消す（PR #42 の指摘）。**止められる
+    生成物を足したら、この一覧にも足す**（書き出し側の条件を裏返したもの）
   - **キャッシュ内容の意味が変わる変更**（本文 HTML の生成ロジック・検索 tf の重み等）では
     `yuzu-core/src/cache.rs` の `CACHE_FORMAT_VERSION` を上げる
 - **検索 tf のキャッシュはページ source ハッシュ ＋ インクルード参照先の内容ハッシュで

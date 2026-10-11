@@ -1235,6 +1235,53 @@ fn llms_page_md_を切ると_md_もコピーボタンも出さず_llms_txt_は_h
     assert!(!llms.contains(".md)"), "llms.txt:\n{llms}");
 }
 
+/// 止めた生成物の一覧（cli がマニフェストの有無に関係なく掃除に使う）は、書き出し側の
+/// 条件をちょうど裏返したものになる
+#[test]
+fn unpublished_outputs_は書き出さないことにした生成物だけを挙げる() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    let base = yuzu_config::load(dir.path()).unwrap();
+    let site = yuzu_core::build_site_model(
+        &base.content_dir,
+        &base.config.input.ignore,
+        &yuzu_render::markdown_options(&base.config),
+    )
+    .unwrap();
+    let list = |mutate: &dyn Fn(&mut yuzu_config::ResolvedConfig)| {
+        let mut rc = base.clone();
+        mutate(&mut rc);
+        yuzu_render::unpublished_outputs(&rc, &site)
+            .into_iter()
+            .collect::<Vec<_>>()
+    };
+
+    // 既定（base はパスだけ）: 出さないのは sitemap だけ
+    assert_eq!(list(&|_| {}), ["sitemap.xml"]);
+    // フル URL なら sitemap も出す
+    assert!(list(&|rc| rc.base_url = "https://example.com/docs/".to_string()).is_empty());
+    // 原稿の .md を全体で止める
+    assert_eq!(
+        list(&|rc| rc.config.llms.page_md = false),
+        [
+            "guide.md",
+            "guide/getting-started.md",
+            "index.md",
+            "sitemap.xml"
+        ]
+    );
+    // llms-full.txt だけ止める / llms を丸ごと止める
+    assert_eq!(
+        list(&|rc| rc.config.llms.full = false),
+        ["llms-full.txt", "sitemap.xml"]
+    );
+    assert_eq!(
+        list(&|rc| rc.config.llms.enabled = false),
+        ["llms-full.txt", "llms.txt", "sitemap.xml"]
+    );
+}
+
 #[test]
 fn frontmatter_の_page_md_false_はそのページだけ_md_を出さない() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");

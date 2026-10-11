@@ -449,11 +449,28 @@ pub(crate) fn build_once(
 
     // ここから下はビルド成功時のみ: 孤児掃除 → マニフェスト・キャッシュ保存
     let written = tracker.into_written();
-    let removed = match &previous {
+    let mut removed = match &previous {
         Some(prev) => output::remove_orphans(&rc.output_dir, prev, &written)
             .context("孤児出力の削除に失敗しました")?,
         None => 0,
     };
+    // 設定で止めた生成物（原稿の .md・llms.txt / llms-full.txt・sitemap.xml・検索
+    // インデックス）は、前回の記録の有無に関係なく消す。`--force` や `.yuzu` の削除の後は
+    // 記録が無く、`output.clean = false` だと上の孤児掃除も dist の作り直しも働かないため
+    // （止めた原稿の .md が frontmatter ごと残っていた。PR #42 のレビュー指摘）。
+    // 今回書いたもの（public/ に置いた同じパスのファイル）は消さない
+    let unpublished = yuzu_render::unpublished_outputs(rc, &site);
+    removed += output::remove_orphans(&rc.output_dir, &unpublished, &written)
+        .context("止めた生成物の削除に失敗しました")?;
+    let search_prefix = format!("{}/", yuzu_index::SEARCH_DIR_NAME);
+    if !rc.config.search.enabled && !written.iter().any(|p| p.starts_with(&search_prefix)) {
+        let search_dir = rc.output_dir.join(yuzu_index::SEARCH_DIR_NAME);
+        if output::remove_dir_all_under(&rc.output_dir, &search_dir).with_context(|| {
+            format!("検索インデックスを削除できません: {}", search_dir.display())
+        })? {
+            removed += 1;
+        }
+    }
     output::save_manifest(&session.manifest_path, &written)
         .context("出力マニフェストを保存できません")?;
     session
@@ -670,5 +687,59 @@ mod tests {
         overrides.apply(&mut rc);
         assert_eq!(rc.base_url, "/docs/");
         assert_eq!(rc.config.dev.host, "0.0.0.0");
+    }
+
+    /// PR #42 のレビュー指摘: `output.clean = false` のサイトで、`.md` などを止めてから
+    /// `--force`（出力マニフェストも消える）でビルドしても、止めた生成物を dist に残さない
+    #[test]
+    fn 止めた生成物は_force_で記録が無くても消える() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("content/index.md", "---\ntitle: トップ\n---\n\n# トップ\n");
+        write(
+            "content/guide/secret.md",
+            "---\ntitle: 秘密\nowner: 社外秘メモ\n---\n\n# 秘密\n",
+        );
+        write("yuzu.toml", "[output]\nclean = false\n");
+        let build = |force: bool| {
+            let rc = yuzu_config::load(&root).unwrap();
+            let mut session = BuildSession::new(&rc, force).unwrap();
+            build_once(&rc, LiveReloadMode::None, &mut session, false).unwrap();
+        };
+        let dist = root.join("dist");
+
+        build(false);
+        for rel in ["index.md", "guide/secret.md", "llms.txt", "llms-full.txt"] {
+            assert!(dist.join(rel).is_file(), "{rel}");
+        }
+        assert!(dist.join("_search").is_dir());
+
+        // 全部止めて --force（`.yuzu/cache/` ごと出力マニフェストが消える）
+        write(
+            "yuzu.toml",
+            "[output]\nclean = false\n[llms]\nenabled = false\npage_md = false\n[search]\nenabled = false\n",
+        );
+        build(true);
+        for rel in ["index.md", "guide/secret.md", "llms.txt", "llms-full.txt"] {
+            assert!(!dist.join(rel).exists(), "{rel} が残った");
+        }
+        assert!(!dist.join("_search").exists(), "_search が残った");
+        assert!(
+            dist.join("guide/secret/index.html").is_file(),
+            "ページ自体は出す"
+        );
+
+        // public/ に同じパスのファイルを置けば、止めていても消さない（利用者のファイル）
+        write("public/llms.txt", "手書きの llms.txt\n");
+        build(true);
+        assert_eq!(
+            std::fs::read_to_string(dist.join("llms.txt")).unwrap(),
+            "手書きの llms.txt\n"
+        );
     }
 }

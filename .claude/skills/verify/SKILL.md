@@ -160,6 +160,11 @@ sed -i 's/^page_md = false$/page_md = true/' yuzu.toml
 sed -i '0,/^order: 1$/s//order: 1\npageMd: false/' content/guide/getting-started.md && <repo>/target/debug/yuzu build
 test -f dist/index.md && test ! -e dist/guide/getting-started.md && echo "OK pageMd"
 sed -i '/^pageMd: false$/d' content/guide/getting-started.md && <repo>/target/debug/yuzu build
+# output.clean = false で止めてから --force（出力マニフェストも消える）しても .md を残さない（PR #42 の指摘）
+sed -i 's/^clean = true$/clean = false/' yuzu.toml && <repo>/target/debug/yuzu build && test -f dist/index.md
+sed -i 's/^page_md = true$/page_md = false/' yuzu.toml && <repo>/target/debug/yuzu build --force
+find dist -name '*.md' | grep -q . && echo "NG: --force 後に .md が残った"
+sed -i 's/^page_md = false$/page_md = true/; s/^clean = false$/clean = true/' yuzu.toml && <repo>/target/debug/yuzu build
 <repo>/target/debug/yuzu search "はじめに" | grep "はじめに"
 # タイポトレランス（出力の有無だけでなくヒット内容まで見る）とフレーズ検索の正/逆順
 <repo>/target/debug/yuzu search "ダーくモード" | grep -q "ダークモード"

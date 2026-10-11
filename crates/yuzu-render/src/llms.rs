@@ -16,6 +16,10 @@ use crate::assets;
 use crate::error::RenderError;
 use crate::urls::UrlResolver;
 
+/// 書き出すファイル名（dist 直下）。止めたときの掃除（`pipeline::unpublished_outputs`）も使う
+pub(crate) const LLMS_TXT: &str = "llms.txt";
+pub(crate) const LLMS_FULL_TXT: &str = "llms-full.txt";
+
 /// トップレベルの葉ページ（ルート `index.md` 等）をまとめる先頭セクション名
 const ROOT_SECTION_TITLE: &str = "Docs";
 
@@ -97,11 +101,11 @@ pub(crate) fn write_llms_files(
     ctx: &crate::pipeline::RenderCtx,
 ) -> Result<(), RenderError> {
     let llms_txt = generate_llms_txt(rc, site)?;
-    assets::write_output(ctx.outputs, output_dir, "llms.txt", llms_txt.as_bytes())?;
+    assets::write_output(ctx.outputs, output_dir, LLMS_TXT, llms_txt.as_bytes())?;
 
     if rc.config.llms.full {
         let full = generate_llms_full_txt(rc, site, ctx.cache)?;
-        assets::write_output(ctx.outputs, output_dir, "llms-full.txt", full.as_bytes())?;
+        assets::write_output(ctx.outputs, output_dir, LLMS_FULL_TXT, full.as_bytes())?;
     }
     Ok(())
 }

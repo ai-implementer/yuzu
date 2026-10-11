@@ -30,6 +30,12 @@ yuzu が出力する `dist/` は静的ファイルだけです。置いた場所
 | `sitemap.xml` | 全ページの URL（`base_url` がフル URL のときだけ） | `base_url` をパスだけにする |
 | `public/` の中身 | そのままコピー | 置かない |
 
+右の列の設定（`page_md`・`pageMd`・`llms.*`・`search.enabled`・`base_url`）で止めると、
+前回の build で出したものは次の build で `dist/` から消えます（`output.clean = false` の
+サイトや、`--force` の後でも）。消したページや `public/` から外したファイルは、
+`output.clean = false` のサイトで `--force` した後などに残ることがあります。社内のサイトでは
+`output.clean` を既定の `true` のままにしてください。
+
 `draft: true` のページは出力されません（`--drafts` を付けたときだけ）。
 
 公開したくないメモは原稿に書かないのが確実です。とくに HTML コメント（`<!-- … -->`）は

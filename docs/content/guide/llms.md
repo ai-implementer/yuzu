@@ -53,7 +53,8 @@ page_md = false # 全ページで .md を配信しない
 
 ページ単位なら frontmatter に `pageMd: false` を書きます。止めたページでは
 
-- `dist/<ルート>.md` を出しません（前回の build で出したものは次の build で消えます）
+- `dist/<ルート>.md` を出しません（前回の build で出したものは次の build で消えます。
+  `output.clean = false` のサイトや `--force` の後でも消えます）
 - 「Markdown をコピー」ボタンを出しません
 - llms.txt のリンクはページの HTML を指します
 
