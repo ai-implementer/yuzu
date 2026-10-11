@@ -63,7 +63,14 @@ pub fn run(
     let yuzu_core::LinkReport {
         diags: link_diags,
         external,
-    } = yuzu_core::check_links(&pages, rc.public_dir.as_deref(), &rc.content_dir, &opts)?;
+    } = yuzu_core::check_links(
+        &pages,
+        rc.public_dir.as_deref(),
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        false,
+        &opts,
+    )?;
     diags.extend(link_diags);
     // 外部リンクの到達性（opt-in。ここだけがネットワークに触れる）。
     // 診断は下の抑制の漏斗を通す = lintDisable / 行コメント / lint.rules が効く
