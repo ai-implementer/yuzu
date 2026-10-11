@@ -55,3 +55,84 @@ pub(crate) fn warn_config_diagnostics(rc: &ResolvedConfig) {
         );
     }
 }
+
+/// 原稿（`.md`）を書き換える（`yuzu fmt` と `lint --fix` が通る唯一の書き込み口。Phase 85）。
+///
+/// - 同じディレクトリの一時ファイルへ書いてから rename する。書き込みの途中で止まっても
+///   原稿が半端な内容で残らない。パーミッションは元のファイルから引き継ぐ
+///   （シンボリックリンクの `.md` はページにならないので、リンクを実ファイルで置き換える
+///   ことは無い。ハードリンクは切れる）
+/// - 書く直前に、ディスクの内容が読み込んだとき（`expected`）から変わっていないかを
+///   照合する。変わっていたら書かずにエラーにする（エディタの保存と重なったときに、
+///   古い内容から作った結果で上書きしない）
+pub(crate) fn rewrite_source(
+    path: &std::path::Path,
+    expected: &str,
+    new: &str,
+) -> anyhow::Result<()> {
+    let current = std::fs::read_to_string(path)
+        .with_context(|| format!("{} を読み込めません", path.display()))?;
+    if current != expected {
+        anyhow::bail!(
+            "{} は読み込んだ後に変更されています。書き込みを中止しました（もう一度実行してください）",
+            path.display()
+        );
+    }
+    let name = path
+        .file_name()
+        .with_context(|| format!("{} はファイルではありません", path.display()))?;
+    let tmp = path.with_file_name(format!(".{}.yuzu-tmp", name.to_string_lossy()));
+    let write = || -> std::io::Result<()> {
+        let permissions = std::fs::metadata(path)?.permissions();
+        std::fs::write(&tmp, new)?;
+        std::fs::set_permissions(&tmp, permissions)?;
+        std::fs::rename(&tmp, path)
+    };
+    write().map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        anyhow::Error::new(e).context(format!("{} に書き込めません", path.display()))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rewrite_source;
+
+    #[test]
+    fn 原稿の書き換えは一時ファイルを残さずパーミッションを引き継ぐ() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.md");
+        std::fs::write(&path, "old\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+        }
+
+        rewrite_source(&path, "old\n", "new\n").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new\n");
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["a.md"], "一時ファイルが残らない");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o640);
+        }
+    }
+
+    /// 読み込んだ後にエディタ等で変わった原稿は、古い内容から作った結果で上書きしない
+    #[test]
+    fn 読み込み後に変わった原稿は書き換えない() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.md");
+        std::fs::write(&path, "edited\n").unwrap();
+
+        let err = rewrite_source(&path, "old\n", "new\n").unwrap_err();
+        assert!(err.to_string().contains("変更されています"), "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "edited\n");
+    }
+}

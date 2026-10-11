@@ -245,6 +245,9 @@ pub enum Command {
         /// 到達不能・5xx・429 はスキップ件数に数える）
         #[arg(long)]
         external_links: bool,
+        /// 整形差分（fmt）を検査しない。既存の原稿を持ち込んで、整形を後回しにするとき
+        #[arg(long)]
+        no_fmt: bool,
     },
 
     /// シェル補完スクリプトを標準出力へ出す（例: `eval "$(yuzu completions bash)"`）

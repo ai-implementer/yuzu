@@ -179,7 +179,8 @@ fn run(cli: cli::Cli) -> anyhow::Result<ExitCode> {
         cli::Command::Check {
             format,
             external_links,
-        } => commands::check::run(&cx, format, external_links),
+            no_fmt,
+        } => commands::check::run(&cx, format, external_links, no_fmt),
         cli::Command::Completions { shell } => commands::completions::run(&cx, shell).map(ok),
         cli::Command::Help { .. } => {
             unreachable!("Cli::parse_validated が help をヘルプの表示に変える")

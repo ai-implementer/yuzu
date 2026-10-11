@@ -13,6 +13,7 @@ pub fn run(
     cx: &crate::cx::Cx,
     format: diag::Format,
     external_links: bool,
+    no_fmt: bool,
 ) -> anyhow::Result<ExitCode> {
     let rc = super::load_project(cx)?;
     let root = &rc.root;
@@ -26,8 +27,12 @@ pub fn run(
         // 文書規約
         diags.extend(yuzu_core::lint_page(page, &opts, &lint_opts)?);
         // fmt 差分（ファイル単位・位置なし）。合成ページは `yuzu fmt` の
-        // 対象外なので差分を報告しても直しようがない
-        if !page.is_generated() && yuzu_core::format_document(page, &opts)? != page.source {
+        // 対象外なので差分を報告しても直しようがない。`--no-fmt` なら見ない
+        // （fmt は error のまま外せないので、既存の原稿を持ち込むと全ファイルが赤になる）
+        if !no_fmt
+            && !page.is_generated()
+            && yuzu_core::format_document(page, &opts)? != page.source
+        {
             diags.push(Diagnostic {
                 rule: yuzu_core::rules::FMT.id,
                 severity: yuzu_core::rules::FMT.severity,
