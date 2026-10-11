@@ -60,10 +60,10 @@ yuzu の版が入るので、利用者はリリースのたびにどのみち作
   | private vulnerability reporting・secret scanning・push protection を有効にする（Dependabot alerts も推奨） | 82 | 済み（10-10） |
   | tankan 0.2.1・mikan 0.2.1 を crates.io へ publish する（`cargo login` が要る） | 81 | 済み（10-10） |
   | 各 Phase の判断点を決める | 81〜86 | 着手時 |
+  | github-pages の Environments でデプロイ元を制限しているなら `v*` のタグを許可する（公開中の docs を配布中の版に戻すなら、docs.yml を v0.18.1 のタグで手動実行） | 84 | マージ後 |
   | ブラウザでの確認（Host の検査・雛形 deploy.yml の実行・ライセンス文の表示） | 86 | リリース前 |
 
-- **時間が足りなければ v0.20 へ回すもの**: 84 の docs をタグで公開する変更 /
-  85 の client 描画の Mermaid 構文チェックと、check の整形差分を外す設定 / `yuzu init`
+- **時間が足りなければ v0.20 へ回すもの**: 85 の client 描画の Mermaid 構文チェックと、check の整形差分を外す設定 / `yuzu init`
 
 ### 81 第三者ライセンスの表記 ✅
 
@@ -329,7 +329,7 @@ llms の扱い。
   - Host の許可リストを設定キーにするか（`dev.allowed_hosts`）。`dev.host = "0.0.0.0"`
     で LAN に公開しているときの扱い
 
-### 84 docs と雛形を実際の動作に合わせる ⬜
+### 84 docs と雛形を実際の動作に合わせる ✅
 
 **概要**: README・docs・雛形・CLI のヘルプのうち、実際の動作と食い違う記述を直す。
 設定例の JSON / YAML 風の書き方を TOML に揃え、図の描画方式の既定値などの誤りを正し、
@@ -338,6 +338,42 @@ llms の扱い。
 替え、FAQ と問い合わせ先（Issues）への導線を足し、docs の目次を見直す。コードの変更は
 雛形・用語集の nav 上の位置・CLI のヘルプ文言だけ。主な判断点は用語集の位置の決め方と、
 docs サイトを main とタグのどちらから公開するか。
+
+- 決定（10-11。判断点 4 つは質問に応答が無かったため推奨案を計画に書き、計画の承認で確定）と実装
+  - **docs サイトの公開元** — リリースのタグ（`v*`）の push で公開する（`docs.yml`。手動で
+    公開し直すときはタグを選んで実行する）。main と PR では ci.yml が check・build だけを行う。
+    github-pages の Environments でデプロイ元を制限しているならタグを許可する（ユーザの作業）。
+    マージから次のタグまでは、マージ直前の main から作った docs が公開されたまま
+  - **用語集の nav 上の位置** — 同じ階層の末尾。並べ替えのキーを「order → 合成ページか → 名前」に
+    した（`nav.rs` の `sort_key`。`glossary_page()` に order を入れる方法は、未指定と同じ値になって
+    名前の比較に戻るので使わない）。設定は足さない。docs サイトの nav とスナップショットは
+    変わらない。order の無いページ・ディレクトリより用語集が前に並んでいた既存サイトは並びが
+    変わる（リリースノートに書く）
+  - **`base_url` の `.` 始まり** — 設定エラー（exit 2）。`yuzu.toml` はキーの位置付き
+    （`build.base_url` / `site.base_url`）、`--base-url` はフラグ名で止める。判定は
+    `yuzu_config::base_url_problem` の 1 か所。ルートに置いたサイトで `base_url = "./"` と書いて
+    偶然動いていた build は止まる（リリースノートに書く）
+  - **`yuzu init`** — 足さない。ガイドに「既存のフォルダで始める」節を書いた
+  - 雛形: `content/guide/index.md`（ガイド・order 2）を足し、サイドバーが「ホーム → ガイド
+    （はじめに）→ 用語集」、ホームの次のページがガイドになった。deploy.yml は Rust を入れず、
+    `yuzu new` した版のリリースのアーカイブ（Linux x64）を取得して SHA256SUMS で照合してから使う
+    （v0.18.1 のリリースで手順を実行し、照合の失敗で止まることも確かめた）。`cargo install` は
+    コメントに残し、対象ブランチと runner の注意を書いた。`theme/README.md` は docs のページと、
+    雛形を作った版のタグのソースを案内する。docs の GitLab Pages の例も同じ取得方法にした
+  - CLI: `-h` / `-V` / `help` サブコマンドの説明を日本語にした（clap の自動の分を止めて自前で定義。
+    `yuzu help build` は `yuzu build --help` と同じ表示）。見出しと `[default: …]` は英語のまま
+    （i18n の候補）。`--help` から README の案内を外し、`dev`・`build --watch`・`--base-url`・
+    `lint`・`--root`（new・completions では使えない）の説明を直した。`input.dir = "."` は、
+    書いていない `output.dir` ではなく `input.dir` を名指しする設定エラーにした
+  - docs: 新しいページ「インストールと最初のサイト」（既存のフォルダで始める・dist はサーバで
+    配信する）・「見た目の調整」（配信とデプロイから移した）・「よくある質問とトラブル」（実際に
+    動かして確かめた表示で 6 項目と Issues）。図のページに client と ssr の選び方と日本語の図種名。
+    設定例を TOML に揃え、既定値（図は client）・監視範囲・README の JS の説明を直し、利用者向けの
+    ページの内部の言葉を言い換えた。「開発」の表示名を「開発者向け」に。README と docs のトップに
+    Issues への案内
+  - CI: docs ゲートに JSON / YAML 風表記の否定 grep（原稿・README・雛形・スキル）と、新しいページ・
+    Issues・図の選び方の照合を足し、移した節の照合先を直した。e2e に雛形の nav の順と pager、
+    deploy.yml の新しい形
 
 - 現状（実測。10-06 時点）
   - JSON / YAML 風の設定例: `guide/diagrams.md:11-12`・`guide/deploy.md:120`・

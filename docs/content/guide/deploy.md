@@ -55,10 +55,11 @@ GitHub Pages のサイトは、リポジトリを非公開にしてもインタ�
 ワークフローの `branches` を書き換えてください。
 
 > [!NOTE]
-> このサイト自身も同じ仕組みで公開されています。リポジトリの
+> このサイト自身も GitHub Pages で公開しています。リポジトリの
 > [.github/workflows/docs.yml](https://github.com/ai-implementer/yuzu/blob/main/.github/workflows/docs.yml)
-> が、リポジトリ内の最新の yuzu をビルドし、`yuzu check` を通してから
-> `yuzu build --base-url` で `docs/dist` を生成して Pages へ配置します。
+> が、リリースのタグを打つたびにそのタグの yuzu をビルドし、`yuzu check` を通してから
+> `yuzu build --base-url` で `docs/dist` を生成して Pages へ配置します。そのため、
+> このサイトの説明は最新のリリースの動作に合っています。
 
 ## 404 ページ
 

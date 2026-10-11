@@ -11,6 +11,7 @@ Markdown で書いた設計書を、プロダクション品質の静的 HTML �
 
 - yuzu 自身でビルドして GitHub Pages へ公開している実例サイト
 - 原稿は [docs/](docs/)、デプロイは [.github/workflows/docs.yml](.github/workflows/docs.yml)
+  （リリースのタグで公開するので、内容は最新のリリースに合わせてある）
 
 ## できること
 

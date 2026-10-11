@@ -117,7 +117,7 @@ jobs:
           cargo check --locked -p kabosu --target thumbv7em-none-eabi
 
       # docs/: yuzu 自身のドキュメントサイト（Phase 36）を PR でも検証する。
-      # デプロイは docs.yml（main push）だが、壊れた原稿・SSR フォールバックの
+      # デプロイは docs.yml（リリースのタグの push。Phase 84）だが、壊れた原稿・SSR フォールバックの
       # 混入はマージ前にここで検出する
       - name: docs site (yuzu check && yuzu build)
         # プロジェクトは --root docs で指定する（Phase 75 の dogfooding。cd docs しない）。

@@ -1,14 +1,20 @@
 # yuzu 自身のドキュメントサイト（docs/）を GitHub Pages へ公開する（Phase 36）。
-# yuzu new が同梱する scaffold の deploy.yml とは別物で、リポジトリ内の
-# 最新の yuzu をビルドして使う（dogfooding）。
+# yuzu new が同梱する scaffold の deploy.yml とは別物で、タグの時点の yuzu を
+# ソースからビルドし、そのタグの docs を公開する（dogfooding）。
+# リリースのタグ（v*）の push で動く（Phase 84）。main から公開すると、配布中の版の
+# 利用者が見る docs に未リリースの動作が先に出るため。main と PR では ci.yml が
+# check と build だけを行う。手動で公開し直すときは workflow_dispatch をタグを選んで
+# 実行する（main を選ぶと未リリースの内容が公開される）。
 # 事前準備: リポジトリの Settings > Pages > Source を「GitHub Actions」にする。
+# Settings > Environments > github-pages でデプロイ元を制限している場合は、v* のタグも
+# 許可する（既定の設定では main だけが許可されていることがある）。
 # actions はフルコミット SHA でピン留めする（タグの書き換えによる改ざんを防ぐ）。
 # 更新時は SHA とコメントのバージョンを揃えること
 name: docs
 
 on:
   push:
-    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -41,7 +47,7 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - name: yuzu をビルド（このリポジトリの最新版）
+      - name: yuzu をビルド（このタグの版）
         # release ビルド必須: debug はテーマをファイルシステムから読むため、
         # 埋め込みアセットの検証を兼ねて常に埋め込み経路で配信物を作る
         run: cargo build --release -p yuzu-cli

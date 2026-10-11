@@ -11,7 +11,7 @@ yuzu 🍊 は、Markdown で書いた設計書を**プロダクション品質�
 
 このサイト自体が yuzu でビルドされています（リポジトリの
 [docs/](https://github.com/ai-implementer/yuzu/tree/main/docs) が原稿で、
-push のたびに GitHub Pages へ自動デプロイ）。左のサイドバー・右の目次・
+リリースのたびに GitHub Pages へ自動デプロイ。説明は最新のリリースの動作に合わせています）。左のサイドバー・右の目次・
 ヘッダーの検索ボックス・ダークモード切替・各ページの「Markdown をコピー」は、
 すべて yuzu が生成したものです。
 
