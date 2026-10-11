@@ -12,6 +12,11 @@ const FILES: &[(&str, &str)] = &[
     ("yuzu.toml", include_str!("../../scaffold/yuzu.toml")),
     (".gitignore", include_str!("../../scaffold/gitignore")),
     ("content/index.md", include_str!("../../scaffold/index.md")),
+    // ディレクトリの表示名・並び順（無いとサイドバーに `guide` が生名で出る）
+    (
+        "content/guide/index.md",
+        include_str!("../../scaffold/guide-index.md"),
+    ),
     (
         "content/guide/getting-started.md",
         include_str!("../../scaffold/getting-started.md"),

@@ -20,7 +20,8 @@ struct DirNode<'a> {
 ///
 /// - ディレクトリ階層がそのまま階層になる
 /// - 表示名は frontmatter `title`（→ h1 → ファイル名）
-/// - 並び順は `order` 昇順、未指定（`order` なし）は最後尾グループでファイル名順
+/// - 並び順は `order` 昇順、未指定（`order` なし）は最後尾グループでファイル名順。
+///   合成ページ（用語集）は同じ順位のページより後ろ（order 未指定なら、その階層の末尾）
 /// - ディレクトリの表示名・並び順は配下 `index.md` のものを使う
 pub(crate) fn build_nav(pages: &[Page]) -> Vec<NavNode> {
     let mut root = DirNode::default();
@@ -54,7 +55,11 @@ fn to_nav_children(dir: &DirNode) -> Vec<NavNode> {
     // ルート（および各ディレクトリ）の index.md はそのディレクトリ直下の先頭候補として並べる
     if let Some(index) = dir.index {
         children.push((
-            sort_key(index.frontmatter.order, "".to_string()),
+            sort_key(
+                index.frontmatter.order,
+                index.is_generated(),
+                "".to_string(),
+            ),
             NavNode {
                 title: index.title.clone(),
                 route: Some(index.route.clone()),
@@ -66,7 +71,7 @@ fn to_nav_children(dir: &DirNode) -> Vec<NavNode> {
 
     for (stem, page) in &dir.pages {
         children.push((
-            sort_key(page.frontmatter.order, stem.clone()),
+            sort_key(page.frontmatter.order, page.is_generated(), stem.clone()),
             NavNode {
                 title: page.title.clone(),
                 route: Some(page.route.clone()),
@@ -97,7 +102,7 @@ fn to_nav_children(dir: &DirNode) -> Vec<NavNode> {
             continue;
         }
         children.push((
-            sort_key(order, name.clone()),
+            sort_key(order, false, name.clone()),
             NavNode {
                 title,
                 route,
@@ -111,9 +116,11 @@ fn to_nav_children(dir: &DirNode) -> Vec<NavNode> {
     children.into_iter().map(|(_, node)| node).collect()
 }
 
-/// 並び順キー: `order` 昇順 → 未指定は最後尾グループ → 名前順
-fn sort_key(order: Option<i64>, name: String) -> (i64, String) {
-    (order.unwrap_or(i64::MAX), name)
+/// 並び順キー: `order` 昇順 → 未指定は最後尾グループ → 合成ページは後ろ → 名前順。
+/// 合成ページを名前より先に比べないと、用語集（`glossary`）が `guide/` のような
+/// order の無いディレクトリより前に並び、ホームの「次のページ」が用語集になる
+fn sort_key(order: Option<i64>, generated: bool, name: String) -> (i64, bool, String) {
+    (order.unwrap_or(i64::MAX), generated, name)
 }
 
 /// 検索結果の絞り込み単位（ナビ第 1 階層）

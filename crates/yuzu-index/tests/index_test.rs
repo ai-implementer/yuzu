@@ -672,7 +672,7 @@ fn グループがナビ由来で_manifest_へ焼き込まれる() {
     // fixture は index.md（ルート）と guide/ 配下 2 ページ。
     // ルート直下の単独ページはグループにしないので 1 つだけ。
     // `guide/index.md` が無いので表示名はディレクトリ名へフォールバックする
-    // （scaffold もこの形なので、生名フォールバックは実運用で起きる）
+    // （`guide/index.md` を置かないサイトでは実運用でも起きる）
     assert_eq!(manifest["groups"], serde_json::json!(["guide"]));
 
     // **doc_groups は docCount と同じ長さ**（エンジン側は寛容に縮退するので、

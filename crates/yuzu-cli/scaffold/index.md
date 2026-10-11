@@ -123,4 +123,4 @@ SSG
 
 -----
 
-次は[はじめに](guide/getting-started.md)へどうぞ。
+次は[ガイド](guide/index.md)へどうぞ。
