@@ -591,6 +591,82 @@ fn 用語集ページの_route_はディレクトリ配下にも置ける() {
     );
 }
 
+/// 用語集は order の無いページ・ディレクトリより後ろ（名前では `glossary` < `guide` だが
+/// 先に並ぶとホームの「次のページ」が用語集になる。`yuzu new` の雛形がこの形だった）
+#[test]
+fn 用語集は_order_の無いページとディレクトリより後ろに並ぶ() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "index.md",
+        "---\ntitle: ホーム\norder: 1\n---\n",
+    );
+    write(dir.path(), "guide/start.md", "# はじめに\n"); // index.md の無いディレクトリ
+    write(dir.path(), "zzz.md", "# 最後のページ\n");
+    let opts = glossary_opts(&[("SSG", "Static Site Generator")], "glossary");
+
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let titles: Vec<&str> = site.nav.iter().map(|n| n.title.as_str()).collect();
+    assert_eq!(titles, ["ホーム", "guide", "最後のページ", "用語集"]);
+}
+
+/// `page = "aaa/index"` のように index として置くと、用語集はディレクトリノード自身になる。
+/// ディレクトリの並べ替えでも合成ページかどうかを見ないと、order の無い通常ページより前に並ぶ
+/// （PR #46 のレビュー指摘）
+#[test]
+fn index_として置いた用語集もその階層の末尾に並ぶ() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "index.md",
+        "---\ntitle: ホーム\norder: 1\n---\n",
+    );
+    write(dir.path(), "zzz.md", "# 最後のページ\n");
+    let opts = glossary_opts(&[("SSG", "Static Site Generator")], "aaa/index");
+
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let nav: Vec<(&str, Option<&str>)> = site
+        .nav
+        .iter()
+        .map(|n| (n.title.as_str(), n.route.as_deref()))
+        .collect();
+    assert_eq!(
+        nav,
+        [
+            ("ホーム", Some("")),
+            ("最後のページ", Some("zzz/")),
+            ("用語集", Some("aaa/")),
+        ]
+    );
+}
+
+#[test]
+fn 下の階層に置いた用語集もその階層の末尾に並ぶ() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    write(dir.path(), "reference/index.md", "# リファレンス\n");
+    write(
+        dir.path(),
+        "reference/cli.md",
+        "---\norder: 1\n---\n# CLI\n",
+    );
+    write(dir.path(), "reference/rules.md", "# 規則\n");
+    let opts = glossary_opts(&[("SSG", "Static Site Generator")], "reference/glossary");
+
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let reference = site
+        .nav
+        .iter()
+        .find(|n| n.route.as_deref() == Some("reference/"))
+        .unwrap();
+    let titles: Vec<&str> = reference
+        .children
+        .iter()
+        .map(|n| n.title.as_str())
+        .collect();
+    assert_eq!(titles, ["CLI", "規則", "用語集"]);
+}
+
 #[test]
 fn 不正な_page_値では用語集ページを作らない() {
     let dir = tempfile::tempdir().unwrap();

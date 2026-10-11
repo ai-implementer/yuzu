@@ -22,11 +22,12 @@ yuzu build
 yuzu dev
 ```
 
-`content/` と `theme/` を監視して自動再ビルドし、WebSocket で
-ブラウザを即リロードします（執筆はこれ 1 コマンド）。
+プロジェクトの中のファイル（`dist/` と隠しディレクトリを除く）を監視して自動で
+再ビルドし、開いているブラウザを再読み込みします（執筆はこれ 1 コマンド）。
 `yuzu.toml` の `dev.open = true` で起動時にブラウザも開きます。
 
-WebSocket が使えない環境では `yuzu build --watch`（ポーリング式）が退避先です。
+`yuzu dev` の自動再読み込みが動かない環境では、`yuzu build --watch` を使ってください
+（ブラウザが定期的に確認して再読み込みします）。
 
 ## プレビューする
 
@@ -48,7 +49,7 @@ yuzu preview
 ```yaml
 ---
 title: ページタイトル # ナビの表示名（未指定は h1 → ファイル名）
-order: 1 # ナビの並び順（未指定はファイル名順で最後尾）
+order: 1 # ナビの並び順（未指定はファイル名順で最後尾。用語集はさらにその後ろ）
 draft: true # ビルドから除外する
 description: 説明 # meta description
 aliases: ["old-url/"] # ページ移動時の旧 URL（リダイレクト HTML を生成）
@@ -63,7 +64,8 @@ readingTime: false # このページに読了時間・文字数を出さない
 ## ナビゲーション
 
 `content/` のディレクトリ階層がそのままサイドバーの階層になります。
-並び順は `order` 昇順、未指定はファイル名順です。
+並び順は `order` 昇順、未指定はファイル名順です（用語集は同じ階層の末尾）。
+ディレクトリの表示名と並び順は、その中の `index.md` の `title` と `order` で決まります。
 
 ### ページ内目次（TOC）
 
@@ -179,7 +181,7 @@ sequenceDiagram
 
     W->>Y: content/*.md を保存
     Note over Y: 変更を検知して自動再ビルド
-    Y-)B: reload 通知（WebSocket /__livereload）
+    Y-)B: 再読み込みの通知
     B->>Y: 再読み込み
     Y-->>B: 更新された HTML
 ```

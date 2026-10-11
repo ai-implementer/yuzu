@@ -408,6 +408,57 @@ fn output_dir_は先頭のカレント参照を吸収する() {
     assert_eq!(rc.output_dir, dir.path().join("public_html"));
 }
 
+/// input.dir にルート自身を書くと、書いていない output.dir ではなく input.dir を名指しする
+/// （既存のフォルダで始めた人が最初に書きがちな値）
+#[test]
+fn input_dir_がルート自身なら_input_dir_を名指しして拒否する() {
+    for bad in [".", "./", ""] {
+        let dir = project(&format!("[input]\ndir = \"{bad}\"\n"));
+        let err = load(dir.path()).expect_err("ルート自身は拒否する");
+        assert!(
+            matches!(err, ConfigError::InputDirIsRoot { .. }),
+            "{bad:?}: {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(msg.starts_with("input.dir の値"), "{bad:?}: {msg}");
+        assert!(msg.contains("content/"), "移す先を案内する: {msg}");
+    }
+}
+
+/// base_url の `.` で始まる相対パスは位置付きの設定エラー（build / site のどちらに書いても）
+#[test]
+fn base_url_が相対パスなら位置付きの設定エラー() {
+    for (toml, key, line) in [
+        ("[site]\nbase_url = \"./\"\n", "site.base_url", 2),
+        ("[build]\nbase_url = \"../docs\"\n", "build.base_url", 2),
+        (
+            "[site]\ntitle = \"x\"\nbase_url = \".\"\n",
+            "site.base_url",
+            3,
+        ),
+    ] {
+        let dir = project(toml);
+        let err = load(dir.path()).expect_err("相対パスは拒否する");
+        let ConfigError::Invalid { issues, .. } = &err else {
+            panic!("{toml:?}: {err:?}");
+        };
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].key_path, key);
+        assert_eq!((issues[0].line, issues[0].col), (line, 1), "キーの位置");
+        assert!(issues[0].message.contains("yuzu preview"), "{issues:?}");
+    }
+    // パス・URL・空は今までどおり受け付ける
+    for (raw, normalized) in [
+        ("/docs/", "/docs/"),
+        ("docs", "/docs/"),
+        ("https://example.com/docs", "https://example.com/docs/"),
+        ("", "/"),
+    ] {
+        let dir = project(&format!("[site]\nbase_url = \"{raw}\"\n"));
+        assert_eq!(load(dir.path()).unwrap().base_url, normalized, "{raw:?}");
+    }
+}
+
 /// input.dir は読むだけで削除経路がないため、ルート外でも警告に留める
 #[test]
 fn input_dir_がルート外なら診断を出すが読み込みは成功する() {

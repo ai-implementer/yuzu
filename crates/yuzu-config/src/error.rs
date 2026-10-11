@@ -40,6 +40,11 @@ pub enum ConfigError {
         reason: &'static str,
         root: PathBuf,
     },
+
+    /// `input.dir` がプロジェクトルートそのもの（`.`）。出力先は必ずルート配下なので
+    /// 原稿の中に入ってしまう。[`Self::UnsafeOutputDir`] の重なり検査に任せると
+    /// 書いていない `output.dir` を名指しするので、原因の `input.dir` で案内する
+    InputDirIsRoot { value: String },
 }
 
 /// [`ConfigError::Invalid`] の 1 件
@@ -111,6 +116,10 @@ impl fmt::Display for ConfigError {
                 f,
                 "{key} の値 `{value}` は使えません（{reason}）。プロジェクトルート（{}）配下の相対パスを指定してください — output.clean はこのディレクトリを丸ごと削除します",
                 root.display()
+            ),
+            Self::InputDirIsRoot { value } => write!(
+                f,
+                "input.dir の値 `{value}` は使えません（プロジェクトルートそのものを指していて、出力先の output.dir が原稿の中に入ります）。原稿を content/ などのサブディレクトリへ移し、そのディレクトリを input.dir に指定してください"
             ),
         }
     }

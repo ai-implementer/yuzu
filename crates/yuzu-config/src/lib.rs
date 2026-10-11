@@ -17,7 +17,9 @@ mod schema;
 
 pub use discover::find_project_root;
 pub use error::{ConfigError, ConfigIssue};
-pub use resolve::{CONFIG_RULES, ConfigDiagnostic, ResolvedConfig, load, normalize_base_url};
+pub use resolve::{
+    CONFIG_RULES, ConfigDiagnostic, ResolvedConfig, base_url_problem, load, normalize_base_url,
+};
 pub use schema::{
     BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DarkMode, DevConfig,
     GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,

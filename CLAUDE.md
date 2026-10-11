@@ -427,8 +427,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 
 - `docs/` はこのリポジトリ自身のドキュメントサイト（yuzu プロジェクト。`docs/yuzu.toml` が
   ルート）
-  - main push で `.github/workflows/docs.yml` が GitHub Pages へデプロイし、ci.yml でも
-    check・build・SSR フォールバック検出を検証する
+  - **リリースのタグ（`v*`）の push** で `.github/workflows/docs.yml` が GitHub Pages へ
+    デプロイする（Phase 84。main から公開すると配布中の版より docs が先に進む）。
+    main と PR では ci.yml が check・build・SSR フォールバック検出だけを検証する
   - **リポジトリルートから `--root docs` で実行する**（`cd docs` しない。ci.yml・docs.yml・
     docs-links.yml・`verify` スキルすべて。出力は `docs/dist/`）。cwd からの上方向探索の
     経路は scaffold の e2e が検証する

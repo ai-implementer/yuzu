@@ -1,6 +1,6 @@
 ---
 title: 社内で公開する
-order: 9
+order: 11
 description: 公開範囲の注意（dist に出るもの・止め方）と、GitHub Pages 以外の Web サーバへの置き方
 ---
 
@@ -86,10 +86,18 @@ GitLab Pages は CI が成果物として渡した `public/` を配ります。y
 ```yaml
 # .gitlab-ci.yml
 pages:
-  image: rust:latest
+  image: debian:stable-slim
+  variables:
+    YUZU_VERSION: "X.Y.Z"
   script:
-    - cargo install --locked --git https://github.com/ai-implementer/yuzu --tag vX.Y.Z yuzu-cli
-    - yuzu build --base-url "$CI_PAGES_URL/"
+    - apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
+    - base="https://github.com/ai-implementer/yuzu/releases/download/v$YUZU_VERSION"
+    - archive="yuzu-v$YUZU_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+    - mkdir -p /tmp/yuzu && cd /tmp/yuzu
+    - curl -fsSL --proto '=https' -O "$base/$archive" -O "$base/SHA256SUMS"
+    - awk -v f="$archive" '$2 == f' SHA256SUMS | sha256sum -c -
+    - tar -xzf "$archive" && cd "$CI_PROJECT_DIR"
+    - /tmp/yuzu/yuzu build --base-url "$CI_PAGES_URL/"
     - rm -rf public && mv dist public
   artifacts:
     paths:
@@ -98,7 +106,8 @@ pages:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
-`vX.Y.Z` は使う yuzu の版に置き換えてください。公開範囲はプロジェクトの
+`X.Y.Z` は使う yuzu の版に置き換えてください。リリースのアーカイブ（Linux x64 向け）を
+`SHA256SUMS` で照合してから使います。公開範囲はプロジェクトの
 Settings の Pages の設定（アクセス制御）で決まります。
 
 ### Amazon S3

@@ -42,7 +42,7 @@ scripts/build-search-wasm.sh
 scripts/vendor-mermaid.sh
 ```
 
-- 約 3.4MB。`backend: "ssr"` 運用でも未対応図種のフォールバック用に同梱は継続する。
+- 約 3.4MB。`backend = "ssr"` で運用していても未対応図種のフォールバック用に同梱は継続する。
 - npm の tarball（sha256 固定）から取る。mermaid.min.js は約 60 の npm パッケージを束ねているので、
   スクリプトが tarball 同梱の source map から束ねたパッケージを取り出し、各パッケージの
   LICENSE を集めて `crates/yuzu-theme/licenses/mermaid.txt` を書き、`THIRD-PARTY-LICENSES.txt`

@@ -11,7 +11,7 @@ lintDisable:
 
 # 診断ルール
 
-`yuzu lint` と `yuzu check` の出力に出る `warning[duplicate-h1]` の `\[\]` の中身が、
+`yuzu lint` と `yuzu check` の出力に出る `warning[duplicate-h1]` の角かっこ（`[]`）の中身が、
 このページのルール ID です。
 
 ```text
@@ -114,7 +114,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 | 形式 | 見え方 |
 | --- | --- |
-| human | `content/x.md: error\[fmt\] …`（`:行:列` が付かない） |
+| human | `content/x.md: error[fmt] …`（`:行:列` が付かない） |
 | json | `line` と `column` が `null` |
 | github | 位置指定のない注釈（ファイルの先頭に付きます） |
 

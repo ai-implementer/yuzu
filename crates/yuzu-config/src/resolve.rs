@@ -73,6 +73,14 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
     //   2. **双方向で判定する** — 片方向だけだと `output.dir = "content/sub"`
     //      （保護対象の子）を取りこぼす
     //   3. **input.dir 以外も対象にする** — public / theme も原本であって生成物ではない
+    //
+    // input.dir がルート自身（`.`）なら必ず重なる。下の検査では output.dir を名指しして
+    // しまう（既存のフォルダで始めた人が書いていないキー）ので、先に原因のキーで止める
+    if lexically_normalize(&root.join(&config.input.dir)) == lexically_normalize(root) {
+        return Err(ConfigError::InputDirIsRoot {
+            value: config.input.dir.clone(),
+        });
+    }
     for (label, guard) in [
         ("input.dir", root.join(&config.input.dir)),
         ("public/", root.join(PUBLIC_DIR_NAME)),
@@ -116,6 +124,28 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
             root.join(&config.input.dir)
         }
     };
+
+    // base_url の相対パス（`./` 等）は /./_assets/ のような URL になり、ルートに置いた
+    // ときだけ偶然動く。黙って通さず位置付きの設定エラーにする（CLI の --base-url も同じ判定）
+    let mut issues = Vec::new();
+    for (table, value) in [
+        ("build", &config.build.base_url),
+        ("site", &config.site.base_url),
+    ] {
+        let Some(raw) = value else { continue };
+        if let Some(problem) = base_url_problem(raw) {
+            let (line, col) = key_position(&doc, &[table, "base_url"]).unwrap_or((1, 1));
+            issues.push(ConfigIssue {
+                key_path: format!("{table}.base_url"),
+                line,
+                col,
+                message: format!("`{table}.base_url` の値 `{raw}` は使えません。{problem}"),
+            });
+        }
+    }
+    if !issues.is_empty() {
+        return Err(ConfigError::Invalid { path, issues });
+    }
 
     let base_url = normalize_base_url(
         config
@@ -411,9 +441,21 @@ fn line_col(text: &str, offset: usize) -> (usize, usize) {
     (line, col)
 }
 
+/// base_url に使えない値なら、その説明を返す（`yuzu.toml` の検証と CLI の `--base-url` が共有）。
+///
+/// `.` で始まる相対パス（`.`・`./`・`../x`）は受け付けない。yuzu の出力のリンクは
+/// サイトのルートから始まるので、相対の base_url は `/./_assets/` のような URL になるだけで
+/// 効かない（ブラウザが `/` と同じに扱い、ルートに置いたときだけ偶然動く）。
+/// `dist/` をファイルとして開くつもりで書かれることが多いので `yuzu preview` を案内する
+pub fn base_url_problem(raw: &str) -> Option<&'static str> {
+    raw.trim().starts_with('.').then_some(
+        "`.` で始まる相対パスには対応していません。出力のリンクはサイトのルートから始まるので、公開先のパス（例: /docs/）か URL を指定してください。dist/ を手元で見るときは yuzu preview を使ってください",
+    )
+}
+
 /// base_url を「常に先頭・末尾スラッシュ付き」の形へ正規化する。
 /// フル URL（`https://…`）は末尾スラッシュのみ保証する。
-/// CLI の `--base-url` 上書き（CI から configure-pages の base_path を渡す用途）でも使う
+/// CLI の `--base-url` 上書きでも使う（値の検証は先に [`base_url_problem`] で行う）
 pub fn normalize_base_url(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {

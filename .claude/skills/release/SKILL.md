@@ -52,7 +52,7 @@ git add Cargo.toml Cargo.lock
 
 ```bash
 git push origin main
-gh run list --branch main --limit 2   # CI と docs の両方が success になるまで待つ
+gh run list --branch main --limit 1   # CI が success になるまで待つ（docs の公開はタグの push で動く）
 gh workflow run deps.yml --ref main   # 依存の勧告と通知の生成（Phase 82）
 gh run list --workflow deps.yml --limit 1   # success になるまで待つ
 ```
@@ -83,8 +83,11 @@ git push origin vX.Y.Z
   ```bash
   gh run list --workflow release.yml --limit 1
   gh release view vX.Y.Z --json isDraft,assets
+  gh run list --workflow docs.yml --limit 1   # docs サイトもタグの push で公開される（Phase 84）
   ```
-  アセットは 4 バイナリ ＋ SHA256SUMS の 5 件、`isDraft: false` になる
+  アセットは 4 バイナリ ＋ SHA256SUMS の 5 件、`isDraft: false` になる。
+  docs.yml がデプロイで拒否されたら、Settings > Environments > github-pages のデプロイ元に
+  `v*` のタグが許可されているか確かめる
 - 各アーカイブには `THIRD-PARTY-LICENSES`（バイナリに入る第三者のソフトウェアのライセンス表記）が
   入る。release.yml の `licenses` ジョブが cargo-about で 1 回作り、各 build ジョブへ artifact で
   渡す（Phase 81）。このジョブが落ちると build も止まる（新しいライセンスの crate が入ったら
@@ -93,9 +96,10 @@ git push origin vX.Y.Z
 
 ## 罠
 
-- **タグは打った時点の main を切り出す**。機能コミットをタグより後に積むと配布バイナリに入らない。
-  一方 docs サイトは main から作られるので**反映済みに見えて気づきにくい**
-  （v0.9.1 はまさにこれ = サイドバー改善が v0.9.0 のバイナリに入っていなかったため切ったパッチリリース）
+- **タグは打った時点の main を切り出す**。機能コミットをタグより後に積むと配布バイナリに入らない
+  （v0.9.1 はまさにこれ = サイドバー改善が v0.9.0 のバイナリに入っていなかったため切ったパッチリリース。
+  当時は docs サイトが main から作られていたので反映済みに見えた）。docs サイトも Phase 84 から
+  タグで公開するので、タグの後に直した docs は次のタグか、タグを選んだ docs.yml の手動実行まで出ない
 - 一部ジョブだけ失敗したら Actions の「**Re-run failed jobs**」だけで復旧できる
   （アップロードは `--clobber` で上書き・公開まで draft なので外部には見えない）
 - `cargo package --locked -p tankan -p mikan` は**作業ツリーが dirty だと拒否される**。

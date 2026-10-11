@@ -116,6 +116,12 @@ pub fn run(
     port: Option<u16>,
     host: Option<String>,
 ) -> anyhow::Result<()> {
+    // フラグの値は watch 中も変わらないので、検証はここで 1 回（yuzu.toml 側は load が見る）
+    if let Some(raw) = &base_url {
+        if let Some(problem) = yuzu_config::base_url_problem(raw) {
+            anyhow::bail!("--base-url の値 `{raw}` は使えません。{problem}");
+        }
+    }
     let overrides = Overrides { base_url, host };
     let rc = load_config(cx, &overrides)?;
 

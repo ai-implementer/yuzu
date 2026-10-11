@@ -117,7 +117,7 @@ jobs:
           cargo check --locked -p kabosu --target thumbv7em-none-eabi
 
       # docs/: yuzu 自身のドキュメントサイト（Phase 36）を PR でも検証する。
-      # デプロイは docs.yml（main push）だが、壊れた原稿・SSR フォールバックの
+      # デプロイは docs.yml（リリースのタグの push。Phase 84）だが、壊れた原稿・SSR フォールバックの
       # 混入はマージ前にここで検出する
       - name: docs site (yuzu check && yuzu build)
         # プロジェクトは --root docs で指定する（Phase 75 の dogfooding。cd docs しない）。
@@ -168,7 +168,7 @@ jobs:
           grep -q '"docGroups"' docs/dist/_search/manifest.json
           # エンジン側で絞り込めて件数も絞り込み後になる（ブラウザ操作は CI で
           # 検証できないので、同一エンジンを通る CLI で担保する）
-          target/debug/yuzu search --root docs --section 開発 "キャッシュ" | grep -q '/development/'
+          target/debug/yuzu search --root docs --section 開発者向け "キャッシュ" | grep -q '/development/'
           # 絞り込み UI の配線ゲート（機能自体はブラウザ操作なので CI では検証できない。
           # Phase 54 でチップは結果ページ search-page.js へ移動した）
           grep -q 'search-filter-chip' docs/dist/_assets/js/search-page.js
@@ -183,7 +183,8 @@ jobs:
           grep -q '%E8%A8%AD%E8%A8%88/%E6%A6%82%20%E8%A6%81' docs/dist/guide/writing/index.html
           # 配信とテーマ契約（Phase 65）: テーマ上書きの追随責任と配信のリンク遮断が
           # 原稿に載り、docs（ハイライト有効）では syntect.css が <link> される
-          grep -q '追随する' docs/dist/guide/deploy/index.html
+          # （テーマ・ダークモード・印刷は Phase 84 で「見た目の調整」へ移した）
+          grep -q '追随する' docs/dist/guide/appearance/index.html
           grep -q 'シンボリックリンクを辿りません' docs/dist/reference/cli/index.html
           grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css
           # 外部リンク検査（Phase 66）が原稿に載っている
@@ -275,10 +276,25 @@ jobs:
           grep -q '<html lang="ja">' docs/dist/index.html
           grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/theme.css
           grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/syntect.css
-          grep -q 'id="ダークモード"' docs/dist/guide/deploy/index.html
+          grep -q 'id="ダークモード"' docs/dist/guide/appearance/index.html
           # Phase 80: 共有カードの画像（site.image）が配信物に入っている
           # （og:image タグ自体はフル URL の公開ビルドでだけ出るので、ここではファイルを見る）
           test -f docs/dist/images/og.png
+          # Phase 84: 目次の見直し（インストール・見た目・FAQ を独立したページに）と
+          # 図の選び方・既存のフォルダで始める手順・Issues への導線
+          grep -q 'id="既存のフォルダで始める"' docs/dist/guide/install/index.html
+          grep -q 'id="dist-はサーバで配信する"' docs/dist/guide/install/index.html
+          test -f docs/dist/guide/appearance/index.html
+          test -f docs/dist/guide/faq/index.html
+          grep -q 'id="client-と-ssr-の選び方"' docs/dist/guide/diagrams/index.html
+          grep -q 'github.com/ai-implementer/yuzu/issues' docs/dist/index.html
+          grep -q 'github.com/ai-implementer/yuzu/issues' docs/dist/guide/faq/index.html
+          # 設定例は TOML で書く（JSON / YAML 風の `markdown.mermaid.backend: "ssr"` や
+          # `"abbr": false` はコピーすると設定エラーになる）。原稿・README・雛形・スキルを見る
+          if grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/; then
+            echo "JSON / YAML 風の設定例が残っている（上記。TOML の書き方に直す）" >&2
+            exit 1
+          fi
           # mermaid backend: ssr のサイトなので、フォールバック（= mermaid.js の
           # script タグ）が出たら tankan の回帰として失敗させる
           # （本文中の文字列と区別するため src 属性の形で照合する）
@@ -329,10 +345,13 @@ jobs:
           fi
           cd "$RUNNER_TEMP/e2e-docs"
           test -f .github/workflows/deploy.yml
-          # Phase 77: deploy.yml のインストールは yuzu new した版のタグに固定される
-          # （版指定なしだと利用者のサイトが main の最新でビルドされる）
+          # Phase 77: deploy.yml の yuzu は yuzu new した版に固定される（版指定なしだと利用者の
+          # サイトが main の最新でビルドされる）。Phase 84 からはその版のリリースのアーカイブを
+          # SHA256SUMS で照合して使う（ソースから入れる手順はコメントに同じ版のタグで残す）
           version=$("$GITHUB_WORKSPACE/target/debug/yuzu" --version | awk '{print $2}')
-          grep -q -- "--locked --git https://github.com/ai-implementer/yuzu --tag v$version yuzu-cli" .github/workflows/deploy.yml
+          grep -qF "YUZU_VERSION: $version" .github/workflows/deploy.yml
+          grep -qF '| sha256sum -c -' .github/workflows/deploy.yml
+          grep -q -- "--tag v$version yuzu-cli" .github/workflows/deploy.yml
           # Phase 80: 公開先のフル URL を渡す（canonical・共有カード・sitemap が出る）。
           # この run の中に GitHub Actions の式の開始記号（ドル記号と波括弧 2 つ）を書くと
           # Actions が bash より先に評価して空文字に置き換えるので、式を含まない断片で見る
@@ -345,6 +364,10 @@ jobs:
           "$GITHUB_WORKSPACE/target/debug/yuzu" build
           test -f dist/index.html
           test -f dist/guide/getting-started/index.html
+          # Phase 84: 雛形の guide/index.md でディレクトリが「ガイド」と表示され、用語集は
+          # 同じ階層の末尾に並ぶ（以前は名前順で guide より前に来て、ホームの次のページが用語集だった）
+          grep -q '<a class="pager-next" rel="next" href="/guide/">' dist/index.html
+          test "$(grep -oE 'href="/(guide|glossary)/"' dist/index.html | head -2 | tr '\n' ' ')" = 'href="/guide/" href="/glossary/" '
           test -f dist/_search/manifest.json
           test -f dist/_search/search_bg.wasm
           # 第三者ライセンスの通知を資産の隣に配り、vendor の開発用メモは配らない（Phase 81）

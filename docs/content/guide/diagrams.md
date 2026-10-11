@@ -1,25 +1,42 @@
 ---
-title: 図（Mermaid / SSR）
-order: 3
-description: Mermaid 互換記法の図。10 図種は tankan がビルド時に SVG 化する
+title: 図（Mermaid）
+order: 4
+description: Mermaid 記法の図。ブラウザで描くか、ビルド時に SVG にするかを選べる
 ---
 
-# 図（Mermaid / SSR）
+# 図（Mermaid）
 
-` ```mermaid ` ブロックで図が描けます。描画方法は 2 つあります:
+` ```mermaid ` ブロックで図が描けます。描き方は 2 つあり、`yuzu.toml` で選びます:
 
-- **`backend: "client"`（既定）** — 同梱の mermaid.js がブラウザで描画します
-- **`backend: "ssr"`** — Mermaid 互換の自前レンダラ **tankan** が
-  **ビルド時に SVG 化**します。クライアント JS は不要で、ダークモード切替にも
-  再描画なしで追従します
+```toml
+[markdown.mermaid]
+backend = "ssr" # 既定は "client"（ブラウザで描く）。"ssr" はビルド時に SVG にする
+```
 
-このサイトは `"ssr"` で運用しており、以下の図はすべてビルド時に生成された
-SVG です。SSR 対応は **sequence・flowchart・class・state・ER・gantt・pie・
-mindmap・timeline・packet の 10 図種**。未対応の図種は自動でクライアント描画に
-フォールバックし、フォールバックが発生したページだけ mermaid.js が
-読み込まれます。
+- **`client`（既定）** — 同梱の mermaid.js がブラウザで図を描きます
+- **`ssr`** — yuzu が**ビルド時に SVG にします**。ブラウザの JavaScript は使わず、
+  ダークモードの切り替えにも描き直しなしで追従します
 
-## flowchart
+## client と ssr の選び方
+
+|  | client（既定） | ssr |
+| --- | --- | --- |
+| ブラウザの JavaScript | 必要（無効だと図の代わりに Mermaid の原文が出る） | 不要 |
+| 読み込むファイル | 全ページで mermaid.min.js（約 3.5 MB）を読み込む（2 ページ目からはブラウザのキャッシュ） | 図の SVG が本文に入るだけ |
+| 描ける図 | Mermaid のすべての図種 | 下の 10 図種。それ以外の図は client と同じ描き方になる |
+| ダークモードの切り替え | 図を描き直す | 描き直さずに配色が変わる |
+| 印刷 | ダークモードのまま印刷すると図だけ暗い配色になる | 常にライトの配色で印刷される |
+
+閲覧する環境で JavaScript が制限されている・ページを軽くしたい・印刷して配る、の
+どれかに当てはまるなら `ssr` を選んでください。10 図種以外の図（`journey`・
+`gitGraph` など）を多く使うなら `client` のままで構いません（`ssr` にしても、その図は
+client と同じ描き方になり、そのページだけ mermaid.min.js を読み込みます）。
+
+このサイトは `ssr` で運用しており、以下の図はすべてビルド時に生成された SVG です。
+`ssr` で SVG にできるのは **sequence・flowchart・class・state・ER・gantt・pie・
+mindmap・timeline・packet の 10 図種**です。
+
+## flowchart（フローチャート）
 
 `classDef` / `class` / `:::` / `style` のスタイル指定も SSR に反映されます。
 指定した色はダークモードでも意図どおり固定され、色付きボックスの文字色は
@@ -33,7 +50,7 @@ flowchart TD
     classDef ssr fill:#d5e7fe,stroke:#014ba5
 ```
 
-## sequence
+## sequence（シーケンス図）
 
 ```mermaid
 sequenceDiagram
@@ -44,12 +61,12 @@ sequenceDiagram
 
     W->>Y: content/*.md を保存
     Note over Y: 変更を検知して自動再ビルド
-    Y-)B: reload 通知（WebSocket /__livereload）
+    Y-)B: 再読み込みの通知
     B->>Y: 再読み込み
     Y-->>B: 更新された HTML
 ```
 
-## state
+## state（状態遷移図）
 
 ```mermaid
 stateDiagram-v2
@@ -60,7 +77,7 @@ stateDiagram-v2
     公開済み --> [*]
 ```
 
-## class
+## class（クラス図）
 
 ```mermaid
 classDiagram
@@ -73,7 +90,7 @@ classDiagram
     サイト "1" *-- "many" ページ : contains
 ```
 
-## ER
+## ER（ER 図）
 
 ```mermaid
 erDiagram
@@ -86,7 +103,7 @@ erDiagram
     }
 ```
 
-## gantt
+## gantt（ガントチャート）
 
 ```mermaid
 gantt
@@ -101,7 +118,7 @@ gantt
     公開         : milestone, after review, 1d
 ```
 
-## pie
+## pie（円グラフ）
 
 ```mermaid
 pie showData title コンテンツの内訳（例）
@@ -110,7 +127,7 @@ pie showData title コンテンツの内訳（例）
     "リリースノート" : 5
 ```
 
-## mindmap
+## mindmap（マインドマップ）
 
 インデント階層で書き、中央のルートから左右へ展開されます。
 
@@ -125,7 +142,7 @@ mindmap
       更新サイクル
 ```
 
-## timeline
+## timeline（タイムライン）
 
 ロードマップや沿革に向いています。
 
@@ -139,7 +156,7 @@ timeline
         6月 : v1.0 リリース
 ```
 
-## packet
+## packet（パケット図）
 
 ネットワークプロトコルのヘッダーなど、ビット列のフィールド構造を描けます。
 frontmatter の `config.packet`（`bitsPerRow` など）にも対応しています。
