@@ -37,7 +37,7 @@ scripts/dev-container.sh down     # 停止・削除（volume 保持）
 ## yuzu 固有の罠
 
 - **ホスト編集 → コンテナ内 `yuzu dev` のホットリロードは効かない**（virtiofs の inotify 制限）。**`yuzu dev` はホスト実行が既定運用**。コンテナ内の Claude Code が編集する場合はゲスト内 inotify が効くので動く
-- **コンテナ内 `yuzu dev/preview` にホストから繋ぐには** `--host 0.0.0.0` を付けて起動する（v0.3 で追加。設定ファイルなら `yuzu.toml` の `[dev]` に `host` を書く — TOML の重複キーは構文エラーになるので既存セクションへ追記する。なお watch 中の `dev.host` 変更は起動時固定＝警告のみ）
+- **コンテナ内 `yuzu dev/preview` にホストから繋ぐには** `--host 0.0.0.0` を付けて起動する（設定ファイルなら `yuzu.toml` の `[dev]` に `host` を書く — TOML の重複キーは構文エラーになるので既存セクションへ追記する。なお watch 中の `dev.host` 変更は起動時固定＝警告のみ）
 - **メモリ圧が上がったら** `scripts/dev-container.sh down && up` で作り直す（ゲストで解放したメモリが macOS に返らない制限。キャッシュは volume なので失われない）
 
 ## 環境定義を変えたときの検証
