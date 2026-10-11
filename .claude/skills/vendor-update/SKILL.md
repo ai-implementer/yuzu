@@ -1,11 +1,11 @@
 ---
 name: vendor-update
-description: vendor 資産（検索 wasm 成果物・mermaid.min.js・KaTeX・vaporetto 分かち書きモデル）の更新手順。wasm-bindgen のバージョンピン照合を含む。依存更新やアセット差し替えのときに使う。
+description: vendor 資産（検索 wasm 成果物・mermaid.min.js・KaTeX・vaporetto 分かち書きモデル・kabosu の toml-test）の更新手順。wasm-bindgen のバージョンピン照合を含む。vendor した資産を差し替えるとき、検索 wasm を作り直すときに使う（dependabot の PR や crate の依存更新そのものは dependency-update スキル）。
 ---
 
 # vendor 資産の更新手順
 
-4 種類の vendor 資産があり、それぞれ更新スクリプトが `scripts/` にある。
+5 種類の vendor 資産があり、それぞれ更新スクリプトが `scripts/` にある。
 
 ## 1. 検索 wasm 成果物（crates/yuzu-index/assets/search/）
 
@@ -92,8 +92,7 @@ scripts/vendor-toml-test.sh
 
 - **`mikan` / `mikan-wasm` に手を入れたら検索 wasm を必ず再生成する**。索引側（ネイティブ）と
   クエリ側（wasm）が同一コードであることが検索の最重要制約なので、片方だけ新しい状態を作らない。
-  実運用でも Phase 30 / 31 / 34 / 35 の 4 回とも、検索側の変更コミットの直後に
-  `vendor: 検索 wasm 成果物を再生成` の独立コミットが入っている
+  再生成は検索側の変更コミットの直後に `vendor: 検索 wasm 成果物を再生成` の独立コミットにする
 - mermaid / KaTeX は上流のバージョン更新時のみ。tankan の SSR 対応が増えても mermaid は
   未対応図種のフォールバック用に同梱を続ける
 
