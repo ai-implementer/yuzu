@@ -163,6 +163,7 @@ table_codec!(ShardConfig {
 table_codec!(LlmsConfig {
     "enabled" => enabled,
     "full" => full,
+    "page_md" => page_md,
 });
 
 table_codec!(BuildConfig {
@@ -175,6 +176,7 @@ table_codec!(DevConfig {
     "port" => port,
     "live_reload" => live_reload,
     "open" => open,
+    "allowed_hosts" => allowed_hosts,
 });
 
 table_codec!(GitConfig {

@@ -13,6 +13,7 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "aliases",
     "lintDisable",
     "readingTime",
+    "pageMd",
 ];
 
 /// comrak の front matter extension が切り出した生テキスト
@@ -175,6 +176,14 @@ mod tests {
         assert!(fm.llms, "省略時は収録する");
         let fm = parse_frontmatter("---\nllms: false\n---\n").unwrap();
         assert!(!fm.llms);
+    }
+
+    #[test]
+    fn page_md_は省略時_true_で_false_を指定できる() {
+        let fm = parse_frontmatter("---\ntitle: x\n---\n").unwrap();
+        assert!(fm.page_md, "省略時は原稿の .md を配信する");
+        let fm = parse_frontmatter("---\npageMd: false\n---\n").unwrap();
+        assert!(!fm.page_md);
     }
 
     #[test]

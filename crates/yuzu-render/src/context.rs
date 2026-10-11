@@ -120,8 +120,9 @@ pub(crate) struct PageCtx<'a> {
     pub body: &'a str,
     /// 配信 URL（base 付き）
     pub url: String,
-    /// ページ単位 Markdown の配信 URL（コピーボタンの fetch 先）
-    pub md_url: String,
+    /// ページ単位 Markdown の配信 URL（コピーボタンの fetch 先）。`.md` を出さないページは
+    /// None（[`Self::with_page_md`] が設定する）
+    pub md_url: Option<String>,
     /// draft ページか（`--drafts` プレビュー時のバナー表示用。通常ビルドでは常に false）
     pub draft: bool,
     /// 最終コミット日（YYYY-MM-DD。git.last_updated 有効かつ追跡済みのときのみ）
@@ -168,7 +169,7 @@ impl<'a> PageCtx<'a> {
             description: page.frontmatter.description.as_deref(),
             body,
             url: resolver.page_url(&page.route),
-            md_url: resolver.md_url(&page.route),
+            md_url: None,
             draft: page.frontmatter.draft,
             last_updated,
             edit_url,
@@ -183,6 +184,14 @@ impl<'a> PageCtx<'a> {
                     chars: group_digits(r.chars),
                 }),
         }
+    }
+
+    /// コピーボタンの fetch 先を付ける。`emits` には `Page::emits_page_md` の結果を渡す
+    /// （false なら付けない = テンプレートが `data-md-url` を出さず、ボタンも出ない）。
+    /// new の引数が clippy の上限を超えるので分けている
+    pub fn with_page_md(mut self, emits: bool, page: &Page, resolver: &UrlResolver) -> Self {
+        self.md_url = emits.then(|| resolver.md_url(&page.route));
+        self
     }
 }
 

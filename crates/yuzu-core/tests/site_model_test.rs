@@ -25,6 +25,25 @@ fn draft_は除外される() {
 }
 
 #[test]
+fn ページ単位_md_はサイトの設定とページの_page_md_の両方が真のときだけ出す() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    write(
+        dir.path(),
+        "secret.md",
+        "---\npageMd: false\n---\n# secret\n",
+    );
+
+    let site = build_site_model(dir.path(), &[], &MarkdownOptions::default()).unwrap();
+    let page = |route: &str| site.pages.iter().find(|p| p.route == route).unwrap();
+    assert!(page("").emits_page_md(true));
+    assert!(!page("secret/").emits_page_md(true), "ページで止めた");
+    // サイト全体で止めると全ページ出さない
+    assert!(!page("").emits_page_md(false));
+    assert!(!page("secret/").emits_page_md(false));
+}
+
+#[test]
 fn include_drafts_なら_draft_も含まれナビにも載る() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "index.md", "# top\n");
@@ -659,7 +678,7 @@ fn 検索結果ページが合成されナビには載らない() {
     assert!(!page.in_nav());
     assert!(!page.in_search_index());
     assert!(!page.in_sitemap());
-    assert!(!page.emits_page_md());
+    assert!(!page.emits_page_md(true));
     // fmt の正規形（`yuzu check` の整形差分と食い違わない）
     assert_eq!(
         yuzu_core::format_document(page, &opts).unwrap(),

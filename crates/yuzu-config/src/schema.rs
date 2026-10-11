@@ -481,6 +481,10 @@ pub struct LlmsConfig {
     pub enabled: bool,
     /// llms-full.txt（正規化 Markdown の全文連結）も生成するか
     pub full: bool,
+    /// ページ単位 Markdown（原稿の `.md`。frontmatter・HTML コメント込みのバイトそのまま）を
+    /// 配信するか。false なら全ページで `.md` を出さず、コピーボタンも出さない。
+    /// llms.txt のリンクはページの HTML を指す。ページ単位は frontmatter `pageMd: false`
+    pub page_md: bool,
 }
 
 impl Default for LlmsConfig {
@@ -488,6 +492,7 @@ impl Default for LlmsConfig {
         Self {
             enabled: true,
             full: true,
+            page_md: true,
         }
     }
 }
@@ -525,6 +530,11 @@ pub struct DevConfig {
     pub live_reload: bool,
     /// `yuzu dev` 起動時に既定ブラウザでサイトを開く
     pub open: bool,
+    /// dev / preview が受け付ける Host（`localhost`・`*.localhost`・IP アドレスは常に許可）。
+    /// それ以外のホスト名で開くときに足す（例: `"mypc.local"`）。`.` で始めると
+    /// そのドメインとサブドメインを許可する（`".example.internal"`）。
+    /// DNS リバインディングで外部のサイトから読まれないための検査
+    pub allowed_hosts: Vec<String>,
 }
 
 impl Default for DevConfig {
@@ -534,6 +544,7 @@ impl Default for DevConfig {
             port: 5173,
             live_reload: true,
             open: false,
+            allowed_hosts: Vec::new(),
         }
     }
 }

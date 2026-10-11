@@ -116,6 +116,7 @@ max_terms_per_shard = 16384
 [llms]
 enabled = true
 full = true
+page_md = true
 
 [build]
 base_url = "/docs/"
@@ -126,6 +127,7 @@ host = "127.0.0.1"
 port = 5173
 live_reload = true
 open = false
+allowed_hosts = ["mypc.local"]
 
 [git]
 last_updated = true
@@ -238,6 +240,7 @@ glob 評価が想定外になるため）。
 | --- | --- | --- |
 | `enabled` | bool / `true` | llms.txt の生成 |
 | `full` | bool / `true` | llms-full.txt（全文連結）の生成 |
+| `page_md` | bool / `true` | 原稿の `.md`（frontmatter・HTML コメント込みの原文）を配信する。`false` で全ページ止め、コピーボタンも出さない（llms.txt のリンクは HTML へ）。ページ単位は frontmatter `pageMd: false`（[LLM 連携](../guide/llms.md)） |
 
 ## build / dev
 
@@ -249,6 +252,7 @@ glob 評価が想定外になるため）。
 | `dev.port` | integer / `5173` | ポート |
 | `dev.live_reload` | bool / `true` | WebSocket ライブリロード |
 | `dev.open` | bool / `false` | `yuzu dev` 起動時にブラウザを開く |
+| `dev.allowed_hosts` | string\[\] / `[]` | dev / preview が受け付けるホスト名の追加（`localhost`・`*.localhost`・IP アドレスは常に受け付ける）。`.` で始めるとそのドメインとサブドメイン（`".example.internal"`）。ほかの Host の要求は 403（下記） |
 
 監視は**プロジェクトルート全体**が対象です（コンテンツインクルードの参照先が
 `content/` の外にもあるため）。出力ディレクトリと隠しディレクトリ（`.git` /
@@ -262,8 +266,16 @@ glob 評価が想定外になるため）。
 
 `yuzu.toml` を保存すると設定を読み直してから再ビルドします。ただし監視と
 配信の前提になっている `output.dir` / `base_url` / `dev.host` / `dev.port` /
-`dev.live_reload` / `build.watch_ignore` は起動時の値のままで、変更すると
+`dev.live_reload` / `dev.allowed_hosts` / `build.watch_ignore` は起動時の値のままで、変更すると
 「再起動しないと反映されません」と警告します。
+
+dev / preview（と `build --watch` の配信）は、要求の `Host` が `localhost`・`*.localhost`・
+IP アドレス・`dev.allowed_hosts` のどれでもなければ 403 を返します。外部のサイトが
+自分のドメインを手元のアドレスへ向け直して（DNS リバインディング）、ブラウザ経由で
+手元のサーバを読むのを防ぐ検査です。`dev.host = "0.0.0.0"` で LAN に公開し、別の PC から
+`http://192.168.1.20:5173/` のように IP で開くのは設定なしで通ります。`mypc.local` のような
+ホスト名で開くときだけ `dev.allowed_hosts` に足してください。ライブリロードの WebSocket は、
+別のサイトのページ（`Origin` が同じ規則に合わないもの）からの接続も断ります。
 
 ## git
 

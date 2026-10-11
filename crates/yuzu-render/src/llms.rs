@@ -16,6 +16,10 @@ use crate::assets;
 use crate::error::RenderError;
 use crate::urls::UrlResolver;
 
+/// 書き出すファイル名（dist 直下）。止めたときの掃除（`pipeline::unpublished_outputs`）も使う
+pub(crate) const LLMS_TXT: &str = "llms.txt";
+pub(crate) const LLMS_FULL_TXT: &str = "llms-full.txt";
+
 /// トップレベルの葉ページ（ルート `index.md` 等）をまとめる先頭セクション名
 const ROOT_SECTION_TITLE: &str = "Docs";
 
@@ -32,8 +36,13 @@ pub fn generate_llms_txt(rc: &ResolvedConfig, site: &SiteModel) -> Result<String
     for (title, pages) in sections(site) {
         out.push_str(&format!("\n## {}\n\n", sanitize_line(&title)));
         for page in pages {
-            // リンク先はページ単位 Markdown（LLM が直接読める形式。Phase 14）
-            let url = resolver.md_url(&page.route);
+            // リンク先はページ単位 Markdown（LLM が直接読める形式。Phase 14）。
+            // `.md` を出さないページ（`llms.page_md` / `pageMd`）は HTML を指す
+            let url = if page.emits_page_md(rc.config.llms.page_md) {
+                resolver.md_url(&page.route)
+            } else {
+                resolver.page_url(&page.route)
+            };
             let title = sanitize_line(&page.title);
             match page.frontmatter.description.as_deref() {
                 Some(desc) => {
@@ -92,11 +101,11 @@ pub(crate) fn write_llms_files(
     ctx: &crate::pipeline::RenderCtx,
 ) -> Result<(), RenderError> {
     let llms_txt = generate_llms_txt(rc, site)?;
-    assets::write_output(ctx.outputs, output_dir, "llms.txt", llms_txt.as_bytes())?;
+    assets::write_output(ctx.outputs, output_dir, LLMS_TXT, llms_txt.as_bytes())?;
 
     if rc.config.llms.full {
         let full = generate_llms_full_txt(rc, site, ctx.cache)?;
-        assets::write_output(ctx.outputs, output_dir, "llms-full.txt", full.as_bytes())?;
+        assets::write_output(ctx.outputs, output_dir, LLMS_FULL_TXT, full.as_bytes())?;
     }
     Ok(())
 }

@@ -24,13 +24,16 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
-use axum::http::{StatusCode, header};
-use axum::response::{IntoResponse, Redirect};
+use axum::extract::{Request, State};
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{any, get};
 use tower_http::services::ServeDir;
 use tower_http::services::fs::{Backend, TokioBackend, TokioFile};
 
 use crate::error::ServerError;
+use crate::host::HostPolicy;
 use crate::livereload::{LIVERELOAD_PATH, ReloadNotifier, handle_socket};
 use crate::watch::WatchFailure;
 
@@ -51,6 +54,9 @@ pub struct ServeOptions {
     pub live_reload: Option<ReloadNotifier>,
     /// 配信パスの検査（None なら `ServeDir` の既定どおりリンクも辿る）
     pub path_guard: Option<PathGuard>,
+    /// `localhost`・`*.localhost`・IP アドレスのほかに受け付ける Host（`dev.allowed_hosts`）。
+    /// これ以外の Host の要求と、WebSocket の Origin が合わない要求は 403（`host.rs`）
+    pub allowed_hosts: Vec<String>,
     /// 監視と一緒に配信するとき（`dev` / `build --watch`）に渡す。監視スレッドが
     /// panic で止まったら配信も止めて [`ServerError::WatchStopped`] を返す
     /// （監視だけが黙って止まり、編集しても再ビルドされない状態を残さない）
@@ -104,7 +110,13 @@ pub fn serve(opts: ServeOptions) -> Result<(), ServerError> {
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(async move {
         let base = base_path(&opts.base_url).to_string();
-        let app = build_router(&opts.dir, &base, opts.live_reload, opts.path_guard);
+        let app = build_router(
+            &opts.dir,
+            &base,
+            opts.live_reload,
+            opts.path_guard,
+            HostPolicy::new(&opts.allowed_hosts),
+        );
 
         let addr = SocketAddr::new(opts.host, opts.port);
         let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -154,6 +166,7 @@ fn build_router(
     base: &str,
     live_reload: Option<ReloadNotifier>,
     path_guard: Option<PathGuard>,
+    host_policy: HostPolicy,
 ) -> Router {
     let backend = GuardedBackend {
         inner: TokioBackend,
@@ -207,17 +220,70 @@ fn build_router(
     if let Some(notifier) = live_reload {
         // State は使わず Clone クロージャに notifier を捕捉する。
         // subscribe はハンドシェイク前（handler 冒頭）に行い、
-        // upgrade 中に発生した通知も Receiver にバッファさせる
+        // upgrade 中に発生した通知も Receiver にバッファさせる。
+        // ブラウザは WebSocket に Origin を必ず付けるので、別のサイトのページからの接続は
+        // ここで断る（Host の検査は下の layer。Origin が無いのはブラウザ以外の接続）
+        let origin_policy = host_policy.clone();
         app = app.route(
             LIVERELOAD_PATH,
-            any(move |ws: WebSocketUpgrade| {
+            any(move |headers: HeaderMap, ws: WebSocketUpgrade| {
+                let origin = headers
+                    .get(header::ORIGIN)
+                    .map(|v| v.to_str().unwrap_or("").to_string());
+                let allowed = origin
+                    .as_deref()
+                    .is_none_or(|o| origin_policy.allows_origin(o));
                 let rx = notifier.subscribe();
-                async move { ws.on_upgrade(move |socket| handle_socket(socket, rx)) }
+                async move {
+                    if !allowed {
+                        let origin = origin.unwrap_or_default();
+                        tracing::warn!(origin = %origin, "許可していない Origin の WebSocket を断りました");
+                        return forbidden(&format!("Origin「{origin}」"));
+                    }
+                    ws.on_upgrade(move |socket| handle_socket(socket, rx))
+                }
             }),
         );
     }
 
-    app
+    // すべての経路（ファイル・404・リダイレクト・WebSocket）の手前で Host を検査する。
+    // layer はこれより前に足した経路にだけ掛かるので、最後に足す
+    app.layer(middleware::from_fn_with_state(host_policy, check_host))
+}
+
+/// Host の検査（DNS リバインディング対策。規則は `host.rs`）。
+/// HTTP/2 では Host ヘッダの代わりに `:authority`（URI のオーソリティ）を見る。
+/// どちらも無い要求はブラウザからのものではないが、判定できないので断る
+async fn check_host(State(policy): State<HostPolicy>, req: Request, next: Next) -> Response {
+    let authority = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+        .or_else(|| req.uri().authority().map(|a| a.as_str().to_string()));
+    match authority {
+        Some(host) if policy.allows_authority(&host) => next.run(req).await,
+        other => {
+            let host = other.unwrap_or_default();
+            tracing::warn!(host = %host, "許可していない Host の要求を断りました");
+            forbidden(&format!("Host「{host}」"))
+        }
+    }
+}
+
+/// 403 の応答（何を断ったかと、通す方法を書く）
+fn forbidden(what: &str) -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        format!(
+            "403 Forbidden: {what}からのアクセスは受け付けていません。\n\
+             yuzu dev / preview は localhost と IP アドレスで開くものです。別のホスト名で開くなら、\n\
+             yuzu.toml の [dev] allowed_hosts にそのホスト名を足して起動し直してください\n\
+             （外部のサイトから手元のサーバを読まれないための検査です）。\n"
+        ),
+    )
+        .into_response()
 }
 
 /// baseUrl からサーバのマウントパスを取り出す。
@@ -241,7 +307,7 @@ mod tests {
 
     use futures_util::StreamExt;
 
-    use super::{PathGuard, ReloadNotifier, base_path, build_router, literal_route};
+    use super::{HostPolicy, PathGuard, ReloadNotifier, base_path, build_router, literal_route};
 
     #[test]
     fn base_path_の取り出し() {
@@ -266,7 +332,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         for base in ["/:x/", "/*x/", "/a{b}/", "/{*x}/", "/docs/:v/"] {
             let built = std::panic::catch_unwind(|| {
-                let _ = build_router(dir.path(), base, None, None);
+                let _ = build_router(dir.path(), base, None, None, HostPolicy::default());
             });
             assert!(built.is_ok(), "base = {base} で panic した");
         }
@@ -324,6 +390,7 @@ mod tests {
                 base_url: "/".to_string(),
                 live_reload: None,
                 path_guard: None,
+                allowed_hosts: Vec::new(),
                 watch_failure: failure,
             });
             let _ = done_tx.send(result);
@@ -359,11 +426,57 @@ mod tests {
         live_reload: Option<ReloadNotifier>,
         path_guard: Option<PathGuard>,
     ) -> std::net::SocketAddr {
-        let app = build_router(dir, base, live_reload, path_guard);
+        spawn_server_hosts(dir, base, live_reload, path_guard, &[]).await
+    }
+
+    /// `dev.allowed_hosts` を渡して起動する
+    async fn spawn_server_hosts(
+        dir: &std::path::Path,
+        base: &str,
+        live_reload: Option<ReloadNotifier>,
+        path_guard: Option<PathGuard>,
+        allowed_hosts: &[&str],
+    ) -> std::net::SocketAddr {
+        let allowed: Vec<String> = allowed_hosts.iter().map(|s| s.to_string()).collect();
+        let app = build_router(
+            dir,
+            base,
+            live_reload,
+            path_guard,
+            HostPolicy::new(&allowed),
+        );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         addr
+    }
+
+    /// Host ヘッダを指定して GET する（None なら Host を送らない）
+    async fn get_with_host(addr: std::net::SocketAddr, path: &str, host: Option<&str>) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let host_line = host.map(|h| format!("Host: {h}\r\n")).unwrap_or_default();
+        stream
+            .write_all(format!("GET {path} HTTP/1.0\r\n{host_line}\r\n").as_bytes())
+            .await
+            .unwrap();
+        let mut buf = String::new();
+        stream.read_to_string(&mut buf).await.unwrap();
+        buf
+    }
+
+    /// Origin を付けて WebSocket で繋ぐ（ハンドシェイクの結果のステータスを返す）
+    async fn ws_status_with_origin(addr: std::net::SocketAddr, origin: &str) -> u16 {
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        let mut req = format!("ws://{addr}/__livereload")
+            .into_client_request()
+            .unwrap();
+        req.headers_mut().insert("Origin", origin.parse().unwrap());
+        match tokio_tungstenite::connect_async(req).await {
+            Ok((_ws, resp)) => resp.status().as_u16(),
+            Err(tokio_tungstenite::tungstenite::Error::Http(resp)) => resp.status().as_u16(),
+            Err(e) => panic!("想定外のエラー: {e}"),
+        }
     }
 
     /// cli が渡す述語の最小再現（`yuzu_core::output::ensure_symlink_free` 相当。
@@ -541,6 +654,101 @@ mod tests {
 
         let result = tokio_tungstenite::connect_async(format!("ws://{addr}/__livereload")).await;
         assert!(result.is_err(), "preview では WS が生えない");
+    }
+
+    /// DNS リバインディング対策（Phase 83）: 攻撃側のドメイン名の Host は 403。
+    /// localhost・*.localhost・IP アドレスは設定なしで通る
+    #[tokio::test]
+    async fn 許可していない_host_の要求は_403_で断る() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<html>home</html>").unwrap();
+        std::fs::write(dir.path().join("404.html"), "<html>missing</html>").unwrap();
+        let addr = spawn_server(dir.path(), "/", None).await;
+        let port = addr.port();
+
+        for host in [
+            format!("evil.example:{port}"),
+            "evil.example".to_string(),
+            format!("127.0.0.1.nip.io:{port}"),
+        ] {
+            for path in ["/", "/index.html", "/no-such-page/"] {
+                let resp = get_with_host(addr, path, Some(&host)).await;
+                assert!(resp.starts_with("HTTP/1.0 403"), "{host} {path}:\n{resp}");
+                assert!(
+                    !resp.contains("home") && !resp.contains("missing"),
+                    "{resp}"
+                );
+                assert!(
+                    resp.contains("allowed_hosts"),
+                    "通す方法を案内する:\n{resp}"
+                );
+            }
+        }
+        // Host が無い要求も断る（判定できない）
+        let resp = get_with_host(addr, "/index.html", None).await;
+        assert!(resp.starts_with("HTTP/1.0 403"), "{resp}");
+
+        for host in [
+            format!("localhost:{port}"),
+            format!("docs.localhost:{port}"),
+            format!("127.0.0.1:{port}"),
+            format!("[::1]:{port}"),
+            format!("192.168.1.20:{port}"), // dev.host = "0.0.0.0" で LAN の IP から開く
+        ] {
+            let resp = get_with_host(addr, "/index.html", Some(&host)).await;
+            assert!(resp.starts_with("HTTP/1.0 200"), "{host}:\n{resp}");
+            assert!(resp.contains("home"));
+        }
+    }
+
+    #[tokio::test]
+    async fn allowed_hosts_に書いたホスト名は通す() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<html>home</html>").unwrap();
+        let addr = spawn_server_hosts(
+            dir.path(),
+            "/docs/",
+            None,
+            None,
+            &["mypc.local", ".example.internal"],
+        )
+        .await;
+        let port = addr.port();
+
+        for host in [
+            format!("mypc.local:{port}"),
+            format!("docs.example.internal:{port}"),
+        ] {
+            let resp = get_with_host(addr, "/docs/index.html", Some(&host)).await;
+            assert!(resp.starts_with("HTTP/1.0 200"), "{host}:\n{resp}");
+        }
+        // base へのリダイレクトも同じ検査を通る
+        let resp = get_with_host(addr, "/", Some("evil.example")).await;
+        assert!(resp.starts_with("HTTP/1.0 403"), "{resp}");
+        let resp = get_with_host(addr, "/", Some(&format!("mypc.local:{port}"))).await;
+        assert!(resp.starts_with("HTTP/1.0 307"), "{resp}");
+    }
+
+    #[tokio::test]
+    async fn 別のサイトの_origin_からの_websocket_は断る() {
+        let dir = tempfile::tempdir().unwrap();
+        let addr = spawn_server(dir.path(), "/", Some(ReloadNotifier::new())).await;
+        let port = addr.port();
+
+        assert_eq!(
+            ws_status_with_origin(addr, "http://evil.example").await,
+            403
+        );
+        assert_eq!(ws_status_with_origin(addr, "null").await, 403);
+        assert_eq!(
+            ws_status_with_origin(addr, &format!("http://localhost:{port}")).await,
+            101
+        );
+        assert_eq!(
+            ws_status_with_origin(addr, &format!("http://127.0.0.1:{port}")).await,
+            101
+        );
+        // Origin の無い接続（ブラウザ以外）は通す: 既存の ws_で_reload_通知を受信できる が見る
     }
 
     #[tokio::test]

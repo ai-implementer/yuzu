@@ -3,7 +3,7 @@
 {% include "partials/breadcrumb.jinja" %}
 {% if page.draft %}<div class="draft-banner">このページは下書き（draft: true）です — <code>--drafts</code> 指定時のみ出力されます</div>
 {% endif %}{% if page.reading %}<p class="page-reading">約 {{ page.reading.minutes }} 分で読めます（{{ page.reading.chars }} 文字）</p>
-{% endif %}<article class="markdown-body" data-md-url="{{ page.md_url | url }}">
+{% endif %}<article class="markdown-body"{% if page.md_url %} data-md-url="{{ page.md_url | url }}"{% endif %}>
 {{ page.body | safe }}
 </article>
 {% if page.last_updated or page.edit_url %}<div class="page-meta">

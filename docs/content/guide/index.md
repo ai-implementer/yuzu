@@ -77,3 +77,4 @@ GitHub Pages へ自動デプロイします（リポジトリの Settings \> Pag
 - [LLM 連携](llms.md) — llms.txt とページ Markdown 配信
 - [品質チェック](quality.md) — fmt / lint / check
 - [配信とデプロイ](deploy.md) — `base_url`・GitHub Pages・テーマ上書き・印刷 / PDF
+- [社内で公開する](internal.md) — 公開範囲の注意（dist に出るもの・止め方）と Web サーバへの置き方

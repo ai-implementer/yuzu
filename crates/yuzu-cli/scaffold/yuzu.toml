@@ -86,6 +86,9 @@ page = "search"
 # synonyms = [["ログイン", "サインイン"]] # 同義語グループ。lint.terms と合成され、ゆれ表記の検索が正表記にヒット
 # index_code = false # フェンスコードブロックを検索対象に含める（関数名・設定キーで引ける。既定 off）
 
+# [llms]
+# page_md = false # 原稿の .md（frontmatter・HTML コメント込み）を配信しない（コピーボタンも出さない）
+
 # [git]
 # last_updated = true # ページフッターに最終コミット日（git が無い環境では自動で非表示）
 # edit_url = "https://github.com/me/docs/edit/main/content/{path}" # 「このページを編集」リンク
@@ -99,3 +102,4 @@ page = "search"
 port = 5173
 # live_reload = true # yuzu dev の WS ライブリロード（false で注入なし）
 # open = false # yuzu dev 起動時にブラウザを開く
+# allowed_hosts = ["mypc.local"] # localhost・IP アドレス以外のホスト名で開くときに足す（ほかは 403）

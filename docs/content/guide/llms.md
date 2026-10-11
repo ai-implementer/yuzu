@@ -15,7 +15,7 @@ description: llms.txt / llms-full.txt の自動生成とページ単位 Markdown
 出力します:
 
 - [`/llms.txt`](/llms.txt) — サイトの説明と全ページへのリンク索引
-  （リンク先は各ページの `.md`）
+  （リンク先は各ページの `.md`。`.md` を配信しないページはページの HTML）
 - [`/llms-full.txt`](/llms-full.txt) — 全ページの正規化 Markdown を
   連結した 1 ファイル
 
@@ -40,3 +40,28 @@ llms-full.txt の本文は原文そのままではなく、`yuzu fmt` と同じ�
 ページ右上の「**Markdown をコピー**」ボタンで、その原文をそのまま
 クリップボードへコピーできます（LLM に貼る用途。`.md` を開くリンク付き。
 JS 無効時はボタンが現れないプログレッシブエンハンスメントです）。
+
+### 原稿の `.md` を配信しない
+
+原文はバイトそのままなので、frontmatter や HTML コメントに書いたメモも読者に見えます。
+配信したくないときは止められます（既定は配信する）。
+
+```toml
+[llms]
+page_md = false # 全ページで .md を配信しない
+```
+
+ページ単位なら frontmatter に `pageMd: false` を書きます。止めたページでは
+
+- `dist/<ルート>.md` を出しません（前回の build で出したものは次の build で消えます。
+  `output.clean = false` のサイトや `--force` の後でも消えます）
+- 「Markdown をコピー」ボタンを出しません
+- llms.txt のリンクはページの HTML を指します
+
+llms-full.txt と検索インデックスには、止めたページの本文も今までどおり入ります
+（frontmatter は入りません）。載せたくないページは `llms: false` も書いてください。
+
+> [!WARNING]
+> HTML コメント（`<!-- … -->`）は `.md` を止めても公開されます。生の HTML として
+> そのまま出力 HTML に残り、llms-full.txt にも入ります。公開したくないメモは原稿に
+> 書かないでください。社内で公開するときの注意は[社内で公開する](internal.md)にまとめています。

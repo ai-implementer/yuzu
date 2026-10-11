@@ -8,6 +8,7 @@
 //!   （cli）が渡す（依存方向 `cli → server` を守り、server は render を知らない）
 
 mod error;
+mod host;
 mod livereload;
 mod serve;
 mod watch;

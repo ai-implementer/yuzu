@@ -247,6 +247,7 @@ impl WatchBuild {
 ///   配信中のディレクトリでもある
 /// - `base_url` / `dev.host` / `dev.port` — 起動済みサーバの bind と URL 接頭辞
 /// - `dev.live_reload` — 注入済みの JS と WS 通知の有無
+/// - `dev.allowed_hosts` — 起動済みサーバの Host / Origin の検査に渡している
 /// - `build.watch_ignore` — 監視除外の glob（起動時に監視スレッドへ渡している）
 fn pin_restart_only(next: &mut ResolvedConfig, current: &ResolvedConfig) {
     let mut pinned: Vec<&str> = Vec::new();
@@ -276,6 +277,10 @@ fn pin_restart_only(next: &mut ResolvedConfig, current: &ResolvedConfig) {
     if next.config.dev.live_reload != current.config.dev.live_reload {
         pinned.push("dev.live_reload");
         next.config.dev.live_reload = current.config.dev.live_reload;
+    }
+    if next.config.dev.allowed_hosts != current.config.dev.allowed_hosts {
+        pinned.push("dev.allowed_hosts");
+        next.config.dev.allowed_hosts = current.config.dev.allowed_hosts.clone();
     }
     if !pinned.is_empty() {
         tracing::warn!(
@@ -444,11 +449,29 @@ pub(crate) fn build_once(
 
     // ここから下はビルド成功時のみ: 孤児掃除 → マニフェスト・キャッシュ保存
     let written = tracker.into_written();
-    let removed = match &previous {
+    let mut removed = match &previous {
         Some(prev) => output::remove_orphans(&rc.output_dir, prev, &written)
             .context("孤児出力の削除に失敗しました")?,
         None => 0,
     };
+    // 設定で止めた生成物（原稿の .md・llms.txt / llms-full.txt・sitemap.xml・検索
+    // インデックス）は、前回の記録の有無に関係なく消す。`--force` や `.yuzu` の削除の後は
+    // 記録が無く、`output.clean = false` だと上の孤児掃除も dist の作り直しも働かないため
+    // （止めた原稿の .md が frontmatter ごと残っていた。PR #42 のレビュー指摘）。
+    // 今回書いたもの（public/ に置いた同じパスのファイル）は消さない
+    let unpublished = yuzu_render::unpublished_outputs(rc, &site);
+    removed += output::remove_orphans(&rc.output_dir, &unpublished, &written)
+        .context("止めた生成物の削除に失敗しました")?;
+    // 検索インデックスはファイルの顔ぶれが索引の大きさで変わるので、`_search/` にある
+    // ファイルを列挙して今回書かなかったものを消す。ディレクトリごとは消さない
+    // （public/_search/ に置いた利用者のファイルを残すため。残っていると索引の削除まで
+    // 飛ばしていた = PR #42 の再レビューの指摘）
+    if !rc.config.search.enabled {
+        let stale = output::list_files_under(&rc.output_dir, yuzu_index::SEARCH_DIR_NAME)
+            .context("検索インデックスの出力を列挙できません")?;
+        removed += output::remove_orphans(&rc.output_dir, &stale, &written)
+            .context("検索インデックスの削除に失敗しました")?;
+    }
     output::save_manifest(&session.manifest_path, &written)
         .context("出力マニフェストを保存できません")?;
     session
@@ -665,5 +688,100 @@ mod tests {
         overrides.apply(&mut rc);
         assert_eq!(rc.base_url, "/docs/");
         assert_eq!(rc.config.dev.host, "0.0.0.0");
+    }
+
+    /// PR #42 のレビュー指摘: `output.clean = false` のサイトで、`.md` などを止めてから
+    /// `--force`（出力マニフェストも消える）でビルドしても、止めた生成物を dist に残さない
+    #[test]
+    fn 止めた生成物は_force_で記録が無くても消える() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("content/index.md", "---\ntitle: トップ\n---\n\n# トップ\n");
+        write(
+            "content/guide/secret.md",
+            "---\ntitle: 秘密\nowner: 社外秘メモ\n---\n\n# 秘密\n",
+        );
+        write("yuzu.toml", "[output]\nclean = false\n");
+        let build = |force: bool| {
+            let rc = yuzu_config::load(&root).unwrap();
+            let mut session = BuildSession::new(&rc, force).unwrap();
+            build_once(&rc, LiveReloadMode::None, &mut session, false).unwrap();
+        };
+        let dist = root.join("dist");
+
+        build(false);
+        for rel in ["index.md", "guide/secret.md", "llms.txt", "llms-full.txt"] {
+            assert!(dist.join(rel).is_file(), "{rel}");
+        }
+        assert!(dist.join("_search").is_dir());
+
+        // 全部止めて --force（`.yuzu/cache/` ごと出力マニフェストが消える）
+        write(
+            "yuzu.toml",
+            "[output]\nclean = false\n[llms]\nenabled = false\npage_md = false\n[search]\nenabled = false\n",
+        );
+        build(true);
+        for rel in ["index.md", "guide/secret.md", "llms.txt", "llms-full.txt"] {
+            assert!(!dist.join(rel).exists(), "{rel} が残った");
+        }
+        assert!(!dist.join("_search").exists(), "_search が残った");
+        assert!(
+            dist.join("guide/secret/index.html").is_file(),
+            "ページ自体は出す"
+        );
+
+        // public/ に同じパスのファイルを置けば、止めていても消さない（利用者のファイル）
+        write("public/llms.txt", "手書きの llms.txt\n");
+        build(true);
+        assert_eq!(
+            std::fs::read_to_string(dist.join("llms.txt")).unwrap(),
+            "手書きの llms.txt\n"
+        );
+    }
+
+    /// PR #42 の再レビューの指摘: public/_search/ に利用者のファイルがあっても、止めた
+    /// 検索インデックス（manifest・索引・本文断片）は消し、利用者のファイルだけ残す
+    #[test]
+    fn 止めた検索インデックスは_public_のファイルを残して消える() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("content/index.md", "# トップ\n\n検索される本文です。\n");
+        write("public/_search/readme.txt", "利用者のファイル\n");
+        write("yuzu.toml", "[output]\nclean = false\n");
+        let build = |force: bool| {
+            let rc = yuzu_config::load(&root).unwrap();
+            let mut session = BuildSession::new(&rc, force).unwrap();
+            build_once(&rc, LiveReloadMode::None, &mut session, false).unwrap();
+        };
+        let search = root.join("dist/_search");
+
+        build(false);
+        assert!(search.join("manifest.json").is_file());
+        assert!(search.join("readme.txt").is_file());
+
+        write(
+            "yuzu.toml",
+            "[output]\nclean = false\n[search]\nenabled = false\n",
+        );
+        build(true);
+        let left: Vec<String> = std::fs::read_dir(&search)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left, ["readme.txt"], "索引が残った: {left:?}");
+        // 後続の通常ビルドでも戻らない
+        build(false);
+        assert!(!search.join("manifest.json").exists());
+        assert!(search.join("readme.txt").is_file());
     }
 }

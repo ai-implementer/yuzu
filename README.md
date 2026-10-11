@@ -59,7 +59,9 @@ eval "$(yuzu completions bash)"   # シェル補完（zsh / fish / powershell / 
 
 - **デプロイ** — GitHub に push すると Pages へ自動デプロイ
   （`.github/workflows/deploy.yml` 同梱。リポジトリの Settings > Pages > Source を
-  「GitHub Actions」にするだけ）
+  「GitHub Actions」にするだけ）。GitHub Pages はリポジトリが非公開でも公開されます。
+  社内だけに見せるときは[社内で公開する](https://ai.implementer.net/yuzu/guide/internal/)
+  （原稿の `.md` と HTML コメントも配信される点の注意と、Web サーバへの置き方）
 - **設定** — プロジェクトルートの `yuzu.toml` 1 枚（すべてのキーが省略可能）
 - **終了コード**（全コマンド共通）— `0` = 成功 / `1` = 違反あり / `2` = 実行エラー
 

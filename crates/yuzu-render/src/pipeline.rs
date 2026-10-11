@@ -5,6 +5,7 @@
 //! 集約出力（nav は各ページに埋まるが構築は事前・llms / 404 / アセット）は
 //! 直列のまま = インクリメンタルビルドの層構造は不変
 
+use std::collections::BTreeSet;
 use std::fs;
 
 use minijinja::context;
@@ -18,6 +19,39 @@ use crate::context::{NavCtx, NavOrder, NavTrails, PageCtx, SiteCtx, build_breadc
 use crate::error::RenderError;
 use crate::shared::RenderShared;
 use crate::urls::UrlResolver;
+
+/// sitemap の書き出し先（dist 直下）。止めたときの掃除（[`unpublished_outputs`]）も使う
+const SITEMAP_XML: &str = "sitemap.xml";
+
+/// 設定やページの指定で**出さないことにした**生成物の dist 相対パス（Phase 83）。
+///
+/// 書き出し側と同じ述語を裏返して作る: 原稿の `.md`（`Page::emits_page_md`）・
+/// llms.txt / llms-full.txt（`llms.enabled` / `llms.full`）・sitemap.xml（baseUrl がフル URL
+/// でない）。cli はこれを前回の出力の代わりに孤児掃除へ渡し、今回書かなかったものを消す。
+/// 出力マニフェストが無いとき（`--force`・`.yuzu` の削除の後）は通常の孤児掃除が働かず、
+/// `output.clean = false` だと dist も作り直さないので、止めた原稿の `.md`（frontmatter 込み）が
+/// 残り続けていた（PR #42 のレビュー指摘）。public/ に同じパスのファイルを置いていれば
+/// 今回書き出しているので消さない（判定は呼び出し側の「今回書いたもの」との差）。
+/// 検索インデックス（`_search/`）はディレクトリなので cli が別に扱う
+pub fn unpublished_outputs(rc: &ResolvedConfig, site: &SiteModel) -> BTreeSet<String> {
+    let cfg = &rc.config;
+    let mut out: BTreeSet<String> = site
+        .pages
+        .iter()
+        .filter(|page| !page.emits_page_md(cfg.llms.page_md))
+        .map(|page| page.md_rel_path())
+        .collect();
+    if !cfg.llms.enabled {
+        out.insert(crate::llms::LLMS_TXT.to_string());
+    }
+    if !cfg.llms.enabled || !cfg.llms.full {
+        out.insert(crate::llms::LLMS_FULL_TXT.to_string());
+    }
+    if !UrlResolver::new(&rc.base_url, site).is_absolute_base() {
+        out.insert(SITEMAP_XML.to_string());
+    }
+    out
+}
 
 /// ページに注入するライブリロード方式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -278,7 +312,8 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                     edit_url,
                     &toc_levels,
                     cfg.theme.reading_time.then_some(reading),
-                ),
+                )
+                .with_page_md(page.emits_page_md(cfg.llms.page_md), page, &resolver),
                 nav => NavCtx::build(&params.site.nav, nav_trails.trail(&page.route), &resolver),
                 nav_collapse => cfg.nav.collapse,
                 pager => nav_order.pager(&page.route, &resolver),
@@ -301,8 +336,9 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             assets::write_output(ctx.outputs, output_dir, &out_rel, html.as_bytes())?;
             // ページ単位 Markdown（原文バイトそのまま）。コピーボタンと llms.txt の
             // .md リンクの実体。`yuzu fmt` 運用なら正規形と一致する。
-            // 検索結果ページは出さない（llms からも除外済みで、参照する導線が無い）
-            if page.emits_page_md() {
+            // 検索結果ページと、`llms.page_md = false` / frontmatter `pageMd: false` では
+            // 出さない（既存の dist に残った分は出力マニフェストの孤児掃除で消える）
+            if page.emits_page_md(cfg.llms.page_md) {
                 assets::write_output(
                     ctx.outputs,
                     output_dir,
@@ -414,7 +450,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             xml.push_str("</url>\n");
         }
         xml.push_str("</urlset>\n");
-        assets::write_output(ctx.outputs, output_dir, "sitemap.xml", xml.as_bytes())?;
+        assets::write_output(ctx.outputs, output_dir, SITEMAP_XML, xml.as_bytes())?;
     } else {
         tracing::debug!("baseUrl がフル URL ではないため sitemap.xml は生成しない");
     }

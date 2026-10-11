@@ -62,7 +62,7 @@ id は見出しの文字を小文字にし、空白を `-` に変え、記号を
 
 ## frontmatter
 
-各ページの先頭に YAML frontmatter を書けます。使えるキーは次の 8 つです
+各ページの先頭に YAML frontmatter を書けます。使えるキーは次の 9 つです
 （未知のキーは `yuzu lint` が警告します）:
 
 ```yaml
@@ -75,8 +75,12 @@ llms: false # llms.txt / llms-full.txt から除外する
 aliases: ["guide/old-name/"] # 旧 URL（リダイレクトを生成）
 lintDisable: ["term-variant"] # このページに限り lint ルールを抑制
 readingTime: false # このページに読了時間・文字数を出さない
+pageMd: false # このページの原稿の .md を配信しない（コピーボタンも出さない）
 ---
 ```
+
+frontmatter は原稿の `.md` と一緒に配信されます（[LLM 連携](llms.md)）。
+読者に見せたくないことは書かないか、`pageMd: false` で `.md` の配信を止めてください。
 
 ### 下書き（draft）
 

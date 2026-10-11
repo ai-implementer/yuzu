@@ -219,6 +219,10 @@ jobs:
             echo "検索結果ページのページ単位 .md が出た" >&2
             exit 1
           fi
+          # 公開範囲の制御（Phase 83）: 社内で公開するページと、.md を止める設定・Host の検査の説明
+          test -f docs/dist/guide/internal/index.html
+          grep -q 'page_md' docs/dist/guide/llms/index.html
+          grep -q 'allowed_hosts' docs/dist/reference/config/index.html
           # ナビと目次の規模対応（Phase 56）: 現在セクションだけ開いた折りたたみ・
           # 他セクションは閉じる・TOC の nav 化・scrollspy 基準線の実測化
           grep -q '<details class="nav-section" open>' docs/dist/guide/writing/index.html
@@ -350,6 +354,51 @@ jobs:
             echo "vendor の更新メモ（README.md）が dist に出ている" >&2
             exit 1
           fi
+          # 公開範囲の制御（Phase 83）: 既定は原稿の .md を配信する。llms.page_md = false で
+          # 全ページ止め（前回出した .md は孤児掃除で消える）、コピーボタンの data-md-url も
+          # 消えて llms.txt は HTML を指す。frontmatter の pageMd: false はそのページだけ止める
+          test -f dist/index.md
+          grep -q 'data-md-url' dist/index.html
+          printf '\n[llms]\npage_md = false\n' >> yuzu.toml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          if find dist -name '*.md' | grep -q .; then
+            echo "llms.page_md = false なのに .md が dist に残っている" >&2
+            exit 1
+          fi
+          if grep -q 'data-md-url' dist/index.html; then
+            echo "llms.page_md = false なのにコピーボタンの data-md-url が出ている" >&2
+            exit 1
+          fi
+          if grep -q '\.md)' dist/llms.txt; then
+            echo "llms.page_md = false なのに llms.txt が .md を指している" >&2
+            exit 1
+          fi
+          grep -q '(/guide/getting-started/)' dist/llms.txt
+          sed -i 's/^page_md = false$/page_md = true/' yuzu.toml
+          sed -i '0,/^order: 1$/s//order: 1\npageMd: false/' content/guide/getting-started.md
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          test -f dist/index.md
+          if [ -e dist/guide/getting-started.md ]; then
+            echo "pageMd: false のページの .md が出ている" >&2
+            exit 1
+          fi
+          sed -i '/^pageMd: false$/d' content/guide/getting-started.md
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          test -f dist/guide/getting-started.md
+          # PR #42 のレビュー指摘: output.clean = false のサイトで止めてから --force
+          # （出力マニフェストも消える）でビルドしても、止めた .md を dist に残さない
+          sed -i 's/^clean = true$/clean = false/' yuzu.toml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          test -f dist/index.md
+          sed -i 's/^page_md = true$/page_md = false/' yuzu.toml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build --force
+          if find dist -name '*.md' | grep -q .; then
+            echo "clean = false で --force した後も止めた .md が dist に残っている" >&2
+            exit 1
+          fi
+          sed -i 's/^page_md = false$/page_md = true/; s/^clean = false$/clean = true/' yuzu.toml
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build
+          test -f dist/index.md
           # scaffold は検索結果ページ（search.page）を有効にして配る（Phase 54）
           test -f dist/search/index.html
           # --base-url は設定より優先して配信パスを差し替える（deploy.yml が使う契約）
@@ -621,6 +670,10 @@ jobs:
             exit 1
           fi
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:48124/)" = 200
+          # Phase 83: Host の検査（DNS リバインディング対策）。localhost・IP アドレス以外の
+          # ホスト名は 403、localhost は通る
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' http://127.0.0.1:48124/)" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: localhost:48124' http://127.0.0.1:48124/)" = 200
           kill "$GUARD_PID"
           rm dist/link dist/leaf.html
           # Phase 66: 外部リンク検査（opt-in）。ネットワークへは出ず、自分の preview を
