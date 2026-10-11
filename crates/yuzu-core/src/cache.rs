@@ -64,7 +64,9 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v23: 見出しのパーマリンク（id を見出し自身へ・リンクを末尾に aria-label 付きで。
 ///   本文 HTML が変わる）と、CachedBody に本文の分量（読了時間・文字数）・
 ///   CachedMeta の Frontmatter に `readingTime` を追加（Phase 78。bump を 1 回に束ねた）
-pub const CACHE_FORMAT_VERSION: u32 = 23;
+/// - v24: CachedMeta の Frontmatter に `pageMd`（ページ単位 Markdown を配信しない）を追加
+///   （Phase 83。旧キャッシュは `pageMd` を読まずに作られているので捨てる）
+pub const CACHE_FORMAT_VERSION: u32 = 24;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

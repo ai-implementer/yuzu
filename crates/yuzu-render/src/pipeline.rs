@@ -278,7 +278,8 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                     edit_url,
                     &toc_levels,
                     cfg.theme.reading_time.then_some(reading),
-                ),
+                )
+                .with_page_md(page.emits_page_md(cfg.llms.page_md), page, &resolver),
                 nav => NavCtx::build(&params.site.nav, nav_trails.trail(&page.route), &resolver),
                 nav_collapse => cfg.nav.collapse,
                 pager => nav_order.pager(&page.route, &resolver),
@@ -301,8 +302,9 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             assets::write_output(ctx.outputs, output_dir, &out_rel, html.as_bytes())?;
             // ページ単位 Markdown（原文バイトそのまま）。コピーボタンと llms.txt の
             // .md リンクの実体。`yuzu fmt` 運用なら正規形と一致する。
-            // 検索結果ページは出さない（llms からも除外済みで、参照する導線が無い）
-            if page.emits_page_md() {
+            // 検索結果ページと、`llms.page_md = false` / frontmatter `pageMd: false` では
+            // 出さない（既存の dist に残った分は出力マニフェストの孤児掃除で消える）
+            if page.emits_page_md(cfg.llms.page_md) {
                 assets::write_output(
                     ctx.outputs,
                     output_dir,

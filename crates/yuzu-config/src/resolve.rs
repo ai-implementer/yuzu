@@ -529,6 +529,22 @@ mod tests {
     }
 
     #[test]
+    fn 公開範囲の設定は既定で今までどおりで書けば読める() {
+        // 既定: 原稿の .md を配信し、Host の追加の許可は無い（Phase 83）
+        let config = parse("").unwrap();
+        assert!(config.llms.page_md);
+        assert!(config.dev.allowed_hosts.is_empty());
+
+        let text = "[llms]\npage_md = false\n[dev]\nallowed_hosts = [\"mypc.local\", \".example.internal\"]\n";
+        let config = parse(text).unwrap();
+        assert!(!config.llms.page_md);
+        assert_eq!(
+            config.dev.allowed_hosts,
+            ["mypc.local", ".example.internal"]
+        );
+    }
+
+    #[test]
     fn 型不一致は日本語の文言で位置が付く() {
         let text = "[dev]\nport = \"5173\"\n";
         assert_eq!(issues(text), vec![("dev.port".to_string(), 2, 8)]);

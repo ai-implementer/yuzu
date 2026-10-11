@@ -1205,6 +1205,83 @@ fn ページ単位_md_が原文そのままで配信される() {
 }
 
 #[test]
+fn llms_page_md_を切ると_md_もコピーボタンも出さず_llms_txt_は_html_を指す() {
+    let dir = build_fixture_with_config(LiveReloadMode::None, |rc| {
+        rc.config.llms.page_md = false;
+    });
+    let dist = dir.path().join("dist");
+
+    // どのページの原稿も配信しない
+    assert!(!dist.join("index.md").exists());
+    assert!(!dist.join("guide/getting-started.md").exists());
+    assert!(!dist.join("guide.md").exists());
+
+    // data-md-url が無い = page-copy.js がボタンを出さない
+    for page in ["index.html", "guide/getting-started/index.html"] {
+        let html = fs::read_to_string(dist.join(page)).unwrap();
+        assert!(!html.contains("data-md-url"), "{page}");
+        assert!(
+            html.contains(r#"<article class="markdown-body">"#),
+            "{page}"
+        );
+    }
+
+    // llms.txt はページの HTML を指す（ページは載せたまま）
+    let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
+    assert!(
+        llms.contains("(/docs/guide/getting-started/)"),
+        "llms.txt:\n{llms}"
+    );
+    assert!(!llms.contains(".md)"), "llms.txt:\n{llms}");
+}
+
+#[test]
+fn frontmatter_の_page_md_false_はそのページだけ_md_を出さない() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    let page = dir.path().join("content/guide/getting-started.md");
+    let source = fs::read_to_string(&page).unwrap();
+    fs::write(
+        &page,
+        source.replacen("order: 1\n", "order: 1\npageMd: false\n", 1),
+    )
+    .unwrap();
+
+    let rc = yuzu_config::load(dir.path()).unwrap();
+    let site = yuzu_core::build_site_model(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &yuzu_render::markdown_options(&rc.config),
+    )
+    .unwrap();
+    render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
+    })
+    .unwrap();
+    let dist = dir.path().join("dist");
+
+    assert!(!dist.join("guide/getting-started.md").exists());
+    let guide = fs::read_to_string(dist.join("guide/getting-started/index.html")).unwrap();
+    assert!(!guide.contains("data-md-url"));
+    // ほかのページは今までどおり
+    assert!(dist.join("index.md").is_file());
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(index.contains(r#"data-md-url="/docs/index.md""#));
+
+    let llms = fs::read_to_string(dist.join("llms.txt")).unwrap();
+    assert!(
+        llms.contains("(/docs/guide/getting-started/)"),
+        "llms.txt:\n{llms}"
+    );
+    assert!(!llms.contains("(/docs/guide/getting-started.md)"));
+}
+
+#[test]
 fn git_メタは日付マップと_edit_url_設定から出る() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
     let dir = tempfile::tempdir().unwrap();

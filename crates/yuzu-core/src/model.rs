@@ -33,9 +33,13 @@ pub struct Frontmatter {
     /// `theme.reading_time` が true のときだけ意味を持つ）
     #[serde(rename = "readingTime")]
     pub reading_time: bool,
+    /// false ならこのページの原稿の `.md`（ページ単位 Markdown）を配信せず、コピーボタンも
+    /// 出さない。llms.txt のリンクはページの HTML を指す（サイト全体は `llms.page_md`）
+    #[serde(rename = "pageMd")]
+    pub page_md: bool,
 }
 
-// llms・readingTime の既定を true にするため derive ではなく手書き
+// llms・readingTime・pageMd の既定を true にするため derive ではなく手書き
 // （serde のコンテナ #[serde(default)] もこの Default を使う）
 impl Default for Frontmatter {
     fn default() -> Self {
@@ -48,6 +52,7 @@ impl Default for Frontmatter {
             aliases: Vec::new(),
             lint_disable: Vec::new(),
             reading_time: true,
+            page_md: true,
         }
     }
 }
@@ -205,9 +210,14 @@ impl Page {
         self.generated.is_none_or(GeneratedKind::in_listings)
     }
 
-    /// ページ単位 Markdown（`md_rel_path()`）を出力するか
-    pub fn emits_page_md(&self) -> bool {
-        self.generated.is_none_or(GeneratedKind::in_listings)
+    /// ページ単位 Markdown（`md_rel_path()`）を出力するか。`site_page_md` はサイト全体の
+    /// 設定 `llms.page_md`（core は設定を知らないので呼び出し側が渡す）。
+    /// `.md` の書き出し・コピーボタン（`data-md-url`）・llms.txt のリンク先の 3 か所が
+    /// これを通る（呼び出し側で frontmatter や設定を直接見ない）
+    pub fn emits_page_md(&self, site_page_md: bool) -> bool {
+        site_page_md
+            && self.frontmatter.page_md
+            && self.generated.is_none_or(GeneratedKind::in_listings)
     }
 
     /// 出力ファイルの相対パス（pretty URL: `route + "index.html"`）

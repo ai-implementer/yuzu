@@ -32,8 +32,13 @@ pub fn generate_llms_txt(rc: &ResolvedConfig, site: &SiteModel) -> Result<String
     for (title, pages) in sections(site) {
         out.push_str(&format!("\n## {}\n\n", sanitize_line(&title)));
         for page in pages {
-            // リンク先はページ単位 Markdown（LLM が直接読める形式。Phase 14）
-            let url = resolver.md_url(&page.route);
+            // リンク先はページ単位 Markdown（LLM が直接読める形式。Phase 14）。
+            // `.md` を出さないページ（`llms.page_md` / `pageMd`）は HTML を指す
+            let url = if page.emits_page_md(rc.config.llms.page_md) {
+                resolver.md_url(&page.route)
+            } else {
+                resolver.page_url(&page.route)
+            };
             let title = sanitize_line(&page.title);
             match page.frontmatter.description.as_deref() {
                 Some(desc) => {
