@@ -18,8 +18,8 @@ description: yuzu.toml の全設定キー・型・既定値
 問題は 1 回の実行で**全件**まとめて出ます。同じキーを 2 回書くと TOML の
 構文エラーです。
 
-パーサは [kabosu](../development/kabosu.md)（依存ゼロの TOML ライブラリ）で、
-TOML 1.0 の全構文が使えます。辞書のような入れ子は `[lint.terms]` のような
+TOML 1.0 の全構文が使えます（読み込みには yuzu と同じリポジトリの TOML ライブラリ
+[kabosu](../development/kabosu.md) を使っています）。辞書のような入れ子は `[lint.terms]` のような
 テーブルヘッダーでも、`terms = { "サーバ" = ["サーバー"] }` のようなインライン
 テーブルでも同じ結果になります。インラインテーブルは TOML 1.0 どおり 1 行に
 収めてください（`{ ... }` の中の改行と末尾カンマは書けません）。
@@ -141,7 +141,7 @@ edit_url = "https://github.com/me/docs/edit/main/content/{path}"
 | `title` | string / `"Documentation"` | サイトタイトル（ヘッダーと `<title>`） |
 | `description` | string / なし | meta description と `og:description` の既定値（ページの `description` が優先） |
 | `lang` | string / `"ja"` | `<html lang>`。地域付き（`"ja-JP"`）なら `og:locale` にも使う |
-| `base_url` | string / なし | サブパス配信時の基点（例 `"/docs/"`。[詳細](../guide/deploy.md)）。フル URL なら canonical / `og:url` / sitemap も出る |
+| `base_url` | string / なし | サブパス配信時の基点（例 `"/docs/"`。[詳細](../guide/deploy.md)）。フル URL なら canonical / `og:url` / sitemap も出る。`.` で始まる相対パス（`"./"` など）は設定エラー |
 | `logo` | string / なし | ヘッダーのロゴ画像（`public/` 配下のパス。未指定なら 🍊） |
 | `image` | string / なし | 共有カードの画像 `og:image`（`public/` 配下のパスかフル URL。パス指定は `base_url` がフル URL のときだけ出る。[詳細](../guide/deploy.md#共有カードogpと-canonical)） |
 
@@ -180,7 +180,7 @@ glob 評価が想定外になるため）。
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
 | `name` | string / `"default"` | テーマ名 |
-| `dark` | string / `"toggle"` | ダークモードの扱い。`"toggle"`（切替ボタンを出し、選んでいなければ OS の設定に従う）/ `"auto"`（ボタンなしで OS の設定に従う）/ `"light"`（ライト固定）。旧形式の `true` は `"toggle"`、`false` は `"light"` として読む（[ダークモード](../guide/deploy.md#ダークモード)） |
+| `dark` | string / `"toggle"` | ダークモードの扱い。`"toggle"`（切替ボタンを出し、選んでいなければ OS の設定に従う）/ `"auto"`（ボタンなしで OS の設定に従う）/ `"light"`（ライト固定）。旧形式の `true` は `"toggle"`、`false` は `"light"` として読む（[ダークモード](../guide/appearance.md#ダークモード)） |
 | `css_vars` | table / `{}` | テーマ CSS 変数の上書き（キーは `--` 省略可）。`[theme.css_vars]` のテーブルで書く |
 | `css_vars_dark` | table / `{}` | ダークモード時のみの上書き |
 | `toc.levels` | string / `"2-3"` | ページ内 TOC に載せる見出しレベルの範囲（`"2-4"` / `"2"` の形。h1〜h6 = 1〜6） |
@@ -227,10 +227,10 @@ glob 評価が想定外になるため）。
 | `page` | string / `""` | [検索結果ページ](../guide/search.md#検索結果ページ)の route。**空なら生成しない**（既存の `content/search.md` 等と衝突しないための既定） |
 | `page_title` | string / `"検索"` | 検索結果ページのタイトル |
 | `page_size` | integer / `10` | 検索結果ページで 1 回に表示する件数（「さらに表示」で追加） |
-| `dictionary` | string / なし | vaporetto 分かち書きモデルの差し替え（プロジェクト相対パス） |
-| `typo_tolerance.enabled` | bool / `true` | タイポトレランス |
-| `typo_tolerance.max_edits` | integer / `1` | 許容する編集距離 |
-| `shard.max_terms_per_shard` | integer / `16384` | インデックスのシャード分割単位 |
+| `dictionary` | string / なし | 分かち書きのモデルの差し替え（vaporetto のモデル形式。プロジェクト相対パス） |
+| `typo_tolerance.enabled` | bool / `true` | 誤字に寛容な検索（1 文字違いの語にもヒットする） |
+| `typo_tolerance.max_edits` | integer / `1` | 許容する誤字の文字数（編集距離） |
+| `shard.max_terms_per_shard` | integer / `16384` | 検索用ファイルを分ける単位（1 ファイルに入れる語の数） |
 | `synonyms` | string\[\]\[\] / `[]` | 同義語グループ（クエリ拡張。`lint.terms` と合成） |
 | `index_code` | bool / `false` | フェンスコードブロックを検索対象に含める |
 

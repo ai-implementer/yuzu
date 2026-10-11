@@ -1,10 +1,13 @@
 ---
-title: 開発
+title: 開発者向け
 order: 4
 description: ワークスペース構成・依存方向・凍結した設計判断
 ---
 
 # アーキテクチャ
+
+このセクションは、yuzu 本体の内部設計を説明する開発者向けのページです。
+使い方は[ガイド](../guide/index.md)を見てください。
 
 yuzu は Cargo workspace（MSRV 1.87 / edition 2024。公開ライブラリの kabosu・tankan は MSRV 1.85）で、役割ごとに
 crate を分けています。
@@ -69,7 +72,7 @@ Web 調査込みで確定済みの技術選定です（差し替えない前提�
 | CLI | clap（derive）＋ `clap_complete` | 終了コード規約は 0 / 1 / 2。サブコマンドをまたぐ実行文脈（`--root`）は `Cx` 1 つにまとめて各 `run()` へ渡す。シェル補完は clap の定義から実行時に生成する（同梱しない・動的補完は使わない） |
 | 設定 | TOML（kabosu） | `yuzu.toml` を自作の依存ゼロパーサ kabosu で読む（手書き decode・span 付き診断・未知キーは設定エラー）。上方向探索でルート確定（`--root` 指定時は探索しない）。v0.14 で serde ＋ JSONC から移行 |
 | テーマ同梱 | rust-embed | バイナリ埋め込み＋ `theme/` でファイル単位の上書き |
-| Mermaid | 既定はクライアント描画 | `markdown.mermaid.backend: "ssr"` で自作 SSR（tankan）に切り替える。未対応の図種は自動でクライアント描画へフォールバックする |
+| Mermaid | 既定はクライアント描画 | `[markdown.mermaid]` の `backend = "ssr"` で自作 SSR（tankan）に切り替える。未対応の図種は自動でクライアント描画へフォールバックする |
 | dev サーバ | axum ＋ notify ＋ WebSocket | `/__livereload` への push でリロード |
 | ページ並列化 | rayon | render / index のページループをデータ並列化。出力はスレッド数に依らずバイト同一 |
 | ネットワーク I/O | 既定経路に入れない | build / check / dev はオフラインで決定的。外部リンクの到達性検査は `yuzu check --external-links` の opt-in だけで、HTTP は `curl` へ委譲して依存グラフに HTTP クライアント・TLS を持ち込まない |

@@ -1,18 +1,18 @@
 ---
 title: コードと数式
-order: 2
-description: syntect によるビルド時ハイライト・コピーボタン・KaTeX 数式
+order: 3
+description: ビルド時のコードハイライト・コピーボタン・KaTeX 数式
 ---
 
 # コードと数式
 
 ## シンタックスハイライト
 
-コードブロックは **syntect がビルド時にハイライト**し、CSS クラスとして
-出力します。クライアント JS はゼロで、ライト / ダークの両テーマに追従します。
+コードブロックは**ビルド時にハイライト**され、色は CSS で付きます。
+ブラウザの JavaScript は使わず、ライト / ダークの両テーマに追従します。
 
 ```rust
-/// ページ派生物のキャッシュキー（3 層無効化の最下層）
+/// 原稿のハッシュ値を求める
 fn source_hash(bytes: &[u8]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -21,7 +21,7 @@ fn source_hash(bytes: &[u8]) -> u64 {
 }
 ```
 
-two-face の拡張構文セットにより、TypeScript / TSX / TOML / Dockerfile なども
+TypeScript / TSX / TOML / Dockerfile なども
 ハイライトされます:
 
 ```toml
@@ -172,4 +172,4 @@ a^2 + b^2 = c^2
 
 > [!NOTE]
 > `$100` のような通貨表記は数式になりません（直後に数字が来る `$` は無効）。
-> 数式が不要なら `markdown.math.enabled: false` で機能ごと無効化できます。
+> 数式が不要なら、`[markdown.math]` に `enabled = false` と書くと機能ごと無効化できます。

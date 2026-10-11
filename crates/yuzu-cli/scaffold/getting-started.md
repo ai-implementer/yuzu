@@ -22,11 +22,12 @@ yuzu build
 yuzu dev
 ```
 
-`content/` と `theme/` を監視して自動再ビルドし、WebSocket で
-ブラウザを即リロードします（執筆はこれ 1 コマンド）。
+プロジェクトの中のファイル（`dist/` と隠しディレクトリを除く）を監視して自動で
+再ビルドし、開いているブラウザを再読み込みします（執筆はこれ 1 コマンド）。
 `yuzu.toml` の `dev.open = true` で起動時にブラウザも開きます。
 
-WebSocket が使えない環境では `yuzu build --watch`（ポーリング式）が退避先です。
+`yuzu dev` の自動再読み込みが動かない環境では、`yuzu build --watch` を使ってください
+（ブラウザが定期的に確認して再読み込みします）。
 
 ## プレビューする
 
@@ -180,7 +181,7 @@ sequenceDiagram
 
     W->>Y: content/*.md を保存
     Note over Y: 変更を検知して自動再ビルド
-    Y-)B: reload 通知（WebSocket /__livereload）
+    Y-)B: 再読み込みの通知
     B->>Y: 再読み込み
     Y-->>B: 更新された HTML
 ```

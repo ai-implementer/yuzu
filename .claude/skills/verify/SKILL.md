@@ -95,7 +95,7 @@ grep -q 'パーセントエンコード' docs/dist/guide/writing/index.html     
 test -f docs/dist/guide/internal/index.html                                         # 社内で公開する（Phase 83）
 grep -q 'page_md' docs/dist/guide/llms/index.html                                   # .md の配信を止める設定（Phase 83）
 grep -q 'allowed_hosts' docs/dist/reference/config/index.html                       # Host の検査（Phase 83）
-grep -q '追随する' docs/dist/guide/deploy/index.html                                # テーマ上書きの契約（Phase 65）
+grep -q '追随する' docs/dist/guide/appearance/index.html                            # テーマ上書きの契約（Phase 65。Phase 84 で「見た目の調整」へ移動）
 grep -q 'シンボリックリンクを辿りません' docs/dist/reference/cli/index.html          # 配信のリンク遮断（Phase 65）
 grep -q -- '--root' docs/dist/reference/cli/index.html                              # グローバルフラグ（Phase 72）
 grep -q -- '--root' docs/dist/reference/config/index.html                           # 上方向探索の但し書き（Phase 72）
@@ -112,9 +112,16 @@ grep -q '<p class="page-reading">約 [0-9]* 分で読めます' docs/dist/guide/
 grep -q '<html lang="ja">' docs/dist/index.html                                    # toggle では data-theme を付けない（Phase 79）
 grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/theme.css               # OS ダーク追従（Phase 79）
 grep -q 'prefers-color-scheme: dark' docs/dist/_assets/css/syntect.css             # コードの配色も OS 追従（Phase 79）
+grep -q 'id="ダークモード"' docs/dist/guide/appearance/index.html                   # ダークモードの節（Phase 79。Phase 84 で移動）
 test -f docs/dist/images/og.png                                                     # 共有カードの画像（Phase 80。og:image タグはフル URL の公開ビルドだけ）
+grep -q 'id="既存のフォルダで始める"' docs/dist/guide/install/index.html              # 既存のフォルダで始める（Phase 84）
+grep -q 'id="dist-はサーバで配信する"' docs/dist/guide/install/index.html            # file:// では開けない（Phase 84）
+test -f docs/dist/guide/appearance/index.html && test -f docs/dist/guide/faq/index.html  # 見た目・FAQ の独立ページ（Phase 84）
+grep -q 'id="client-と-ssr-の選び方"' docs/dist/guide/diagrams/index.html           # 図の選び方（Phase 84）
+grep -q 'github.com/ai-implementer/yuzu/issues' docs/dist/index.html                  # Issues への導線（Phase 84）
+! grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/  # JSON / YAML 風の設定例が無い（Phase 84）
 grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css  # syntect.css は有効時だけ
-<repo>/target/debug/yuzu search --root docs --section 開発 "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
+<repo>/target/debug/yuzu search --root docs --section 開発者向け "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
 grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' docs/dist/ --include="*.html" && echo "NG: フォールバック発生"
 ```
@@ -146,6 +153,9 @@ v=$(<repo>/target/debug/yuzu --version | awk '{print $2}')
 grep -qF "YUZU_VERSION: $v" .github/workflows/deploy.yml && grep -qF '| sha256sum -c -' .github/workflows/deploy.yml && grep -q -- "--tag v$v yuzu-cli" .github/workflows/deploy.yml && echo "OK deploy version"
 <repo>/target/debug/yuzu build
 test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_search/search_bg.wasm
+# 雛形のナビ: ガイドの後ろに用語集・ホームの次のページはガイド（Phase 84）
+grep -q '<a class="pager-next" rel="next" href="/guide/">' dist/index.html && echo "OK pager"
+grep -oE 'href="/(guide|glossary)/"' dist/index.html | head -2   # href="/guide/" → href="/glossary/" の順
 # 第三者ライセンスの通知を資産の隣に配り、vendor の開発用メモは配らない（Phase 81）
 test -s dist/_assets/vendor/THIRD-PARTY-LICENSES.txt && test -s dist/_search/THIRD-PARTY-LICENSES.txt
 test ! -e dist/_assets/vendor/README.md

@@ -1,6 +1,6 @@
 ---
 title: 執筆の基本
-order: 1
+order: 2
 description: ページとナビゲーション・frontmatter・GFM・Admonition・脚注・画像
 ---
 
@@ -12,7 +12,8 @@ description: ページとナビゲーション・frontmatter・GFM・Admonition�
 そのままサイドバーの階層**になります。`guide/writing.md` は
 `/guide/writing/` として配信されます。
 
-- 並び順は frontmatter の `order` 昇順（未指定はファイル名順で最後尾）
+- 並び順は frontmatter の `order` 昇順（未指定はファイル名順で最後尾。
+  [用語集](#用語集と略語)のページは同じ階層の末尾）
 - ディレクトリの表示名・並び順・リンク先は、その配下の `index.md` から取ります
 - h2 / h3 見出しは右側の「目次」に自動で載ります（範囲は `theme.toc.levels` で変更できます。h3 以降は入れ子で表示されます）
 - 全ページはサイドバーの表示順で連結され、ページ末尾に**前後ページリンク**、
@@ -68,7 +69,7 @@ id は見出しの文字を小文字にし、空白を `-` に変え、記号を
 ```yaml
 ---
 title: ページタイトル # ナビの表示名（未指定は h1 → ファイル名）
-order: 1 # ナビの並び順（未指定はファイル名順で最後尾）
+order: 1 # ナビの並び順（未指定はファイル名順で最後尾。用語集はさらにその後ろ）
 draft: true # ビルドから除外する
 description: 説明 # meta description
 llms: false # llms.txt / llms-full.txt から除外する
@@ -241,7 +242,7 @@ Figure: 依存関係の図 {#fig:deps}
 - 接頭辞は `Figure:` / `Table:` / `Listing:`（日本語の `図:` / `表:` /
   `リスト:` も使えます）。表示は「図 1」「表 1」「リスト 1」です
 - 採番は**ページ内の連番**で、種別ごとに独立して数えます。
-  設定 `markdown.crossref.numbering: "site"` にすると、サイドバーの表示順で
+  `[markdown.crossref]` に `numbering = "site"` と書くと、サイドバーの表示順で
   **サイト全体の通し番号**になります
 - `{#fig:deps}` がラベル（アンカー）です。省略しても採番・表示はされますが、
   参照はできません
@@ -281,7 +282,7 @@ TOC = "Table of Contents。ページ内の目次"
 ### 自動生成される用語集ページ
 
 `markdown.glossary.page`（既定 `"glossary"`）の URL に、用語ごとの見出しを持つ
-ページが作られ、サイドバーにも載ります。普通のページとして扱われるので、
+ページが作られ、サイドバーにも載ります（同じ階層の末尾）。普通のページとして扱われるので、
 **検索・`llms.txt`・sitemap・パンくず**にもそのまま乗ります
 （説明文で検索して用語集の該当項目へ飛べます）。
 
@@ -289,7 +290,7 @@ TOC = "Table of Contents。ページ内の目次"
 アンカー付きでリンクでき、`yuzu check` のリンク検査も通ります。
 
 - `page = ""` にするとページを作らず、`<abbr>` 化だけを使えます
-- `"abbr": false` にすると逆に、本文は書いたままでページだけを作れます
+- `abbr = false` にすると逆に、本文は書いたままでページだけを作れます
 - `page = "reference/glossary"` のように書けば、サイドバーの該当セクション配下に
   入ります
 - ページは設定から作られるので `yuzu fmt` / `yuzu lint` の対象外です。

@@ -1,6 +1,6 @@
 ---
 title: 社内で公開する
-order: 9
+order: 11
 description: 公開範囲の注意（dist に出るもの・止め方）と、GitHub Pages 以外の Web サーバへの置き方
 ---
 
