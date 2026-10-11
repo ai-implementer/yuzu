@@ -178,7 +178,7 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 - **アンカー採番** — extract_meta / 本文 HTML 化 / extract_plain_sections の
   **3 経路とも全見出しを文書順に** Anchorizer へ通す（片方で見出しを飛ばすと id がずれる）
   - 本文 HTML の見出しは `markdown/heading.rs` の HeadingAdapter が描く（id は見出し自身・
-    パーマリンクは末尾に aria-label 付き。comrak の header_ids の既定出力は使わない）。
+    パーマリンクは末尾に aria-label 付き。comrak の見出し id の既定出力は使わない）。
     採番の入力は comrak と同じ `HeadingMeta::content`。見出しの描画を変えるときは
     ここだけを直し、HTML 文字列の後処理で `class="anchor"` を書き換えない
 - **フェンス情報文字列** — `markdown/fence.rs`（描画・検索・lint が共有。
@@ -212,7 +212,6 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   `SiteModel::routes_key` が唯一の定義（cli とテストが同じ関数を通る）。例:
   `markdown.crossref.numbering: "site"` は先行ページの図表の増減・並び順で後続ページの
   番号が変わるため、各ページの採番開始位置（`crossref_offset`）を含めている
-  （v0.18.1 まではラベル個数だけで、`order` の変更や図⇄表の差し替えを取りこぼした）
 
 ### tankan の設計原則
 
@@ -279,8 +278,8 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     置換が静かに消える**
   - 画像の `alt` を除外するのは整合性上の必須条件（comrak が alt を生 HTML 不可の文脈で
     描くため `alt="&lt;abbr …"` に化ける）
-- comrak 0.53 API: `render.r#unsafe`（unsafe_ ではない）/ `header_id_prefix`
-  （header_ids は deprecated）/ `format_html` は fmt::Write（String）出力
+- comrak の API: `render.r#unsafe`（unsafe_ ではない）/ 見出し id の接頭辞は `header_id_prefix`
+  （`header_ids` は無い）/ `format_html` 系は fmt::Write（String）出力
 
 ### watch と dev サーバ
 
@@ -318,8 +317,7 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 - **監視の隠しディレクトリ判定は監視ルートからの相対パスで行う**（`WatchIgnore::is_ignored`）。
   イベントは絶対パスで届くので、全構成要素を見るとルートの祖先（`~/.config/notes/`・
   `.claude/worktrees/…`・`tempfile::tempdir()` の `.tmpXXXX`）に `.` 始まりがあるだけで
-  dev が黙って再ビルドしなくなる（v0.18.1 で修正。それまではテストだけが
-  `.tmpXXXX` を避けて回避していた）
+  dev が黙って再ビルドしなくなる
 
 ### 検索インデックスと wasm
 
@@ -442,16 +440,15 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 - **ci.yml の否定ゲートに `! cmd` を書かない**
   - GitHub Actions の `bash -e` でも `!` で反転したコマンドは errexit の対象外で、失敗しても
     次の行へ進む（= ゲートになっていない）
-  - `if cmd; then echo "…" >&2; exit 1; fi` の形で明示的に落とす（PR #7 のレビュー指摘で
-    既存 7 箇所を置換済み）
+  - `if cmd; then echo "…" >&2; exit 1; fi` の形で明示的に落とす
 - **ci.yml の `run:` に GitHub Actions の式の開始記号（`$` と `{{`）を書かない**
   - 雛形 deploy.yml の中身を grep で縛るときなどに、`${{ steps… }}` を文字列として
     書くと Actions が bash より先に評価して空文字に置き換え、照合が別物になる。
     式を含まない断片（`steps.pages.outputs.host }}`）を `grep -F` で見る
 - **MSRV の検査は `RUSTUP_TOOLCHAIN` で版を指定する**（ci.yml の `msrv` ジョブ）
   - リポジトリの `rust-toolchain.toml`（stable）が rustup の既定より優先されるので、
-    `dtolnay/rust-toolchain` で古い版を入れるだけでは stable で検査してしまう
-    （Phase 77 まで実際にそうだった）。`rustc --version` の確認も外さない
+    `dtolnay/rust-toolchain` で古い版を入れるだけでは stable で検査してしまう。
+    `rustc --version` の確認も外さない
   - MSRV はワークスペース 1.87（mikan の依存 ruzstd の都合）・kabosu と tankan は 1.85。
     依存を上げて MSRV が上がったら、README・リリースノート（release.yml）・docs も直す
 - `docs/design/` は git 管理外のローカル設計ノート。公開物（コード・README・コミット）から
