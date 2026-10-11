@@ -78,20 +78,55 @@ pub(crate) fn rewrite_source(
             path.display()
         );
     }
-    let name = path
-        .file_name()
-        .with_context(|| format!("{} はファイルではありません", path.display()))?;
-    let tmp = path.with_file_name(format!(".{}.yuzu-tmp", name.to_string_lossy()));
+    let permissions = std::fs::metadata(path)
+        .with_context(|| format!("{} を読み込めません", path.display()))?
+        .permissions();
+    let (tmp, file) = create_temp_beside(path)
+        .with_context(|| format!("{} の一時ファイルを作れません", path.display()))?;
+    // 書き込みも権限の設定も、作ったファイルのハンドルに対して行う（パスを開き直さない）
     let write = || -> std::io::Result<()> {
-        let permissions = std::fs::metadata(path)?.permissions();
-        std::fs::write(&tmp, new)?;
-        std::fs::set_permissions(&tmp, permissions)?;
+        use std::io::Write;
+        let mut file = file;
+        file.write_all(new.as_bytes())?;
+        file.set_permissions(permissions)?;
+        file.sync_all()?;
+        drop(file);
         std::fs::rename(&tmp, path)
     };
     write().map_err(|e| {
+        // 消すのは自分で作った一時ファイルだけ
         let _ = std::fs::remove_file(&tmp);
         anyhow::Error::new(e).context(format!("{} に書き込めません", path.display()))
     })
+}
+
+/// 原稿と同じディレクトリに一時ファイルを**排他的に**作る（`create_new`。既にある名前は、
+/// ファイルでもシンボリックリンクでも開かずに次の名前へ進む）。固定名へ `fs::write` すると、
+/// そこに置かれたリンクを辿ってリンク先を上書きし、rename で原稿がそのリンクに置き換わって
+/// いた（PR #47 のレビュー指摘）
+fn create_temp_beside(
+    path: &std::path::Path,
+) -> std::io::Result<(std::path::PathBuf, std::fs::File)> {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    for n in 0..100 {
+        let tmp = path.with_file_name(format!(".{name}.yuzu-tmp-{n}"));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
+            Ok(file) => return Ok((tmp, file)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "使える一時ファイルの名前がありません（同じ名前の一時ファイルが 100 個あります）",
+    ))
 }
 
 #[cfg(test)]
@@ -122,6 +157,36 @@ mod tests {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o640);
         }
+    }
+
+    /// 一時ファイルの名前に置かれたシンボリックリンクを辿らない（リンク先を上書きせず、
+    /// 原稿もリンクに置き換わらない。自分が作っていないリンクは消さない）。PR #47 の指摘
+    #[cfg(unix)]
+    #[test]
+    fn 一時ファイルの名前に置かれたリンクを辿らない() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.md");
+        let victim = dir.path().join("victim.txt");
+        std::fs::write(&path, "old\n").unwrap();
+        std::fs::write(&victim, "victim\n").unwrap();
+        let planted = dir.path().join(".a.md.yuzu-tmp-0");
+        std::os::unix::fs::symlink(&victim, &planted).unwrap();
+
+        rewrite_source(&path, "old\n", "new\n").unwrap();
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "victim\n");
+        let meta = std::fs::symlink_metadata(&path).unwrap();
+        assert!(meta.file_type().is_file(), "原稿はリンクに置き換わらない");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new\n");
+        assert!(
+            std::fs::symlink_metadata(&planted)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert!(
+            !dir.path().join(".a.md.yuzu-tmp-1").exists(),
+            "自分の一時ファイルは残さない"
+        );
     }
 
     /// 読み込んだ後にエディタ等で変わった原稿は、古い内容から作った結果で上書きしない

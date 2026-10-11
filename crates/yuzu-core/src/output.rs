@@ -413,7 +413,7 @@ fn match_case(root: &Path, rel: &str) -> std::io::Result<()> {
         }
         if let Some(old) = on_disk {
             let old = parent.join(old);
-            let tmp = parent.join(format!(".{name}.yuzu-case"));
+            let tmp = unused_name(&parent, name)?;
             ensure_no_symlink_under(root, &old)?;
             fs::rename(&old, &tmp)?;
             fs::rename(&tmp, &exact)?;
@@ -421,6 +421,25 @@ fn match_case(root: &Path, rel: &str) -> std::io::Result<()> {
         parent = exact;
     }
     Ok(())
+}
+
+/// `dir` の中で、まだ何も無い一時名を選ぶ。rename は行き先に既にあるものを上書きするので、
+/// 固定名だと、たまたま同じ名前の出力（public/ からコピーしたファイル等）を消していた
+/// （PR #47 のレビュー指摘）。区別しない FS では、大文字小文字違いの既存エントリも
+/// `symlink_metadata` が見つける
+fn unused_name(dir: &Path, name: &str) -> std::io::Result<PathBuf> {
+    for n in 0..100 {
+        let candidate = dir.join(format!(".{name}.yuzu-case-{n}"));
+        match fs::symlink_metadata(&candidate) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(candidate),
+            Err(e) => return Err(e),
+            Ok(_) => continue,
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "改名に使える一時名がありません（同じ名前のエントリが 100 個あります）",
+    ))
 }
 
 /// 出力マニフェスト（前回書き出した dist 相対パス一覧）を読む。破損・不在は None
@@ -541,24 +560,32 @@ mod tests {
         let root = dir.path();
         fs::create_dir_all(root.join("Guide")).unwrap();
         fs::write(root.join("Guide/index.html"), b"new").unwrap();
+        // 改名の一時名と同じ名前の出力（public/ からのコピー等）があっても上書きしない
+        // （PR #47 のレビュー指摘）
+        fs::write(root.join(".guide.yuzu-case-0"), b"keep").unwrap();
         let previous = BTreeSet::from(["Guide/index.html".to_string()]);
-        let current = BTreeSet::from(["guide/index.html".to_string()]);
+        let current = BTreeSet::from([
+            "guide/index.html".to_string(),
+            ".guide.yuzu-case-0".to_string(),
+        ]);
         let case_insensitive = |a: &Path, b: &Path| {
             a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
         };
 
         let removed = remove_orphans_with(root, &previous, &current, case_insensitive).unwrap();
         assert_eq!(removed, 0, "今回の出力を消さない");
-        let names: Vec<String> = fs::read_dir(root)
+        let mut names: Vec<String> = fs::read_dir(root)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
+        names.sort();
         assert_eq!(
             names,
-            ["guide"],
-            "ディレクトリ名を今回の大文字小文字に付け直す"
+            [".guide.yuzu-case-0", "guide"],
+            "ディレクトリ名を今回の大文字小文字に付け直し、一時名を残さない"
         );
         assert_eq!(fs::read(root.join("guide/index.html")).unwrap(), b"new");
+        assert_eq!(fs::read(root.join(".guide.yuzu-case-0")).unwrap(), b"keep");
     }
 
     #[test]
