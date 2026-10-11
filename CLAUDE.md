@@ -298,8 +298,14 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   （`build.rs` の `WatchBuild` / `pin_restart_only`）
   - `output.dir` を差し替えると新しい出力先が監視除外から外れて無限ループになるため、
     `output.dir` / `base_url` / `dev.host` / `dev.port` / `dev.live_reload` /
-    `build.watch_ignore` は警告だけ出して起動時の値を使う
+    `dev.allowed_hosts` / `build.watch_ignore` は警告だけ出して起動時の値を使う
   - **サーバや監視スレッドへ起動時に渡す設定を増やしたらこの関数にも足す**
+- **dev / preview の Host / Origin の検査は IP アドレスを通すのが仕様**（`yuzu-server/src/host.rs`。
+  Phase 83）。DNS リバインディングはドメイン名を使うので、拒否するのは `localhost`・
+  `*.localhost`・IP 以外で `dev.allowed_hosts` に無いホスト名だけ（`dev.host = "0.0.0.0"` で
+  LAN の IP から開く使い方を壊さない。Vite と同じ考え方）。検査は Router の最後の
+  `layer` で全経路に掛けるので、**経路を足すときは layer より前に足す**。WebSocket は
+  Origin も照合し、Origin の無い接続（ブラウザ以外・テスト）は通す
 - yuzu-server の serve テストは TCP バインドするため、サンドボックス内では
   PermissionDenied で落ちる（コード起因ではない）
 - **監視の隠しディレクトリ判定は監視ルートからの相対パスで行う**（`WatchIgnore::is_ignored`）。
@@ -378,6 +384,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - 判定は `Page::in_nav / in_search_index / in_sitemap / emits_page_md` に集約してあり、
     呼び出し側で kind を直接見ない（llms だけは合成時に `frontmatter.llms = false` を
     立てて既存フィルタに乗せる）
+  - **`emits_page_md(site_page_md)` はサイトの `llms.page_md` を引数で受ける**（core は設定を
+    知らない。frontmatter `pageMd` も中で見る。Phase 83）。`.md` の書き出し・コピーボタンの
+    `data-md-url`・llms.txt のリンク先の 3 か所がこれを通るので、呼び出し側で設定や
+    frontmatter を直接見ない（1 か所だけ見ると「.md は無いのにリンクが .md を指す」になる）
   - 診断文面の設定キー名は `GeneratedKind::config_key()` が唯一の定義
 
 ### 出力先への書き込み

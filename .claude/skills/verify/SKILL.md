@@ -92,6 +92,9 @@ grep -q '<strong>「重要」</strong>' docs/dist/guide/writing/index.html      
 grep -q '<dl>' docs/dist/guide/writing/index.html                                   # 定義リスト
 grep -q '"docGroups"' docs/dist/_search/manifest.json                               # 検索の絞り込み区分
 grep -q 'パーセントエンコード' docs/dist/guide/writing/index.html                    # URL エンコード（Phase 64）
+test -f docs/dist/guide/internal/index.html                                         # 社内で公開する（Phase 83）
+grep -q 'page_md' docs/dist/guide/llms/index.html                                   # .md の配信を止める設定（Phase 83）
+grep -q 'allowed_hosts' docs/dist/reference/config/index.html                       # Host の検査（Phase 83）
 grep -q '追随する' docs/dist/guide/deploy/index.html                                # テーマ上書きの契約（Phase 65）
 grep -q 'シンボリックリンクを辿りません' docs/dist/reference/cli/index.html          # 配信のリンク遮断（Phase 65）
 grep -q -- '--root' docs/dist/reference/cli/index.html                              # グローバルフラグ（Phase 72）
@@ -145,6 +148,18 @@ test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_s
 # 第三者ライセンスの通知を資産の隣に配り、vendor の開発用メモは配らない（Phase 81）
 test -s dist/_assets/vendor/THIRD-PARTY-LICENSES.txt && test -s dist/_search/THIRD-PARTY-LICENSES.txt
 test ! -e dist/_assets/vendor/README.md
+# 原稿の .md の配信（Phase 83）: 既定は配信、llms.page_md = false で全ページ止める
+# （残っていた .md は孤児掃除で消え、data-md-url も消え、llms.txt は HTML を指す）。
+# frontmatter の pageMd: false はそのページだけ。リダイレクトは絶対パスで書く（相対はフックが止める）
+test -f dist/index.md && grep -q 'data-md-url' dist/index.html
+printf '\n[llms]\npage_md = false\n' >> "<scratchpad>/e2e-docs/yuzu.toml" && <repo>/target/debug/yuzu build
+find dist -name '*.md' | grep -q . && echo "NG: .md が残った"
+grep -q 'data-md-url' dist/index.html && echo "NG: data-md-url"
+grep -q '(/guide/getting-started/)' dist/llms.txt && echo "OK llms は HTML"
+sed -i 's/^page_md = false$/page_md = true/' yuzu.toml
+sed -i '0,/^order: 1$/s//order: 1\npageMd: false/' content/guide/getting-started.md && <repo>/target/debug/yuzu build
+test -f dist/index.md && test ! -e dist/guide/getting-started.md && echo "OK pageMd"
+sed -i '/^pageMd: false$/d' content/guide/getting-started.md && <repo>/target/debug/yuzu build
 <repo>/target/debug/yuzu search "はじめに" | grep "はじめに"
 # タイポトレランス（出力の有無だけでなくヒット内容まで見る）とフレーズ検索の正/逆順
 <repo>/target/debug/yuzu search "ダーくモード" | grep -q "ダークモード"
@@ -205,6 +220,9 @@ ln -s /tmp/outside dist/link && ln -s /tmp/outside/secret.html dist/leaf.html
 sleep 1
 test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:48124/link/secret.html)" = 404 && echo "OK link 404"
 ! curl -s http://127.0.0.1:48124/leaf.html | grep -q secret && echo "OK 非漏洩"
+# Host の検査（Phase 83。DNS リバインディング対策）: ホスト名は 403、localhost は 200
+test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' http://127.0.0.1:48124/)" = 403 && echo "OK host 403"
+test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: localhost:48124' http://127.0.0.1:48124/)" = 200 && echo "OK localhost"
 kill $GUARD_PID; rm dist/link dist/leaf.html
 # 外部リンク検査（opt-in・Phase 66）: ネットワークへは出ず、自分の preview を相手にする
 <repo>/target/debug/yuzu preview --port 48123 >/dev/null 2>&1 & PREVIEW_PID=$!

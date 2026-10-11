@@ -78,6 +78,8 @@ pub fn run(cx: &crate::cx::Cx, dir: &Path) -> anyhow::Result<()> {
     outln!();
     outln!("GitHub に push すると Pages へ自動デプロイできます");
     outln!("（.github/workflows/deploy.yml 同梱。Settings > Pages > Source を GitHub Actions に）");
+    outln!("GitHub Pages はリポジトリが非公開でも公開されます。社内だけに見せるときは");
+    outln!("docs の「社内で公開する」を参照（https://ai.implementer.net/yuzu/guide/internal/）");
     Ok(())
 }
 

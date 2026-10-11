@@ -35,6 +35,9 @@ yuzu build --base-url "https://example.com/docs/"  # フル URL も可
 GitHub Pages への自動デプロイが動きます。必要な操作はリポジトリの
 **Settings \> Pages \> Source を「GitHub Actions」にする**ことだけです。
 
+GitHub Pages のサイトは、リポジトリを非公開にしてもインターネットに公開されます。
+社内だけに見せる設計書は、[社内で公開する](internal.md)を読んでから置き場所を決めてください。
+
 ワークフローは `actions/configure-pages` が返すホスト名と base path から公開先の
 フル URL（`https://<ホスト名>/<リポジトリ名>/`）を組み立てて `yuzu build --base-url`
 へ渡します。そのため project pages のサブパスも設定なしで正しく配信され、
