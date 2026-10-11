@@ -141,8 +141,9 @@ ln -s "<scratchpad>/e2e-docs" "<scratchpad>/root-link" && ./target/debug/yuzu bu
 ./target/debug/yuzu new --root "<scratchpad>/e2e-docs" "<scratchpad>/root-new"   # exit 2
 cd "<scratchpad>/e2e-docs"
 test -f .github/workflows/deploy.yml   # Pages デプロイ雛形の同梱
-# 雛形 deploy.yml は yuzu new した版のタグでインストールする（Phase 77）
-grep -q -- "--tag v$(<repo>/target/debug/yuzu --version | awk '{print $2}') yuzu-cli" .github/workflows/deploy.yml && echo "OK deploy tag"
+# 雛形 deploy.yml は yuzu new した版のリリースを SHA256SUMS で照合して使う（Phase 77・84）
+v=$(<repo>/target/debug/yuzu --version | awk '{print $2}')
+grep -qF "YUZU_VERSION: $v" .github/workflows/deploy.yml && grep -qF '| sha256sum -c -' .github/workflows/deploy.yml && grep -q -- "--tag v$v yuzu-cli" .github/workflows/deploy.yml && echo "OK deploy version"
 <repo>/target/debug/yuzu build
 test -f dist/index.html && test -f dist/_search/manifest.json && test -f dist/_search/search_bg.wasm
 # 第三者ライセンスの通知を資産の隣に配り、vendor の開発用メモは配らない（Phase 81）

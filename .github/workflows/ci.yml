@@ -329,10 +329,13 @@ jobs:
           fi
           cd "$RUNNER_TEMP/e2e-docs"
           test -f .github/workflows/deploy.yml
-          # Phase 77: deploy.yml のインストールは yuzu new した版のタグに固定される
-          # （版指定なしだと利用者のサイトが main の最新でビルドされる）
+          # Phase 77: deploy.yml の yuzu は yuzu new した版に固定される（版指定なしだと利用者の
+          # サイトが main の最新でビルドされる）。Phase 84 からはその版のリリースのアーカイブを
+          # SHA256SUMS で照合して使う（ソースから入れる手順はコメントに同じ版のタグで残す）
           version=$("$GITHUB_WORKSPACE/target/debug/yuzu" --version | awk '{print $2}')
-          grep -q -- "--locked --git https://github.com/ai-implementer/yuzu --tag v$version yuzu-cli" .github/workflows/deploy.yml
+          grep -qF "YUZU_VERSION: $version" .github/workflows/deploy.yml
+          grep -qF '| sha256sum -c -' .github/workflows/deploy.yml
+          grep -q -- "--tag v$version yuzu-cli" .github/workflows/deploy.yml
           # Phase 80: 公開先のフル URL を渡す（canonical・共有カード・sitemap が出る）。
           # この run の中に GitHub Actions の式の開始記号（ドル記号と波括弧 2 つ）を書くと
           # Actions が bash より先に評価して空文字に置き換えるので、式を含まない断片で見る

@@ -92,17 +92,25 @@ pub fn run(cx: &crate::cx::Cx, dir: &Path) -> anyhow::Result<()> {
 mod tests {
     use super::{FILES, VERSION_PLACEHOLDER, fill_placeholders};
 
-    /// deploy.yml のインストールは `yuzu new` した版のタグに固定される
+    /// deploy.yml は `yuzu new` した版のリリースを取得し、SHA256SUMS で照合してから使う
     #[test]
-    fn deploy_yml_は自分の版のタグでインストールする() {
+    fn deploy_yml_は自分の版のリリースを照合してから使う() {
         let (_, deploy) = FILES
             .iter()
             .find(|(rel, _)| *rel == ".github/workflows/deploy.yml")
             .expect("deploy.yml が雛形にない");
         let filled = fill_placeholders(deploy);
-        let tag = format!("--tag v{}", env!("CARGO_PKG_VERSION"));
+        let version = format!("YUZU_VERSION: {}", env!("CARGO_PKG_VERSION"));
+        assert!(filled.contains(&version), "{version} が無い:\n{filled}");
+        // release.yml のアーカイブ名と同じ形（yuzu-v<版>-<target>.tar.gz）
+        assert!(
+            filled.contains(r#"archive="yuzu-v${YUZU_VERSION}-x86_64-unknown-linux-gnu.tar.gz""#),
+            "{filled}"
+        );
+        assert!(filled.contains("| sha256sum -c -"), "{filled}");
+        // ソースから入れる代わりの手順も同じ版のタグを指す
+        let tag = format!("--tag v{} yuzu-cli", env!("CARGO_PKG_VERSION"));
         assert!(filled.contains(&tag), "{tag} が無い:\n{filled}");
-        assert!(filled.contains("cargo install --locked --git"), "{filled}");
         // 公開先のフル URL を渡す（canonical・共有カード・sitemap が出る。Phase 80）
         assert!(
             filled.contains(

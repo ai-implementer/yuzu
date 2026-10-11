@@ -6,6 +6,7 @@ name: deploy
 
 on:
   push:
+    # 既定ブランチが main 以外（master など）なら、ここをそのブランチ名にする
     branches: [main]
   workflow_dispatch:
 
@@ -20,23 +21,32 @@ concurrency:
 
 jobs:
   deploy:
+    # yuzu のリリースは x86_64 の Linux 向けを使う（arm の runner に替えるとアーカイブが無い）
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # SHA ピンでは ref 名からツールチェインを推定できないため toolchain の明示が必須
-      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: yuzu をインストール
-        # `yuzu new` を実行した yuzu と同じ版に固定している（main の最新は未リリースの
-        # 非互換を含みうる）。版を上げるときはこのタグを書き換える。fork を使う場合は
-        # URL も差し替える。同じ版がキャッシュにあれば「インストール済み」で飛ばされる
-        run: cargo install --locked --git https://github.com/ai-implementer/yuzu --tag v__YUZU_VERSION__ yuzu-cli
+        # `yuzu new` を実行した yuzu と同じ版のリリースを取得し、リリースに添付された
+        # SHA256SUMS で照合してから使う（main の最新は未リリースの非互換を含みうるので
+        # 版を固定している）。版を上げるときは YUZU_VERSION を書き換える。
+        # ソースからビルドして入れる場合は、この run の代わりに Rust を入れて次を実行する:
+        #   cargo install --locked --git https://github.com/ai-implementer/yuzu --tag v__YUZU_VERSION__ yuzu-cli
+        env:
+          YUZU_VERSION: __YUZU_VERSION__
+        run: |
+          base="https://github.com/ai-implementer/yuzu/releases/download/v${YUZU_VERSION}"
+          archive="yuzu-v${YUZU_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -fsSL --proto '=https' --proto-redir '=https' -O "$base/$archive" -O "$base/SHA256SUMS"
+          awk -v f="$archive" '$2 == f' SHA256SUMS | sha256sum -c -
+          mkdir yuzu
+          tar -xzf "$archive" -C yuzu
+          echo "$RUNNER_TEMP/yuzu" >> "$GITHUB_PATH"
+          ./yuzu/yuzu --version
 
       - name: Pages の設定を取得
         id: pages
