@@ -610,6 +610,36 @@ fn 用語集は_order_の無いページとディレクトリより後ろに並�
     assert_eq!(titles, ["ホーム", "guide", "最後のページ", "用語集"]);
 }
 
+/// `page = "aaa/index"` のように index として置くと、用語集はディレクトリノード自身になる。
+/// ディレクトリの並べ替えでも合成ページかどうかを見ないと、order の無い通常ページより前に並ぶ
+/// （PR #46 のレビュー指摘）
+#[test]
+fn index_として置いた用語集もその階層の末尾に並ぶ() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "index.md",
+        "---\ntitle: ホーム\norder: 1\n---\n",
+    );
+    write(dir.path(), "zzz.md", "# 最後のページ\n");
+    let opts = glossary_opts(&[("SSG", "Static Site Generator")], "aaa/index");
+
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let nav: Vec<(&str, Option<&str>)> = site
+        .nav
+        .iter()
+        .map(|n| (n.title.as_str(), n.route.as_deref()))
+        .collect();
+    assert_eq!(
+        nav,
+        [
+            ("ホーム", Some("")),
+            ("最後のページ", Some("zzz/")),
+            ("用語集", Some("aaa/")),
+        ]
+    );
+}
+
 #[test]
 fn 下の階層に置いた用語集もその階層の末尾に並ぶ() {
     let dir = tempfile::tempdir().unwrap();

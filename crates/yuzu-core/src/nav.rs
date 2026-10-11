@@ -101,8 +101,11 @@ fn to_nav_children(dir: &DirNode) -> Vec<NavNode> {
             // ページを 1 つも持たない空ディレクトリは出さない
             continue;
         }
+        // 並び順も index.md から取る。用語集を `page = "aaa/index"` のように index として
+        // 置くとディレクトリノード自身が合成ページになるので、ここでも末尾へ回す
+        let generated = sub.index.is_some_and(Page::is_generated);
         children.push((
-            sort_key(order, false, name.clone()),
+            sort_key(order, generated, name.clone()),
             NavNode {
                 title,
                 route,
