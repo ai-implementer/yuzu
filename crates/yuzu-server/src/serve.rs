@@ -254,11 +254,16 @@ fn build_router(
     app.layer(middleware::from_fn_with_state(host_policy, check_host))
 }
 
-/// 文字コードの指定が無い `text/*` の応答に `charset=utf-8` を付ける。`ServeDir` は `.txt` を
-/// `text/plain`、`.md` を `text/markdown` で返すだけなので、ブラウザが別の文字コードで読み、
+/// 文字コードの指定が無い `text/plain`・`text/markdown` の応答に `charset=utf-8` を付ける。
+/// `ServeDir` は `.txt` / `.md` に文字コードを付けないので、ブラウザが別の文字コードで読み、
 /// THIRD-PARTY-LICENSES.txt・llms.txt・原稿の `.md` の日本語が化けていた（Phase 86 の
-/// dogfooding で発見）。HTML は `<meta charset>` があるので化けない。yuzu が出力するものは
-/// UTF-8 だけ（`public/` に置いた別の文字コードのテキストだけは、ここで誤った指定になる）
+/// dogfooding で発見）。
+///
+/// **HTML・CSS・JS には付けない** — HTTP の `charset` はページ内の宣言（`<meta charset>`・
+/// `@charset`）より優先されるので、`public/` からそのままコピーした Shift_JIS の HTML を
+/// 化けさせる（PR #48 のレビュー指摘）。yuzu が出す HTML は `<meta charset="utf-8">` 付きで
+/// 化けない。中で宣言できないプレーンテキストだけを UTF-8 とみなす（GitHub Pages と同じ。
+/// `public/` に置いた別の文字コードの `.txt` だけは、ここで誤った指定になる）
 async fn add_utf8_charset(mut res: Response) -> Response {
     let Some(value) = res
         .headers()
@@ -267,7 +272,14 @@ async fn add_utf8_charset(mut res: Response) -> Response {
     else {
         return res;
     };
-    if value.starts_with("text/") && !value.to_ascii_lowercase().contains("charset=") {
+    let mime = value
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let plain_text = mime == "text/plain" || mime == "text/markdown";
+    if plain_text && !value.to_ascii_lowercase().contains("charset=") {
         if let Ok(with_charset) = HeaderValue::from_str(&format!("{value}; charset=utf-8")) {
             res.headers_mut().insert(header::CONTENT_TYPE, with_charset);
         }
@@ -754,20 +766,29 @@ mod tests {
     }
 
     /// テキストファイル（ライセンス表記・llms.txt・原稿の .md）は charset=utf-8 付きで返す。
-    /// 付いていないとブラウザが別の文字コードで読んで日本語が化ける（Phase 86 の dogfooding）
+    /// 付いていないとブラウザが別の文字コードで読んで日本語が化ける（Phase 86 の dogfooding）。
+    /// HTML・CSS には付けない = public/ の Shift_JIS の HTML が `<meta charset>` で宣言した
+    /// 文字コードを HTTP の指定で上書きしない（PR #48 のレビュー指摘）
     #[tokio::test]
-    async fn テキストファイルは_charset_utf8_付きで返す() {
+    async fn プレーンテキストだけ_charset_utf8_付きで返す() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("index.html"), "<p>ok</p>").unwrap();
+        std::fs::write(
+            dir.path().join("legacy.html"),
+            // 本文は ASCII にする（テストの読み取りが String のため。見るのはヘッダだけ）
+            "<meta charset=\"Shift_JIS\"><p>sjis</p>",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("style.css"), "p { color: red }").unwrap();
         std::fs::write(dir.path().join("THIRD-PARTY-LICENSES.txt"), "ライセンス\n").unwrap();
         std::fs::write(dir.path().join("index.md"), "# 見出し\n").unwrap();
         let addr = spawn_server(dir.path(), "/", None).await;
         let host = format!("127.0.0.1:{}", addr.port());
 
-        for (path, mime) in [
-            ("/THIRD-PARTY-LICENSES.txt", "text/plain"),
-            ("/index.md", "text/markdown"),
-            ("/index.html", "text/html"),
+        for (path, expected) in [
+            ("/THIRD-PARTY-LICENSES.txt", "text/plain; charset=utf-8"),
+            ("/index.md", "text/markdown; charset=utf-8"),
+            ("/legacy.html", "text/html"),
+            ("/style.css", "text/css"),
         ] {
             let resp = get_with_host(addr, path, Some(&host)).await;
             let content_type = resp
@@ -777,7 +798,7 @@ mod tests {
                 .to_ascii_lowercase();
             assert_eq!(
                 content_type,
-                format!("content-type: {mime}; charset=utf-8"),
+                format!("content-type: {expected}"),
                 "{path}:\n{resp}"
             );
         }
