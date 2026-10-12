@@ -38,6 +38,20 @@ yuzu が出力する `dist/` は静的ファイルだけです。置いた場所
 
 `draft: true` のページは出力されません（`--drafts` を付けたときだけ）。
 
+### 第三者のソフトウェアのライセンス表記
+
+`dist/` には、yuzu がサイトに同梱して配るソフトウェアのライセンス表記が出ます。サイトを
+公開すると、これらのソフトウェアを再配布することになるので、それぞれのライセンス（MIT など）が
+求める表記として出力しています。消さずに、ほかのファイルと一緒に置いてください。
+
+| ファイル | 対象 |
+| --- | --- |
+| `_assets/vendor/THIRD-PARTY-LICENSES.txt` | 図をブラウザで描く mermaid.min.js（中に束ねている npm パッケージを含む）と、数式を描く KaTeX（フォントを含む）。図をビルド時に SVG にする設定でも、描けない図のために同梱しています |
+| `_search/THIRD-PARTY-LICENSES.txt` | 全文検索の `search_bg.wasm` に入っているライブラリと、日本語の分かち書きのモデル（`model.zst`）。`search.enabled = false` のサイトには出ません |
+
+yuzu 本体（`yuzu` の実行ファイル）に入っているソフトウェアのライセンス表記は、配布している
+アーカイブの `THIRD-PARTY-LICENSES` にあります。こちらはサイトには出ません。
+
 公開したくないメモは原稿に書かないのが確実です。とくに HTML コメント（`<!-- … -->`）は
 ブラウザの表示には出ませんが、ページのソースと `llms-full.txt` に残ります
 （[LLM 連携](llms.md#原稿の-md-を配信しない)）。
@@ -55,6 +69,13 @@ Web サーバ側では次の 2 つを設定してください。
 違う型で返すと、ブラウザのコンソールに警告が出て読み込みが少し遅くなります
 （検索は動きます）。
 
+テキストファイル（`llms.txt`・原稿の `.md`・`THIRD-PARTY-LICENSES.txt`）は UTF-8 です。
+文字コードを付けずに `text/plain` などで返すと、ブラウザで開いたときに日本語が化けるので、
+`charset=utf-8` を付けて配ってください。GitHub Pages と `yuzu preview` / `yuzu dev` は
+付けて返します。HTML には付けないでください。HTTP の指定はページ内の `<meta charset>` より
+優先されるので、`public/` に置いた別の文字コードの HTML が化けます（yuzu が出す HTML は
+`<meta charset="utf-8">` 付きなので、指定が無くても化けません）。
+
 ### nginx
 
 ```nginx
@@ -69,6 +90,18 @@ server {
 
     location / {
         try_files $uri $uri/ =404;
+    }
+
+    # .txt と .md だけを UTF-8 として返す（付けないとブラウザで日本語が化ける）。
+    # charset は text/html にも必ず効くので、server 全体には書かない
+    location ~* \.(txt|md)$ {
+        types {
+            text/plain txt;
+            text/markdown md;
+        }
+        charset utf-8;
+        charset_types text/plain text/markdown;
+        try_files $uri =404;
     }
     error_page 404 /404.html;
 }

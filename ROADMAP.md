@@ -499,8 +499,8 @@ docs サイトを main とタグのどちらから公開するか。
     ファイル ID。walkdir の依存として既に入っている crate を直接の依存にした）なら消さずに、
     パスの大文字小文字を今回に合わせて一時名経由で付け直す。候補は大文字小文字を畳んだ文字列で
     探すので、Unicode の正規化（NFC / NFD）だけが違う改名は拾えない。区別する FS（Linux）の
-    挙動は実ファイルで、区別しない FS の挙動は同一性の判定を差し替えたテストで確かめた
-    （macOS・Windows の実機は Phase 86 の確認か CI の matrix の持ち越しで）
+    挙動は実ファイルで、区別しない FS の挙動は同一性の判定を差し替えたテストで確かめた。
+    macOS の実機では Phase 86 で確認した（Windows は CI の matrix の持ち越し）
   - 新しいルール `route-case-conflict`（warning・抑制可・`lint.rules` で外せる）: ページの route と
     エイリアスのうち、大文字小文字だけが違う組を check で報告し、build は止めずに警告する
   - check の画像の存在判定を、build がコピーするファイル（`scan_content_assets`）に合わせた
@@ -617,6 +617,38 @@ docs サイトを main とタグのどちらから公開するか。
 ライセンス一覧がアーカイブと dist に入ること、`.md` の配信設定と Host の検査、
 build の件数表示、雛形のナビと deploy.yml を実物で確かめ、CI のゲートと
 verify・release スキルを追随させる。最後に「v0.19 の方針」のリリース判定を確かめる。
+
+- 決定と実装（10-12。判断点はユーザが推奨案で確定 = 雛形にわざとリンク切れを置かない。
+  件数の表示は品質チェックのページの例で示し、CI は雛形の build が件数の警告を出さないことを
+  Phase 85 から照合している）
+  - Phase 81〜85 で済んでいたもの: release.yml のライセンス一覧の検証（81）・雛形の dist の
+    ライセンス文と vendor の README が出ないこと（81）・`.md` の配信の設定（83）・preview の
+    Host の 403（83）・JSON 風表記の否定 grep（84）・雛形の build が件数の警告を出さないこと（85）
+  - docs: 「社内で公開する」に「第三者のソフトウェアのライセンス表記」の節（dist に出る 2 つの
+    ファイルの中身と、消さないこと。検索を止めると `_search/` のものは出ない・本体の表記は
+    アーカイブ）。実際に検索を止めたビルドで確かめた
+  - CI: docs ゲートに、docs サイト自身の dist にもライセンス文が出て vendor の README が出ない
+    こと（dogfooding）と、新しい節の照合。verify スキルも同じ
+  - リリース判定（10-12 に確認）: cargo-deny は CI の deny ジョブと deps.yml（PR #47 で成功）・
+    release.yml のライセンス一覧の検証・ci.yml の e2e のライセンス文 / vendor の README /
+    `.md` の配信・Host の 403 のテスト（yuzu-server と e2e）・否定 grep・仮決めのままの判断点が
+    無いこと（84 は計画の承認で、85 は再質問で確定）。タグの前に deps.yml を手動で流す
+  - macOS（大文字小文字を区別しない APFS）での孤児掃除（Phase 85）を 10-12 にユーザが実機で確認:
+    `Notes.md` → `notes.md` の改名後も `dist/notes/index.html` が残り、dist のディレクトリ名が
+    `notes` に付け直される。もう一度 build しても残る。確認のスクリプトは git 管理外
+    （ホストの GNU の mv は大文字小文字だけの改名を「同じファイル」として断るので、一時名を経由）
+  - ブラウザでの確認で見つけた不具合（10-12）: `yuzu preview` / `yuzu dev` が `.txt` を `text/plain`、
+    `.md` を `text/markdown` で返し、文字コードを付けていなかったので、THIRD-PARTY-LICENSES.txt・
+    llms.txt・原稿の `.md` をブラウザで開くと日本語が化けた（HTML は `<meta charset>` があるので
+    化けない）。文字コードの無い `text/plain`・`text/markdown` の応答に `charset=utf-8` を付ける
+    layer を足した（yuzu-server。Host の検査の内側）。HTML・CSS・JS には付けない（HTTP の指定は
+    ページ内の `<meta charset>` より優先されるので、`public/` の Shift_JIS の HTML を化けさせて
+    いた。PR #48 のレビュー指摘）。docs の nginx の例も、charset が text/html にも必ず効くので
+    `.txt`・`.md` の location に限定した（再レビューの指摘。nginx の実機では未確認）。GitHub Pages は付けて返す（公開中の docs で確認）が、nginx の
+    既定などは付けないので、docs の「Web サーバに置く」に設定を書いた。リリースノートに書く。
+    修正後、ライセンス文 2 つの日本語が読めることをユーザがブラウザで確認した（10-12）
+  - 残り（ユーザの作業）: ブラウザでの確認（新しい docs のページ・雛形のナビ）・雛形 deploy.yml を
+    実際の GitHub リポジトリで動かす
 
 - docs サイト: dist のライセンス文と `_assets/vendor/README.md` が出ないことを確かめる。
   ライセンスの扱い（利用者のサイトに何が出るか）を docs に書く

@@ -122,6 +122,8 @@ grep -q 'github.com/ai-implementer/yuzu/issues' docs/dist/index.html            
 grep -q -- '--no-fmt' docs/dist/reference/cli/index.html && grep -q 'NO_COLOR' docs/dist/reference/cli/index.html  # check --no-fmt・ログの書式（Phase 85）
 grep -q 'route-case-conflict' docs/dist/reference/rules/index.html                  # 大文字小文字だけが違う URL（Phase 85）
 grep -q '取り込みの失敗' docs/dist/guide/quality/index.html && grep -q 'end list' docs/dist/guide/quality/index.html  # build の報告・fmt が変える書き方（Phase 85）
+test -s docs/dist/_assets/vendor/THIRD-PARTY-LICENSES.txt && test -s docs/dist/_search/THIRD-PARTY-LICENSES.txt && test ! -e docs/dist/_assets/vendor/README.md  # docs にもライセンス表記（Phase 86）
+grep -q 'id="第三者のソフトウェアのライセンス表記"' docs/dist/guide/internal/index.html  # 利用者のサイトに出るライセンス表記の説明（Phase 86）
 ! grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/  # JSON / YAML 風の設定例が無い（Phase 84）
 grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --root docs --section 開発者向け "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み

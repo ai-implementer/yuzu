@@ -296,6 +296,15 @@ jobs:
           grep -q 'route-case-conflict' docs/dist/reference/rules/index.html
           grep -q '取り込みの失敗' docs/dist/guide/quality/index.html
           grep -q 'end list' docs/dist/guide/quality/index.html
+          # Phase 86: docs サイト（dogfooding）にもライセンス表記が出て、vendor の開発用の記録は
+          # 出ない。利用者のサイトに出るライセンス表記の説明が原稿に載っている
+          test -s docs/dist/_assets/vendor/THIRD-PARTY-LICENSES.txt
+          test -s docs/dist/_search/THIRD-PARTY-LICENSES.txt
+          if [ -e docs/dist/_assets/vendor/README.md ]; then
+            echo "docs の dist に vendor の開発用の記録（README.md）が出た" >&2
+            exit 1
+          fi
+          grep -q 'id="第三者のソフトウェアのライセンス表記"' docs/dist/guide/internal/index.html
           # 設定例は TOML で書く（JSON / YAML 風の `markdown.mermaid.backend: "ssr"` や
           # `"abbr": false` はコピーすると設定エラーになる）。原稿・README・雛形・スキルを見る
           if grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/; then
@@ -704,6 +713,8 @@ jobs:
           # ホスト名は 403、localhost は通る
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' http://127.0.0.1:48124/)" = 403
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: localhost:48124' http://127.0.0.1:48124/)" = 200
+          # Phase 86: テキストファイルは charset=utf-8 付きで返す（無いとブラウザで日本語が化ける）
+          curl -s -D - -o /dev/null http://127.0.0.1:48124/llms.txt | grep -qi '^content-type: text/plain; charset=utf-8'
           kill "$GUARD_PID"
           rm dist/link dist/leaf.html
           # Phase 66: 外部リンク検査（opt-in）。ネットワークへは出ず、自分の preview を
