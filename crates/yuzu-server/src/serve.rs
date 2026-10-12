@@ -25,7 +25,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Request, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{any, get};
@@ -246,9 +246,33 @@ fn build_router(
         );
     }
 
+    // 文字コードの無い text/* に charset=utf-8 を付ける（全経路。Host の検査より内側）
+    app = app.layer(middleware::map_response(add_utf8_charset));
+
     // すべての経路（ファイル・404・リダイレクト・WebSocket）の手前で Host を検査する。
     // layer はこれより前に足した経路にだけ掛かるので、最後に足す
     app.layer(middleware::from_fn_with_state(host_policy, check_host))
+}
+
+/// 文字コードの指定が無い `text/*` の応答に `charset=utf-8` を付ける。`ServeDir` は `.txt` を
+/// `text/plain`、`.md` を `text/markdown` で返すだけなので、ブラウザが別の文字コードで読み、
+/// THIRD-PARTY-LICENSES.txt・llms.txt・原稿の `.md` の日本語が化けていた（Phase 86 の
+/// dogfooding で発見）。HTML は `<meta charset>` があるので化けない。yuzu が出力するものは
+/// UTF-8 だけ（`public/` に置いた別の文字コードのテキストだけは、ここで誤った指定になる）
+async fn add_utf8_charset(mut res: Response) -> Response {
+    let Some(value) = res
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+    else {
+        return res;
+    };
+    if value.starts_with("text/") && !value.to_ascii_lowercase().contains("charset=") {
+        if let Ok(with_charset) = HeaderValue::from_str(&format!("{value}; charset=utf-8")) {
+            res.headers_mut().insert(header::CONTENT_TYPE, with_charset);
+        }
+    }
+    res
 }
 
 /// Host の検査（DNS リバインディング対策。規則は `host.rs`）。
@@ -727,6 +751,36 @@ mod tests {
         assert!(resp.starts_with("HTTP/1.0 403"), "{resp}");
         let resp = get_with_host(addr, "/", Some(&format!("mypc.local:{port}"))).await;
         assert!(resp.starts_with("HTTP/1.0 307"), "{resp}");
+    }
+
+    /// テキストファイル（ライセンス表記・llms.txt・原稿の .md）は charset=utf-8 付きで返す。
+    /// 付いていないとブラウザが別の文字コードで読んで日本語が化ける（Phase 86 の dogfooding）
+    #[tokio::test]
+    async fn テキストファイルは_charset_utf8_付きで返す() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<p>ok</p>").unwrap();
+        std::fs::write(dir.path().join("THIRD-PARTY-LICENSES.txt"), "ライセンス\n").unwrap();
+        std::fs::write(dir.path().join("index.md"), "# 見出し\n").unwrap();
+        let addr = spawn_server(dir.path(), "/", None).await;
+        let host = format!("127.0.0.1:{}", addr.port());
+
+        for (path, mime) in [
+            ("/THIRD-PARTY-LICENSES.txt", "text/plain"),
+            ("/index.md", "text/markdown"),
+            ("/index.html", "text/html"),
+        ] {
+            let resp = get_with_host(addr, path, Some(&host)).await;
+            let content_type = resp
+                .lines()
+                .find(|l| l.to_ascii_lowercase().starts_with("content-type:"))
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            assert_eq!(
+                content_type,
+                format!("content-type: {mime}; charset=utf-8"),
+                "{path}:\n{resp}"
+            );
+        }
     }
 
     #[tokio::test]

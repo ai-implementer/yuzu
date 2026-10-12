@@ -69,6 +69,11 @@ Web サーバ側では次の 2 つを設定してください。
 違う型で返すと、ブラウザのコンソールに警告が出て読み込みが少し遅くなります
 （検索は動きます）。
 
+テキストファイル（`llms.txt`・原稿の `.md`・`THIRD-PARTY-LICENSES.txt`）は UTF-8 です。
+文字コードを付けずに `text/plain` などで返すと、ブラウザで開いたときに日本語が化けるので、
+`charset=utf-8` を付けて配ってください。GitHub Pages と `yuzu preview` / `yuzu dev` は
+付けて返します。
+
 ### nginx
 
 ```nginx
@@ -80,6 +85,10 @@ server {
     # 社内ネットワークだけに限る例（認証を掛けるなら auth_basic など）
     allow 10.0.0.0/8;
     deny all;
+
+    # .txt と .md を UTF-8 として返す（付けないとブラウザで日本語が化ける）
+    charset utf-8;
+    charset_types text/plain text/markdown;
 
     location / {
         try_files $uri $uri/ =404;

@@ -713,6 +713,8 @@ jobs:
           # ホスト名は 403、localhost は通る
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' http://127.0.0.1:48124/)" = 403
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: localhost:48124' http://127.0.0.1:48124/)" = 200
+          # Phase 86: テキストファイルは charset=utf-8 付きで返す（無いとブラウザで日本語が化ける）
+          curl -s -D - -o /dev/null http://127.0.0.1:48124/llms.txt | grep -qi '^content-type: text/plain; charset=utf-8'
           kill "$GUARD_PID"
           rm dist/link dist/leaf.html
           # Phase 66: 外部リンク検査（opt-in）。ネットワークへは出ず、自分の preview を
