@@ -108,20 +108,23 @@ impl SiteOutput {
 
     /// dist 相対パス `rel` が、今回出す生成物（またはその中のファイル）か。
     ///
-    /// ファイルの生成物を先に照合する。`_assets/css/syntect.css` は常に出す `_assets/` の
-    /// 中にあるので、ディレクトリの前方一致を先にすると、ハイライトを止めていても
-    /// 有効なリンク先になってしまう
+    /// 今回出すもののどれかが `rel` を含めば有効。止めたファイルの生成物でも、常に出す
+    /// ディレクトリの中にあれば有効にする。`_assets/` には `theme/static/` も書き出すので、
+    /// ハイライトを止めても `theme/static/css/syntect.css` を置けば同じパスに出る
+    /// （ファイル単位の判定を先にすると、出しているのに壊れたリンクになった。PR #52 の
+    /// レビュー指摘）。`_assets/` の中身は列挙せず前方一致で通す（従来どおり）
     pub fn is_emitted_target(rel: &str, s: &OutputSwitches) -> bool {
-        if let Some(file) = Self::ALL.iter().find(|o| !o.is_dir() && o.path() == rel) {
-            return file.emitted(s);
+        Self::ALL.iter().any(|o| o.emitted(s) && o.contains(rel))
+    }
+
+    /// `rel` がこの生成物（ディレクトリならその中のファイル）か
+    fn contains(self, rel: &str) -> bool {
+        if self.is_dir() {
+            rel.strip_prefix(self.path())
+                .is_some_and(|rest| rest.starts_with('/'))
+        } else {
+            rel == self.path()
         }
-        Self::ALL.iter().any(|o| {
-            o.is_dir()
-                && o.emitted(s)
-                && rel
-                    .strip_prefix(o.path())
-                    .is_some_and(|rest| rest.starts_with('/'))
-        })
     }
 }
 
@@ -184,11 +187,9 @@ mod tests {
         assert!(SiteOutput::is_emitted_target("_assets/css/theme.css", &s));
         assert!(!SiteOutput::is_emitted_target("llms.txt", &s));
         assert!(!SiteOutput::is_emitted_target("llms-full.txt", &s));
-        // 常に出す _assets/ の中でも、止めた syntect.css は通さない
-        assert!(!SiteOutput::is_emitted_target(
-            "_assets/css/syntect.css",
-            &s
-        ));
+        // 止めた syntect.css でも、常に出す _assets/ の中なので通す（theme/static/ が
+        // 同じパスに書き出せる。PR #52 のレビュー指摘）
+        assert!(SiteOutput::is_emitted_target("_assets/css/syntect.css", &s));
         // ディレクトリ名の前方一致だけでは通さない
         assert!(!SiteOutput::is_emitted_target("_search", &s));
         assert!(!SiteOutput::is_emitted_target("_searchx/a", &s));

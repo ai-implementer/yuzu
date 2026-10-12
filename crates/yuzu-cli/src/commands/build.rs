@@ -1005,6 +1005,43 @@ mod tests {
         assert!(dist.join("_assets/css/theme.css").is_file(), "テーマは出す");
     }
 
+    /// PR #52 のレビュー指摘: ハイライトを止めても `theme/static/css/syntect.css` を置けば
+    /// 同じパスに出る。そのファイルを掃除で消さず、本文からのリンクもリンク切れにしない
+    #[test]
+    fn 止めた_syntect_css_でもテーマが出すなら残しリンク先にする() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "content/index.md",
+            "# トップ\n\n[配色](/_assets/css/syntect.css)\n",
+        );
+        write("theme/static/css/syntect.css", "/* 独自の配色 */\n");
+        write(
+            "yuzu.toml",
+            "[output]\nclean = false\n[markdown.highlight]\nenabled = false\n",
+        );
+        let rc = yuzu_config::load(&root).unwrap();
+        for force in [true, false] {
+            let mut session = BuildSession::new(&rc, force).unwrap();
+            build_once(&rc, LiveReloadMode::None, &mut session, false).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(root.join("dist/_assets/css/syntect.css")).unwrap(),
+                "/* 独自の配色 */\n",
+                "force={force}"
+            );
+        }
+        let md_opts = yuzu_render::markdown_options(&rc.config);
+        let site = yuzu_core::build_site_model(&rc.content_dir, &rc.config.input.ignore, &md_opts)
+            .unwrap();
+        let problems = build_problems(&rc, &site, &md_opts, false, LiveReloadMode::None).unwrap();
+        assert_eq!(problems.links, 0, "出しているファイルをリンク切れにした");
+    }
+
     /// 10-12 レビューの R2: build の知らせる問題は check と同じ抑制を通す。
     /// 大文字小文字だけが違う URL を frontmatter の `lintDisable` で抑制したら build も黙る
     /// （以前は `lint.rules` だけを見ていて、check は黙るのに build は警告していた）

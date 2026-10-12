@@ -183,7 +183,8 @@ fn 生成物へのリンクは今回出すものだけを通す() {
     };
     // 既定: base_url がパスなので sitemap.xml だけ出さない
     assert_eq!(broken(&DEFAULT_OUTPUTS), ["/sitemap.xml"]);
-    // 全部止める（404.html は常に出す）
+    // 全部止める（404.html は常に出す。syntect.css は常に出す _assets/ の中で、
+    // theme/static/ が同じパスに書き出せるので通す = PR #52 のレビュー指摘）
     let off = OutputSwitches {
         llms: false,
         llms_full: false,
@@ -194,12 +195,7 @@ fn 生成物へのリンクは今回出すものだけを通す() {
     };
     assert_eq!(
         broken(&off),
-        [
-            "/llms-full.txt",
-            "/sitemap.xml",
-            "/_assets/css/syntect.css",
-            "/_search/manifest.json"
-        ]
+        ["/llms-full.txt", "/sitemap.xml", "/_search/manifest.json"]
     );
     // public/ に置いたファイルは止めていても有効なリンク先
     let with_public = report_with(files, &["llms-full.txt"], &off).diags;
