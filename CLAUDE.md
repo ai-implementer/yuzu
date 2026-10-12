@@ -422,7 +422,8 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 - **原稿への書き込みは `commands::rewrite_source` を必ず通す**（fmt / lint --fix。Phase 85）。
   一時ファイル → rename・パーミッションの引き継ぎ・読み込み後に変わった原稿は書かない、の 3 つを
   内包している。`fs::write(&page.src, …)` を直に書かない。**一時ファイルを固定名で作らない** =
-  `create_new` で排他的に作る（固定名へ書くと置かれたリンクを辿る。PR #47 の指摘。rename の
+  `create_new` で排他的に、Unix では作成時から 600 で作る（固定名へ書くと置かれたリンクを辿る・
+  既定の権限で作ると本文を書いてから権限を戻すまで他人が読める。PR #47 の指摘。rename の
   行き先の一時名も、まだ何も無い名前を選ぶ）
 - **fmt の独自記法温存は fmt 経路限定**
   - format_commonmark は `{#fig:x}` を `{\#fig:x}` へ、`[!NOTE]-` を `[!NOTE] -` へ変えるので

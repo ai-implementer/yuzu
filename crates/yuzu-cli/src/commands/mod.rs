@@ -103,7 +103,11 @@ pub(crate) fn rewrite_source(
 /// 原稿と同じディレクトリに一時ファイルを**排他的に**作る（`create_new`。既にある名前は、
 /// ファイルでもシンボリックリンクでも開かずに次の名前へ進む）。固定名へ `fs::write` すると、
 /// そこに置かれたリンクを辿ってリンク先を上書きし、rename で原稿がそのリンクに置き換わって
-/// いた（PR #47 のレビュー指摘）
+/// いた（PR #47 のレビュー指摘）。
+///
+/// Unix では作った時点から本人だけが読み書きできる権限（600）にする。既定の権限（umask 022 なら
+/// 644）で作ると、本文を書いてから元の権限へ戻すまでの間、非公開の原稿を他のユーザが読める
+/// （PR #47 の再レビューの指摘）。Windows の権限はディレクトリから引き継ぐ ACL なので扱わない
 fn create_temp_beside(
     path: &std::path::Path,
 ) -> std::io::Result<(std::path::PathBuf, std::fs::File)> {
@@ -113,11 +117,11 @@ fn create_temp_beside(
         .unwrap_or_default();
     for n in 0..100 {
         let tmp = path.with_file_name(format!(".{name}.yuzu-tmp-{n}"));
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
-        {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        match options.open(&tmp) {
             Ok(file) => return Ok((tmp, file)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(e),
@@ -187,6 +191,21 @@ mod tests {
             !dir.path().join(".a.md.yuzu-tmp-1").exists(),
             "自分の一時ファイルは残さない"
         );
+    }
+
+    /// 一時ファイルは作った時点から本人だけが読める（本文を書く前に他のユーザから読めない）。
+    /// PR #47 の再レビューの指摘
+    #[cfg(unix)]
+    #[test]
+    fn 一時ファイルは作った時点から本人だけが読める() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.md");
+        std::fs::write(&path, "old\n").unwrap();
+
+        let (tmp, _file) = super::create_temp_beside(&path).unwrap();
+        let mode = std::fs::metadata(&tmp).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 
     /// 読み込んだ後にエディタ等で変わった原稿は、古い内容から作った結果で上書きしない
