@@ -6,8 +6,9 @@ yuzu の開発計画と、これまでのリリースの内訳。**このファ�
 ## 現在
 
 **v0.19 まで公開済み**。次の版（v0.20）は未策定で、候補は下の
-「[10-04 見直しの持ち越し](#10-04-見直しの持ち越し)」・「[10-07 見直し](#10-07-見直し)」と
-「[v0.20 以降の候補](#v020-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
+「[10-04 見直しの持ち越し](#10-04-見直しの持ち越し)」・「[10-07 見直し](#10-07-見直し)」・
+「[10-12 レビュー](#10-12-レビュー)」と「[v0.20 以降の候補](#v020-以降の候補)」にある。
+10-12 レビューの R1〜R3 は手元で不具合を再現している。着手時に軸を 1 つ選んで Phase を切る。
 kabosu 0.2.0 / tankan 0.2.1 / mikan 0.2.1 は crates.io で公開済み（yuzu のリリースとは
 非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある）。
 
@@ -385,6 +386,138 @@ Phase、検索の順位は既知の「2 文字の語」とあわせて v0.20 の
     あり、利用者のプロジェクトにコピーされる。ドメインの保有者と更新期限の記録が無い
   - 対処案: ドメインの保有者と更新日を運用メモに残す・URL を変えるときの
     リダイレクトの方針を決めておく
+
+## 10-12 レビュー
+
+**概要**: v0.19.0 のリリース後（10-12）に、Rust の実装をメンテナンスのしやすさの観点で
+見直した結果。上級プログラマーの 3 つの人格（関数の長さを見る「分割派」・1 つの変更で触る
+場所を数える「変更コスト派」・不正な状態を型で書けなくしたい「型で語る派」）が並行して読み、
+2 巡目で互いの指摘に同意・反論した。既知の「急がないコード整理」と 10-07 見直しの E は除いた。
+
+関数の長さは大きな問題ではなかった（yuzu 本体の関数は平均 20 行台。100 行を超えるのは既知の
+4 本のほかに 6 本）。3 者が一致したのは、**同じ判断が 2〜3 か所に別々に書かれていて、手で
+揃えている**箇所で、そこから実際の不具合が出ていた。最優先の 3 件（R1〜R3）はどれも手元で
+再現した。
+
+確認の仕方は 10-07 節と同じ 3 段階（**10-12 に確認** / **実機未確認** / **未確認**）。
+ファイルの行番号は 10-12 時点。
+
+### A. 不具合を再現したもの（3 者が一致した最優先）
+
+- ⬜ **R1 dist に何を出すかの判断が 3 か所にあり、食い違っている**（工数: 中。**10-12 に確認**）
+  - 書き出し（`yuzu-render/src/pipeline.rs` の syntect.css・sitemap・build_id）・その補集合の
+    `unpublished_outputs`（同 36-54）・リンクの有効ターゲットの `GENERATED`
+    （`yuzu-core/src/linkcheck.rs:30-31`）が別々の一覧を持つ
+  - 再現した食い違い: `output.clean = false` で `markdown.highlight.enabled = false` にして
+    `--force` すると `_assets/css/syntect.css` が残り、その後の build でも消えない /
+    `build --watch` → `--force` → 通常の build の後も `__yuzu/build_id`（ビルド時刻）が残る /
+    check は `/404.html` へのリンクを broken-link にする（404.html は必ず出力している。Phase 85 の
+    build の件数にも入る）/ `llms.enabled = false` でも `/llms-full.txt` へのリンクが check を通る
+  - 同じ種類の食い違いを 63c361e・f67e2ab（PR #42）・1e1a69b（Phase 85）で直してきた。D8
+    （favicon・robots.txt）で生成物を足すと、また 3 か所を触る
+  - 対処案: 出力物を enum にし、パスと「今回出すか」を網羅 match で決める（ワイルドカードを
+    書かない）。書き出し・掃除・check の有効ターゲットはすべてこれを通す。全 variant の配列への
+    登録漏れはテストで確認する。「表」にすると利用側がパス文字列を解釈し直すので、行を足しても
+    利用側の漏れを検出できない（型で語る派の反論で enum に決まった）
+- ⬜ **R2 build と check で、検査の一覧と抑制の解釈が別々**（工数: 中。**10-12 に確認**）
+  - check は `commands/check.rs:26-81` で 11 系統、build は `commands/build.rs` の
+    report_broken（3 系統）と route-case-conflict の独自の判定（`lint.rules` を直接読む）
+  - 再現: `Guide.md` と `guide/index.md` に `lintDisable: [route-case-conflict]` を書くと、check は
+    抑制するが build は警告を出す（docs `reference/rules.md` の「lintDisable で抑制できます」と
+    食い違う。Phase 85 の実装の不具合）
+  - `Diagnostic` はルール ID（`&str`）と深刻度を別々に持ち、組み立ての約 20 か所で
+    `rules::X.id` と `rules::X.severity` を対にして手書きしている。`commands/diag.rs:24` は
+    設定由来の診断の深刻度を `Warning` と直書きしている。同じことをする局所ヘルパが 6 つあり、
+    引数の順序がすべて違う
+  - 対処案: 診断を集める関数を cli に 1 つ置き（check は全部を報告、build はルールで絞って件数を
+    出す）、抑制は core の `apply_suppressions` を通した後の型でしか読めないようにする。
+    `Diagnostic` は `Rule` を持ち、深刻度はそこから決める（`Diagnostic::new(rule, rel, span, message)`）
+  - 補足: 壊れた openapi は 2 回目以降の build（本文キャッシュに当たる）で何も出ない。仕様の中身の
+    検証は Phase 85 の判断で build の件数に入れていないので不具合ではないが、診断を 1 つにまとめる
+    ときに入れるかを決め直す
+- ⬜ **R3 設定値と CLI の引数を入口で検証していない**（工数: 小〜中。**10-12 に確認**）
+  - 再現: `search.page = "../search"` で検索結果ページが出ないのに build も check も exit 0
+    （`yuzu-core/src/urlpath.rs:129` が不正値を黙って None にする。`markdown.glossary.page` も同じ
+    関数）/ `yuzu dev --host localhost` は `invalid IP address syntax` で exit 2（エラー文言は
+    指定していない `dev.host` を指す。parse は `dev.rs:68` と `preview.rs:44` の 2 か所）/
+    `yuzu build --port 9999 --host nonsense` は `--watch` が無いと黙って無視して exit 0
+  - `theme.toc.levels` の不正値もビルド時の位置なしの警告だけで、check を通る（**実機未確認**）
+  - 起動時に固定する設定（`pin_restart_only`。`build.rs:258-297`）と、配信の設定の組み立て
+    （dev.rs・preview.rs）が別々で、テストは `dev.host` と `dev.allowed_hosts` を見ていない
+  - 対処案: 設定の読み込み直後に core の検証を呼んで、位置付きの設定エラーにする（yuzu-config に
+    型を置くと、config は core の規則を使えないので実装が 2 つになる。変更コスト派の反論で決まった）。
+    clap で `--host` を IP アドレスの型にし、`--port` / `--host` は `--watch` を必須にする。起動時の
+    設定を 1 つの構造体にまとめ、dev / preview / `pin_restart_only` が同じものを使う
+
+### B. 同じ判断が 2 か所にあるもの（実害の報告は無い）
+
+- ⬜ **R4 page と 404 のテンプレート文脈を 2 回書いている**（工数: 小。3 者が指摘）
+  - `pipeline.rs:305-334`（page / search）と `:377-402`（404）に、同じ式のキーが 11〜16 個ある。
+    minijinja は未定義の変数を空・偽として通す（`templates.rs` が undefined の扱いを設定していない）
+    ので、片方に足し忘れても 404 ページだけ機能が黙って消える。この 2 か所は 7 つのコミットで
+    両方を触っている
+  - 対処案: ページによらない値を 1 つの値にまとめてループの前に作り、`context!` の `..` で合成する。
+    利用者が theme/ で上書きしたテンプレートを壊さないよう、変数の名前は変えない
+- ⬜ **R5 URL の分類の手順が linkcheck と render に 1 つずつある**（工数: 小〜中。2 者が指摘）
+  - `linkcheck.rs:119` の check_one と `yuzu-render/src/urls.rs:83` の rewrite が、同じ 6 分岐
+    （空・`#`・外部・`/` 始まり・`.md`・拡張子）を同じ順に書き、一致はコメントで縛っている。
+    ddfd6aa はこの順序のずれを直したもの
+  - 対処案: urlpath に分類の enum を 1 つ置き、両側は網羅 match で扱う
+
+### C. 構造の整理（防げる不具合は少ない）
+
+- ⬜ **R6 render_body_html（292 行）のノード生成と、記法ごとの組み替え**（工数: 中）
+  - `NodeHtmlBlock` の生成が 5 か所・`arena.alloc(AstNode::new(..))` が 4 か所、同じ 11 行の
+    クロージャを 2 回定義している（`markdown/mod.rs`）。タブ・折りたたみ・用語集は解析側が
+    tabs.rs / collapse.rs / glossary.rs にあるのに、組み替えだけが mod.rs にあり、記法の変更が
+    2 ファイルにまたがる
+  - 対処案（分割派と変更コスト派が合意）: ノード生成を 1 つの関数にまとめ、組み替えを各記法の
+    モジュールへ移す。**適用の順序は本体の 1 関数に残す**（タブの判定は展開前・分量は展開後に
+    数える・用語集は他の適用の後、の制約が記法をまたぐため）。本体は約 150 行になる見込み
+  - あわせて CLAUDE.md の「`markdown/mod.rs` が comrak を触る唯一の場所」を「markdown/ 配下だけ」に
+    直す（実際は 6 ファイル。**10-12 に確認**）
+- ⬜ **R7 合成ページの `Page.src` は実在しないパスで、除外は否定のフィルタに頼っている**
+  （工数: 中。**10-12 に確認**（件数））
+  - `!p.is_generated()` / `!page.is_generated()` が 21 か所。書き込みや診断の経路を足すときに
+    フィルタを書き忘れてもコンパイルが通る
+  - 対処案: `PageOrigin { File(PathBuf), Generated(GeneratedKind) }` にし、ファイルのパスは
+    `source_file() -> Option<&Path>` からしか取れなくする
+- ⬜ **R8 出力先と原稿への書き込み口を clippy で縛る**（工数: 小。**10-12 に確認**（件数））
+  - 「書き込みは `write_under` / `rewrite_source` だけ」はコメントで縛っている。今は守られている
+    （テスト以外の `fs::write` / `remove_dir_all` は実装そのものと雛形の 4 か所だけ）
+  - 対処案: `clippy.toml` の `disallowed-methods` で禁じ、4 か所だけ許す（前例は `main.rs` の
+    `print_stdout`）
+- ⬜ **R9 CACHE_FORMAT_VERSION の上げ忘れをテストで検出する**（工数: 小）
+  - 上げるのはコメントとスキルの手順だけで、v13 は上げ忘れて後から計上した（fb56ef5）。
+    Frontmatter は `serde(default)` なので、フィールドを足すと旧キャッシュが既定値のまま黙って読める
+  - 対処案: 本文のスナップショットのハッシュを `CACHE_FORMAT_VERSION` の隣の定数と照合する
+    テスト、またはキャッシュする型のフィールド名の指紋をヘッダーに入れる
+- ⬜ **R10 小さい整理**（工数: 各小）
+  - `build_once` から、テストの無い同義語の合成と丸め（IndexParams の組み立て）を純関数で出す
+  - cli の run 関数（check・lint・search・dev・llms）にテストが 0 件。`lint --fix` の収束ループを
+    `fmt.rs` のように純関数に出してテストする
+  - `yuzu_config::load` の保護対象の配列（`resolve.rs:84-89`）とエラー文言の match が別で、
+    `_ =>` が `.yuzu` の文言になっている。文言を配列に入れる
+  - tankan: 前置き行（`%%{..}%%`・frontmatter・コメント）を飛ばす処理が 11 か所、SVG のルート要素が
+    9 か所にコピーされ、frontmatter の `title:` の扱いが 4 通りに分かれた（引用符を外すのは packet
+    だけ）。図種を足すたびにコピーが増える
+  - mikan の `make_excerpt`（135 行）の窓を選ぶ処理を出し、総当たりの参照実装と比べるテストを書く
+  - `BuildCache::meta(rel, source_hash)` は 2 つの `&str` を取り違えても通る（`SourceHash` 型。
+    既知の「sha256 の 4 回計算」と一緒に）。`collect_sections` の `sections.last_mut().unwrap()`
+    7 か所は状態の構造体にすれば消える。drafts・force の bool が 7 段そのまま渡る
+
+### 判断の記録
+
+- **分けなくてよい**: `build_once`（処理の順序がそのまま仕様。分けると状態を引数で運ぶだけ）・
+  `yuzu_config::load`（順序に意味のある検証が並ぶ）・`check::run`（並びが「check が何を見るか」の
+  一覧として読める）・表を引くだけの関数（`syntax_message`・`is_css_color_name`）
+- **型にしなくてよい**: `RenderCtx` / `IndexCtx` の Option 3 つ（組み合わせはどれも有効）・
+  mikan の検索の呼び出し順の typestate（JS と wasm の境界で型が消え、未ロードでも結果が減るだけ）・
+  `base_url` の型（読む場所が 10 か所ほどあり、得られるのは R3 の構造体で足りる）
+- **良くできている点**: `markdown_options` と分割代入テスト・設定の `table_codec!`（フィールドを
+  足すとコンパイルエラーかテストで止まる）/ `GeneratedKind` の網羅 match と rules.rs の const fn /
+  `Cx`（生成を 1 か所に限定）と `PageCodeRenderer`（並列ループで共有するとコンパイルエラー）/
+  `apispec/render.rs` は 1900 行のファイルでも最長 59 行、`fmt.rs` は純関数とテスト 8 本
 
 ## v0.20 以降の候補
 
