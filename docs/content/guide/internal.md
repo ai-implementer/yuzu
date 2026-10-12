@@ -72,7 +72,9 @@ Web サーバ側では次の 2 つを設定してください。
 テキストファイル（`llms.txt`・原稿の `.md`・`THIRD-PARTY-LICENSES.txt`）は UTF-8 です。
 文字コードを付けずに `text/plain` などで返すと、ブラウザで開いたときに日本語が化けるので、
 `charset=utf-8` を付けて配ってください。GitHub Pages と `yuzu preview` / `yuzu dev` は
-付けて返します。
+付けて返します。HTML には付けないでください。HTTP の指定はページ内の `<meta charset>` より
+優先されるので、`public/` に置いた別の文字コードの HTML が化けます（yuzu が出す HTML は
+`<meta charset="utf-8">` 付きなので、指定が無くても化けません）。
 
 ### nginx
 
@@ -86,12 +88,20 @@ server {
     allow 10.0.0.0/8;
     deny all;
 
-    # .txt と .md を UTF-8 として返す（付けないとブラウザで日本語が化ける）
-    charset utf-8;
-    charset_types text/plain text/markdown;
-
     location / {
         try_files $uri $uri/ =404;
+    }
+
+    # .txt と .md だけを UTF-8 として返す（付けないとブラウザで日本語が化ける）。
+    # charset は text/html にも必ず効くので、server 全体には書かない
+    location ~* \.(txt|md)$ {
+        types {
+            text/plain txt;
+            text/markdown md;
+        }
+        charset utf-8;
+        charset_types text/plain text/markdown;
+        try_files $uri =404;
     }
     error_page 404 /404.html;
 }

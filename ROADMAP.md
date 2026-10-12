@@ -643,7 +643,8 @@ verify・release スキルを追随させる。最後に「v0.19 の方針」の
     化けない）。文字コードの無い `text/plain`・`text/markdown` の応答に `charset=utf-8` を付ける
     layer を足した（yuzu-server。Host の検査の内側）。HTML・CSS・JS には付けない（HTTP の指定は
     ページ内の `<meta charset>` より優先されるので、`public/` の Shift_JIS の HTML を化けさせて
-    いた。PR #48 のレビュー指摘）。GitHub Pages は付けて返す（公開中の docs で確認）が、nginx の
+    いた。PR #48 のレビュー指摘）。docs の nginx の例も、charset が text/html にも必ず効くので
+    `.txt`・`.md` の location に限定した（再レビューの指摘。nginx の実機では未確認）。GitHub Pages は付けて返す（公開中の docs で確認）が、nginx の
     既定などは付けないので、docs の「Web サーバに置く」に設定を書いた。リリースノートに書く。
     修正後、ライセンス文 2 つの日本語が読めることをユーザがブラウザで確認した（10-12）
   - 残り（ユーザの作業）: ブラウザでの確認（新しい docs のページ・雛形のナビ）・雛形 deploy.yml を
