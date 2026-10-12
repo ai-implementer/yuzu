@@ -95,8 +95,7 @@ fn check_char_classes(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnos
                 .map(|c| char::from_u32(c as u32 - 0xFEE0).unwrap_or(c))
                 .collect();
             out.push(Diagnostic {
-                rule: rules::FULLWIDTH_ALPHANUMERIC.id,
-                severity: rules::FULLWIDTH_ALPHANUMERIC.severity,
+                rule: rules::FULLWIDTH_ALPHANUMERIC,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(run_span(span, offset, run.len())),
@@ -107,8 +106,7 @@ fn check_char_classes(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnos
         for (offset, run) in char_class_runs(text, is_halfwidth_kana) {
             let suggestion = to_fullwidth_kana(run);
             out.push(Diagnostic {
-                rule: rules::HALFWIDTH_KANA.id,
-                severity: rules::HALFWIDTH_KANA.severity,
+                rule: rules::HALFWIDTH_KANA,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(run_span(span, offset, run.len())),
@@ -258,8 +256,7 @@ fn check_katakana_choon(pages: &[Page], opts: &MarkdownOptions, out: &mut Vec<Di
             }
             for (rel, span) in occs {
                 out.push(Diagnostic {
-                    rule: rules::KATAKANA_CHOON.id,
-                    severity: rules::KATAKANA_CHOON.severity,
+                    rule: rules::KATAKANA_CHOON,
                     base: DiagBase::Content,
                     rel: rel.clone(),
                     span: Some(*span),
@@ -300,8 +297,7 @@ fn check_terms(
                         continue;
                     }
                     out.push(Diagnostic {
-                        rule: rules::TERM_VARIANT.id,
-                        severity: rules::TERM_VARIANT.severity,
+                        rule: rules::TERM_VARIANT,
                         base: DiagBase::Content,
                         rel: page.rel.clone(),
                         // comrak の列はバイト基準なので、ノード内バイトオフセットを足す
@@ -329,8 +325,7 @@ fn check_headings(toc: &[TocEntry], page: &Page, out: &mut Vec<Diagnostic>) {
     if let Some(first_h1) = h1s.next() {
         for dup in h1s {
             out.push(Diagnostic {
-                rule: rules::DUPLICATE_H1.id,
-                severity: rules::DUPLICATE_H1.severity,
+                rule: rules::DUPLICATE_H1,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(dup.span),
@@ -348,8 +343,7 @@ fn check_headings(toc: &[TocEntry], page: &Page, out: &mut Vec<Diagnostic>) {
         let (prev, next) = (&pair[0], &pair[1]);
         if next.level > prev.level + 1 {
             out.push(Diagnostic {
-                rule: rules::HEADING_LEVEL_SKIP.id,
-                severity: rules::HEADING_LEVEL_SKIP.severity,
+                rule: rules::HEADING_LEVEL_SKIP,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(next.span),
@@ -371,8 +365,7 @@ fn check_directory_depth(page: &Page, max_depth: u32, out: &mut Vec<Diagnostic>)
     let depth = page.rel.components().count().saturating_sub(1);
     if depth > max_depth as usize {
         out.push(Diagnostic {
-            rule: rules::DIRECTORY_TOO_DEEP.id,
-            severity: rules::DIRECTORY_TOO_DEEP.severity,
+            rule: rules::DIRECTORY_TOO_DEEP,
             base: DiagBase::Content,
             rel: page.rel.clone(),
             span: None,
@@ -392,8 +385,7 @@ fn check_code_meta(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic
 
     let mut push = |span: SourceSpan, message: String| {
         out.push(Diagnostic {
-            rule: rules::CODE_BLOCK_META.id,
-            severity: rules::CODE_BLOCK_META.severity,
+            rule: rules::CODE_BLOCK_META,
             base: DiagBase::Content,
             rel: page.rel.clone(),
             span: Some(span),
@@ -515,8 +507,7 @@ fn check_duplicate_labels(page: &Page, out: &mut Vec<Diagnostic>) {
     for label in &page.labels {
         if !seen.insert(label.id.as_str()) {
             out.push(Diagnostic {
-                rule: rules::DUPLICATE_LABEL.id,
-                severity: rules::DUPLICATE_LABEL.severity,
+                rule: rules::DUPLICATE_LABEL,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: Some(label.span),
@@ -540,8 +531,7 @@ fn check_frontmatter_unrecognized(page: &Page, opts: &MarkdownOptions, out: &mut
         return;
     };
     out.push(Diagnostic {
-        rule: rules::FRONTMATTER_UNRECOGNIZED.id,
-        severity: rules::FRONTMATTER_UNRECOGNIZED.severity,
+        rule: rules::FRONTMATTER_UNRECOGNIZED,
         base: DiagBase::Content,
         rel: page.rel.clone(),
         span: Some(SourceSpan {
@@ -574,8 +564,7 @@ fn check_frontmatter_keys(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Dia
             continue;
         }
         out.push(Diagnostic {
-            rule: rules::FRONTMATTER_UNKNOWN_KEY.id,
-            severity: rules::FRONTMATTER_UNKNOWN_KEY.severity,
+            rule: rules::FRONTMATTER_UNKNOWN_KEY,
             base: DiagBase::Content,
             rel: page.rel.clone(),
             span: Some(key_span(&raw, &fm_span, key)),
@@ -712,7 +701,10 @@ mod tests {
     #[test]
     fn h1_が重複すると警告() {
         let diags = lint("# 一つ目\n\n本文\n\n# 二つ目\n\n# 三つ目\n");
-        let dups: Vec<_> = diags.iter().filter(|d| d.rule == "duplicate-h1").collect();
+        let dups: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.id == "duplicate-h1")
+            .collect();
         assert_eq!(dups.len(), 2, "2 個目以降を報告: {diags:?}");
         assert_eq!(dups[0].span.unwrap().start_line, 5);
         assert!(dups[0].message.contains("1 行目"), "{}", dups[0].message);
@@ -723,7 +715,7 @@ mod tests {
         let diags = lint("# t\n\n## h2\n\n#### h4\n");
         let skips: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "heading-level-skip")
+            .filter(|d| d.rule.id == "heading-level-skip")
             .collect();
         assert_eq!(skips.len(), 1, "{diags:?}");
         assert_eq!(skips[0].span.unwrap().start_line, 5);
@@ -746,7 +738,7 @@ mod tests {
         let diags = lint("---\ntitle: x\ntags: [a, b]\n---\n\n# t\n");
         let unknown: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "frontmatter-unknown-key")
+            .filter(|d| d.rule.id == "frontmatter-unknown-key")
             .collect();
         assert_eq!(unknown.len(), 1, "{diags:?}");
         assert!(
@@ -785,7 +777,7 @@ mod tests {
     fn code_meta_diags(source: &str) -> Vec<crate::Diagnostic> {
         lint(source)
             .into_iter()
-            .filter(|d| d.rule == "code-block-meta")
+            .filter(|d| d.rule.id == "code-block-meta")
             .collect()
     }
 
@@ -796,7 +788,7 @@ mod tests {
         assert_eq!(diags.len(), 2, "{diags:?}");
         assert!(diags[0].message.contains("`showLineNumber`"));
         assert_eq!(diags[0].span.unwrap().start_line, 3, "フェンス開始行");
-        assert_eq!(diags[0].severity, crate::Severity::Warning);
+        assert_eq!(diags[0].severity(), crate::Severity::Warning);
         assert!(diags[1].message.contains("`x`"));
         assert_eq!(diags[1].span.unwrap().start_line, 7);
     }
@@ -852,7 +844,10 @@ mod tests {
             "# t\n\n本文でサーバを再起動する。\n",
             &[("サーバー", &["サーバ"])],
         );
-        let hits: Vec<_> = diags.iter().filter(|d| d.rule == "term-variant").collect();
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.id == "term-variant")
+            .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert_eq!(hits[0].span.unwrap().start_line, 3);
         assert!(
@@ -869,14 +864,20 @@ mod tests {
             "# t\n\nサーバーを再起動する。\n",
             &[("サーバー", &["サーバ"])],
         );
-        assert!(diags.iter().all(|d| d.rule != "term-variant"), "{diags:?}");
+        assert!(
+            diags.iter().all(|d| d.rule.id != "term-variant"),
+            "{diags:?}"
+        );
 
         // 同一テキスト内に正とゆれが混在 → ゆれの方だけ報告
         let diags = lint_terms(
             "# t\n\nサーバーとサーバが混在。\n",
             &[("サーバー", &["サーバ"])],
         );
-        let hits: Vec<_> = diags.iter().filter(|d| d.rule == "term-variant").collect();
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.id == "term-variant")
+            .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
     }
 
@@ -886,13 +887,19 @@ mod tests {
             "# t\n\n```\nサーバ再起動\n```\n\n`サーバ` の説明。\n",
             &[("サーバー", &["サーバ"])],
         );
-        assert!(diags.iter().all(|d| d.rule != "term-variant"), "{diags:?}");
+        assert!(
+            diags.iter().all(|d| d.rule.id != "term-variant"),
+            "{diags:?}"
+        );
     }
 
     #[test]
     fn 見出しの用語ゆれも検出する() {
         let diags = lint_terms("# サーバの設定\n", &[("サーバー", &["サーバ"])]);
-        let hits: Vec<_> = diags.iter().filter(|d| d.rule == "term-variant").collect();
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.rule.id == "term-variant")
+            .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert_eq!(hits[0].span.unwrap().start_line, 1);
     }
@@ -905,7 +912,7 @@ mod tests {
         );
         let mut rules: Vec<&str> = diags
             .iter()
-            .filter(|d| d.rule == "term-variant")
+            .filter(|d| d.rule.id == "term-variant")
             .map(|d| d.message.as_str())
             .collect();
         rules.sort();
@@ -917,7 +924,7 @@ mod tests {
     #[test]
     fn 辞書が空なら何もしない() {
         let diags = lint_terms("# t\n\nサーバ。\n", &[]);
-        assert!(diags.iter().all(|d| d.rule != "term-variant"));
+        assert!(diags.iter().all(|d| d.rule.id != "term-variant"));
     }
 
     #[test]
@@ -925,7 +932,7 @@ mod tests {
         let diags = lint("# t\n\nＷｅｂ１２３ を使う。\n");
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "fullwidth-alphanumeric")
+            .filter(|d| d.rule.id == "fullwidth-alphanumeric")
             .collect();
         assert_eq!(hits.len(), 1, "連続 run は 1 診断: {diags:?}");
         assert!(
@@ -941,7 +948,7 @@ mod tests {
         let diags = lint("# t\n\nﾃﾞｰﾀﾍﾞｰｽ移行。\n");
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "halfwidth-kana")
+            .filter(|d| d.rule.id == "halfwidth-kana")
             .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert!(
@@ -954,7 +961,10 @@ mod tests {
     #[test]
     fn 半角カナの半濁点も合成する() {
         let diags = lint("# t\n\nﾊﾟｽ。\n");
-        let hit = diags.iter().find(|d| d.rule == "halfwidth-kana").unwrap();
+        let hit = diags
+            .iter()
+            .find(|d| d.rule.id == "halfwidth-kana")
+            .unwrap();
         assert!(hit.message.contains("全角「パス」"), "{}", hit.message);
     }
 
@@ -964,7 +974,7 @@ mod tests {
         assert!(
             diags
                 .iter()
-                .all(|d| d.rule != "fullwidth-alphanumeric" && d.rule != "halfwidth-kana"),
+                .all(|d| d.rule.id != "fullwidth-alphanumeric" && d.rule.id != "halfwidth-kana"),
             "{diags:?}"
         );
     }
@@ -992,7 +1002,7 @@ mod tests {
         ]);
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "katakana-choon")
+            .filter(|d| d.rule.id == "katakana-choon")
             .collect();
         assert_eq!(hits.len(), 1, "少数派（サーバ 1 回）のみ: {diags:?}");
         assert!(hits[0].rel.ends_with("b.md"));
@@ -1011,7 +1021,7 @@ mod tests {
         ]);
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "katakana-choon")
+            .filter(|d| d.rule.id == "katakana-choon")
             .collect();
         assert_eq!(hits.len(), 2, "同数は両方: {diags:?}");
     }
@@ -1024,7 +1034,7 @@ mod tests {
             ("b.md", "# B\n\n道のカドを曲がる。\n"),
         ]);
         assert!(
-            diags.iter().all(|d| d.rule != "katakana-choon"),
+            diags.iter().all(|d| d.rule.id != "katakana-choon"),
             "{diags:?}"
         );
     }
@@ -1043,7 +1053,7 @@ mod tests {
         let diags = lint("# t\n\n```include\n```\n");
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "code-block-meta")
+            .filter(|d| d.rule.id == "code-block-meta")
             .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert!(
@@ -1058,7 +1068,7 @@ mod tests {
         let diags = lint("# t\n\n```include file=\"snippets/note.md\" title=\"x\"\n```\n");
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "code-block-meta")
+            .filter(|d| d.rule.id == "code-block-meta")
             .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert!(
@@ -1072,7 +1082,7 @@ mod tests {
     fn 正しい_include_は警告なし() {
         let diags = lint("# t\n\n```include file=\"snippets/note.md\"\n```\n");
         assert!(
-            diags.iter().all(|d| d.rule != "code-block-meta"),
+            diags.iter().all(|d| d.rule.id != "code-block-meta"),
             "{diags:?}"
         );
     }
@@ -1082,7 +1092,7 @@ mod tests {
         let diags = lint("# t\n\n```rust tab=\"Rust\"\nfn main() {}\n```\n\n段落。\n");
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "code-block-meta")
+            .filter(|d| d.rule.id == "code-block-meta")
             .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert!(hits[0].message.contains("tab="), "{}", hits[0].message);
@@ -1096,7 +1106,7 @@ mod tests {
             "```ts tab=\"TypeScript\"\nconsole.log(1)\n```\n",
         ));
         assert!(
-            diags.iter().all(|d| d.rule != "code-block-meta"),
+            diags.iter().all(|d| d.rule.id != "code-block-meta"),
             "{diags:?}"
         );
     }
@@ -1106,7 +1116,7 @@ mod tests {
         let diags = lint_depth("guide/sub/deep.md", Some(1));
         let deep: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "directory-too-deep")
+            .filter(|d| d.rule.id == "directory-too-deep")
             .collect();
         assert_eq!(deep.len(), 1, "{diags:?}");
         assert!(deep[0].span.is_none(), "ファイル単位の診断なので span なし");
@@ -1122,14 +1132,17 @@ mod tests {
         let diags = lint("# t\n\nＷｅｂ１２３ と ﾃﾞｰﾀ。\n");
         let full = diags
             .iter()
-            .find(|d| d.rule == "fullwidth-alphanumeric")
+            .find(|d| d.rule.id == "fullwidth-alphanumeric")
             .unwrap();
         assert_eq!(full.fix.as_deref(), Some("Web123"));
-        let kana = diags.iter().find(|d| d.rule == "halfwidth-kana").unwrap();
+        let kana = diags
+            .iter()
+            .find(|d| d.rule.id == "halfwidth-kana")
+            .unwrap();
         assert_eq!(kana.fix.as_deref(), Some("データ"));
 
         let diags = lint_terms("# t\n\nサーバを再起動。\n", &[("サーバー", &["サーバ"])]);
-        let term = diags.iter().find(|d| d.rule == "term-variant").unwrap();
+        let term = diags.iter().find(|d| d.rule.id == "term-variant").unwrap();
         assert_eq!(term.fix.as_deref(), Some("サーバー"));
     }
 
@@ -1146,7 +1159,10 @@ mod tests {
             ("a.md", "# A\n\nサーバーを起動。サーバーを停止。\n"),
             ("b.md", "# B\n\nサーバの設定。\n"),
         ]);
-        let hit = diags.iter().find(|d| d.rule == "katakana-choon").unwrap();
+        let hit = diags
+            .iter()
+            .find(|d| d.rule.id == "katakana-choon")
+            .unwrap();
         assert_eq!(hit.fix.as_deref(), Some("サーバー"));
     }
 
@@ -1158,7 +1174,7 @@ mod tests {
         ]);
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "katakana-choon")
+            .filter(|d| d.rule.id == "katakana-choon")
             .collect();
         assert_eq!(hits.len(), 2, "{diags:?}");
         assert!(
@@ -1211,8 +1227,7 @@ mod tests {
     #[test]
     fn 交差する_fix_は先勝ちでスキップされる() {
         let mk = |start_col: usize, end_col: usize, fix: &str| crate::Diagnostic {
-            rule: "term-variant",
-            severity: crate::Severity::Warning,
+            rule: crate::rules::TERM_VARIANT,
             base: DiagBase::Content,
             rel: "x.md".into(),
             span: Some(crate::SourceSpan {
@@ -1243,7 +1258,7 @@ mod tests {
         )
         .unwrap()
         .into_iter()
-        .filter(|d| d.rule == "frontmatter-unrecognized")
+        .filter(|d| d.rule.id == "frontmatter-unrecognized")
         .collect()
     }
 
@@ -1257,7 +1272,7 @@ mod tests {
         ] {
             let diags = unrecognized(source);
             assert_eq!(diags.len(), 1, "{source:?}: {diags:?}");
-            assert_eq!(diags[0].severity, crate::Severity::Error);
+            assert_eq!(diags[0].severity(), crate::Severity::Error);
             assert_eq!(diags[0].span.unwrap().start_line, 1);
         }
     }

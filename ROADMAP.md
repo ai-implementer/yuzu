@@ -8,7 +8,7 @@ yuzu の開発計画と、これまでのリリースの内訳。**このファ�
 **v0.19 まで公開済み**。次の版（v0.20）は未策定で、候補は下の
 「[10-04 見直しの持ち越し](#10-04-見直しの持ち越し)」・「[10-07 見直し](#10-07-見直し)」・
 「[10-12 レビュー](#10-12-レビュー)」と「[v0.20 以降の候補](#v020-以降の候補)」にある。
-10-12 レビューの R1〜R3 は手元で不具合を再現している。着手時に軸を 1 つ選んで Phase を切る。
+10-12 レビューの R1〜R3 は v0.19.1 として修正した（リリース前）。
 kabosu 0.2.0 / tankan 0.2.1 / mikan 0.2.1 は crates.io で公開済み（yuzu のリリースとは
 非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある）。
 
@@ -404,7 +404,12 @@ Phase、検索の順位は既知の「2 文字の語」とあわせて v0.20 の
 
 ### A. 不具合を再現したもの（3 者が一致した最優先）
 
-- ⬜ **R1 dist に何を出すかの判断が 3 か所にあり、食い違っている**（工数: 中。**10-12 に確認**）
+- ✅ **R1 dist に何を出すかの判断が 3 か所にあり、食い違っている**（工数: 中。**10-12 に確認**）
+  - **v0.19.1 で修正**: yuzu-core に `SiteOutput`（404.html・llms.txt・llms-full.txt・sitemap.xml・
+    syntect.css・build_id・`_assets`・`_search`）を置き、パス・ディレクトリか・今回出すかを網羅 match で
+    決める。書き出し・`unpublished_outputs`・check の有効ターゲット・検索インデックスの生成の有無が
+    すべて `SiteOutput::emitted` と `output_switches` を通る。配列への登録漏れは、テストでは
+    列挙していない variant を作れず検出できないので、enum と `ALL` を 1 つのマクロから作って起きなくした
   - 書き出し（`yuzu-render/src/pipeline.rs` の syntect.css・sitemap・build_id）・その補集合の
     `unpublished_outputs`（同 36-54）・リンクの有効ターゲットの `GENERATED`
     （`yuzu-core/src/linkcheck.rs:30-31`）が別々の一覧を持つ
@@ -419,7 +424,13 @@ Phase、検索の順位は既知の「2 文字の語」とあわせて v0.20 の
     書かない）。書き出し・掃除・check の有効ターゲットはすべてこれを通す。全 variant の配列への
     登録漏れはテストで確認する。「表」にすると利用側がパス文字列を解釈し直すので、行を足しても
     利用側の漏れを検出できない（型で語る派の反論で enum に決まった）
-- ⬜ **R2 build と check で、検査の一覧と抑制の解釈が別々**（工数: 中。**10-12 に確認**）
+- ✅ **R2 build と check で、検査の一覧と抑制の解釈が別々**（工数: 中。**10-12 に確認**）
+  - **v0.19.1 で修正**: cli の `commands/collect.rs` に検査の並びを 1 つ置き、check（全部）と build
+    （大文字小文字の URL・リンク切れ・取り込みの失敗）が範囲を選んで通る。抑制は
+    `Collected::suppress` の後でしか読めない。`Diagnostic` は `Rule` を持ち、深刻度はそこから決まる
+    （同じことをする局所ヘルパのうち 3 つは `Diagnostic::new` に置き換えて消した）。
+    仕様の中身の検証は、Phase 85 の判断のとおり build の件数に入れない（描画のたびに
+    全仕様をパースし直すことになり、出力も変わる）
   - check は `commands/check.rs:26-81` で 11 系統、build は `commands/build.rs` の
     report_broken（3 系統）と route-case-conflict の独自の判定（`lint.rules` を直接読む）
   - 再現: `Guide.md` と `guide/index.md` に `lintDisable: [route-case-conflict]` を書くと、check は
@@ -435,7 +446,13 @@ Phase、検索の順位は既知の「2 文字の語」とあわせて v0.20 の
   - 補足: 壊れた openapi は 2 回目以降の build（本文キャッシュに当たる）で何も出ない。仕様の中身の
     検証は Phase 85 の判断で build の件数に入れていないので不具合ではないが、診断を 1 つにまとめる
     ときに入れるかを決め直す
-- ⬜ **R3 設定値と CLI の引数を入口で検証していない**（工数: 小〜中。**10-12 に確認**）
+- ✅ **R3 設定値と CLI の引数を入口で検証していない**（工数: 小〜中。**10-12 に確認**）
+  - **v0.19.1 で修正**: cli の `read_config`（`load_project` と watch 中の読み直しが共有）が
+    `yuzu_config::load_with` に core・render の規則（`synth_page_problem`・`toc_levels_problem`）を渡し、
+    位置付きの設定エラーにする。`theme.toc.levels` は不正値で既定へ縮退していたのをやめた。
+    `dev.host` と `--host` は `BindAddr`（IP アドレス）で読み込みの時点で検証し、`build` の
+    `--port` / `--host` は `--watch` を必須にした。配信は `StartupSettings` から組み（dev / preview /
+    build --watch が共有）、`pin_restart_only` はその分割代入で項目の追加に追随させる
   - 再現: `search.page = "../search"` で検索結果ページが出ないのに build も check も exit 0
     （`yuzu-core/src/urlpath.rs:129` が不正値を黙って None にする。`markdown.glossary.page` も同じ
     関数）/ `yuzu dev --host localhost` は `invalid IP address syntax` で exit 2（エラー文言は

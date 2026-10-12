@@ -83,7 +83,7 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 | ルール | 検出内容 |
 | --- | --- |
-| `broken-link` | 内部リンクの切れ（外部 URL は既定では検査しません） |
+| `broken-link` | 内部リンクの切れ（外部 URL は既定では検査しません）。ビルドの生成物（`/404.html`・`/llms.txt`・`/sitemap.xml`・`/_search/` など）へのリンクは、今の設定で出力するものだけを有効にします（`llms.enabled = false` なら `/llms.txt` は切れ。`public/` に同じパスのファイルがあれば有効） |
 | `external-link-broken` | `check --external-links` を付けたときだけ。外部リンク（`http` / `https`）が HTTP 4xx を返した。warning で、`lintDisable`・行コメント・`lint.rules` で抑制できます。DNS 失敗・タイムアウト・5xx・429 は診断にせず「スキップ N 件」（`summary.skipped`）に数えます |
 | `broken-anchor` | 見出し・図表ラベルへのアンカーの切れ |
 | `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない（`#` `?` を含む・出力パスに使えない文字を含む等） |

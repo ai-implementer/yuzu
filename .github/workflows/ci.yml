@@ -761,8 +761,9 @@ jobs:
           "$yuzu" new "$RUNNER_TEMP/report"
           cd "$RUNNER_TEMP/report"
           # リンク切れ・画像切れは build の最後に 1 行で知らせ、終了コードは 0 のまま。
-          # 2 回目の build（本文キャッシュに当たる）でも黙らない
-          printf '# 素のページ\n\n[壊れ](missing.md)\n\n![無い](nai.png)\n' > content/plain.md
+          # 2 回目の build（本文キャッシュに当たる）でも黙らない。必ず出す 404.html と
+          # 出している llms.txt へのリンクは数えない（10-12 レビューの R1）
+          printf '# 素のページ\n\n[壊れ](missing.md)\n\n![無い](nai.png)\n\n[404](/404.html)\n\n[llms](/llms.txt)\n' > content/plain.md
           for _ in 1 2; do
             "$yuzu" build 2> "$RUNNER_TEMP/report.err"
             grep -q 'リンク切れ 2 件があります' "$RUNNER_TEMP/report.err"
@@ -789,6 +790,16 @@ jobs:
           "$yuzu" build 2> "$RUNNER_TEMP/case.err"
           grep -q '大文字小文字だけが違います' "$RUNNER_TEMP/case.err"
           "$yuzu" check --format json 2>/dev/null | grep -q '"rule": "route-case-conflict"'
+          # 警告の出るページ（guide/index.md）を lintDisable で抑制したら、check と同じく build も
+          # 黙る（10-12 レビューの R2。build は lint.rules だけを見ていた）
+          cp content/guide/index.md "$RUNNER_TEMP/guide-index.md"
+          sed -i '1a lintDisable: [route-case-conflict]' content/guide/index.md
+          "$yuzu" build 2> "$RUNNER_TEMP/case-suppressed.err"
+          if grep -q '大文字小文字だけが違います' "$RUNNER_TEMP/case-suppressed.err"; then
+            echo "lintDisable で抑制したのに build が警告した" >&2
+            exit 1
+          fi
+          cp "$RUNNER_TEMP/guide-index.md" content/guide/index.md
           rm content/Guide.md
           # check --no-fmt は整形差分だけを外す。fmt はパーミッションを引き継ぎ、一時ファイルを残さない
           printf '# 整形前\n\n* a\n' > content/unformatted.md
@@ -812,6 +823,18 @@ jobs:
           "$yuzu" build --root "$RUNNER_TEMP/empty-project" 2> "$RUNNER_TEMP/empty.err"
           grep -q '原稿のディレクトリ `content`（input.dir）がありません' "$RUNNER_TEMP/empty.err"
           grep -q 'プロジェクトルート直下に .md が 1 件あります' "$RUNNER_TEMP/empty.err"
+          # 設定値と引数は入口で検証し、黙って捨てない（10-12 レビューの R3。どれも終了コード 2）:
+          # build の --port は --watch が必要・--host は IP アドレスだけ・合成ページの route の
+          # 不正値は位置付きの設定エラー（以前は検索結果ページを出さずに build も check も 0）
+          "$yuzu" build --port 9999 2>/dev/null && status=0 || status=$?
+          test "$status" -eq 2
+          "$yuzu" preview --host localhost 2>/dev/null && status=0 || status=$?
+          test "$status" -eq 2
+          mkdir -p "$RUNNER_TEMP/bad-config"
+          printf '[search]\npage = "../search"\n' > "$RUNNER_TEMP/bad-config/yuzu.toml"
+          "$yuzu" check --root "$RUNNER_TEMP/bad-config" 2> "$RUNNER_TEMP/bad-config.err" && status=0 || status=$?
+          test "$status" -eq 2
+          grep -q 'yuzu.toml:2:1: `search.page` の値 `../search` は使えません' "$RUNNER_TEMP/bad-config.err"
 
   # cargo-deny の licenses・bans・sources（設定は deny.toml。Phase 82）。結果が Cargo.lock だけで
   # 決まる検査なので PR ごとに回す。advisories は新しい勧告で無関係な PR を落とさないよう

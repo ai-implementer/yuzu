@@ -123,22 +123,35 @@ pub fn rel_to_slash(rel: &Path) -> String {
 
 /// 合成ページ（用語集・検索結果）の route 元 → content 相対 `.md` パス。
 ///
-/// route が空・パスが不正（絶対パス / ドライブレター / `..` / 空セグメント）なら
-/// `None` ＝ページを作らない（設定の書き間違いでビルドを止めず、かつルート外へは
-/// 絶対に書かない）。`..` を弾くのは `content_dir.join(rel)` が外へ出ないため
+/// route が空なら `None` ＝ページを作らない（設定で止めた状態）。パスが不正
+/// （[`synth_page_problem`]）でも `None` を返してルート外へは絶対に書かないが、
+/// cli は設定の読み込み直後に [`synth_page_problem`] で位置付きの設定エラーにするので、
+/// 不正な値のままここへ来るのはライブラリを直接使ったときだけ
 pub(crate) fn synth_page_rel(raw: &str) -> Option<std::path::PathBuf> {
-    let raw = raw.trim().trim_matches('/');
-    if raw.is_empty() || raw.starts_with('\\') || raw.contains(':') {
+    let route = raw.trim().trim_matches('/');
+    if route.is_empty() || synth_page_problem(raw).is_some() {
         return None;
     }
-    let segments: Vec<&str> = raw.split('/').collect();
-    if segments
-        .iter()
-        .any(|s| s.is_empty() || *s == "." || *s == "..")
-    {
+    Some(std::path::PathBuf::from(format!("{route}.md")))
+}
+
+/// 合成ページの route の設定値（`search.page` / `markdown.glossary.page`）が使えない理由。
+/// 空（ページを作らない）は問題なし。
+///
+/// 絶対パス・ドライブレター・`..`・`.`・空の階層を拒否する。`..` を弾くのは
+/// `content_dir.join(rel)` が外へ出ないため。以前は不正な値で黙ってページを作らず、
+/// build も check も成功していた（10-12 レビューの R3）
+pub fn synth_page_problem(raw: &str) -> Option<&'static str> {
+    let route = raw.trim().trim_matches('/');
+    if route.is_empty() {
         return None;
     }
-    Some(std::path::PathBuf::from(format!("{raw}.md")))
+    let bad_segment = route
+        .split('/')
+        .any(|s| s.is_empty() || s == "." || s == "..");
+    (route.starts_with('\\') || route.contains(':') || bad_segment).then_some(
+        "content 相対のパス（例: `search`・`help/search`）で書いてください。`..`・`.`・空の階層（`//`）・`\\` 始まり・`:` は使えません",
+    )
 }
 
 #[cfg(test)]
@@ -159,6 +172,33 @@ mod tests {
         assert_eq!(resolve_relative("guide", "../index.md"), "index.md");
         assert_eq!(resolve_relative("", "a/b.md"), "a/b.md");
         assert_eq!(resolve_relative("a/b", "../../c.md"), "c.md");
+    }
+
+    #[test]
+    fn 合成ページの_route_は空なら作らず不正なら理由を返す() {
+        for ok in ["search", "/search/", " help/search ", "用語集"] {
+            assert_eq!(synth_page_problem(ok), None, "{ok}");
+            assert!(synth_page_rel(ok).is_some(), "{ok}");
+        }
+        assert_eq!(
+            synth_page_rel("/help/search/"),
+            Some(std::path::PathBuf::from("help/search.md"))
+        );
+        // 空はページを作らない設定（問題なし）
+        assert_eq!(synth_page_problem(""), None);
+        assert_eq!(synth_page_rel("  "), None);
+        for bad in [
+            "../search",
+            "a/../b",
+            "./search",
+            "a//b",
+            "C:/x",
+            "\\x",
+            "a:b",
+        ] {
+            assert!(synth_page_problem(bad).is_some(), "{bad}");
+            assert_eq!(synth_page_rel(bad), None, "{bad}");
+        }
     }
 
     #[test]

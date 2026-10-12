@@ -3,18 +3,16 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use anyhow::Context;
-
-use yuzu_config::ResolvedConfig;
 use yuzu_render::LiveReloadMode;
-use yuzu_server::{ReloadNotifier, ServeOptions};
+use yuzu_server::ReloadNotifier;
 
-use crate::commands::build;
+use crate::commands::build::{self, StartupSettings};
+use crate::commands::preview;
 
 pub fn run(
     cx: &crate::cx::Cx,
     port: Option<u16>,
-    host: Option<String>,
+    host: Option<yuzu_config::BindAddr>,
     force: bool,
     drafts: bool,
 ) -> anyhow::Result<()> {
@@ -60,35 +58,22 @@ pub fn run(
         }
     })?;
 
-    let host: IpAddr = rc
-        .config
-        .dev
-        .host
-        .parse()
-        .with_context(|| format!("dev.host が不正です: {}", rc.config.dev.host))?;
-    let port = port.unwrap_or(rc.config.dev.port);
-
+    let startup = StartupSettings::of(&rc);
+    let port = port.unwrap_or(startup.port);
     if rc.config.dev.open {
-        open_browser_when_ready(SocketAddr::new(host, port), open_url(&rc, host, port));
+        open_browser_when_ready(
+            SocketAddr::new(startup.host, port),
+            open_url(&startup.base_url, startup.host, port),
+        );
     }
 
-    // ブロッキング配信（Ctrl+C で終了）
-    yuzu_server::serve(ServeOptions {
-        dir: rc.output_dir.clone(),
-        host,
-        port,
-        base_url: rc.base_url.clone(),
-        live_reload: notifier,
-        path_guard: Some(super::preview::symlink_guard(&rc.root)),
-        allowed_hosts: rc.config.dev.allowed_hosts.clone(),
-        watch_failure: watch_handle.take_failure(),
-    })?;
-    Ok(())
+    // ブロッキング配信（Ctrl+C で終了）。配信の設定は preview・build --watch と同じ 1 実装で組む
+    preview::serve_dist(&rc, Some(port), notifier, watch_handle.take_failure())
 }
 
 /// ブラウザで開く URL。bind アドレスが `0.0.0.0` / `::` のときは
 /// 127.0.0.1 に読み替える（bind アドレスにはブラウザで繋げない）
-fn open_url(rc: &ResolvedConfig, host: IpAddr, port: u16) -> String {
+fn open_url(base_url: &str, host: IpAddr, port: u16) -> String {
     let open_host: IpAddr = if host.is_unspecified() {
         IpAddr::V4(Ipv4Addr::LOCALHOST)
     } else {
@@ -96,7 +81,7 @@ fn open_url(rc: &ResolvedConfig, host: IpAddr, port: u16) -> String {
     };
     format!(
         "http://{open_host}:{port}{}",
-        yuzu_server::base_path(&rc.base_url)
+        yuzu_server::base_path(base_url)
     )
 }
 

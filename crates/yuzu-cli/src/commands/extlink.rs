@@ -60,8 +60,7 @@ pub fn check(links: &[ExternalLink]) -> anyhow::Result<Outcome> {
             Verdict::Broken(status) => {
                 for link in &by_url[url] {
                     diags.push(Diagnostic {
-                        rule: rules::EXTERNAL_LINK_BROKEN.id,
-                        severity: rules::EXTERNAL_LINK_BROKEN.severity,
+                        rule: rules::EXTERNAL_LINK_BROKEN,
                         base: DiagBase::Content,
                         rel: link.rel.clone(),
                         span: Some(link.span),
@@ -321,7 +320,7 @@ mod tests {
                 (
                     d.rel.to_string_lossy().into_owned(),
                     d.span.unwrap().start_line,
-                    d.rule,
+                    d.rule.id,
                 )
             })
             .collect();
@@ -349,7 +348,7 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .all(|d| d.severity == yuzu_core::Severity::Warning)
+                .all(|d| d.severity() == yuzu_core::Severity::Warning)
         );
         // スキップした出現箇所は抑制の unused 判定を保留させるために返す
         let mut skipped_lines: Vec<usize> = outcome

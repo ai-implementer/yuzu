@@ -15,24 +15,29 @@ use crate::out::outln;
 
 /// `yuzu.toml` の警告（`input.dir` がルート外など。未知キー・型不一致は
 /// 診断ではなく読み込みエラー）を [`Diagnostic`] へ写す。
-/// yuzu-config は yuzu-core に依存しないため、変換はここで行う
+/// yuzu-config は yuzu-core に依存しないため、変換はここで行う。
+/// 深刻度・抑制可否はレジストリのルール定義から取る（ID だけを受け取り、ここで書き直さない）
 pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
     rc.diagnostics
         .iter()
-        .map(|d| Diagnostic {
-            rule: d.rule,
-            severity: Severity::Warning,
-            // yuzu.toml は content の外にあるのでプロジェクトルート基点
-            base: DiagBase::ProjectRoot,
-            rel: std::path::PathBuf::from(yuzu_config::CONFIG_FILE_NAME),
-            span: Some(yuzu_core::SourceSpan {
+        .map(|d| {
+            // CONFIG_RULES がレジストリにあることは `config_ルールはレジストリと双方向に一致する` が縛る
+            let rule = *yuzu_core::rules::find(d.rule)
+                .unwrap_or_else(|| panic!("{} がルールのレジストリに無い", d.rule));
+            let span = yuzu_core::SourceSpan {
                 start_line: d.line,
                 start_col: d.col,
                 end_line: d.line,
                 end_col: d.col,
-            }),
-            message: d.message.clone(),
-            fix: None,
+            };
+            Diagnostic::new(
+                rule,
+                yuzu_config::CONFIG_FILE_NAME,
+                Some(span),
+                d.message.clone(),
+            )
+            // yuzu.toml は content の外にあるのでプロジェクトルート基点
+            .with_base(DiagBase::ProjectRoot)
         })
         .collect()
 }
@@ -183,7 +188,7 @@ fn print_summary(diags: &[Diagnostic], ctx: &Context, errors: usize, warnings: u
 fn counts(diags: &[Diagnostic]) -> (usize, usize) {
     let errors = diags
         .iter()
-        .filter(|d| d.severity == Severity::Error)
+        .filter(|d| d.severity() == Severity::Error)
         .count();
     (errors, diags.len() - errors)
 }
@@ -240,17 +245,22 @@ fn human_lines(diags: &[Diagnostic], prefix: &Path, root_prefix: &Path) -> Vec<S
         .iter()
         .map(|d| {
             let path = base_prefix(d, prefix, root_prefix).join(&d.rel);
-            let severity = severity_str(d.severity);
+            let severity = severity_str(d.severity());
             match d.span {
                 Some(span) => format!(
                     "{}:{}:{}: {severity}[{}] {}",
                     path.display(),
                     span.start_line,
                     span.start_col,
-                    d.rule,
+                    d.rule.id,
                     d.message
                 ),
-                None => format!("{}: {severity}[{}] {}", path.display(), d.rule, d.message),
+                None => format!(
+                    "{}: {severity}[{}] {}",
+                    path.display(),
+                    d.rule.id,
+                    d.message
+                ),
             }
         })
         .collect()
@@ -267,9 +277,9 @@ fn github_lines(diags: &[Diagnostic], base: &Path, root_base: &Path) -> Vec<Stri
     diags
         .iter()
         .map(|d| {
-            let kind = severity_str(d.severity);
+            let kind = severity_str(d.severity());
             let file = escape_property(&slash(&base_prefix(d, base, root_base).join(&d.rel)));
-            let title = escape_property(&format!("yuzu[{}]", d.rule));
+            let title = escape_property(&format!("yuzu[{}]", d.rule.id));
             let pos = match d.span {
                 Some(span) => format!(",line={},col={}", span.start_line, span.start_col),
                 None => String::new(),
@@ -379,8 +389,8 @@ fn render_json(
         diagnostics: diags
             .iter()
             .map(|d| JsonDiagnostic {
-                rule: d.rule,
-                severity: severity_str(d.severity),
+                rule: d.rule.id,
+                severity: severity_str(d.severity()),
                 path: slash(&base_prefix(d, prefix, root_prefix).join(&d.rel)),
                 line: d.span.map(|s| s.start_line),
                 column: d.span.map(|s| s.start_col),
@@ -407,7 +417,7 @@ mod tests {
         use yuzu_core::rules;
         for id in yuzu_config::CONFIG_RULES {
             let rule = rules::find(id).unwrap_or_else(|| panic!("{id} がレジストリに無い"));
-            // 変換（config_diagnostics）は severity を Warning 固定にしている
+            // yuzu.toml の診断は読み込みを止めない注意なので warning（config_diagnostics はここから取る）
             assert_eq!(rule.severity, yuzu_core::Severity::Warning, "{id}");
             assert!(!rule.suppressible, "{id} はページ外なので抑制不可のはず");
         }
@@ -447,14 +457,15 @@ mod tests {
         span: Option<SourceSpan>,
         fix: Option<&str>,
     ) -> Diagnostic {
-        Diagnostic {
-            rule,
+        // 表示の検査用に任意の ID と深刻度のルールを組む（レジストリに無い ID も使う）
+        let rule = yuzu_core::rules::Rule {
+            id: rule,
             severity,
-            base: DiagBase::Content,
-            rel: PathBuf::from(rel),
-            span,
-            message: "メッセージ".to_string(),
+            suppressible: false,
+        };
+        Diagnostic {
             fix: fix.map(str::to_string),
+            ..Diagnostic::new(rule, rel, span, "メッセージ")
         }
     }
 

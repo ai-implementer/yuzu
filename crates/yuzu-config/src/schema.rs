@@ -524,7 +524,8 @@ impl Default for BuildConfig {
 
 #[derive(Debug, Clone)]
 pub struct DevConfig {
-    pub host: String,
+    /// 配信の bind アドレス（IP アドレスだけ。[`BindAddr`]）
+    pub host: BindAddr,
     pub port: u16,
     /// `yuzu dev` の WebSocket ライブリロード。
     /// false なら監視ビルド＋配信のみ（WS 注入なし。反映は手動リロード）
@@ -541,11 +542,34 @@ pub struct DevConfig {
 impl Default for DevConfig {
     fn default() -> Self {
         Self {
-            host: "127.0.0.1".to_string(),
+            host: BindAddr(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             port: 5173,
             live_reload: true,
             open: false,
             allowed_hosts: Vec::new(),
         }
+    }
+}
+
+/// 配信の bind アドレス（`dev.host`・`--host`）。IP アドレスだけを受け付ける。
+///
+/// 以前は文字列のまま持ち、配信の直前に dev と preview が別々に解析していた。そのため
+/// `localhost` のような値は `yuzu dev` を起動するまで分からず、`--host` で渡したのに
+/// 「dev.host が不正です」と出ていた（10-12 レビューの R3）。読み込みの時点で型にする
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BindAddr(pub std::net::IpAddr);
+
+impl BindAddr {
+    /// `yuzu.toml` の `dev.host` と CLI の `--host` が共有する解析。不正なら理由を返す
+    pub fn parse(raw: &str) -> Result<Self, &'static str> {
+        raw.trim().parse().map(Self).map_err(|_| {
+            "IP アドレスで指定してください（例: `127.0.0.1`・`0.0.0.0`・`::1`）。ホスト名は使えません。`localhost` なら `127.0.0.1` と書いてください"
+        })
+    }
+}
+
+impl std::fmt::Display for BindAddr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }

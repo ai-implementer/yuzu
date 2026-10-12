@@ -21,5 +21,5 @@ pub use query::{
     SearchOutput, SearchResult, search_dist, search_dist_with_options, search_dist_with_total,
 };
 
-/// `dist/` 内の検索成果物ディレクトリ名
-pub const SEARCH_DIR_NAME: &str = "_search";
+/// `dist/` 内の検索成果物ディレクトリ名（出すかどうかの判断と同じ `SiteOutput` の定義から取る）
+pub const SEARCH_DIR_NAME: &str = yuzu_core::SiteOutput::SearchIndex.path();

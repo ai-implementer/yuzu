@@ -21,6 +21,11 @@ pub enum RenderError {
     )]
     UnknownHighlightTheme { name: String },
 
+    /// cli は設定の読み込み直後に位置付きの設定エラーにするので、ここへ来るのは
+    /// ライブラリを直接使ったときだけ（既定へ黙って縮退しない）
+    #[error("theme.toc.levels の値 `{value}` は使えません。{reason}")]
+    InvalidTocLevels { value: String, reason: &'static str },
+
     #[error("シンタックスハイライトの CSS 生成に失敗しました: {0}")]
     HighlightCss(#[from] syntect::Error),
 

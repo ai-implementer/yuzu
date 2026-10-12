@@ -190,6 +190,19 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     `validate_spec_refs` もここ
   - **仕様の中身の検証だけが yuzu-render**
 - **エイリアス** — `aliases.rs`（render と check）
+- **dist に出すサイト単位の生成物** — yuzu-core `site_output.rs` の `SiteOutput`
+  （404.html・llms・sitemap・syntect.css・build_id・`_assets`・`_search`）。書き出し（pipeline）・
+  止めた生成物の掃除（`unpublished_outputs`）・check のリンクの有効ターゲットがすべて
+  `SiteOutput::emitted` と `yuzu_render::output_switches` を通る（10-12 レビューの R1。3 か所が
+  別々の一覧で食い違っていた）。**生成物を足すときは `site_outputs!` に variant を足す**
+  （`path` / `is_dir` / `emitted` は網羅 match。パス文字列を直に書かない）
+- **診断の収集** — cli の `commands/collect.rs`（check と build の件数の報告が共有。R2）。
+  抑制は `Collected::suppress` を通した後でしか読めない。build はルールで絞って数える
+  （以前は build が `lint.rules` を直接読み、`lintDisable` が効かなかった）。`Diagnostic` は
+  `Rule` を持ち、深刻度はそこから決まる（`Diagnostic::new(rule, rel, span, message)`）
+- **設定値の検証** — cli の `commands::read_config`（`load_project` と watch 中の読み直しが共有。
+  R3）。yuzu-core・yuzu-render が持つ規則（`synth_page_problem`・`toc_levels_problem`）を
+  `yuzu_config::load_with` に渡し、位置付きの設定エラーにする。**使う側で不正値を黙って捨てない**
 - `comrak_options_keep_footnotes` は fmt / normalize / linkcheck 専用。
   **HTML レンダと extract_meta に使うと壊れる**
 
@@ -246,9 +259,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 - `yuzu build` / `dev` は常時インクリメンタル（`.yuzu/cache/`）
   - キャッシュ起因の不具合を疑うときは `--force`（または `.yuzu/cache/` 削除。いつでも安全）
   - **`--force` / `.yuzu` の削除は出力マニフェストも消す** = `output.clean = false` だと孤児掃除の
-    材料が無くなる。設定で止めた生成物（原稿の `.md`・llms・sitemap）は記録に頼らず
-    `yuzu_render::unpublished_outputs` と今回書いたものの差で消す（PR #42 の指摘）。**止められる
-    生成物を足したら、この一覧にも足す**（書き出し側の条件を裏返したもの）
+    材料が無くなる。設定で止めた生成物（原稿の `.md`・llms・sitemap・syntect.css・build_id）は
+    記録に頼らず `yuzu_render::unpublished_outputs` と今回書いたものの差で消す（PR #42 の指摘）。
+    一覧は `SiteOutput` から作るので、生成物は variant を足せば掃除にも載る（上の「1 実装で共有する箇所」）
   - 止めた `_search/` は中のファイルを `output::list_files_under` で列挙し、同じく今回書いたもの
     以外を消す。**ディレクトリごと消す・中に今回書いたものがあれば丸ごと飛ばす、のどちらもしない**
     （public/_search/ の利用者のファイルを消す / 索引が残る。PR #42 の再レビューの指摘）
@@ -306,11 +319,14 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   comrak 整形の回収（`yuzu_core::recover`）が動かなくなる。回収区間の出力抑制は
   スレッドごとの印（`is_recovering`）で行い、hook の差し替えで黙らせない
 - **watch 中の `yuzu.toml` 変更は取り込むが、監視・配信の前提になる設定は起動時固定**
-  （`build.rs` の `WatchBuild` / `pin_restart_only`）
+  （`build.rs` の `WatchBuild` / `StartupSettings` / `pin_restart_only`）
   - `output.dir` を差し替えると新しい出力先が監視除外から外れて無限ループになるため、
     `output.dir` / `base_url` / `dev.host` / `dev.port` / `dev.live_reload` /
     `dev.allowed_hosts` / `build.watch_ignore` は警告だけ出して起動時の値を使う
-  - **サーバや監視スレッドへ起動時に渡す設定を増やしたらこの関数にも足す**
+  - **サーバや監視スレッドへ起動時に渡す設定を増やしたら `StartupSettings` に足す**。配信
+    （`preview::serve_dist`。dev / preview / build --watch が共有）はこの値から組み、
+    `pin_restart_only` の分割代入はワイルドカード無しなので、差し戻しを書くまでコンパイルが止まる
+  - `dev.host` / `--host` は `yuzu_config::BindAddr`（IP アドレスだけ。読み込みの時点で検証）
 - **dev / preview の Host / Origin の検査は IP アドレスを通すのが仕様**（`yuzu-server/src/host.rs`。
   Phase 83）。DNS リバインディングはドメイン名を使うので、拒否するのは `localhost`・
   `*.localhost`・IP 以外で `dev.allowed_hosts` に無いホスト名だけ（`dev.host = "0.0.0.0"` で

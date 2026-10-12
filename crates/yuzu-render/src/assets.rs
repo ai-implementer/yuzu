@@ -9,7 +9,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use walkdir::WalkDir;
-use yuzu_core::OutputTracker;
+use yuzu_core::{OutputTracker, SiteOutput};
 
 use crate::error::RenderError;
 
@@ -49,12 +49,22 @@ pub(crate) fn write_theme_assets(
             continue;
         };
         let data = yuzu_theme::get(&path).expect("iter() で列挙したパスは必ず存在する");
-        write_output(outputs, output_dir, &format!("_assets/{rest}"), &data)?;
+        write_output(
+            outputs,
+            output_dir,
+            &format!("{}/{rest}", SiteOutput::ThemeAssets.path()),
+            &data,
+        )?;
     }
 
     if let Some(theme_static) = theme_dir.map(|d| d.join("static")) {
         if theme_static.is_dir() {
-            copy_tree(&theme_static, "_assets", output_dir, outputs)?;
+            copy_tree(
+                &theme_static,
+                SiteOutput::ThemeAssets.path(),
+                output_dir,
+                outputs,
+            )?;
         }
     }
     Ok(())
@@ -105,7 +115,12 @@ pub(crate) fn write_build_id(
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos().to_string())
         .unwrap_or_else(|_| "0".to_string());
-    write_output(outputs, output_dir, "__yuzu/build_id", id.as_bytes())
+    write_output(
+        outputs,
+        output_dir,
+        SiteOutput::BuildId.path(),
+        id.as_bytes(),
+    )
 }
 
 /// `src` 配下を dist の `dest_prefix/`（"" なら直下）へ再帰コピーする

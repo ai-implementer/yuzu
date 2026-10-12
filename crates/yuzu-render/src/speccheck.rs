@@ -17,7 +17,7 @@
 
 use std::path::Path;
 
-use yuzu_core::{Diagnostic, MarkdownOptions, Page, Severity};
+use yuzu_core::{Diagnostic, MarkdownOptions, Page};
 
 use crate::apispec::{self, SpecFiles};
 
@@ -58,38 +58,22 @@ pub fn validate_api_specs(pages: &[Page], root: &Path, opts: &MarkdownOptions) -
                 continue;
             };
             for issue in apispec::check_spec(kind, source.text(), source.origin(), &files) {
-                let severity = if issue.fatal {
-                    Severity::Error
+                // 描画が止まる誤りは spec-error、注記へ縮退するだけのものは spec-warning
+                let rule = if issue.fatal {
+                    yuzu_core::rules::SPEC_ERROR
                 } else {
-                    Severity::Warning
+                    yuzu_core::rules::SPEC_WARNING
                 };
-                diags.push(diag(page, &fence, issue.message, severity));
+                diags.push(Diagnostic::new(
+                    rule,
+                    page.rel.clone(),
+                    Some(fence.span),
+                    issue.message,
+                ));
             }
         }
     }
     diags
-}
-
-fn diag(
-    page: &Page,
-    fence: &yuzu_core::FenceBlock,
-    message: String,
-    severity: Severity,
-) -> Diagnostic {
-    // レジストリ（yuzu_core::rules）から ID と severity を対で取る（直書きしない）
-    let rule = match severity {
-        Severity::Error => yuzu_core::rules::SPEC_ERROR,
-        Severity::Warning => yuzu_core::rules::SPEC_WARNING,
-    };
-    Diagnostic {
-        rule: rule.id,
-        severity: rule.severity,
-        base: yuzu_core::DiagBase::Content,
-        rel: page.rel.clone(),
-        span: Some(fence.span),
-        message,
-        fix: None,
-    }
 }
 
 #[cfg(test)]
@@ -109,7 +93,7 @@ mod tests {
     }
 
     fn rules(diags: &[Diagnostic]) -> Vec<&str> {
-        diags.iter().map(|d| d.rule).collect()
+        diags.iter().map(|d| d.rule.id).collect()
     }
 
     #[test]
@@ -143,10 +127,10 @@ mod tests {
 
     #[test]
     fn spec_ルールはレジストリの定義と一致する() {
-        // diag() の fatal → severity の写像がレジストリの定義とずれないことを固定
+        // fatal → ルールの写像がレジストリの定義とずれないことを固定
         use yuzu_core::rules;
-        assert_eq!(rules::SPEC_ERROR.severity, Severity::Error);
-        assert_eq!(rules::SPEC_WARNING.severity, Severity::Warning);
+        assert_eq!(rules::SPEC_ERROR.severity, yuzu_core::Severity::Error);
+        assert_eq!(rules::SPEC_WARNING.severity, yuzu_core::Severity::Warning);
     }
 
     #[test]

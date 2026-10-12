@@ -27,6 +27,7 @@ pub mod recover;
 mod routes;
 pub mod rules;
 mod scan;
+mod site_output;
 mod suppress;
 mod traits;
 pub mod urlpath;
@@ -55,6 +56,7 @@ pub use nav::{NavGroup, nav_groups, route_group_key};
 pub use output::{OutputTracker, WriteOutcome};
 pub use routes::validate_routes;
 pub use scan::IgnoreMatcher;
+pub use site_output::{OutputSwitches, SiteOutput};
 pub use suppress::{SuppressionOutcome, apply_suppressions};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
 
@@ -615,13 +617,24 @@ pub fn apply_fixes(source: &str, diags: &[Diagnostic]) -> (String, usize) {
 ///   出現箇所だけ [`LinkReport::external`] で返す（到達性の検査は cli の opt-in
 ///   `yuzu check --external-links` が行う = 既定経路にネットワーク I/O を入れない）
 /// - アンカーは本文 HTML と同一採番の見出し id で照合する
+/// - ルート絶対リンクのうちビルドの生成物（`/404.html`・`/llms.txt` 等）は、今回出すもの
+///   （`outputs`）だけを有効にする。判断は [`SiteOutput`] が唯一の定義で、build と同じ設定から作る
 pub fn check_links(
     pages: &[Page],
     public_dir: Option<&Path>,
     content_dir: &Path,
     ignore: &[String],
     include_drafts: bool,
+    outputs: &OutputSwitches,
     opts: &MarkdownOptions,
 ) -> Result<LinkReport, CoreError> {
-    linkcheck::check_links(pages, public_dir, content_dir, ignore, include_drafts, opts)
+    linkcheck::check_links(
+        pages,
+        public_dir,
+        content_dir,
+        ignore,
+        include_drafts,
+        outputs,
+        opts,
+    )
 }

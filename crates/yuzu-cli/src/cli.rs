@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use yuzu_config::BindAddr;
 
 #[derive(Parser)]
 #[command(
@@ -151,11 +152,12 @@ pub enum Command {
         drafts: bool,
         /// --watch のときの配信ポート（既定は dev.port）。
         /// `yuzu dev` と並走させるときに使う
-        #[arg(long)]
+        // --watch が無いと配信しないので、黙って無視せず使い方エラーにする（10-12 レビューの R3）
+        #[arg(long, requires = "watch")]
         port: Option<u16>,
-        /// --watch のときの配信ホスト（既定は dev.host）
-        #[arg(long)]
-        host: Option<String>,
+        /// --watch のときの配信ホスト（IP アドレス。既定は dev.host）
+        #[arg(long, requires = "watch", value_parser = parse_host)]
+        host: Option<BindAddr>,
     },
 
     /// dist/ を配信する最小静的サーバ
@@ -163,9 +165,9 @@ pub enum Command {
         /// ポート番号（既定: 設定の dev.port）
         #[arg(long)]
         port: Option<u16>,
-        /// バインドアドレス（既定: 設定の dev.host。コンテナ内からは 0.0.0.0）
-        #[arg(long)]
-        host: Option<String>,
+        /// バインドアドレス（IP アドレス。既定: 設定の dev.host。コンテナ内からは 0.0.0.0）
+        #[arg(long, value_parser = parse_host)]
+        host: Option<BindAddr>,
     },
 
     /// 開発サーバ（変更を監視して再ビルドし、配信中のブラウザを自動で再読み込みする）
@@ -173,9 +175,9 @@ pub enum Command {
         /// ポート番号（既定: 設定の dev.port）
         #[arg(long)]
         port: Option<u16>,
-        /// バインドアドレス（既定: 設定の dev.host。コンテナ内からは 0.0.0.0）
-        #[arg(long)]
-        host: Option<String>,
+        /// バインドアドレス（IP アドレス。既定: 設定の dev.host。コンテナ内からは 0.0.0.0）
+        #[arg(long, value_parser = parse_host)]
+        host: Option<BindAddr>,
         /// インクリメンタルキャッシュ（.yuzu/cache/）を破棄してフルビルドする
         #[arg(long)]
         force: bool,
@@ -265,6 +267,11 @@ pub enum Command {
         #[arg(value_name = "コマンド")]
         command: Option<String>,
     },
+}
+
+/// `--host` の解析。`yuzu.toml` の `dev.host` と同じ規則（yuzu-config の 1 実装）を通す
+fn parse_host(raw: &str) -> Result<BindAddr, &'static str> {
+    BindAddr::parse(raw)
 }
 
 impl Command {
@@ -390,6 +397,48 @@ mod tests {
             assert_eq!(err.kind(), ErrorKind::ArgumentConflict, "{args:?}");
             // clap の使い方エラーと同じ終了コード 2
             assert_eq!(err.exit_code(), 2, "{args:?}");
+        }
+    }
+
+    /// 10-12 レビューの R3: `build` の `--port` / `--host` は `--watch` が無いと配信しないので、
+    /// 黙って無視せず使い方エラー（終了コード 2）にする
+    #[test]
+    fn build_の_port_と_host_は_watch_が必要() {
+        for args in [
+            vec!["yuzu", "build", "--port", "9999"],
+            vec!["yuzu", "build", "--host", "0.0.0.0"],
+        ] {
+            let err = Cli::parse_validated(args.clone())
+                .err()
+                .unwrap_or_else(|| panic!("{args:?} が通った"));
+            assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument, "{args:?}");
+            assert_eq!(err.exit_code(), 2, "{args:?}");
+        }
+        let cli = Cli::parse_validated(["yuzu", "build", "--watch", "--port", "9999"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Build {
+                port: Some(9999),
+                ..
+            }
+        ));
+    }
+
+    /// `--host` は IP アドレスだけ。ホスト名は `yuzu.toml` の `dev.host` と同じ文言の
+    /// 使い方エラーにする（以前は起動してから「dev.host が不正です」と出ていた）
+    #[test]
+    fn host_は_ip_アドレスだけを受け付ける() {
+        for sub in ["dev", "preview"] {
+            let err = Cli::parse_validated(["yuzu", sub, "--host", "localhost"])
+                .err()
+                .unwrap_or_else(|| panic!("{sub} --host localhost が通った"));
+            assert_eq!(err.kind(), ErrorKind::ValueValidation, "{sub}");
+            assert_eq!(err.exit_code(), 2, "{sub}");
+            assert!(
+                err.to_string().contains("IP アドレスで指定してください"),
+                "{err}"
+            );
+            assert!(Cli::parse_validated(["yuzu", sub, "--host", "0.0.0.0"]).is_ok());
         }
     }
 

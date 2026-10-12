@@ -100,7 +100,7 @@ pub fn apply_suppressions(
         // パス 0: プロジェクト全体の無効化。抑制の照合（used / suppressed）より
         // 前に落とす = 無効化中ルールを狙う lintDisable / 行コメントは used に
         // ならない（unused 免除はパス 2a / 2b 側で行う）
-        if rule_disabled(d.rule) {
+        if rule_disabled(d.rule.id) {
             disabled += 1;
             continue;
         }
@@ -114,19 +114,19 @@ pub fn apply_suppressions(
                 // （2 つ目は unused になり削除を促す）
                 let hit = pc.line.iter().position(|ls| {
                     ls.target_line == Some(span.start_line)
-                        && ls.rules.iter().any(|r| r == d.rule)
-                        && rules::is_suppressible(d.rule)
+                        && ls.rules.iter().any(|r| r == d.rule.id)
+                        && d.rule.suppressible
                 });
                 if let Some(idx) = hit {
-                    used_line.entry(rel).or_default().insert((idx, d.rule));
+                    used_line.entry(rel).or_default().insert((idx, d.rule.id));
                     suppressed += 1;
                     continue;
                 }
             }
             // 1b: ページ単位（frontmatter lintDisable）
             if let Some((rel, set)) = by_page.get_key_value(d.rel.as_path()) {
-                if set.contains(d.rule) && rules::is_suppressible(d.rule) {
-                    used.insert((rel, d.rule));
+                if set.contains(d.rule.id) && d.rule.suppressible {
+                    used.insert((rel, d.rule.id));
                     suppressed += 1;
                     continue;
                 }
@@ -167,9 +167,9 @@ pub fn apply_suppressions(
             continue;
         };
         for (kind, span) in &pc.broken {
-            kept.push(meta_diag(
+            kept.push(Diagnostic::new(
                 rules::INVALID_LINT_SUPPRESSION,
-                page,
+                page.rel.clone(),
                 Some(*span),
                 broken_comment_message(kind),
             ));
@@ -203,7 +203,12 @@ pub fn apply_suppressions(
                         )
                     }
                 };
-                kept.push(meta_diag(rule, page, Some(ls.span), message));
+                kept.push(Diagnostic::new(
+                    rule,
+                    page.rel.clone(),
+                    Some(ls.span),
+                    message,
+                ));
             }
         }
     }
@@ -243,9 +248,9 @@ pub fn apply_suppressions(
                     )
                 }
             };
-            kept.push(meta_diag(
+            kept.push(Diagnostic::new(
                 rule,
-                page,
+                page.rel.clone(),
                 fm.as_ref()
                     .map(|(raw, fm_span)| entry_span(raw, fm_span, entry)),
                 message,
@@ -359,24 +364,6 @@ fn broken_comment_message(kind: &SuppressCommentKind) -> String {
     }
 }
 
-/// invalid / unused 警告を組み立てる（span はコメント・エントリ自身の位置）
-fn meta_diag(
-    rule: rules::Rule,
-    page: &Page,
-    span: Option<SourceSpan>,
-    message: String,
-) -> Diagnostic {
-    Diagnostic {
-        rule: rule.id,
-        severity: rule.severity,
-        base: DiagBase::Content,
-        rel: page.rel.clone(),
-        span,
-        message,
-        fix: None,
-    }
-}
-
 /// `lintDisable` のエントリが書かれた frontmatter 行の span を探す。
 /// 値の行 → `lintDisable:` キー行 → frontmatter 全体、の順でフォールバック
 /// （`aliases.rs::alias_span` と同じ方針）
@@ -464,12 +451,12 @@ mod tests {
         )]);
         assert_eq!(suppressed, 1);
         assert!(
-            diags.iter().all(|d| d.rule != "fullwidth-alphanumeric"),
+            diags.iter().all(|d| d.rule.id != "fullwidth-alphanumeric"),
             "{diags:?}"
         );
         // 効いた抑制に unused は出ない
         assert!(
-            diags.iter().all(|d| d.rule != "unused-lint-suppression"),
+            diags.iter().all(|d| d.rule.id != "unused-lint-suppression"),
             "{diags:?}"
         );
     }
@@ -486,7 +473,7 @@ mod tests {
         assert_eq!(suppressed, 1, "{diags:?}");
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "fullwidth-alphanumeric")
+            .filter(|d| d.rule.id == "fullwidth-alphanumeric")
             .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert!(hits[0].rel.ends_with("b.md"));
@@ -499,7 +486,7 @@ mod tests {
         assert_eq!(suppressed, 0);
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "invalid-lint-suppression")
+            .filter(|d| d.rule.id == "invalid-lint-suppression")
             .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert!(
@@ -508,7 +495,7 @@ mod tests {
             hits[0].message
         );
         // invalid なエントリに unused を二重報告しない
-        assert!(diags.iter().all(|d| d.rule != "unused-lint-suppression"));
+        assert!(diags.iter().all(|d| d.rule.id != "unused-lint-suppression"));
     }
 
     #[test]
@@ -517,7 +504,7 @@ mod tests {
             lint_suppressed(&[("index.md", "---\nlintDisable: [no-such-rule]\n---\n\n# t\n")]);
         let hit = diags
             .iter()
-            .find(|d| d.rule == "invalid-lint-suppression")
+            .find(|d| d.rule.id == "invalid-lint-suppression")
             .unwrap();
         assert!(
             hit.message
@@ -541,7 +528,7 @@ mod tests {
         assert_eq!(suppressed, 0);
         let hit = diags
             .iter()
-            .find(|d| d.rule == "unused-lint-suppression")
+            .find(|d| d.rule.id == "unused-lint-suppression")
             .unwrap();
         assert!(
             hit.message
@@ -565,8 +552,7 @@ mod tests {
         )]);
         // config 診断は DiagBase::ProjectRoot（cli の変換と同じ形）
         let config_diag = Diagnostic {
-            rule: crate::rules::CONFIG_PATH_OUTSIDE_ROOT.id,
-            severity: crate::rules::CONFIG_PATH_OUTSIDE_ROOT.severity,
+            rule: crate::rules::CONFIG_PATH_OUTSIDE_ROOT,
             base: crate::DiagBase::ProjectRoot,
             rel: "yuzu.toml".into(),
             span: None,
@@ -579,14 +565,14 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .any(|d| d.rule == "config-path-outside-root"),
+                .any(|d| d.rule.id == "config-path-outside-root"),
             "config 診断は残る: {:?}",
             outcome.diags
         );
         let invalid = outcome
             .diags
             .iter()
-            .find(|d| d.rule == "invalid-lint-suppression")
+            .find(|d| d.rule.id == "invalid-lint-suppression")
             .unwrap();
         assert!(
             invalid.message.contains("`yuzu.toml` を指すルール"),
@@ -608,14 +594,14 @@ mod tests {
         ]);
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "katakana-choon")
+            .filter(|d| d.rule.id == "katakana-choon")
             .collect();
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert!(hits[0].rel.ends_with("b.md"));
         // a.md 側は警告が出ていない（= 抑制も発火していない）ので unused になる
         assert_eq!(suppressed, 0);
         assert!(
-            diags.iter().any(|d| d.rule == "unused-lint-suppression"),
+            diags.iter().any(|d| d.rule.id == "unused-lint-suppression"),
             "{diags:?}"
         );
     }
@@ -628,7 +614,7 @@ mod tests {
         )]);
         let unused: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "unused-lint-suppression")
+            .filter(|d| d.rule.id == "unused-lint-suppression")
             .collect();
         assert_eq!(unused.len(), 1, "{diags:?}");
     }
@@ -644,12 +630,12 @@ mod tests {
         assert_eq!(suppressed, 1, "{diags:?}");
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "fullwidth-alphanumeric")
+            .filter(|d| d.rule.id == "fullwidth-alphanumeric")
             .collect();
         assert_eq!(hits.len(), 1, "6 行目の分だけ残る: {diags:?}");
         assert_eq!(hits[0].span.unwrap().start_line, 6);
         assert!(
-            diags.iter().all(|d| d.rule != "unused-lint-suppression"),
+            diags.iter().all(|d| d.rule.id != "unused-lint-suppression"),
             "{diags:?}"
         );
     }
@@ -661,7 +647,7 @@ mod tests {
             "# t\n\n<!-- yuzu-lint-disable-next-line fullwidth-alphanumeric -->\n\nＷｅｂ。\n",
         )]);
         assert_eq!(suppressed, 1, "{diags:?}");
-        assert!(diags.iter().all(|d| d.rule != "fullwidth-alphanumeric"));
+        assert!(diags.iter().all(|d| d.rule.id != "fullwidth-alphanumeric"));
     }
 
     #[test]
@@ -674,10 +660,10 @@ mod tests {
         assert!(
             diags
                 .iter()
-                .all(|d| d.rule != "fullwidth-alphanumeric" && d.rule != "halfwidth-kana"),
+                .all(|d| d.rule.id != "fullwidth-alphanumeric" && d.rule.id != "halfwidth-kana"),
             "{diags:?}"
         );
-        assert!(diags.iter().all(|d| d.rule != "unused-lint-suppression"));
+        assert!(diags.iter().all(|d| d.rule.id != "unused-lint-suppression"));
     }
 
     #[test]
@@ -688,7 +674,7 @@ mod tests {
         )]);
         assert_eq!(suppressed, 2, "{diags:?}");
         assert!(
-            diags.iter().all(|d| d.rule != "unused-lint-suppression"),
+            diags.iter().all(|d| d.rule.id != "unused-lint-suppression"),
             "両方のコメントが使われる: {diags:?}"
         );
     }
@@ -702,7 +688,7 @@ mod tests {
         assert_eq!(suppressed, 0);
         let hit = diags
             .iter()
-            .find(|d| d.rule == "unused-lint-suppression")
+            .find(|d| d.rule.id == "unused-lint-suppression")
             .unwrap();
         assert!(
             hit.message.contains("次の内容行で発火しません"),
@@ -720,7 +706,7 @@ mod tests {
         )]);
         let hit = diags
             .iter()
-            .find(|d| d.rule == "invalid-lint-suppression")
+            .find(|d| d.rule.id == "invalid-lint-suppression")
             .unwrap();
         assert!(hit.message.contains("1 つ以上指定"), "{}", hit.message);
     }
@@ -734,7 +720,7 @@ mod tests {
         )]);
         let hit = diags
             .iter()
-            .find(|d| d.rule == "invalid-lint-suppression")
+            .find(|d| d.rule.id == "invalid-lint-suppression")
             .unwrap();
         assert!(
             hit.message.contains("未知のディレクティブ")
@@ -753,7 +739,7 @@ mod tests {
         assert_eq!(suppressed, 0);
         let hit = diags
             .iter()
-            .find(|d| d.rule == "invalid-lint-suppression")
+            .find(|d| d.rule.id == "invalid-lint-suppression")
             .unwrap();
         assert!(hit.message.contains("閉じ"), "{}", hit.message);
         let span = hit.span.unwrap();
@@ -773,7 +759,7 @@ mod tests {
         assert_eq!(suppressed, 0);
         let hit = diags
             .iter()
-            .find(|d| d.rule == "invalid-lint-suppression")
+            .find(|d| d.rule.id == "invalid-lint-suppression")
             .unwrap();
         assert!(hit.message.contains("単独の行"), "{}", hit.message);
     }
@@ -786,7 +772,7 @@ mod tests {
         )]);
         let hit = diags
             .iter()
-            .find(|d| d.rule == "invalid-lint-suppression")
+            .find(|d| d.rule.id == "invalid-lint-suppression")
             .unwrap();
         assert!(
             hit.message.contains("error ルールのため"),
@@ -794,7 +780,7 @@ mod tests {
             hit.message
         );
         assert!(
-            diags.iter().all(|d| d.rule != "unused-lint-suppression"),
+            diags.iter().all(|d| d.rule.id != "unused-lint-suppression"),
             "invalid に unused を二重報告しない: {diags:?}"
         );
     }
@@ -807,7 +793,7 @@ mod tests {
         )]);
         let hit = diags
             .iter()
-            .find(|d| d.rule == "invalid-lint-suppression")
+            .find(|d| d.rule.id == "invalid-lint-suppression")
             .unwrap();
         assert!(
             hit.message.contains("空白区切りで指定します"),
@@ -823,10 +809,10 @@ mod tests {
             "---\nlintDisable: [fullwidth-alphanumeric]\n---\n\n# t\n\n<!-- yuzu-lint-disable-next-line fullwidth-alphanumeric -->\nＷｅｂ。\n",
         )]);
         assert_eq!(suppressed, 1, "{diags:?}");
-        assert!(diags.iter().all(|d| d.rule != "fullwidth-alphanumeric"));
+        assert!(diags.iter().all(|d| d.rule.id != "fullwidth-alphanumeric"));
         let unused: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "unused-lint-suppression")
+            .filter(|d| d.rule.id == "unused-lint-suppression")
             .collect();
         assert_eq!(unused.len(), 1, "ページ単位側だけ unused: {diags:?}");
         assert!(
@@ -844,9 +830,8 @@ mod tests {
         )]);
         assert_eq!(suppressed, 0);
         assert!(
-            diags.iter().all(
-                |d| d.rule != "invalid-lint-suppression" && d.rule != "unused-lint-suppression"
-            ),
+            diags.iter().all(|d| d.rule.id != "invalid-lint-suppression"
+                && d.rule.id != "unused-lint-suppression"),
             "{diags:?}"
         );
     }
@@ -860,8 +845,7 @@ mod tests {
         )]);
         // directory-too-deep はファイル単位（span なし）の warning
         let diag = Diagnostic {
-            rule: crate::rules::DIRECTORY_TOO_DEEP.id,
-            severity: crate::rules::DIRECTORY_TOO_DEEP.severity,
+            rule: crate::rules::DIRECTORY_TOO_DEEP,
             base: crate::DiagBase::Content,
             rel: "index.md".into(),
             span: None,
@@ -871,7 +855,10 @@ mod tests {
         let outcome = apply_suppressions(vec![diag], &pages, &opts, &LintOptions::default());
         assert_eq!(outcome.suppressed, 0);
         assert!(
-            outcome.diags.iter().any(|d| d.rule == "directory-too-deep"),
+            outcome
+                .diags
+                .iter()
+                .any(|d| d.rule.id == "directory-too-deep"),
             "span なしは行コメントで落ちない: {:?}",
             outcome.diags
         );
@@ -879,7 +866,7 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .any(|d| d.rule == "unused-lint-suppression"),
+                .any(|d| d.rule.id == "unused-lint-suppression"),
             "{:?}",
             outcome.diags
         );
@@ -896,12 +883,12 @@ mod tests {
         assert_eq!(suppressed, 1, "{diags:?}");
         let hits: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "fullwidth-alphanumeric")
+            .filter(|d| d.rule.id == "fullwidth-alphanumeric")
             .collect();
         assert_eq!(hits.len(), 1, "2 項目目の分だけ残る: {diags:?}");
         assert_eq!(hits[0].span.unwrap().start_line, 6);
         assert!(
-            diags.iter().all(|d| d.rule != "unused-lint-suppression"),
+            diags.iter().all(|d| d.rule.id != "unused-lint-suppression"),
             "{diags:?}"
         );
     }
@@ -917,11 +904,11 @@ mod tests {
         )]);
         assert_eq!(suppressed, 0);
         assert!(
-            diags.iter().any(|d| d.rule == "halfwidth-kana"),
+            diags.iter().any(|d| d.rule.id == "halfwidth-kana"),
             "セルの違反は残る: {diags:?}"
         );
         assert!(
-            diags.iter().any(|d| d.rule == "unused-lint-suppression"),
+            diags.iter().any(|d| d.rule.id == "unused-lint-suppression"),
             "表の前のコメントは unused になる: {diags:?}"
         );
     }
@@ -933,7 +920,7 @@ mod tests {
             "# t\n\n> <!-- yuzu-lint-disable-next-line fullwidth-alphanumeric -->\n> Ｗｅｂ。\n",
         )]);
         assert_eq!(suppressed, 1, "{diags:?}");
-        assert!(diags.iter().all(|d| d.rule != "fullwidth-alphanumeric"));
+        assert!(diags.iter().all(|d| d.rule.id != "fullwidth-alphanumeric"));
     }
 
     #[test]
@@ -944,7 +931,7 @@ mod tests {
         )]);
         let unused: Vec<_> = diags
             .iter()
-            .filter(|d| d.rule == "unused-lint-suppression")
+            .filter(|d| d.rule.id == "unused-lint-suppression")
             .collect();
         assert_eq!(unused.len(), 1, "{diags:?}");
     }
@@ -961,7 +948,7 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .all(|d| d.rule != "fullwidth-alphanumeric"),
+                .all(|d| d.rule.id != "fullwidth-alphanumeric"),
             "{:?}",
             outcome.diags
         );
@@ -976,7 +963,7 @@ mod tests {
             &rules_off(&["fullwidth-alphanumeric"]),
         );
         assert!(
-            outcome.diags.iter().any(|d| d.rule == "halfwidth-kana"),
+            outcome.diags.iter().any(|d| d.rule.id == "halfwidth-kana"),
             "{:?}",
             outcome.diags
         );
@@ -993,7 +980,7 @@ mod tests {
             &rules_off(&["katakana-choon"]),
         );
         assert!(
-            outcome.diags.iter().all(|d| d.rule != "katakana-choon"),
+            outcome.diags.iter().all(|d| d.rule.id != "katakana-choon"),
             "{:?}",
             outcome.diags
         );
@@ -1006,8 +993,7 @@ mod tests {
         let pages = pages_of(&[("index.md", "# t\n")]);
         // spec-warning は yuzu-render 産だが漏斗は同じ（手組みで再現）
         let diag = Diagnostic {
-            rule: crate::rules::SPEC_WARNING.id,
-            severity: crate::rules::SPEC_WARNING.severity,
+            rule: crate::rules::SPEC_WARNING,
             base: crate::DiagBase::Content,
             rel: "index.md".into(),
             span: None,
@@ -1024,8 +1010,7 @@ mod tests {
         let opts = MarkdownOptions::default();
         let pages = pages_of(&[("index.md", "# t\n")]);
         let diag = Diagnostic {
-            rule: crate::rules::BROKEN_LINK.id,
-            severity: crate::rules::BROKEN_LINK.severity,
+            rule: crate::rules::BROKEN_LINK,
             base: crate::DiagBase::Content,
             rel: "index.md".into(),
             span: None,
@@ -1034,7 +1019,7 @@ mod tests {
         };
         let outcome = apply_suppressions(vec![diag], &pages, &opts, &rules_off(&["broken-link"]));
         assert!(
-            outcome.diags.iter().any(|d| d.rule == "broken-link"),
+            outcome.diags.iter().any(|d| d.rule.id == "broken-link"),
             "suppressible ガードが防御する: {:?}",
             outcome.diags
         );
@@ -1054,7 +1039,8 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .all(|d| d.rule != "unused-lint-suppression" && d.rule != "fullwidth-alphanumeric"),
+                .all(|d| d.rule.id != "unused-lint-suppression"
+                    && d.rule.id != "fullwidth-alphanumeric"),
             "{:?}",
             outcome.diags
         );
@@ -1078,7 +1064,7 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .all(|d| d.rule != "unused-lint-suppression"),
+                .all(|d| d.rule.id != "unused-lint-suppression"),
             "{:?}",
             outcome.diags
         );
@@ -1102,7 +1088,7 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .all(|d| d.rule != "unused-lint-suppression"),
+                .all(|d| d.rule.id != "unused-lint-suppression"),
             "{:?}",
             outcome.diags
         );
@@ -1113,7 +1099,7 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .filter(|d| d.rule == "unused-lint-suppression")
+                .filter(|d| d.rule.id == "unused-lint-suppression")
                 .count(),
             2,
             "ページ単位と行単位の両方: {:?}",
@@ -1153,7 +1139,7 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .all(|d| d.rule != "unused-lint-suppression"),
+                .all(|d| d.rule.id != "unused-lint-suppression"),
             "{:?}",
             outcome.diags
         );
@@ -1173,7 +1159,7 @@ mod tests {
             outcome
                 .diags
                 .iter()
-                .filter(|d| d.rule == "unused-lint-suppression")
+                .filter(|d| d.rule.id == "unused-lint-suppression")
                 .count(),
             1,
             "{:?}",
@@ -1193,7 +1179,7 @@ mod tests {
         let invalid: Vec<_> = outcome
             .diags
             .iter()
-            .filter(|d| d.rule == "invalid-lint-suppression")
+            .filter(|d| d.rule.id == "invalid-lint-suppression")
             .collect();
         assert_eq!(invalid.len(), 2, "免除は unused だけ: {:?}", outcome.diags);
     }

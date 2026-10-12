@@ -18,8 +18,8 @@ use kabosu::{
 };
 
 use crate::schema::{
-    BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DarkMode, DevConfig,
-    GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,
+    BindAddr, BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DarkMode,
+    DevConfig, GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,
     MarkdownConfig, MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig,
     SearchConfig, ShardConfig, SiteConfig, ThemeConfig, TocConfig, TypoToleranceConfig,
 };
@@ -263,6 +263,34 @@ impl Decode for MermaidBackend {
 impl Encode for MermaidBackend {
     fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
         encoder.string(self.as_str());
+        Ok(())
+    }
+}
+
+/// `dev.host`。IP アドレスとして読めない値は位置付きの Error 診断にして None
+impl Decode for BindAddr {
+    fn decode(node: &Node, cx: &mut DecodeContext<'_>) -> Option<Self> {
+        let found = String::decode(node, cx)?;
+        match BindAddr::parse(&found) {
+            Ok(addr) => Some(addr),
+            Err(reason) => {
+                let path = cx.key_path().clone();
+                cx.diagnostic(Diagnostic::new(
+                    DiagnosticCode::Custom("invalid-value".into()),
+                    Severity::Error,
+                    format!("`{path}` の値 `{found}` は使えません。{reason}"),
+                    path,
+                    node.span(),
+                ));
+                None
+            }
+        }
+    }
+}
+
+impl Encode for BindAddr {
+    fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+        encoder.string(&self.to_string());
         Ok(())
     }
 }

@@ -11,7 +11,7 @@
 use std::path::Path;
 
 use crate::MarkdownOptions;
-use crate::diagnostics::{DiagBase, Diagnostic};
+use crate::diagnostics::Diagnostic;
 use crate::markdown;
 use crate::markdown::fence::{IncludeSpec, parse_fence_info};
 use crate::model::{Page, SourceSpan};
@@ -102,14 +102,13 @@ pub fn validate_includes(pages: &[Page], root: &Path, opts: &MarkdownOptions) ->
     // 構造的に出さないため入口で外す（他の検証と同じ規律）
     for page in pages.iter().filter(|p| !p.is_generated()) {
         for inc in collect_include_specs(&page.source, opts) {
-            let diag = |message: String| Diagnostic {
-                rule: rules::INCLUDE_ERROR.id,
-                severity: rules::INCLUDE_ERROR.severity,
-                base: DiagBase::Content,
-                rel: page.rel.clone(),
-                span: Some(inc.span),
-                message,
-                fix: None,
+            let diag = |message: String| {
+                Diagnostic::new(
+                    rules::INCLUDE_ERROR,
+                    page.rel.clone(),
+                    Some(inc.span),
+                    message,
+                )
             };
             match resolve_include(root, &inc.spec) {
                 Err(message) => diags.push(diag(message)),
@@ -226,15 +225,12 @@ pub fn validate_spec_refs(pages: &[Page], root: &Path, opts: &MarkdownOptions) -
             }
             // 解決そのものは描画・検査と同じ 1 実装を通す（インラインは Ok で素通り）
             if let Err(e) = resolve_spec_source(&fence.body, |rel| resolve_spec_file(root, rel)) {
-                diags.push(Diagnostic {
-                    rule: rules::SPEC_ERROR.id,
-                    severity: rules::SPEC_ERROR.severity,
-                    base: DiagBase::Content,
-                    rel: page.rel.clone(),
-                    span: Some(fence.span),
-                    message: e.message,
-                    fix: None,
-                });
+                diags.push(Diagnostic::new(
+                    rules::SPEC_ERROR,
+                    page.rel.clone(),
+                    Some(fence.span),
+                    e.message,
+                ));
             }
         }
     }
@@ -387,7 +383,7 @@ mod tests {
         let (dir, pages) = project("```openapi\nfile: specs/api.yaml\n```\n");
         let diags = refs(dir.path(), &pages);
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].rule, "spec-error");
+        assert_eq!(diags[0].rule.id, "spec-error");
         assert!(diags[0].message.contains("specs/api.yaml"), "{diags:?}");
         // 行番号が付く（ファイル単位の診断ではない）
         assert!(diags[0].span.is_some());
@@ -398,7 +394,7 @@ mod tests {
         let (dir, pages) = project("```openapi\nfile: ../outside.yaml\n```\n");
         let diags = refs(dir.path(), &pages);
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].rule, "spec-error");
+        assert_eq!(diags[0].rule.id, "spec-error");
     }
 
     #[test]
@@ -451,7 +447,7 @@ mod tests {
             &MarkdownOptions::default(),
         );
         assert_eq!(diags.len(), 1, "{diags:?}");
-        assert_eq!(diags[0].rule, "include-error");
+        assert_eq!(diags[0].rule.id, "include-error");
         assert!(
             diags[0].message.contains("断片 snippets/bad.md"),
             "{}",

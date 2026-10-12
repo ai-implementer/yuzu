@@ -11,9 +11,10 @@ use std::time::Duration;
 use anyhow::Context;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_core::{BuildCache, IgnoreMatcher, OutputTracker, output};
+use yuzu_core::{BuildCache, IgnoreMatcher, OutputTracker, SiteOutput, output};
 use yuzu_render::{LiveReloadMode, RenderCtx, RenderParams, RenderShared};
 
+use crate::commands::collect::{self, Scope};
 use crate::commands::preview;
 
 /// エディタの連続保存をまとめる debounce 幅（build --watch / dev 共通）
@@ -67,8 +68,9 @@ pub(crate) fn format_changed(root: &std::path::Path, changed: &[PathBuf]) -> Str
 pub(crate) struct Overrides {
     /// `--base-url`（build）。site/build の設定より優先
     pub(crate) base_url: Option<String>,
-    /// `--host`（dev）。dev.host より優先（コンテナ内から 0.0.0.0 で配信する用途）
-    pub(crate) host: Option<String>,
+    /// `--host`（dev / preview / build --watch）。dev.host より優先（コンテナ内から 0.0.0.0 で
+    /// 配信する用途）
+    pub(crate) host: Option<yuzu_config::BindAddr>,
 }
 
 impl Overrides {
@@ -78,8 +80,8 @@ impl Overrides {
         if let Some(raw) = &self.base_url {
             rc.base_url = yuzu_config::normalize_base_url(raw);
         }
-        if let Some(host) = &self.host {
-            rc.config.dev.host = host.clone();
+        if let Some(host) = self.host {
+            rc.config.dev.host = host;
         }
     }
 }
@@ -114,7 +116,7 @@ pub fn run(
     force: bool,
     drafts: bool,
     port: Option<u16>,
-    host: Option<String>,
+    host: Option<yuzu_config::BindAddr>,
 ) -> anyhow::Result<()> {
     // フラグの値は watch 中も変わらないので、検証はここで 1 回（yuzu.toml 側は load が見る）
     if let Some(raw) = &base_url {
@@ -158,7 +160,7 @@ pub fn run(
     // 受け入れ条件「編集 → ブラウザ自動更新」を 1 コマンドで満たすため、
     // preview と同じ静的サーバも起動する（ブロッキング）。
     // ポート・ホストは `dev` と同じく上書きできる（両方を並走させる用途）
-    preview::serve_dist(&rc, port, watch_handle.take_failure())
+    preview::serve_dist(&rc, port, None, watch_handle.take_failure())
 }
 
 /// 監視ビルド 1 本ぶんの状態（`build --watch` / `dev` 共通）。
@@ -217,7 +219,7 @@ impl WatchBuild {
         }
         self.config_text = text;
 
-        let mut next = match yuzu_config::load(&self.rc.root) {
+        let mut next = match crate::commands::read_config(&self.rc.root) {
             Ok(next) => next,
             Err(e) => {
                 tracing::error!(
@@ -245,49 +247,93 @@ impl WatchBuild {
     }
 }
 
-/// 監視・配信の前提に焼き付いている設定を起動時の値へ戻し、
-/// 再起動が必要だと警告する。
+/// 監視・配信の前提になる設定（起動時に固定し、watch 中の `yuzu.toml` の変更では差し替えない）。
 ///
-/// これらを watch 中に差し替えると壊れる:
-/// - `output.dir` — 新しい出力先が**監視除外に入らない**（再ビルド → 変更検知の無限ループ）。
-///   配信中のディレクトリでもある
-/// - `base_url` / `dev.host` / `dev.port` — 起動済みサーバの bind と URL 接頭辞
-/// - `dev.live_reload` — 注入済みの JS と WS 通知の有無
-/// - `dev.allowed_hosts` — 起動済みサーバの Host / Origin の検査に渡している
-/// - `build.watch_ignore` — 監視除外の glob（起動時に監視スレッドへ渡している）
+/// dev / preview / `build --watch` の配信はこの値から組み（`preview::serve_dist`）、
+/// watch 中の変更は [`pin_restart_only`] がこの値の項目を起動時へ戻す。以前は配信へ渡す設定と
+/// 固定する設定が別々の一覧で、テストも `dev.host` と `dev.allowed_hosts` を見ていなかった
+/// （10-12 レビューの R3）。項目を足すと `pin_restart_only` の分割代入がコンパイルエラーになる
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StartupSettings {
+    /// 出力先。配信するディレクトリで、監視の除外にも入っている（差し替えると新しい出力先が
+    /// 除外から外れ、再ビルド → 変更検知の無限ループになる）
+    pub(crate) output_dir: PathBuf,
+    /// 配信の URL 接頭辞
+    pub(crate) base_url: String,
+    /// 配信の bind アドレス（`dev.host`）
+    pub(crate) host: std::net::IpAddr,
+    /// 配信のポート（`dev.port`。`--port` はこれより優先）
+    pub(crate) port: u16,
+    /// `yuzu dev` の WebSocket ライブリロード（注入済みの JS と WS 通知の有無）
+    pub(crate) live_reload: bool,
+    /// 起動済みサーバの Host / Origin の検査
+    pub(crate) allowed_hosts: Vec<String>,
+    /// 監視除外の glob（起動時に監視スレッドへ渡している）
+    pub(crate) watch_ignore: Vec<String>,
+}
+
+impl StartupSettings {
+    pub(crate) fn of(rc: &ResolvedConfig) -> Self {
+        let dev = &rc.config.dev;
+        Self {
+            output_dir: rc.output_dir.clone(),
+            base_url: rc.base_url.clone(),
+            host: dev.host.0,
+            port: dev.port,
+            live_reload: dev.live_reload,
+            allowed_hosts: dev.allowed_hosts.clone(),
+            watch_ignore: rc.config.build.watch_ignore.clone(),
+        }
+    }
+}
+
+/// 監視・配信の前提になる設定（[`StartupSettings`]）を起動時の値へ戻し、
+/// 再起動が必要だと警告する
 fn pin_restart_only(next: &mut ResolvedConfig, current: &ResolvedConfig) {
+    let started = StartupSettings::of(current);
+    // ワイルドカード（`..`）を書かない: 項目を足すと、比較と差し戻しを書くまでコンパイルが止まる
+    let StartupSettings {
+        output_dir,
+        base_url,
+        host,
+        port,
+        live_reload,
+        allowed_hosts,
+        watch_ignore,
+    } = StartupSettings::of(next);
     let mut pinned: Vec<&str> = Vec::new();
-    if next.config.output.dir != current.config.output.dir {
+    if output_dir != started.output_dir {
         pinned.push("output.dir");
         next.config.output.dir = current.config.output.dir.clone();
         next.output_dir = current.output_dir.clone();
     }
-    if next.base_url != current.base_url {
+    if base_url != started.base_url {
         pinned.push("base_url");
         next.base_url = current.base_url.clone();
         next.config.site.base_url = current.config.site.base_url.clone();
         next.config.build.base_url = current.config.build.base_url.clone();
     }
-    if next.config.build.watch_ignore != current.config.build.watch_ignore {
+    if watch_ignore != started.watch_ignore {
         pinned.push("build.watch_ignore");
         next.config.build.watch_ignore = current.config.build.watch_ignore.clone();
     }
-    if next.config.dev.host != current.config.dev.host {
+    if host != started.host {
         pinned.push("dev.host");
-        next.config.dev.host = current.config.dev.host.clone();
+        next.config.dev.host = current.config.dev.host;
     }
-    if next.config.dev.port != current.config.dev.port {
+    if port != started.port {
         pinned.push("dev.port");
         next.config.dev.port = current.config.dev.port;
     }
-    if next.config.dev.live_reload != current.config.dev.live_reload {
+    if live_reload != started.live_reload {
         pinned.push("dev.live_reload");
         next.config.dev.live_reload = current.config.dev.live_reload;
     }
-    if next.config.dev.allowed_hosts != current.config.dev.allowed_hosts {
+    if allowed_hosts != started.allowed_hosts {
         pinned.push("dev.allowed_hosts");
         next.config.dev.allowed_hosts = current.config.dev.allowed_hosts.clone();
     }
+    debug_assert_eq!(StartupSettings::of(next), started, "差し戻しの漏れ");
     if !pinned.is_empty() {
         tracing::warn!(
             "{} の変更は再起動しないと反映されません（起動時の値のままビルドします）",
@@ -383,19 +429,6 @@ pub(crate) fn build_once(
     // 検証するが、そこへ到達する前に dist を消してしまうと「不正なページのせいで
     // 既存の正常な成果物を失う」ことになる
     yuzu_render::validate_pages(&site, rc)?;
-    // 大文字小文字だけが違う URL は止めずに知らせる（区別する FS とサーバでは別の URL と
-    // して動くため warning。check と同じく lint.rules で外したら出さない）
-    if rc
-        .config
-        .lint
-        .rules
-        .get(yuzu_core::rules::ROUTE_CASE_CONFLICT.id)
-        != Some(&false)
-    {
-        for d in yuzu_core::validate_url_case(&site.pages, &md_opts) {
-            tracing::warn!(page = %d.rel.display(), "{}", d.message);
-        }
-    }
 
     // 前回の出力マニフェスト。無い（初回・--force 後・破損）なら既知状態がないので、
     // output.clean に従い dist を作り直してから全書き出しする
@@ -427,8 +460,10 @@ pub(crate) fn build_once(
         git_dates: git_dates.as_ref(),
     })?;
 
-    // 検索インデックスは render の後（描画結果とは独立だが、ログ順を保つ）
-    if rc.config.search.enabled {
+    // 検索インデックスは render の後（描画結果とは独立だが、ログ順を保つ）。
+    // 出すかどうかは render の書き出し・下の掃除と同じ SiteOutput の判断を通す
+    let switches = yuzu_render::output_switches(rc, live_reload);
+    if SiteOutput::SearchIndex.emitted(&switches) {
         let search = &rc.config.search;
         // 同義語グループ = lint.terms（正表記＋ゆれ表記で 1 グループ）＋ search.synonyms。
         // lint が本文を正表記へ寄せ、検索がゆれ側を吸収する対の設計（Phase 20）
@@ -474,24 +509,26 @@ pub(crate) fn build_once(
             .context("孤児出力の削除に失敗しました")?,
         None => 0,
     };
-    // 設定で止めた生成物（原稿の .md・llms.txt / llms-full.txt・sitemap.xml・検索
-    // インデックス）は、前回の記録の有無に関係なく消す。`--force` や `.yuzu` の削除の後は
-    // 記録が無く、`output.clean = false` だと上の孤児掃除も dist の作り直しも働かないため
-    // （止めた原稿の .md が frontmatter ごと残っていた。PR #42 のレビュー指摘）。
+    // 今回出さない生成物（原稿の .md・llms.txt / llms-full.txt・sitemap.xml・syntect.css・
+    // build_id・検索インデックス）は、前回の記録の有無に関係なく消す。`--force` や `.yuzu` の
+    // 削除の後は記録が無く、`output.clean = false` だと上の孤児掃除も dist の作り直しも
+    // 働かないため（止めた原稿の .md が frontmatter ごと残っていた。PR #42 のレビュー指摘。
+    // syntect.css と build_id も同じく残っていた = 10-12 レビューの R1）。
     // 今回書いたもの（public/ に置いた同じパスのファイル）は消さない
-    let unpublished = yuzu_render::unpublished_outputs(rc, &site);
-    removed += output::remove_orphans(&rc.output_dir, &unpublished, &written)
-        .context("止めた生成物の削除に失敗しました")?;
+    let unpublished = yuzu_render::unpublished_outputs(rc, &site, live_reload);
+    let mut stale = unpublished.files;
     // 検索インデックスはファイルの顔ぶれが索引の大きさで変わるので、`_search/` にある
     // ファイルを列挙して今回書かなかったものを消す。ディレクトリごとは消さない
     // （public/_search/ に置いた利用者のファイルを残すため。残っていると索引の削除まで
     // 飛ばしていた = PR #42 の再レビューの指摘）
-    if !rc.config.search.enabled {
-        let stale = output::list_files_under(&rc.output_dir, yuzu_index::SEARCH_DIR_NAME)
-            .context("検索インデックスの出力を列挙できません")?;
-        removed += output::remove_orphans(&rc.output_dir, &stale, &written)
-            .context("検索インデックスの削除に失敗しました")?;
+    for dir in unpublished.dirs {
+        stale.extend(
+            output::list_files_under(&rc.output_dir, dir)
+                .with_context(|| format!("{dir}/ の出力を列挙できません"))?,
+        );
     }
+    removed += output::remove_orphans(&rc.output_dir, &stale, &written)
+        .context("止めた生成物の削除に失敗しました")?;
     output::save_manifest(&session.manifest_path, &written)
         .context("出力マニフェストを保存できません")?;
     session
@@ -501,7 +538,7 @@ pub(crate) fn build_once(
 
     // 数えられなくてもビルドは成功のまま（終了コードを変えない。dev では失敗扱いにすると
     // ブラウザの再読み込みまで止まる）
-    if let Err(e) = report_broken(rc, &site, &md_opts, include_drafts) {
+    if let Err(e) = report_problems(rc, &site, &md_opts, include_drafts, live_reload) {
         tracing::warn!("リンク切れの件数を数えられませんでした: {e:#}");
     }
 
@@ -554,33 +591,34 @@ fn warn_if_no_pages(rc: &ResolvedConfig, site: &yuzu_core::SiteModel) {
     tracing::warn!("{message}");
 }
 
-/// ビルドしたページのリンク切れ・取り込みの失敗を数えて、1 件以上なら 1 行で知らせる
-/// （Phase 85。画像切れ・見出しへのリンクも含む。終了コードは変えない = 成功のまま。
-/// 詳細と CI の判定は `yuzu check`）。
+/// ビルドしたページの問題を知らせる（終了コードは変えない = 成功のまま。詳細と CI の判定は
+/// `yuzu check`）。
 ///
-/// check と同じ判定（`check_links` / `validate_includes` / `validate_spec_refs`）を、
-/// ビルドのページ集合（draft を除く。`--drafts` なら含む）で回す。描画中の検出を
-/// 数えないのは、本文キャッシュに当たったページは描き直さず、2 回目以降の build で
-/// 同じリンク切れが黙るため（数えるには検出結果をキャッシュに載せる = キャッシュ形式の
-/// 変更が要る）。docs の規模で数十ミリ秒
-fn report_broken(
+/// - 大文字小文字だけが違う URL は 1 件ずつ警告する（区別する FS とサーバでは別の URL として
+///   動くため止めない）
+/// - リンク切れ（画像切れ・見出しへのリンクも含む）と取り込みの失敗は数えて、1 件以上なら
+///   1 行で知らせる（Phase 85）
+///
+/// 診断は check と同じ収集（`collect`）と抑制を通す。frontmatter の `lintDisable`・
+/// `lint.rules` の解釈が check と食い違わない（10-12 レビューの R2）。ページ集合はビルドの
+/// もの（draft を除く。`--drafts` なら含む）。描画中の検出を数えないのは、本文キャッシュに
+/// 当たったページは描き直さず、2 回目以降の build で同じリンク切れが黙るため（数えるには
+/// 検出結果をキャッシュに載せる = キャッシュ形式の変更が要る）。docs の規模で数十ミリ秒
+fn report_problems(
     rc: &ResolvedConfig,
     site: &yuzu_core::SiteModel,
     md_opts: &yuzu_core::MarkdownOptions,
     include_drafts: bool,
+    live_reload: LiveReloadMode,
 ) -> anyhow::Result<()> {
-    let links = yuzu_core::check_links(
-        &site.pages,
-        rc.public_dir.as_deref(),
-        &rc.content_dir,
-        &rc.config.input.ignore,
-        include_drafts,
-        md_opts,
-    )?
-    .diags
-    .len();
-    let includes = yuzu_core::validate_includes(&site.pages, &rc.root, md_opts).len()
-        + yuzu_core::validate_spec_refs(&site.pages, &rc.root, md_opts).len();
+    let BuildProblems {
+        case_conflicts,
+        links,
+        includes,
+    } = build_problems(rc, site, md_opts, include_drafts, live_reload)?;
+    for d in &case_conflicts {
+        tracing::warn!(page = %d.rel.display(), "{}", d.message);
+    }
     if links + includes == 0 {
         return Ok(());
     }
@@ -597,6 +635,58 @@ fn report_broken(
         check_command(&rc.root)
     );
     Ok(())
+}
+
+/// build が知らせる問題（[`report_problems`] が表示する）
+struct BuildProblems {
+    /// 大文字小文字だけが違う URL（抑制を適用した後の診断）
+    case_conflicts: Vec<yuzu_core::Diagnostic>,
+    /// リンク切れ・見出しへのリンク切れの件数
+    links: usize,
+    /// コンテンツインクルードと仕様の `file:` 参照の失敗の件数
+    includes: usize,
+}
+
+/// check と同じ収集と抑制を通し、build が知らせるルールだけを取り出す
+/// （抑制の不使用・不正の警告などは check が報告する）
+fn build_problems(
+    rc: &ResolvedConfig,
+    site: &yuzu_core::SiteModel,
+    md_opts: &yuzu_core::MarkdownOptions,
+    include_drafts: bool,
+    live_reload: LiveReloadMode,
+) -> anyhow::Result<BuildProblems> {
+    use yuzu_core::rules;
+
+    let outcome = collect::collect(
+        rc,
+        &site.pages,
+        md_opts,
+        &Scope::Build {
+            include_drafts,
+            live_reload,
+        },
+    )?
+    .suppress(&site.pages, md_opts);
+    let count = |targets: &[rules::Rule]| {
+        outcome
+            .diags
+            .iter()
+            .filter(|d| targets.contains(&d.rule))
+            .count()
+    };
+    let links = count(&[rules::BROKEN_LINK, rules::BROKEN_ANCHOR]);
+    let includes = count(&[rules::INCLUDE_ERROR, rules::SPEC_ERROR]);
+    let case_conflicts = outcome
+        .diags
+        .into_iter()
+        .filter(|d| d.rule == rules::ROUTE_CASE_CONFLICT)
+        .collect();
+    Ok(BuildProblems {
+        case_conflicts,
+        links,
+        includes,
+    })
 }
 
 /// build と同じプロジェクトを check するコマンド。cwd がプロジェクトの中なら
@@ -756,8 +846,13 @@ mod tests {
         next.config.dev.port = 9999;
         next.config.dev.live_reload = !current.config.dev.live_reload;
         next.config.build.watch_ignore = Vec::new();
+        next.config.dev.host = yuzu_config::BindAddr::parse("0.0.0.0").unwrap();
+        next.config.dev.allowed_hosts = vec!["mypc.local".to_string()];
 
         pin_restart_only(&mut next, &current);
+
+        // 監視・配信の前提は起動時の値のまま（項目の一覧は StartupSettings が持つ）
+        assert_eq!(StartupSettings::of(&next), StartupSettings::of(&current));
 
         assert_eq!(next.output_dir, current.output_dir);
         assert_eq!(next.config.output.dir, current.config.output.dir);
@@ -772,6 +867,8 @@ mod tests {
             next.config.build.watch_ignore,
             current.config.build.watch_ignore
         );
+        assert_eq!(next.config.dev.host, current.config.dev.host);
+        assert!(next.config.dev.allowed_hosts.is_empty());
     }
 
     #[test]
@@ -801,13 +898,13 @@ mod tests {
     fn cli_の上書きは設定リロード後も優先する() {
         let overrides = Overrides {
             base_url: Some("docs".to_string()),
-            host: Some("0.0.0.0".to_string()),
+            host: Some(yuzu_config::BindAddr::parse("0.0.0.0").unwrap()),
         };
         let mut rc = resolved(Path::new("/proj"));
         rc.config.site.base_url = Some("/from-file/".to_string());
         overrides.apply(&mut rc);
         assert_eq!(rc.base_url, "/docs/");
-        assert_eq!(rc.config.dev.host, "0.0.0.0");
+        assert_eq!(rc.config.dev.host.to_string(), "0.0.0.0");
     }
 
     /// PR #42 のレビュー指摘: `output.clean = false` のサイトで、`.md` などを止めてから
@@ -862,6 +959,129 @@ mod tests {
             std::fs::read_to_string(dist.join("llms.txt")).unwrap(),
             "手書きの llms.txt\n"
         );
+    }
+
+    /// 10-12 レビューの R1: `output.clean = false` のサイトで、ハイライトを止めて `--force` しても
+    /// syntect.css を残さない。`build --watch` の後の通常の build で build_id を残さない
+    /// （どちらも書き出しと掃除が別々の一覧を持っていて、記録が無いと消えなかった）
+    #[test]
+    fn 止めた_syntect_css_と_build_id_は記録が無くても消える() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("content/index.md", "# トップ\n");
+        write("yuzu.toml", "[output]\nclean = false\n");
+        let build = |mode: LiveReloadMode, force: bool| {
+            let rc = yuzu_config::load(&root).unwrap();
+            let mut session = BuildSession::new(&rc, force).unwrap();
+            build_once(&rc, mode, &mut session, false).unwrap();
+        };
+        let dist = root.join("dist");
+        let css = dist.join("_assets/css/syntect.css");
+        let build_id = dist.join("__yuzu/build_id");
+
+        build(LiveReloadMode::Poll, false);
+        assert!(css.is_file());
+        assert!(build_id.is_file());
+
+        // 通常の build（--force で記録も消える）でも build_id は残らない
+        build(LiveReloadMode::None, true);
+        assert!(!build_id.exists(), "build_id が残った");
+        assert!(css.is_file(), "ハイライトは有効のまま");
+
+        write(
+            "yuzu.toml",
+            "[output]\nclean = false\n[markdown.highlight]\nenabled = false\n",
+        );
+        build(LiveReloadMode::None, true);
+        assert!(!css.exists(), "syntect.css が残った");
+        // 後続の通常ビルドでも戻らない
+        build(LiveReloadMode::None, false);
+        assert!(!css.exists());
+        assert!(dist.join("_assets/css/theme.css").is_file(), "テーマは出す");
+    }
+
+    /// PR #52 のレビュー指摘: ハイライトを止めても `theme/static/css/syntect.css` を置けば
+    /// 同じパスに出る。そのファイルを掃除で消さず、本文からのリンクもリンク切れにしない
+    #[test]
+    fn 止めた_syntect_css_でもテーマが出すなら残しリンク先にする() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "content/index.md",
+            "# トップ\n\n[配色](/_assets/css/syntect.css)\n",
+        );
+        write("theme/static/css/syntect.css", "/* 独自の配色 */\n");
+        write(
+            "yuzu.toml",
+            "[output]\nclean = false\n[markdown.highlight]\nenabled = false\n",
+        );
+        let rc = yuzu_config::load(&root).unwrap();
+        for force in [true, false] {
+            let mut session = BuildSession::new(&rc, force).unwrap();
+            build_once(&rc, LiveReloadMode::None, &mut session, false).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(root.join("dist/_assets/css/syntect.css")).unwrap(),
+                "/* 独自の配色 */\n",
+                "force={force}"
+            );
+        }
+        let md_opts = yuzu_render::markdown_options(&rc.config);
+        let site = yuzu_core::build_site_model(&rc.content_dir, &rc.config.input.ignore, &md_opts)
+            .unwrap();
+        let problems = build_problems(&rc, &site, &md_opts, false, LiveReloadMode::None).unwrap();
+        assert_eq!(problems.links, 0, "出しているファイルをリンク切れにした");
+    }
+
+    /// 10-12 レビューの R2: build の知らせる問題は check と同じ抑制を通す。
+    /// 大文字小文字だけが違う URL を frontmatter の `lintDisable` で抑制したら build も黙る
+    /// （以前は `lint.rules` だけを見ていて、check は黙るのに build は警告していた）
+    #[test]
+    fn build_の問題の報告は_lint_disable_を守る() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("yuzu.toml", "");
+        write("content/Guide.md", "# A\n\n[切れ](nai.md)\n");
+        write("content/guide/index.md", "# B\n");
+        let problems = || {
+            let rc = yuzu_config::load(&root).unwrap();
+            let md_opts = yuzu_render::markdown_options(&rc.config);
+            let site =
+                yuzu_core::build_site_model(&rc.content_dir, &rc.config.input.ignore, &md_opts)
+                    .unwrap();
+            build_problems(&rc, &site, &md_opts, false, LiveReloadMode::None).unwrap()
+        };
+
+        let before = problems();
+        assert_eq!(before.case_conflicts.len(), 1);
+        assert_eq!(before.links, 1);
+
+        // 警告の出るページ（後から見つかった側）で抑制する
+        let page = &before.case_conflicts[0].rel;
+        let path = format!("content/{}", page.display());
+        let source = std::fs::read_to_string(root.join(&path)).unwrap();
+        write(
+            &path,
+            &format!("---\nlintDisable: [route-case-conflict]\n---\n\n{source}"),
+        );
+        let after = problems();
+        assert!(after.case_conflicts.is_empty(), "抑制が効いていない");
+        // 抑制できないリンク切れは数えたまま
+        assert_eq!(after.links, 1);
     }
 
     /// PR #42 の再レビューの指摘: public/_search/ に利用者のファイルがあっても、止めた

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::MarkdownOptions;
-use crate::diagnostics::{DiagBase, Diagnostic};
+use crate::diagnostics::Diagnostic;
 use crate::markdown;
 use crate::model::{Page, SourceSpan};
 use crate::routes;
@@ -109,7 +109,12 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
             let route = match normalize_alias(raw) {
                 Ok(route) => route,
                 Err(message) => {
-                    diags.push(diag(page, span, rules::ALIAS_INVALID, message));
+                    diags.push(Diagnostic::new(
+                        rules::ALIAS_INVALID,
+                        page.rel.clone(),
+                        span,
+                        message,
+                    ));
                     continue;
                 }
             };
@@ -121,28 +126,28 @@ pub fn validate_aliases(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnosti
                 } else {
                     format!("ページ {} ", hit.rel.display())
                 };
-                diags.push(diag(
-                    page,
-                    span,
+                diags.push(Diagnostic::new(
                     rules::ALIAS_CONFLICT,
+                    page.rel.clone(),
+                    span,
                     format!("エイリアス /{route} は{target}の URL と衝突しています"),
                 ));
                 continue;
             }
             match claimed.get(route.as_str()) {
                 Some(first) if first.rel == page.rel => {
-                    diags.push(diag(
-                        page,
-                        span,
+                    diags.push(Diagnostic::new(
                         rules::ALIAS_CONFLICT,
+                        page.rel.clone(),
+                        span,
                         format!("エイリアス /{route} が重複しています"),
                     ));
                 }
                 Some(first) => {
-                    diags.push(diag(
-                        page,
-                        span,
+                    diags.push(Diagnostic::new(
                         rules::ALIAS_CONFLICT,
+                        page.rel.clone(),
+                        span,
                         format!(
                             "エイリアス /{route} はページ {} のエイリアスと重複しています",
                             first.rel.display()
@@ -239,10 +244,10 @@ pub fn validate_url_case(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnost
                 }
                 _ => None,
             };
-            diags.push(diag(
-                at,
-                span,
+            diags.push(Diagnostic::new(
                 rules::ROUTE_CASE_CONFLICT,
+                at.rel.clone(),
+                span,
                 format!(
                     "{what} と {} の /{other_url} は大文字小文字だけが違います。大文字小文字を区別しない\
                      ファイルシステム（macOS・Windows の既定）では出力が同じ場所になり、片方が\
@@ -253,18 +258,6 @@ pub fn validate_url_case(pages: &[Page], opts: &MarkdownOptions) -> Vec<Diagnost
         }
     }
     diags
-}
-
-fn diag(page: &Page, span: Option<SourceSpan>, rule: rules::Rule, message: String) -> Diagnostic {
-    Diagnostic {
-        rule: rule.id,
-        severity: rule.severity,
-        base: DiagBase::Content,
-        rel: page.rel.clone(),
-        span,
-        message,
-        fix: None,
-    }
 }
 
 #[cfg(test)]
@@ -322,7 +315,7 @@ mod tests {
         let diags = validate_url_case(&pages, &opts);
         let found: Vec<(&str, &Path, bool)> = diags
             .iter()
-            .map(|d| (d.rule, d.rel.as_path(), d.span.is_some()))
+            .map(|d| (d.rule.id, d.rel.as_path(), d.span.is_some()))
             .collect();
         assert_eq!(
             found,
@@ -332,7 +325,7 @@ mod tests {
             ],
             "{diags:?}"
         );
-        assert_eq!(diags[0].severity, crate::diagnostics::Severity::Warning);
+        assert_eq!(diags[0].severity(), crate::diagnostics::Severity::Warning);
         assert!(
             diags[0].message.contains("Guide.md"),
             "{}",
@@ -439,7 +432,7 @@ mod tests {
         let pages = vec![page("a.md", "a/", &["b/", "a/"]), page("b.md", "b/", &[])];
         let diags = validate(&pages);
         assert_eq!(diags.len(), 2);
-        assert!(diags.iter().all(|d| d.rule == "alias-conflict"));
+        assert!(diags.iter().all(|d| d.rule.id == "alias-conflict"));
         assert!(diags[0].message.contains("b.md"), "{}", diags[0].message);
         assert!(
             diags[1].message.contains("このページ自身"),
@@ -469,7 +462,7 @@ mod tests {
         let pages = vec![page("a.md", "a/", &["https://example.com/"])];
         let diags = validate(&pages);
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].rule, "alias-invalid");
-        assert_eq!(diags[0].severity, crate::Severity::Error);
+        assert_eq!(diags[0].rule.id, "alias-invalid");
+        assert_eq!(diags[0].severity(), crate::Severity::Error);
     }
 }
