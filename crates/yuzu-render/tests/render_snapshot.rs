@@ -1025,20 +1025,32 @@ fn toc_は入れ子になり_theme_toc_levels_で範囲を変えられる() {
         fs::read_to_string(dir.path().join("dist/guide/getting-started/index.html")).unwrap();
     assert!(page.contains("toc-level-4"), "{page}");
 
-    // 不正な levels は警告して既定へ縮退（ビルドは成功する）
-    let dir = build_fixture_with(|root| {
-        let path = root.join("yuzu.toml");
-        let src = fs::read_to_string(&path).unwrap();
-        fs::write(
-            &path,
-            src.replace("[site]", "[theme.toc]\nlevels = \"abc\"\n\n[site]"),
-        )
-        .unwrap();
-    });
-    let page =
-        fs::read_to_string(dir.path().join("dist/guide/getting-started/index.html")).unwrap();
-    assert!(!page.contains("toc-level-4"), "{page}");
-    assert!(page.contains("toc-level-3"), "{page}");
+    // 不正な levels は既定へ黙って縮退せず、書き出す前に止める（10-12 レビューの R3。
+    // cli は設定の読み込み直後に位置付きの設定エラーにする）
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample-docs");
+    let dir = tempfile::tempdir().unwrap();
+    copy_tree(&fixture, dir.path());
+    let mut rc = yuzu_config::load(dir.path()).unwrap();
+    rc.config.theme.toc.levels = "3-2".to_string();
+    let site = yuzu_core::build_site_model(
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        &yuzu_render::markdown_options(&rc.config),
+    )
+    .unwrap();
+    let err = render_site(&RenderParams {
+        config: &rc,
+        site: &site,
+        live_reload: LiveReloadMode::None,
+        ctx: yuzu_render::RenderCtx::default(),
+        git_dates: None,
+    })
+    .unwrap_err();
+    assert!(
+        matches!(err, yuzu_render::RenderError::InvalidTocLevels { .. }),
+        "{err}"
+    );
+    assert!(!dir.path().join("dist").exists(), "書き出す前に止める");
 }
 
 #[test]
@@ -1249,16 +1261,45 @@ fn unpublished_outputs_は書き出さないことにした生成物だけを挙
         &yuzu_render::markdown_options(&base.config),
     )
     .unwrap();
-    let list = |mutate: &dyn Fn(&mut yuzu_config::ResolvedConfig)| {
+    let unpublished = |mutate: &dyn Fn(&mut yuzu_config::ResolvedConfig), mode| {
         let mut rc = base.clone();
         mutate(&mut rc);
-        yuzu_render::unpublished_outputs(&rc, &site)
-            .into_iter()
-            .collect::<Vec<_>>()
+        yuzu_render::unpublished_outputs(&rc, &site, mode)
+    };
+    // build --watch（build_id を出す）でのファイルの一覧
+    let list = |mutate: &dyn Fn(&mut yuzu_config::ResolvedConfig)| {
+        let out = unpublished(mutate, yuzu_render::LiveReloadMode::Poll);
+        assert!(out.dirs.is_empty(), "{out:?}");
+        out.files.into_iter().collect::<Vec<_>>()
     };
 
     // 既定（base はパスだけ）: 出さないのは sitemap だけ
     assert_eq!(list(&|_| {}), ["sitemap.xml"]);
+    // 通常の build と dev は build_id を出さない（10-12 レビューの R1。
+    // `build --watch` の後の build で残っていた）
+    for mode in [
+        yuzu_render::LiveReloadMode::None,
+        yuzu_render::LiveReloadMode::Ws,
+    ] {
+        assert_eq!(
+            unpublished(&|_| {}, mode)
+                .files
+                .into_iter()
+                .collect::<Vec<_>>(),
+            ["__yuzu/build_id", "sitemap.xml"]
+        );
+    }
+    // ハイライトを止めたら syntect.css（R1。`--force` の後で残っていた）
+    assert_eq!(
+        list(&|rc| rc.config.markdown.highlight.enabled = false),
+        ["_assets/css/syntect.css", "sitemap.xml"]
+    );
+    // 検索を止めたら _search/ は中のファイルを列挙して消す（ディレクトリごとは消さない）
+    let no_search = unpublished(
+        &|rc| rc.config.search.enabled = false,
+        yuzu_render::LiveReloadMode::Poll,
+    );
+    assert_eq!(no_search.dirs, ["_search"]);
     // フル URL なら sitemap も出す
     assert!(list(&|rc| rc.base_url = "https://example.com/docs/".to_string()).is_empty());
     // 原稿の .md を全体で止める

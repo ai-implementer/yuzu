@@ -10,15 +10,11 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_core::{NavNode, Page, SiteModel};
+use yuzu_core::{NavNode, OutputSwitches, Page, SiteModel, SiteOutput};
 
 use crate::assets;
 use crate::error::RenderError;
 use crate::urls::UrlResolver;
-
-/// 書き出すファイル名（dist 直下）。止めたときの掃除（`pipeline::unpublished_outputs`）も使う
-pub(crate) const LLMS_TXT: &str = "llms.txt";
-pub(crate) const LLMS_FULL_TXT: &str = "llms-full.txt";
 
 /// トップレベルの葉ページ（ルート `index.md` 等）をまとめる先頭セクション名
 const ROOT_SECTION_TITLE: &str = "Docs";
@@ -93,19 +89,32 @@ pub fn generate_llms_full_txt(
     Ok(out)
 }
 
-/// dist/ 直下へ書き出す（`llms.full=false` なら llms-full.txt は書かない）
+/// dist/ 直下へ書き出す。出すかどうかは [`SiteOutput`] が決める
+/// （`llms.enabled = false` ならどちらも、`llms.full = false` なら llms-full.txt を書かない）
 pub(crate) fn write_llms_files(
     rc: &ResolvedConfig,
     site: &SiteModel,
     output_dir: &Path,
     ctx: &crate::pipeline::RenderCtx,
+    switches: &OutputSwitches,
 ) -> Result<(), RenderError> {
-    let llms_txt = generate_llms_txt(rc, site)?;
-    assets::write_output(ctx.outputs, output_dir, LLMS_TXT, llms_txt.as_bytes())?;
-
-    if rc.config.llms.full {
+    if SiteOutput::LlmsTxt.emitted(switches) {
+        let llms_txt = generate_llms_txt(rc, site)?;
+        assets::write_output(
+            ctx.outputs,
+            output_dir,
+            SiteOutput::LlmsTxt.path(),
+            llms_txt.as_bytes(),
+        )?;
+    }
+    if SiteOutput::LlmsFullTxt.emitted(switches) {
         let full = generate_llms_full_txt(rc, site, ctx.cache)?;
-        assets::write_output(ctx.outputs, output_dir, LLMS_FULL_TXT, full.as_bytes())?;
+        assets::write_output(
+            ctx.outputs,
+            output_dir,
+            SiteOutput::LlmsFullTxt.path(),
+            full.as_bytes(),
+        )?;
     }
     Ok(())
 }

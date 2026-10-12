@@ -14,6 +14,12 @@ use yuzu_core::urlpath::{
 };
 use yuzu_core::{Page, SiteModel, UrlRewriter};
 
+/// 正規化済みの base_url がフル URL（スキーム付き）か。サイトモデルを作る前の判断
+/// （sitemap.xml を出すか = `output_switches`）と [`UrlResolver::is_absolute_base`] が共有する
+pub(crate) fn is_absolute_base(base: &str) -> bool {
+    base.contains("://")
+}
+
 /// URL 解決器。本文リンクの書き換え（[`UrlRewriter`]）と、
 /// テンプレートに渡すナビ・アセット URL の生成を担う
 pub struct UrlResolver {
@@ -43,7 +49,7 @@ impl UrlResolver {
     /// base がフル URL（スキーム付き）か。絶対 URL が要る出力（sitemap の `<loc>`・
     /// canonical・`og:url`・パス指定の `og:image`）はこれで揃えてゲートする
     pub fn is_absolute_base(&self) -> bool {
-        self.base.contains("://")
+        is_absolute_base(&self.base)
     }
 
     /// route → 配信 URL（例: `guide/` → `/docs/guide/`、`設計/` → `/docs/%E8%A8%AD%E8%A8%88/`）

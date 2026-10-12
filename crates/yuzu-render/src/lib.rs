@@ -69,9 +69,11 @@ fn search_page_options(cfg: &yuzu_config::Config) -> yuzu_core::SearchPageOption
         page_title: cfg.search.page_title.clone(),
     }
 }
+pub use context::toc_levels_problem;
 pub use llms::{generate_llms_full_txt, generate_llms_txt};
 pub use pipeline::{
-    LiveReloadMode, RenderCtx, RenderParams, render_site, unpublished_outputs, validate_pages,
+    LiveReloadMode, RenderCtx, RenderParams, Unpublished, output_switches, render_site,
+    unpublished_outputs, validate_pages,
 };
 pub use shared::RenderShared;
 pub use speccheck::validate_api_specs;

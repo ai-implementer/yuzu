@@ -5,6 +5,7 @@ use crate::cx::Cx;
 
 pub mod build;
 pub mod check;
+mod collect;
 pub mod completions;
 pub mod dev;
 pub mod diag;
@@ -37,9 +38,48 @@ pub(crate) fn load_project(cx: &Cx) -> anyhow::Result<ResolvedConfig> {
             yuzu_config::find_project_root(&cwd)?
         }
     };
-    let rc = yuzu_config::load(&root)?;
+    let rc = read_config(&root)?;
     warn_config_diagnostics(&rc);
     Ok(rc)
+}
+
+/// `yuzu.toml` を読み、yuzu-config が知らない規則（yuzu-core・yuzu-render が持つ）でも値を
+/// 検証する。問題は位置付きの設定エラー（exit 2）になる。
+///
+/// **設定を読むのはここだけ**（[`load_project`] と watch 中の読み直しの両方が通る）。
+/// 以前は不正な値を使う側が黙って捨てていて、`search.page = "../search"` で検索結果
+/// ページが出ないのに build も check も成功していた（10-12 レビューの R3）
+pub(crate) fn read_config(
+    root: &std::path::Path,
+) -> Result<ResolvedConfig, yuzu_config::ConfigError> {
+    yuzu_config::load_with(root, setting_problems)
+}
+
+/// [`read_config`] の値の検証。規則は持たず、それぞれの規則の持ち主を呼ぶ
+fn setting_problems(config: &yuzu_config::Config) -> Vec<yuzu_config::SettingProblem> {
+    let mut problems = Vec::new();
+    let mut check = |key_path: &'static str, raw: &str, problem: Option<&str>| {
+        if let Some(reason) = problem {
+            problems.push(yuzu_config::SettingProblem {
+                key_path,
+                message: format!("`{key_path}` の値 `{raw}` は使えません。{reason}"),
+            });
+        }
+    };
+    // 合成ページの route（空はページを作らない設定）
+    for (key_path, raw) in [
+        ("search.page", &config.search.page),
+        ("markdown.glossary.page", &config.markdown.glossary.page),
+    ] {
+        check(key_path, raw, yuzu_core::urlpath::synth_page_problem(raw));
+    }
+    let levels = &config.theme.toc.levels;
+    check(
+        "theme.toc.levels",
+        levels,
+        yuzu_render::toc_levels_problem(levels),
+    );
+    problems
 }
 
 /// `ResolvedConfig::diagnostics` を警告ログに出す（`load_project` と watch 中の
@@ -218,5 +258,48 @@ mod tests {
         let err = rewrite_source(&path, "old\n", "new\n").unwrap_err();
         assert!(err.to_string().contains("変更されています"), "{err}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "edited\n");
+    }
+
+    /// 10-12 レビューの R3: yuzu-core・yuzu-render の規則で不正な値は、位置付きの設定エラー
+    /// （全件）になる。以前は黙って捨てられ、build も check も成功していた
+    #[test]
+    fn 合成ページの_route_と_toc_の範囲の不正値は位置付きの設定エラー() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("yuzu.toml"),
+            "[search]\npage = \"../search\"\n\n[markdown.glossary]\npage = \"a//b\"\n\n[theme.toc]\nlevels = \"3-2\"\n",
+        )
+        .unwrap();
+        let err = super::read_config(dir.path()).unwrap_err();
+        let yuzu_config::ConfigError::Invalid { issues, .. } = &err else {
+            panic!("Invalid を期待: {err}");
+        };
+        let got: Vec<(&str, usize, usize)> = issues
+            .iter()
+            .map(|i| (i.key_path.as_str(), i.line, i.col))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("search.page", 2, 1),
+                ("markdown.glossary.page", 5, 1),
+                ("theme.toc.levels", 8, 1)
+            ]
+        );
+        assert!(
+            issues[0]
+                .message
+                .contains("`search.page` の値 `../search` は使えません"),
+            "{}",
+            issues[0].message
+        );
+
+        // 空（ページを作らない）と正しい値は通る
+        std::fs::write(
+            dir.path().join("yuzu.toml"),
+            "[search]\npage = \"\"\n\n[markdown.glossary]\npage = \"help/terms\"\n\n[theme.toc]\nlevels = \"2-4\"\n",
+        )
+        .unwrap();
+        super::read_config(dir.path()).unwrap();
     }
 }

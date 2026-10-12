@@ -17,18 +17,15 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::MarkdownOptions;
-use crate::diagnostics::{DiagBase, Diagnostic};
+use crate::diagnostics::Diagnostic;
 use crate::error::CoreError;
 use crate::markdown::{self, LinkRef};
 use crate::model::{Page, SourceSpan};
 use crate::rules;
+use crate::site_output::{OutputSwitches, SiteOutput};
 use crate::urlpath::{
     is_external_url, is_http_url, percent_decode, rel_to_slash, resolve_relative, split_suffix,
 };
-
-/// ビルドが生成する route 以外のパス（ルート絶対リンクの有効ターゲット）
-const GENERATED: &[&str] = &["llms.txt", "llms-full.txt"];
-const GENERATED_DIRS: &[&str] = &["_assets/", "_search/"];
 
 /// 本文中の外部リンク（http / https）の出現箇所。
 /// core はネットワークに触れないので、到達性の検査は呼び出し側（cli の opt-in）が行う
@@ -64,6 +61,8 @@ struct Targets<'a> {
     assets: HashSet<String>,
     /// draft も出力に含めるビルド（`--drafts`）か
     include_drafts: bool,
+    /// 今回出す生成物（`/404.html`・`/llms.txt`・`/_search/` 等）。判断は SiteOutput が持つ
+    outputs: &'a OutputSwitches,
 }
 
 pub(crate) fn check_links(
@@ -72,6 +71,7 @@ pub(crate) fn check_links(
     content_dir: &Path,
     ignore: &[String],
     include_drafts: bool,
+    outputs: &OutputSwitches,
     opts: &MarkdownOptions,
 ) -> Result<LinkReport, CoreError> {
     let targets = Targets {
@@ -87,6 +87,7 @@ pub(crate) fn check_links(
             .map(|f| rel_to_slash(&f.rel))
             .collect(),
         include_drafts,
+        outputs,
     };
 
     let mut out = Vec::new();
@@ -225,8 +226,8 @@ fn check_absolute(
     targets: &Targets,
     out: &mut Vec<Diagnostic>,
 ) {
-    // ビルド生成物
-    if GENERATED.contains(&rest) || GENERATED_DIRS.iter().any(|d| rest.starts_with(d)) {
+    // ビルドの生成物（今回出すものだけ。止めた llms-full.txt へのリンクは通さない）
+    if SiteOutput::is_emitted_target(rest, targets.outputs) {
         return;
     }
     // public/ のファイル
@@ -287,13 +288,10 @@ fn push(
     rule: rules::Rule,
     message: String,
 ) {
-    out.push(Diagnostic {
-        rule: rule.id,
-        severity: rule.severity,
-        base: DiagBase::Content,
-        rel: page.rel.clone(),
-        span: Some(link.span),
+    out.push(Diagnostic::new(
+        rule,
+        page.rel.clone(),
+        Some(link.span),
         message,
-        fix: None,
-    });
+    ));
 }

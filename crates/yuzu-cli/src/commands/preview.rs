@@ -1,15 +1,20 @@
 //! `yuzu preview [--port]`: dist/ の配信
 
-use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, bail};
+use anyhow::bail;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_server::{PathGuard, ServeOptions, WatchFailure};
+use yuzu_server::{PathGuard, ReloadNotifier, ServeOptions, WatchFailure};
 
-pub fn run(cx: &crate::cx::Cx, port: Option<u16>, host: Option<String>) -> anyhow::Result<()> {
+use super::build::StartupSettings;
+
+pub fn run(
+    cx: &crate::cx::Cx,
+    port: Option<u16>,
+    host: Option<yuzu_config::BindAddr>,
+) -> anyhow::Result<()> {
     let mut rc = super::load_project(cx)?;
     // --host の上書きは build / dev と同じ 1 実装を通す
     // （`Overrides::apply`。「フラグは設定より優先」の解釈を 2 箇所に置かない）
@@ -25,32 +30,29 @@ pub fn run(cx: &crate::cx::Cx, port: Option<u16>, host: Option<String>) -> anyho
             rc.output_dir.display()
         );
     }
-    serve_dist(&rc, port, None)
+    serve_dist(&rc, port, None, None)
 }
 
-/// dist/ を配信する（`preview` と `build --watch` で共用。ブロッキング）。
-/// `watch_failure` は `build --watch` が渡す監視停止の合図（監視が panic で
-/// 止まったら配信も止めて Err を返す）
+/// dist/ を配信する（`preview` / `dev` / `build --watch` で共用。ブロッキング）。
+///
+/// 配信の設定は起動時の設定（[`StartupSettings`]。watch 中も差し替えない）から組む。
+/// `port` は `--port` の上書き、`live_reload` は `yuzu dev` の WebSocket 通知、
+/// `watch_failure` は監視停止の合図（監視が panic で止まったら配信も止めて Err を返す）
 pub(crate) fn serve_dist(
     rc: &ResolvedConfig,
     port: Option<u16>,
+    live_reload: Option<ReloadNotifier>,
     watch_failure: Option<WatchFailure>,
 ) -> anyhow::Result<()> {
-    let host: IpAddr = rc
-        .config
-        .dev
-        .host
-        .parse()
-        .with_context(|| format!("dev.host が不正です: {}", rc.config.dev.host))?;
-
+    let startup = StartupSettings::of(rc);
     yuzu_server::serve(ServeOptions {
-        dir: rc.output_dir.clone(),
-        host,
-        port: port.unwrap_or(rc.config.dev.port),
-        base_url: rc.base_url.clone(),
-        live_reload: None,
+        dir: startup.output_dir,
+        host: startup.host,
+        port: port.unwrap_or(startup.port),
+        base_url: startup.base_url,
+        live_reload,
         path_guard: Some(symlink_guard(&rc.root)),
-        allowed_hosts: rc.config.dev.allowed_hosts.clone(),
+        allowed_hosts: startup.allowed_hosts,
         watch_failure,
     })?;
     Ok(())

@@ -8,11 +8,8 @@ use yuzu_core::{NavNode, Page, ReadingStats, TocEntry};
 
 use crate::urls::UrlResolver;
 
-/// TOC に表示する既定の見出しレベル（h2〜h3）。`theme.toc.levels` で変更できる
-pub(crate) const TOC_LEVELS: std::ops::RangeInclusive<u8> = 2..=3;
-
 /// `theme.toc.levels`（`"2-3"` / `"4"`。インクルードの `lines=` と同じ範囲記法）を
-/// 解析する。1..=6 の外は clamp、逆順・非数値は None（呼び出し側が警告して既定へ縮退）
+/// 解析する。1..=6 の外は clamp、逆順・非数値は None（[`toc_levels_problem`] が理由を返す）
 pub(crate) fn parse_toc_levels(raw: &str) -> Option<std::ops::RangeInclusive<u8>> {
     let raw = raw.trim();
     let (lo, hi) = match raw.split_once('-') {
@@ -24,6 +21,15 @@ pub(crate) fn parse_toc_levels(raw: &str) -> Option<std::ops::RangeInclusive<u8>
     };
     let (lo, hi) = (lo.clamp(1, 6), hi.clamp(1, 6));
     (lo <= hi).then_some(lo..=hi)
+}
+
+/// `theme.toc.levels` の値が使えない理由（解析は [`parse_toc_levels`] の 1 実装）。
+/// cli は設定の読み込み直後にこれを呼び、位置付きの設定エラーにする。以前はビルド時に
+/// 位置の無い警告を出して既定（2-3）へ縮退し、check は通っていた（10-12 レビューの R3）
+pub fn toc_levels_problem(raw: &str) -> Option<&'static str> {
+    parse_toc_levels(raw).is_none().then_some(
+        "`2-3` のような範囲か `4` のような 1 つの数（1〜6）で書いてください。逆順（`3-2`）は使えません",
+    )
 }
 
 #[derive(Serialize)]

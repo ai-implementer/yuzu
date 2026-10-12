@@ -18,11 +18,12 @@ mod schema;
 pub use discover::find_project_root;
 pub use error::{ConfigError, ConfigIssue};
 pub use resolve::{
-    CONFIG_RULES, ConfigDiagnostic, ResolvedConfig, base_url_problem, load, normalize_base_url,
+    CONFIG_RULES, ConfigDiagnostic, ResolvedConfig, SettingProblem, base_url_problem, load,
+    load_with, normalize_base_url,
 };
 pub use schema::{
-    BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DarkMode, DevConfig,
-    GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,
+    BindAddr, BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DarkMode,
+    DevConfig, GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,
     MarkdownConfig, MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig,
     SearchConfig, ShardConfig, SiteConfig, ThemeConfig, TocConfig, TypoToleranceConfig,
 };

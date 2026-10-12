@@ -37,8 +37,30 @@ pub struct ResolvedConfig {
     pub diagnostics: Vec<ConfigDiagnostic>,
 }
 
+/// 呼び出し側の値の検証（[`load_with`]）が返す 1 件
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingProblem {
+    /// キーのパス（`search.page` 形式）。位置（行・列）の解決に使う
+    pub key_path: &'static str,
+    /// 日本語の説明（そのまま設定エラーの文言になる）
+    pub message: String,
+}
+
 /// プロジェクトルートの `yuzu.toml` を読み込み、解決済み設定を返す
 pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
+    load_with(root, |_| Vec::new())
+}
+
+/// [`load`] に、この crate が知らない規則での値の検証を足したもの。
+///
+/// yuzu-config は依存グラフの葉なので、yuzu-core・yuzu-render が持つ規則（合成ページの
+/// route・TOC の範囲記法）を使えない。cli がそれらを呼ぶ `validate` を渡し、ここが
+/// キーの位置を付けて他の設定エラーと同じ形（[`ConfigError::Invalid`]・全件）にする。
+/// 規則を yuzu-config に写すと実装が 2 つになるため、この形にしている（10-12 レビューの R3）
+pub fn load_with(
+    root: &Path,
+    validate: impl Fn(&Config) -> Vec<SettingProblem>,
+) -> Result<ResolvedConfig, ConfigError> {
     let path = root.join(CONFIG_FILE_NAME);
     // 「そこに yuzu.toml が無い」は権限エラー等と分けて専用のエラーにする。
     // 探索を経ていない経路（cli の `--root`）で「上方向に探索」と案内しないため
@@ -142,6 +164,16 @@ pub fn load(root: &Path) -> Result<ResolvedConfig, ConfigError> {
                 message: format!("`{table}.base_url` の値 `{raw}` は使えません。{problem}"),
             });
         }
+    }
+    for problem in validate(&config) {
+        let path: Vec<&str> = problem.key_path.split('.').collect();
+        let (line, col) = key_position(&doc, &path).unwrap_or((1, 1));
+        issues.push(ConfigIssue {
+            key_path: problem.key_path.to_string(),
+            line,
+            col,
+            message: problem.message,
+        });
     }
     if !issues.is_empty() {
         return Err(ConfigError::Invalid { path, issues });
@@ -509,6 +541,19 @@ mod tests {
             }
             other => panic!("Syntax を期待: {other:?}"),
         }
+    }
+
+    /// 10-12 レビューの R3: ホスト名は `yuzu dev` を起動するまで分からなかった
+    #[test]
+    fn dev_host_は_ip_アドレスだけを受け付ける() {
+        assert_eq!(
+            issues("[dev]\nhost = \"localhost\"\n"),
+            [("dev.host".to_string(), 2, 8)]
+        );
+        let config = parse("[dev]\nhost = \"0.0.0.0\"\n").unwrap();
+        assert_eq!(config.dev.host.to_string(), "0.0.0.0");
+        let config = parse("[dev]\nhost = \"::1\"\n").unwrap();
+        assert!(config.dev.host.0.is_loopback());
     }
 
     #[test]

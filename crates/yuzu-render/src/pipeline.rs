@@ -12,7 +12,9 @@ use minijinja::context;
 use rayon::prelude::*;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_core::{BuildCache, CachedBody, GeneratedKind, OutputTracker, SiteModel};
+use yuzu_core::{
+    BuildCache, CachedBody, GeneratedKind, OutputSwitches, OutputTracker, SiteModel, SiteOutput,
+};
 
 use crate::assets;
 use crate::context::{NavCtx, NavOrder, NavTrails, PageCtx, SiteCtx, build_breadcrumbs};
@@ -20,37 +22,67 @@ use crate::error::RenderError;
 use crate::shared::RenderShared;
 use crate::urls::UrlResolver;
 
-/// sitemap の書き出し先（dist 直下）。止めたときの掃除（[`unpublished_outputs`]）も使う
-const SITEMAP_XML: &str = "sitemap.xml";
-
-/// 設定やページの指定で**出さないことにした**生成物の dist 相対パス（Phase 83）。
+/// サイト単位の生成物（[`SiteOutput`]）を今回出すかの入力を、設定と実行の文脈から作る。
 ///
-/// 書き出し側と同じ述語を裏返して作る: 原稿の `.md`（`Page::emits_page_md`）・
-/// llms.txt / llms-full.txt（`llms.enabled` / `llms.full`）・sitemap.xml（baseUrl がフル URL
-/// でない）。cli はこれを前回の出力の代わりに孤児掃除へ渡し、今回書かなかったものを消す。
-/// 出力マニフェストが無いとき（`--force`・`.yuzu` の削除の後）は通常の孤児掃除が働かず、
-/// `output.clean = false` だと dist も作り直さないので、止めた原稿の `.md`（frontmatter 込み）が
-/// 残り続けていた（PR #42 のレビュー指摘）。public/ に同じパスのファイルを置いていれば
-/// 今回書き出しているので消さない（判定は呼び出し側の「今回書いたもの」との差）。
-/// 検索インデックス（`_search/`）はディレクトリなので cli が別に扱う
-pub fn unpublished_outputs(rc: &ResolvedConfig, site: &SiteModel) -> BTreeSet<String> {
+/// 書き出し（[`render_site`]）・止めた生成物の掃除（[`unpublished_outputs`]）・
+/// `yuzu check` のリンクの有効ターゲットが、すべてこの値と [`SiteOutput::emitted`] を通る
+/// （10-12 レビューの R1。3 か所が別々の一覧を持っていて食い違っていた）
+pub fn output_switches(rc: &ResolvedConfig, live_reload: LiveReloadMode) -> OutputSwitches {
     let cfg = &rc.config;
-    let mut out: BTreeSet<String> = site
+    OutputSwitches {
+        llms: cfg.llms.enabled,
+        llms_full: cfg.llms.full,
+        sitemap: crate::urls::is_absolute_base(&rc.base_url),
+        highlight: cfg.markdown.highlight.enabled,
+        search: cfg.search.enabled,
+        // build_id を読むのは `build --watch` の autorefresh.js だけ。通常の build で書くと
+        // dist が毎回 1 ファイル変わり、ビルド時刻も公開される
+        build_id: live_reload == LiveReloadMode::Poll,
+    }
+}
+
+/// 設定やページの指定で今回**出さない**生成物（[`unpublished_outputs`] の結果）
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Unpublished {
+    /// dist 相対のファイル（原稿の `.md`・llms.txt・sitemap.xml・syntect.css・build_id 等）
+    pub files: BTreeSet<String>,
+    /// 中のファイルを列挙して消すディレクトリ（検索インデックスの `_search`）。
+    /// ディレクトリごとは消さない（public/ に置いた利用者のファイルを残すため）
+    pub dirs: Vec<&'static str>,
+}
+
+/// 設定やページの指定で**出さないことにした**生成物（Phase 83。R1 で [`SiteOutput`] に一本化）。
+///
+/// 書き出し側と同じ判断を裏返して作る: 原稿の `.md`（`Page::emits_page_md`）と、
+/// [`SiteOutput::emitted`] が false のサイト単位の生成物。cli はこれを前回の出力の代わりに
+/// 孤児掃除へ渡し、今回書かなかったものを消す。
+/// 出力マニフェストが無いとき（`--force`・`.yuzu` の削除の後）は通常の孤児掃除が働かず、
+/// `output.clean = false` だと dist も作り直さないので、止めた原稿の `.md`（frontmatter 込み）や
+/// syntect.css・build_id が残り続けていた（PR #42 のレビュー指摘・10-12 レビューの R1）。
+/// public/ に同じパスのファイルを置いていれば今回書き出しているので消さない
+/// （判定は呼び出し側の「今回書いたもの」との差）
+pub fn unpublished_outputs(
+    rc: &ResolvedConfig,
+    site: &SiteModel,
+    live_reload: LiveReloadMode,
+) -> Unpublished {
+    let cfg = &rc.config;
+    let switches = output_switches(rc, live_reload);
+    let mut files: BTreeSet<String> = site
         .pages
         .iter()
         .filter(|page| !page.emits_page_md(cfg.llms.page_md))
         .map(|page| page.md_rel_path())
         .collect();
-    if !cfg.llms.enabled {
-        out.insert(crate::llms::LLMS_TXT.to_string());
+    let mut dirs = Vec::new();
+    for output in SiteOutput::ALL.iter().filter(|o| !o.emitted(&switches)) {
+        if output.is_dir() {
+            dirs.push(output.path());
+        } else {
+            files.insert(output.path().to_string());
+        }
     }
-    if !cfg.llms.enabled || !cfg.llms.full {
-        out.insert(crate::llms::LLMS_FULL_TXT.to_string());
-    }
-    if !UrlResolver::new(&rc.base_url, site).is_absolute_base() {
-        out.insert(SITEMAP_XML.to_string());
-    }
-    out
+    Unpublished { files, dirs }
 }
 
 /// ページに注入するライブリロード方式
@@ -126,10 +158,20 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let ctx = &params.ctx;
 
     let md_opts = crate::markdown_options(cfg);
+    // サイト単位の生成物を出すかの判断（SiteOutput が唯一の定義。掃除と check も同じ値を使う）
+    let switches = output_switches(rc, params.live_reload);
 
     // ページ URL とエイリアスの妥当性（cli は破壊的な clean より前に呼ぶが、
     // ライブラリ直接利用と呼び忘れに備えてここでも自衛する）
     validate_pages(params.site, rc)?;
+    // ページ内 TOC の表示レベル。cli は設定の読み込み直後に検証済み。不正な値で
+    // 既定へ黙って縮退しない（clean より前に止める = 既存の dist を失わない）
+    let toc_levels = crate::context::parse_toc_levels(&cfg.theme.toc.levels).ok_or_else(|| {
+        RenderError::InvalidTocLevels {
+            value: cfg.theme.toc.levels.clone(),
+            reason: crate::context::toc_levels_problem(&cfg.theme.toc.levels).unwrap_or_default(),
+        }
+    })?;
 
     // 出力先までの経路にシンボリックリンクが無いことを**毎ビルド**確認する。
     // 削除経路（下の remove_dir_all_under）は clean 無効・インクリメンタルでは
@@ -180,14 +222,6 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     // route → 祖先チェーンの前計算（サイドバーの open 判定とパンくずが共有。
     // ページごとの全ツリー DFS を無くす）
     let nav_trails = NavTrails::new(&params.site.nav);
-    // ページ内 TOC の表示レベル。不正な値は警告して既定へ縮退する
-    let toc_levels = crate::context::parse_toc_levels(&cfg.theme.toc.levels).unwrap_or_else(|| {
-        tracing::warn!(
-            levels = %cfg.theme.toc.levels,
-            "theme.toc.levels が不正なため既定（2-3）を使います"
-        );
-        crate::context::TOC_LEVELS
-    });
     // og:image は絶対 URL が必須。フル URL 指定はそのまま、パス指定は base がフル URL の
     // ときだけ解決する（ローカルビルドでは出ないのが普通なので debug ログに留める）
     let image_url = cfg.site.image.as_deref().and_then(|p| {
@@ -400,31 +434,42 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         search_page_url => search_page_url.as_deref(),
         theme_css_vars => theme_css_vars,
     })?;
-    assets::write_output(ctx.outputs, output_dir, "404.html", not_found.as_bytes())?;
-
-    assets::write_theme_assets(output_dir, rc.theme_dir.as_deref(), ctx.outputs)?;
-    // syntect.css はハイライト有効時だけ書く（base.jinja の <link> も
-    // `highlight_enabled` で同じ条件。無効化したら孤児掃除が消す）
-    if let Some(css) = &shared.syntect_css {
+    if SiteOutput::NotFound.emitted(&switches) {
         assets::write_output(
             ctx.outputs,
             output_dir,
-            "_assets/css/syntect.css",
+            SiteOutput::NotFound.path(),
+            not_found.as_bytes(),
+        )?;
+    }
+
+    if SiteOutput::ThemeAssets.emitted(&switches) {
+        assets::write_theme_assets(output_dir, rc.theme_dir.as_deref(), ctx.outputs)?;
+    }
+    // syntect.css はハイライト有効時だけ書く（base.jinja の <link> も
+    // `highlight_enabled` で同じ条件。止めたら掃除が消す）。CSS の中身は
+    // ハイライト有効時だけ RenderShared が作っている
+    if let (true, Some(css)) = (
+        SiteOutput::SyntectCss.emitted(&switches),
+        &shared.syntect_css,
+    ) {
+        assets::write_output(
+            ctx.outputs,
+            output_dir,
+            SiteOutput::SyntectCss.path(),
             css.as_bytes(),
         )?;
     }
 
     // llms.txt / llms-full.txt（copy_public より前 = ユーザが public/llms.txt を
     // 置いた場合はそちらが上書きして優先される。テーマ上書きと同じ思想）
-    if cfg.llms.enabled {
-        crate::llms::write_llms_files(rc, params.site, output_dir, ctx)?;
-    }
+    crate::llms::write_llms_files(rc, params.site, output_dir, ctx, &switches)?;
 
     // sitemap.xml（copy_public より前 = `public/sitemap.xml` を置けばそちらが優先）。
     // `<loc>` は絶対 URL が仕様のため、baseUrl がフル URL のときだけ生成する。
     // 対象は非 draft の実ページ＋用語集のみ（エイリアス・404・ページ単位 .md・
     // 検索結果ページは載せない — 判定は Page::in_sitemap）
-    if resolver.is_absolute_base() {
+    if SiteOutput::Sitemap.emitted(&switches) {
         let mut xml = String::from(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
              <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
@@ -450,7 +495,12 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             xml.push_str("</url>\n");
         }
         xml.push_str("</urlset>\n");
-        assets::write_output(ctx.outputs, output_dir, SITEMAP_XML, xml.as_bytes())?;
+        assets::write_output(
+            ctx.outputs,
+            output_dir,
+            SiteOutput::Sitemap.path(),
+            xml.as_bytes(),
+        )?;
     } else {
         tracing::debug!("baseUrl がフル URL ではないため sitemap.xml は生成しない");
     }
@@ -459,9 +509,8 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     // public/ のファイルがあればそちらが上書きして優先される（テーマ上書きと同じ思想）
     assets::copy_content_assets(&rc.content_dir, &cfg.input.ignore, output_dir, ctx.outputs)?;
     assets::copy_public(rc.public_dir.as_deref(), output_dir, ctx.outputs)?;
-    // build_id を読むのは `build --watch` の autorefresh.js だけ。通常の build で書くと
-    // dist が毎回 1 ファイル変わり、ビルド時刻も公開される
-    if params.live_reload == LiveReloadMode::Poll {
+    // build_id は `build --watch` のときだけ（判断は output_switches）
+    if SiteOutput::BuildId.emitted(&switches) {
         assets::write_build_id(output_dir, ctx.outputs)?;
     }
 

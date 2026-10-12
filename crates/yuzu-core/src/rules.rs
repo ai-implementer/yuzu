@@ -1,9 +1,9 @@
 //! 全診断ルールのレジストリ。
 //!
 //! **ここが全ルールの ID・深刻度・抑制可否の唯一の定義**。新ルールはここへ登録し、
-//! `Diagnostic` を構築する側は ID・severity を直書きせずこの定数を参照する
-//! （`SPEC_LANGS` と同じ規律）。docs `reference/rules.md` の一覧との一致は
-//! このモジュールのテストが縛る。
+//! `Diagnostic` はこの定数（[`Rule`]）をそのまま持ち、深刻度もそこから決まる
+//! （`Diagnostic::new(rule, rel, span, message)`。`SPEC_LANGS` と同じ規律）。
+//! docs `reference/rules.md` の一覧との一致はこのモジュールのテストが縛る。
 //!
 //! yuzu-config だけは依存グラフの葉（yuzu-core 非依存）のため定数を共有できない。
 //! `yuzu_config::CONFIG_RULES` との一致は yuzu-cli 側（`commands/diag.rs`）の

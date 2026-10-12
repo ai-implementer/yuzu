@@ -122,8 +122,7 @@ pub fn validate_routes(pages: &[Page]) -> Vec<Diagnostic> {
                     }
                 };
                 diags.push(Diagnostic {
-                    rule: rules::ROUTE_CONFLICT.id,
-                    severity: rules::ROUTE_CONFLICT.severity,
+                    rule: rules::ROUTE_CONFLICT,
                     base: DiagBase::Content,
                     rel,
                     span: None,
@@ -132,8 +131,7 @@ pub fn validate_routes(pages: &[Page]) -> Vec<Diagnostic> {
                 });
             }
             Some(first) => diags.push(Diagnostic {
-                rule: rules::ROUTE_CONFLICT.id,
-                severity: rules::ROUTE_CONFLICT.severity,
+                rule: rules::ROUTE_CONFLICT,
                 base: DiagBase::Content,
                 rel: page.rel.clone(),
                 span: None,
@@ -167,8 +165,7 @@ fn check_page_path(page: &Page, out: &mut Vec<Diagnostic>) {
     }
     let list = describe_chars(&found);
     out.push(Diagnostic {
-        rule: rules::UNSAFE_PAGE_PATH.id,
-        severity: rules::UNSAFE_PAGE_PATH.severity,
+        rule: rules::UNSAFE_PAGE_PATH,
         base: DiagBase::Content,
         rel: page.rel.clone(),
         span: None,
@@ -232,8 +229,8 @@ mod tests {
         let diags = validate_routes(&pages);
 
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].rule, "route-conflict");
-        assert_eq!(diags[0].severity, crate::Severity::Error);
+        assert_eq!(diags[0].rule.id, "route-conflict");
+        assert_eq!(diags[0].severity(), crate::Severity::Error);
         assert_eq!(
             diags[0].rel,
             PathBuf::from("guide.md"),
@@ -262,7 +259,7 @@ mod tests {
         assert_eq!(
             validate_routes(&pages)
                 .iter()
-                .filter(|d| d.rule == "route-conflict")
+                .filter(|d| d.rule.id == "route-conflict")
                 .count(),
             2
         );
@@ -289,7 +286,7 @@ mod tests {
             ] {
                 let diags = validate_routes(&pages);
                 assert_eq!(diags.len(), 1, "{kind:?}: {diags:?}");
-                assert_eq!(diags[0].rule, "route-conflict");
+                assert_eq!(diags[0].rule.id, "route-conflict");
                 assert_eq!(diags[0].rel, PathBuf::from("glossary.md"));
                 assert!(
                     diags[0].message.contains(&format!("`{key}`")),
@@ -315,7 +312,7 @@ mod tests {
         ];
         let diags = validate_routes(&pages);
         assert_eq!(diags.len(), 1, "{diags:?}");
-        assert_eq!(diags[0].rule, "route-conflict");
+        assert_eq!(diags[0].rule.id, "route-conflict");
         assert!(
             diags[0].message.contains("`markdown.glossary.page`")
                 && diags[0].message.contains("`search.page`"),
@@ -333,7 +330,7 @@ mod tests {
             let diags = validate_routes(&[generated_page("a\\b.md", "a\\b/", kind)]);
             let hits: Vec<_> = diags
                 .iter()
-                .filter(|d| d.rule == "unsafe-page-path")
+                .filter(|d| d.rule.id == "unsafe-page-path")
                 .collect();
             assert_eq!(hits.len(), 1, "{kind:?}: {diags:?}");
             assert!(
@@ -353,10 +350,10 @@ mod tests {
             let diags = validate_routes(&[page(rel, &route)]);
             let hits: Vec<_> = diags
                 .iter()
-                .filter(|d| d.rule == "unsafe-page-path")
+                .filter(|d| d.rule.id == "unsafe-page-path")
                 .collect();
             assert_eq!(hits.len(), 1, "{rel:?}: {diags:?}");
-            assert_eq!(hits[0].severity, crate::Severity::Error);
+            assert_eq!(hits[0].severity(), crate::Severity::Error);
             assert!(hits[0].span.is_none(), "ファイル配置の問題なので span なし");
             assert!(
                 hits[0].message.contains("出力パス"),
@@ -380,7 +377,7 @@ mod tests {
         ] {
             let diags = validate_routes(&[generated_page(rel, route, GeneratedKind::Search)]);
             assert_eq!(diags.len(), 1, "{rel:?}: {diags:?}");
-            assert_eq!(diags[0].rule, "unsafe-page-path");
+            assert_eq!(diags[0].rule.id, "unsafe-page-path");
             assert!(
                 diags[0].message.contains("Windows"),
                 "{rel:?}: {}",

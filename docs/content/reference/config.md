@@ -183,7 +183,7 @@ glob 評価が想定外になるため）。
 | `dark` | string / `"toggle"` | ダークモードの扱い。`"toggle"`（切替ボタンを出し、選んでいなければ OS の設定に従う）/ `"auto"`（ボタンなしで OS の設定に従う）/ `"light"`（ライト固定）。旧形式の `true` は `"toggle"`、`false` は `"light"` として読む（[ダークモード](../guide/appearance.md#ダークモード)） |
 | `css_vars` | table / `{}` | テーマ CSS 変数の上書き（キーは `--` 省略可）。`[theme.css_vars]` のテーブルで書く |
 | `css_vars_dark` | table / `{}` | ダークモード時のみの上書き |
-| `toc.levels` | string / `"2-3"` | ページ内 TOC に載せる見出しレベルの範囲（`"2-4"` / `"2"` の形。h1〜h6 = 1〜6） |
+| `toc.levels` | string / `"2-3"` | ページ内 TOC に載せる見出しレベルの範囲（`"2-4"` / `"2"` の形。h1〜h6 = 1〜6）。逆順（`"3-2"`）や数でない値は設定エラー |
 | `reading_time` | bool / `true` | ページの先頭に読了時間の目安と文字数を出す。ページ単位では frontmatter `readingTime: false` で消せる（[読了時間と文字数](../guide/writing.md#読了時間と文字数)） |
 
 ## nav
@@ -208,7 +208,7 @@ glob 評価が想定外になるため）。
 | `crossref.numbering` | `"page"` \| `"site"` / `"page"` | [図表番号](../guide/writing.md#図表番号と相互参照)の採番単位（ページ内連番 / サイト全体の通し番号） |
 | `glossary.terms` | table / `{}` | [用語集](../guide/writing.md#用語集と略語)の辞書（略語 → 説明文）。`[markdown.glossary.terms]` のテーブルで書く。空なら機能ごと無効 |
 | `glossary.abbr` | bool / `true` | 本文の初出を `<abbr title="説明">` にする（`false` で用語集ページだけ生成） |
-| `glossary.page` | string / `"glossary"` | 用語集ページの URL（`content` 相対・拡張子なし）。`""` で生成しない |
+| `glossary.page` | string / `"glossary"` | 用語集ページの URL（`content` 相対・拡張子なし）。`""` で生成しない。`..`・`.`・空の階層（`//`）・`:` を含む値は設定エラー |
 | `glossary.page_title` | string / `"用語集"` | 用語集ページのタイトル（h1 とサイドバーの表示名） |
 
 ## lint
@@ -224,7 +224,7 @@ glob 評価が想定外になるため）。
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
 | `enabled` | bool / `true` | 全文検索（インデックス生成と検索 UI） |
-| `page` | string / `""` | [検索結果ページ](../guide/search.md#検索結果ページ)の route。**空なら生成しない**（既存の `content/search.md` 等と衝突しないための既定） |
+| `page` | string / `""` | [検索結果ページ](../guide/search.md#検索結果ページ)の route。**空なら生成しない**（既存の `content/search.md` 等と衝突しないための既定）。`glossary.page` と同じく `..` 等を含む値は設定エラー |
 | `page_title` | string / `"検索"` | 検索結果ページのタイトル |
 | `page_size` | integer / `10` | 検索結果ページで 1 回に表示する件数（「さらに表示」で追加） |
 | `dictionary` | string / なし | 分かち書きのモデルの差し替え（vaporetto のモデル形式。プロジェクト相対パス） |
@@ -248,7 +248,7 @@ glob 評価が想定外になるため）。
 | --- | --- | --- |
 | `build.base_url` | string / なし | `site.base_url` より優先する基点（CI 注入用。`--base-url` はさらに優先） |
 | `build.watch_ignore` | string\[\] / `["**/target", "**/node_modules"]` | `yuzu dev` / `build --watch` の監視から除外する glob（プロジェクトルート相対）。**指定すると既定値を置き換えます**（追記ではありません） |
-| `dev.host` | string / `"127.0.0.1"` | dev / preview のバインド先 |
+| `dev.host` | string / `"127.0.0.1"` | dev / preview のバインド先（IP アドレス。`localhost` のようなホスト名は設定エラー） |
 | `dev.port` | integer / `5173` | ポート |
 | `dev.live_reload` | bool / `true` | WebSocket ライブリロード |
 | `dev.open` | bool / `false` | `yuzu dev` 起動時にブラウザを開く |

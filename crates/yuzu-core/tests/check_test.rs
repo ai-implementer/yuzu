@@ -3,7 +3,19 @@
 use std::fs;
 use std::path::Path;
 
-use yuzu_core::{Diagnostic, LinkReport, MarkdownOptions, build_source_pages, check_links};
+use yuzu_core::{
+    Diagnostic, LinkReport, MarkdownOptions, OutputSwitches, build_source_pages, check_links,
+};
+
+/// 既定の設定で出す生成物（llms・ハイライト・検索あり。base_url がパスなので sitemap なし）
+const DEFAULT_OUTPUTS: OutputSwitches = OutputSwitches {
+    llms: true,
+    llms_full: true,
+    sitemap: false,
+    highlight: true,
+    search: true,
+    build_id: false,
+};
 
 /// content/・public/ を持つ一時プロジェクトで check_links を実行し、内部リンクの診断を返す
 fn check(files: &[(&str, &str)], public: &[&str]) -> Vec<Diagnostic> {
@@ -12,6 +24,11 @@ fn check(files: &[(&str, &str)], public: &[&str]) -> Vec<Diagnostic> {
 
 /// 診断と外部リンク一覧の両方
 fn report(files: &[(&str, &str)], public: &[&str]) -> LinkReport {
+    report_with(files, public, &DEFAULT_OUTPUTS)
+}
+
+/// 出す生成物を指定して検査する
+fn report_with(files: &[(&str, &str)], public: &[&str], outputs: &OutputSwitches) -> LinkReport {
     let dir = tempfile::tempdir().unwrap();
     let content = dir.path().join("content");
     let public_dir = dir.path().join("public");
@@ -27,11 +44,20 @@ fn report(files: &[(&str, &str)], public: &[&str]) -> LinkReport {
     }
     let opts = MarkdownOptions::default();
     let pages = build_source_pages(&content, &[], &opts).unwrap();
-    check_links(&pages, Some(&public_dir), &content, &[], false, &opts).unwrap()
+    check_links(
+        &pages,
+        Some(&public_dir),
+        &content,
+        &[],
+        false,
+        outputs,
+        &opts,
+    )
+    .unwrap()
 }
 
 fn rules(diags: &[Diagnostic]) -> Vec<&str> {
-    diags.iter().map(|d| d.rule).collect()
+    diags.iter().map(|d| d.rule.id).collect()
 }
 
 #[test]
@@ -137,6 +163,54 @@ fn ルート絶対パスは_public_と_route_に照合() {
     );
 }
 
+/// ビルドの生成物へのリンクは、今回出すものだけを通す（10-12 レビューの R1）。
+/// 404.html は必ず出すのに壊れたリンクにしていた・llms を止めても `/llms-full.txt` が通っていた
+#[test]
+fn 生成物へのリンクは今回出すものだけを通す() {
+    let files: &[(&str, &str)] = &[(
+        "index.md",
+        "# t\n\n[404](/404.html)\n\n[full](/llms-full.txt)\n\n[map](/sitemap.xml)\n\n[css](/_assets/css/syntect.css)\n\n[検索](/_search/manifest.json)\n",
+    )];
+    let broken = |outputs: &OutputSwitches| -> Vec<String> {
+        report_with(files, &[], outputs)
+            .diags
+            .iter()
+            .map(|d| {
+                let (_, rest) = d.message.split_once('`').unwrap();
+                rest.split('`').next().unwrap().to_string()
+            })
+            .collect()
+    };
+    // 既定: base_url がパスなので sitemap.xml だけ出さない
+    assert_eq!(broken(&DEFAULT_OUTPUTS), ["/sitemap.xml"]);
+    // 全部止める（404.html は常に出す）
+    let off = OutputSwitches {
+        llms: false,
+        llms_full: false,
+        sitemap: false,
+        highlight: false,
+        search: false,
+        build_id: false,
+    };
+    assert_eq!(
+        broken(&off),
+        [
+            "/llms-full.txt",
+            "/sitemap.xml",
+            "/_assets/css/syntect.css",
+            "/_search/manifest.json"
+        ]
+    );
+    // public/ に置いたファイルは止めていても有効なリンク先
+    let with_public = report_with(files, &["llms-full.txt"], &off).diags;
+    assert!(
+        with_public
+            .iter()
+            .all(|d| !d.message.contains("/llms-full.txt")),
+        "{with_public:?}"
+    );
+}
+
 #[test]
 fn draft_ページへのリンクは壊れ扱い() {
     let diags = check(
@@ -219,9 +293,17 @@ fn 画像は_build_がコピーするファイルに照合する() {
     let opts = MarkdownOptions::default();
     let ignore = vec!["drafts/**".to_string()];
     let pages = build_source_pages(&content, &ignore, &opts).unwrap();
-    let diags = check_links(&pages, None, &content, &ignore, false, &opts)
-        .unwrap()
-        .diags;
+    let diags = check_links(
+        &pages,
+        None,
+        &content,
+        &ignore,
+        false,
+        &DEFAULT_OUTPUTS,
+        &opts,
+    )
+    .unwrap()
+    .diags;
     let messages: Vec<&str> = diags.iter().map(|d| d.message.as_str()).collect();
     assert_eq!(
         rules(&diags),
@@ -246,9 +328,11 @@ fn drafts_を含むビルドでは_draft_へのリンクは切れていない() 
     fs::write(content.join("wip.md"), "---\ndraft: true\n---\n# wip\n").unwrap();
     let opts = MarkdownOptions::default();
     let pages = build_source_pages(&content, &[], &opts).unwrap();
-    let published = check_links(&pages, None, &content, &[], false, &opts).unwrap();
+    let published =
+        check_links(&pages, None, &content, &[], false, &DEFAULT_OUTPUTS, &opts).unwrap();
     assert_eq!(rules(&published.diags), ["broken-link", "broken-link"]);
-    let with_drafts = check_links(&pages, None, &content, &[], true, &opts).unwrap();
+    let with_drafts =
+        check_links(&pages, None, &content, &[], true, &DEFAULT_OUTPUTS, &opts).unwrap();
     assert!(with_drafts.diags.is_empty(), "{:?}", with_drafts.diags);
 }
 
