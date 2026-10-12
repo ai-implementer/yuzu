@@ -3,670 +3,13 @@
 yuzu の開発計画と、これまでのリリースの内訳。**このファイルが Phase 状態の正**
 （README には現在の版と概要だけを置く）。
 
-## 現在: v0.19（Phase 81〜86）
+## 現在
 
-**v0.18.1 まで公開済み**（kabosu 0.2.0 / tankan 0.2.1 / mikan 0.2.1 も crates.io で
-公開済み。yuzu のリリースとは非同期。kabosu の publish 前に fuzz を回す規律は
-CLAUDE.md にある。tankan 0.2.1・mikan 0.2.1 は Phase 81 で 10-10 に公開した = LICENSE の
-同梱、tankan は v0.18 の Phase 77 で直した 2 件、mikan は分かち書きモデルのライセンス文）。
-
-v0.18.1（10-10）では、10-07 の見直し（下の「[10-07 見直し](#10-07-見直し)」）で 3 者が
-一致した結論に沿って、同梱 mermaid・KaTeX の脆弱性勧告への対応と、工数が小さく黙って
-誤った結果を出す不具合 4 件の修正を、v0.19 より先に出した（内訳は「これまでの
-リリース」の「完了済み: v0.18」）。
-
-### v0.19 の方針
-
-テーマは「**配布物と第一印象**」。10-04 見直しの持ち越しのうち「配布物として必要な
-もの」と、「利用者の体験と docs」のうち初めて使う人が最初に踏む食い違いに、
-10-07 の見直しで見つかった「公開してはいけないものが外へ出る」3 件を加え、
-6 つの Phase で消化する。本文 HTML は変えない。`CACHE_FORMAT_VERSION` は、Phase 83 で
-frontmatter に `pageMd` を足したので 1 回だけ上げた（23 → 24。キャッシュの envKey に
-yuzu の版が入るので、利用者はリリースのたびにどのみち作り直しになる）。
-
-以下は策定の詳細。
-
-- 動機: 10-04 の見直しで 3 人が合意した優先順位の先頭が「配布物として必要なもの」で、
-  どれも工数は小〜中。10-07 の見直しでは、想定する利用者（社内の設計書を書く人）に対して
-  原稿の `.md` が必ず配信される・公開範囲の注意が無い・dev サーバが外部サイトから
-  読まれうる、の 3 件が見つかり、3 者とも「第一印象」より先に扱うべきと判断した。
-  配布物だけでは利用者に見える変化がほとんど無いので、docs の書き方の誤り・
-  build が壊れたページを黙って出す件・既存フォルダからの始め方・雛形のナビも同じ版に入れる
-- ゴール: 配布物（リリースのアーカイブ・利用者のサイトの dist・crates.io の 3 crate）に
-  第三者ライセンスの表記があり、脆弱性の報告先と依存の監視がある。公開したくない原稿を
-  出さずに済む設定と、社内で公開するときの注意が docs にある。README・docs・雛形の
-  記述が実際の動作と一致し、build は壊れたページを出したときに件数と次の手順を知らせる
-- 本文 HTML・検索インデックスの形式は変えない（キャッシュ形式は Phase 83 の 1 回だけ）。
-  変わるのは dist に出るファイル（ライセンス文・`.md` の配信の有無）・nav（雛形と用語集の位置）・
-  dev / preview サーバの応答・CLI の出力・docs・CI
-- Phase は「配布物（81 ライセンス → 82 脆弱性の窓口と依存の監視）→ 83 公開範囲の制御 →
-  利用者の体験（84 docs と雛形 → 85 build の報告）→ 86 dogfooding」の順。
-  82 の cargo-deny の licenses 検査は 81 の一覧と許可リストを揃えるので 81 の後。
-  83 は 84 の docs（社内で公開する節）が前提にするので 84 の前。
-  着手時に判断点を決めてから実装する
-- **リリース判定**（すべて満たしたらリリースする）
-  - cargo-deny が CI で成功している（licenses・bans・sources は ci.yml の deny ジョブ、
-    advisories は deps.yml。タグの前に deps.yml を手動で流す）
-  - release.yml がアーカイブ内のライセンス一覧の有無を検証している
-  - ci.yml の e2e が、dist のライセンス文・vendor の README が出ないこと・`.md` の配信の
-    設定を照合している
-  - dev / preview が許可していない Host に 403 を返すテストがある
-  - docs ゲートの JSON 風表記の否定 grep が通っている
-  - 仮決めのままの判断点が無い（残すならリリースノートに書く）
-- **ユーザの作業**
-
-  | 作業 | Phase | 時期 |
-  | --- | --- | --- |
-  | private vulnerability reporting・secret scanning・push protection を有効にする（Dependabot alerts も推奨） | 82 | 済み（10-10） |
-  | tankan 0.2.1・mikan 0.2.1 を crates.io へ publish する（`cargo login` が要る） | 81 | 済み（10-10） |
-  | 各 Phase の判断点を決める | 81〜86 | 着手時 |
-  | github-pages の Environments でデプロイ元を制限しているなら `v*` のタグを許可する（公開中の docs を配布中の版に戻すなら、docs.yml を v0.18.1 のタグで手動実行） | 84 | マージ後 |
-  | ブラウザでの確認（Host の検査・雛形 deploy.yml の実行・ライセンス文の表示） | 86 | 済み（10-12） |
-
-- **時間が足りなければ v0.20 へ回すもの**: `yuzu init`（85 の client 描画の Mermaid 構文チェックは
-  v0.20 へ回すと決めた）
-
-### 81 第三者ライセンスの表記 ✅
-
-**概要**: リリースのアーカイブ・利用者のサイトの dist・crates.io の 3 crate に、
-同梱している第三者のライセンス表記を入れる。あわせて、テーマ資産として配信されて
-いる vendor の更新メモ（`_assets/vendor/README.md`）を配信対象から外す。
-主な判断点は一覧の生成方法（ツールと生成のタイミング）と、dist に何を出すか。
-
-- 決定（10-10。判断点 4 つともユーザが推奨案で確定）と実装
-  - **アーカイブ用**は cargo-about（0.9.2）で release.yml の `licenses` ジョブがリリースのたびに
-    生成し、artifact で 4 つの build へ渡す（コミットしない = Cargo.lock の更新で差分を出さない）。
-    中身は配布する 4 ターゲットの依存 crate（201）・two-face の一覧（`licenses/` に記録し、
-    版ずれは CI の `third-party-licenses.sh check`）・syntect の既定テーマ（InspiredGitHub・base16）・
-    下の dist 用 2 枚。約 525 KB
-  - **dist 用**は資産の隣にテキスト 2 枚。`_assets/vendor/THIRD-PARTY-LICENSES.txt`（mermaid と
-    束ねた 60 パッケージ・KaTeX と katex-fonts。約 67 KB）と `_search/THIRD-PARTY-LICENSES.txt`
-    （wasm の依存 41 crate・分かち書きモデル。約 40 KB）。バイナリに埋め込むので vendor
-    スクリプトで生成してコミットする。mermaid は npm の tarball（sha256 固定）に切り替え、
-    同梱の source map から束ねたパッケージを取り出して各 tarball の LICENSE を集める
-    （npm の integrity を照合。同じ本文は 1 回だけ載せる）
-  - `static/vendor/README.md` は rust-embed の `#[exclude]` で配信対象から外した
-    （`include-exclude` feature）。yuzu-index にも build.rs を足した
-  - 3 crate に LICENSE をコピーで置き、tankan の corpus は `exclude`＋出所の README。
-    分かち書きモデルのアーカイブ同梱の LICENSE も mikan に保存。tankan・mikan を 0.2.1 に
-    上げた（publish はユーザ。kabosu は次の変更時）
-  - release.yml のアーカイブ検証・ci.yml の e2e（通知の有無と README の不在）・package の
-    LICENSE 確認は、Phase 86 から前倒しでここで入れた
-  - PR #31 のレビュー指摘: cargo-about は crate に本文が無い・認識できないと SPDX の雛形に戻り
-    （著作権表示が `<year> <copyright holders>`）、`--fail` でも止まらない。該当はバイナリ側で
-    windows 系 6・comrak（ファイルはあるが認識できない → `about.toml` の clarify で sha256 固定）と
-    ruzstd・vaporetto・vaporetto_rules・siphasher（本文が無い → 公開コミットの原文を
-    `licenses/supplements/` に保存）。npm の fastdom は LICENSE が無く README の License 節に
-    本文があった（README から取るようにした）。生成物に雛形が残ると失敗するようにした
-
-- 現状（実測。10-06 時点）
-  - アーカイブに入れているのは `README.md` と yuzu 自身の `LICENSE-MIT` /
-    `LICENSE-APACHE` だけ（`release.yml:142`）
-  - バイナリに入る第三者 crate は約 190（Linux 向けの通常依存。proc-macro を含む。
-    `cargo tree -e normal`）。大半は MIT / Apache-2.0 で、ほかに BSD-2-Clause
-    （comrak）・MIT AND BSD-3-Clause（matchit）・Unicode-3.0（unicode-ident）・
-    Unicode-DFS-2016（finl_unicode）・Zlib（foldhash）・ISC（inotify）・
-    CC0-1.0（notify）がある。MIT や BSD のものは、バイナリで配るときに著作権表示と
-    許諾文を添える必要がある
-  - two-face（構文定義・テーマ）は表示用の `acknowledgement::listing()` を feature なしで
-    公開している。yuzu は使っていない
-  - dist へ配る vendor 資産: mermaid.min.js（MIT）・KaTeX の JS・CSS・woff2 フォント
-    20 個（MIT）・分かち書きモデル `_search/model.zst`（MIT OR Apache-2.0）。
-    mermaid.min.js と KaTeX の min ファイルの先頭にライセンスのコメントは無い
-  - mermaid.min.js は複数の OSS を束ねたもので、「MIT 1 行」では済まない。中に
-    `@license DOMPurify 3.4.0 | (c) Cure53 … Released under the Apache…` の表記があり
-    （10-07 に確認）、D3・lodash・dagre・cytoscape の文字列も入っている（それぞれの
-    ライセンスは未確認）
-  - tankan の Cargo.toml に `exclude` が無く（kabosu は toml-test を除外している。
-    10-07 に確認）、`tests/corpus` の .mmd が crate に入る。corpus には Mermaid 公式の
-    例文の写しに見えるものがあり、出所の記録が無い
-  - テーマ資産は `yuzu_theme::iter()` の全ファイルを `_assets/` へ書き出す
-    （`yuzu-render/src/assets.rs:47`）ので、`static/vendor/README.md` も
-    `_assets/vendor/README.md` に出る（このサイトでも
-    `https://ai.implementer.net/yuzu/_assets/vendor/README.md` が 200 を返す）。
-    検索資産（`yuzu-index`）はファイル名を列挙してコピーしているので README は出ない
-  - dist には検索の wasm も出る。`yuzu-index/src/builder.rs:354` の `copy_wasm_assets` が
-    `_search/search_bg.wasm` と、wasm-bindgen が生成した `search.js` を書き出す。この wasm に
-    入る wasm32 向けの依存は約 40 crate（`cargo tree -p mikan-wasm --target
-    wasm32-unknown-unknown -e normal`。10-08 に確認）で、mikan・vaporetto・fst
-    （Unlicense/MIT）・ruzstd・serde_json・wasm-bindgen・foldhash（Zlib）などを含む。
-    利用者のサイトへ配る第三者のコードは、vendor の JS・CSS・フォント・モデルだけではない
-    （PR #29 のレビュー指摘）
-  - 3 crate（tankan / mikan / kabosu）とも `cargo package --list` に LICENSE が 0 件
-    （`license.workspace = true` だけで、ファイルはワークスペース直下にしか無い）
-- やること
-  - 第三者 crate のライセンス一覧（著作権表示と許諾文）を作り、アーカイブに入れる
-    （ファイル名は仮に `THIRD-PARTY-LICENSES`）。two-face の acknowledgement も含める
-  - dist に、利用者のサイトへ配る第三者のコードのライセンス文を出す。対象は vendor 資産と、
-    検索の wasm に入る wasm32 向けの依存。書き込みは `write_under` を通し、出力マニフェストに
-    載せる。mermaid に束ねられた各 OSS のライセンス文は、`scripts/vendor-mermaid.sh` で
-    mermaid と一緒に取得する
-  - 一覧の棚卸しは 2 つの対象で行う: バイナリ（ネイティブの通常依存。アーカイブ用）と、
-    検索の wasm（`mikan-wasm` の wasm32 向けの依存。dist 用）。生成ツールの設定と CI の
-    照合も、この 2 つを対象にする
-  - tankan の corpus は `exclude` で crate から外すか、出所を書いた README を corpus に置く
-  - `static/vendor/README.md` を rust-embed の対象から外す（`#[exclude]`）。既存サイトの
-    dist に残っている分は、次の build の孤児掃除で消える
-  - 3 crate のディレクトリに LICENSE-MIT / LICENSE-APACHE を置く（シンボリックリンクを
-    `cargo package` が実体で入れるかを確かめ、だめならコピー）
-  - tankan は Phase 77 の修正 2 件と LICENSE を入れて 0.2.1 を公開する
-    （publish-crate スキル）
-- 判断点
-  - **一覧の生成方法** — cargo-about・cargo-deny の `list`・自前スクリプトのどれを
-    使うか。生成のタイミングは (a) release.yml でリリースのたびに生成する
-    （CI にツールのインストールが要る）か、(b) リポジトリにコミットして CI で
-    最新かを照合する（依存の更新ごとに差分が PR に出る）か。どちらも build の既定経路に
-    ネットワーク I/O を入れない規律とは衝突しない
-  - **dist に何を出すか** — vendor 資産と検索 wasm の依存の分は必須。加えてバイナリの
-    一覧まで出すか（バイナリは利用者のサイトに出ないので、出さない案が有力）。
-    テキストファイルにするか HTML のページにするか
-  - mikan / kabosu も LICENSE だけのためにパッチ版を出すか（mikan は分かち書きモデルを
-    同梱している）
-
-### 82 脆弱性の窓口と依存の監視 ✅
-
-**概要**: 脆弱性の報告先（SECURITY.md と GitHub の private vulnerability reporting）を
-用意し、依存の監視（dependabot・cargo-deny）と CI の権限の絞り込みを入れる。
-mermaid・KaTeX の更新は v0.18.1 で出した。主な判断点は cargo-deny の検査範囲と、
-dependabot の運用（頻度・まとめ方・対象から外す依存）。
-
-- 決定（10-10。判断点 4 つと、初回の実行で見つかった勧告の扱い 2 つをユーザが推奨案で確定）と実装
-  - **SECURITY.md** — 報告先は GitHub の private vulnerability reporting。対象は最新のリリースと
-    crates.io の 3 crate の最新版。受領の返信は 7 日以内、修正はパッチ版で 90 日以内が目安。
-    原稿・yuzu.toml・テーマを書く人は信頼する前提（生 HTML はそのまま出る）を書いた。README に導線
-  - **dependabot**（`.github/dependabot.yml`）— 月次。cargo は本文 HTML が変わりうる
-    comrak・syntect・two-face の組（`render-output`）とそれ以外の 2 PR、actions は 1 PR。
-    wasm-bindgen は ignore（`=` 固定と wasm-bindgen-cli を揃えて手で上げる）。対象は直接依存だけ
-  - **cargo-deny**（0.20.2・`deny.toml`）— licenses・bans・sources は ci.yml の `deny` ジョブで
-    PR ごと。advisories は新しい勧告で無関係な PR を落とさないよう deps.yml（週次・依存を変える
-    PR・手動）に分けた。bans は重複版を警告だけにし（sha2 0.10 / 0.11 など 8 件）、onig・TLS・
-    HTTP クライアントの混入を禁止（凍結した設計判断を機械で照合）。graph は配布する 4 ターゲット
-    ＋ wasm32 で dev 依存も含む（含めても違反が無かった）
-  - 初回の advisories で syntect 経由の勧告が 5 件出た（quick-xml 0.38.4 に 2 件・time 0.3.45 に
-    1 件・yaml-rust と bincode のメンテナンス終了）。time の修正版（0.3.46 以上）は rustc 1.88 が
-    要り MSRV 1.87 では上げられない。どれも yuzu が使っていない syntect の plist-load・yaml-load
-    から入っていたので、`default-fancy` をやめて使う feature だけを並べた（plist・quick-xml・time・
-    yaml-rust など 10 crate が依存から消え、スナップショットは不変）。bincode（syntect と
-    vaporetto が同梱データの読み込みに使う。代わりの版が無い）だけ理由付きで除外
-  - **vendor 資産の勧告**（`scripts/vendor-advisories.sh`。deps.yml が週次）— mermaid・束ねた
-    60 パッケージ・KaTeX の版を `crates/yuzu-theme/licenses/` の記録から読み（版の一覧を別に
-    持たない）、GitHub の advisory database と照合する。初回で mermaid 11.17.2 が束ねる
-    DOMPurify 3.4.12（IN_PLACE の 2 件）・js-yaml 4.3.0（DoS 2 件）・KaTeX 0.16.47（1 件）が
-    見つかった。11 系は 11.17.2 が最新で直せず、束ねたコードを調べると mermaid は IN_PLACE を
-    使わず、js-yaml は 4 か所とも JSON_SCHEMA（マージキー・`!!omap` を解釈しない）で読むので、
-    「GHSA の ID とパッケージ@版」の組で理由付きで除外した（mermaid 12 へ上げるときに見直す。
-    下の「v0.20 以降の候補」）
-  - 依存を上げたときに古いまま残るものを CI で知らせるようにした: `third-party-licenses.sh check` が
-    検索 wasm の通知に載った crate と版の集合を、mikan-wasm の wasm32 向け依存の解決結果と
-    照合する（コミット済みの wasm が古い版のまま残るのを防ぐ。vaporetto ならトークナイザが
-    ずれる。PR #32 のレビュー指摘で、Cargo.lock に版があるかだけの照合から改めた = 同じ crate の
-    旧版がネイティブ側に残ると見逃した）・使ってよいライセンスの一覧が
-    about.toml と deny.toml で同じかを照合する。deps.yml の `licenses-notice` がアーカイブ用の
-    通知の生成を試す（clarify の checksum 不一致に、タグを打つ前に気付く）
-  - ci.yml・fuzz.yml・container.yml（ROADMAP の現状に無かったが同じ穴）に
-    `permissions: contents: read`、ci.yml の cargo に `--locked`、`.gitignore` に
-    `.claude/settings.local.json`。追随作業の見分け方は新しい `dependency-update` スキルに書き、
-    verify・release・vendor-update スキルと CLAUDE.md を追随させた
-  - ユーザの作業: private vulnerability reporting・secret scanning・push protection と
-    Dependabot alerts を 10-10 に有効にした（`gh api` で確認。公開リポジトリなので無料）。
-    Dependabot alerts は定期実行が止まっていても勧告を通知する
-
-- 現状（実測。10-06 時点）
-  - `SECURITY.md` / `.github/dependabot.yml` / `deny.toml` が無い。
-    `security_and_analysis`（secret scanning・push protection・dependabot の
-    セキュリティ更新）はすべて disabled で、private vulnerability reporting も無効
-    （`gh api`）
-  - `ci.yml` と `fuzz.yml` に `permissions:` が無い（`docs.yml` / `release.yml` /
-    `docs-links.yml` には有る）。`ci.yml` の clippy / test / build に `--locked` が無い
-    （package と msrv には有る）
-  - dependabot が上げると壊れる・追随作業が要る依存がある: `wasm-bindgen = "=0.2.126"`
-    （`Cargo.toml:60`。wasm-bindgen-cli と完全に同じ版で検索の wasm を作り直す必要がある）、
-    comrak・syntect・two-face（本文 HTML が変わるとスナップショットの更新と
-    `CACHE_FORMAT_VERSION` の bump が要る）。dependabot はどちらもしない
-    （10-07 見直しの C3。`=` 固定を上げる PR を出すかは未確認）
-  - `.claude/settings.local.json` が `.gitignore` に無く、未追跡のまま置かれている
-- やること
-  - `SECURITY.md`（報告先・対象の版・対応の目安）を置く。private vulnerability
-    reporting・secret scanning・push protection を有効にする（リポジトリの設定。
-    ユーザが操作する）
-  - `.github/dependabot.yml`（cargo と github-actions）を置く。actions のフルコミット SHA
-    でのピン留めは続ける
-  - cargo-deny を CI に入れる（advisories と licenses。licenses の許可リストは
-    Phase 81 の一覧と揃える）
-  - `ci.yml` と `fuzz.yml` に `permissions: contents: read`。`ci.yml` の clippy /
-    test / build に `--locked`
-  - 依存更新の PR の扱い方（追随作業が要る依存の見分け方・マージ前の確認）を
-    スキルに書く
-  - `.gitignore` に `.claude/settings.local.json` を足す
-- 判断点
-  - **dependabot の運用** — 頻度（週次か月次か）・`groups` でまとめるか・`ignore` に
-    入れて手動更新にする依存（wasm-bindgen・comrak・syntect・two-face）。1 人の運用で
-    PR が溜まらない形にする
-  - **cargo-deny の検査範囲** — advisories だけか、licenses・bans（重複版。sha2 の
-    0.10 / 0.11）・sources まで入れるか。advisories は新しい勧告が出ると PR と無関係に
-    CI が落ちるので、定期実行の別ジョブに分けるか
-  - vendor 資産の勧告を続けて見る方法 — dependabot は vendor したファイルを見ない。
-    定期実行のワークフローで `gh api /advisories` と照合するか、vendor-update スキルの
-    手順に確認を足すだけにするか（v0.18.1 の更新は 10-06 に手で照合して見つけた）
-
-### 83 公開範囲の制御 ✅
-
-**概要**: 社内の設計書を書く人が、公開したくないものを外へ出さずに済むようにする。
-原稿の `.md`（frontmatter・HTML コメント込み）を配信しない設定を足し、dev / preview
-サーバに Host / Origin の検査を入れ、社内で公開するときの注意と GitHub Pages 以外への
-置き方を docs に書く。主な判断点は `.md` を止める設定の形と、止めたときのコピーボタン・
-llms の扱い。
-
-- 決定（10-10。判断点 3 つともユーザが推奨案で確定）と実装
-  - **`.md` を止める設定** — サイト全体は新キー `llms.page_md`、ページ単位は frontmatter
-    `pageMd`（どちらも既定 true = 今までどおり配信）。止めたページは `.md` を出さず、
-    コピーボタン（`data-md-url`）も出さない。前回出した `.md` は次の build で消す。出力
-    マニフェストが無いとき（`--force`・`.yuzu` の削除の後）は通常の孤児掃除が働かず、
-    `output.clean = false` だと残り続けていた（PR #42 のレビュー指摘）ので、止めた生成物の一覧
-    （`yuzu_render::unpublished_outputs`。書き出し側の条件を裏返したもの）と今回書いたものの差を
-    記録の有無に関係なく消す。llms.txt / llms-full.txt・sitemap.xml・`_search/` も同じ扱いにした
-    （こちらは Phase 83 以前から残っていたが、docs の「止め方」の表に載せたので揃えた）。
-    public/ に置いた同じパスのファイルは今回書いているので消さない。`_search/` は中のファイルを
-    列挙して今回書いたもの以外を消す（最初は「中に今回書いたものがあれば丸ごと飛ばす」にしていて、
-    public/_search/ にファイルがあると索引が残った。再レビューの指摘）。判定は `Page::emits_page_md` に
-    サイトの値を引数で渡す形で 1 か所に集め、書き出し・コピーボタン・llms.txt の 3 か所が通る。
-    frontmatter が増えたので `CACHE_FORMAT_VERSION` を 23 → 24（v0.19 の方針の「bump なし」を
-    改めた。envKey に yuzu の版が入るので利用者に実害は無い）
-  - **llms.txt のリンク先** — `.md` を出さないページはページの HTML を指す（ページは載せたまま）。
-    llms-full.txt と検索インデックスには今までどおり本文が入る（frontmatter は入らない）。
-    実際のビルドで、frontmatter の値がどこにも出ず、HTML コメントは HTML と llms-full.txt に
-    だけ残る（検索インデックスには入らない）ことを確かめ、docs に書いた
-  - **Host の検査** — `localhost`・`*.localhost`・IP アドレス（v4・v6）は常に通し、それ以外の
-    ホスト名は新キー `dev.allowed_hosts`（`.` で始めるとサブドメインも）にあるものだけ。
-    ほかは 403（通す方法を書いた日本語の本文）。Host が無い要求も 403。WebSocket の
-    `/__livereload` は Origin も同じ規則で照合し、Origin の無い接続は通す。リバインディングは
-    ドメイン名を使うので IP は対象外で、`dev.host = "0.0.0.0"` で LAN の IP から開く使い方は
-    設定なしで動く（Vite と同じ考え方）。`yuzu-server/src/host.rs` と Router の最後の layer。
-    `dev.allowed_hosts` は起動時固定（`pin_restart_only`）
-  - docs: 新しいページ「社内で公開する」（`guide/internal.md`。dist に出るものと止め方の表・
-    GitHub Pages は非公開リポジトリでも公開される注意・nginx / GitLab Pages / S3 の置き方・
-    `base_url` の決め方・dev / preview は手元用）。LLM 連携・執筆の基本（frontmatter）・
-    品質チェック（抑制コメントも公開される）・設定と CLI のリファレンス・配信とデプロイに追記。
-    README と `yuzu new` の終了メッセージに注意を 1 行、雛形の `yuzu.toml` にコメント
-  - CI: docs ゲート 3 行、e2e に `.md` の配信の設定（サイト全体・ページ単位・孤児掃除）と
-    preview の Host の 403 / 200。テストは core・config・render・server（Host・Origin の
-    403 を含む。v0.19 のリリース判定）
-  - HTML コメントを出力から除く機能は扱わず、注意書きだけにした（判断点のとおり v0.20 以降）
-
-- 現状（実測。10-07 時点。「10-07 見直し」の A1〜A3）
-  - 原稿の `.md` は全ページ必ず配信される。判定の `emits_page_md()`
-    （`yuzu-core/src/model.rs:209`）は合成ページかどうかしか見ず、frontmatter の
-    `llms: false` や `llms.enabled` は関係しない（`yuzu-render/src/pipeline.rs:305`）。
-    `guide/llms.md` には「原文 Markdown（frontmatter 込み・バイトそのまま）が配信」と
-    あるが、止める方法が無いことは書かれていない。HTML コメントは出力 HTML・`.md`・
-    llms-full.txt に残る（`guide/quality.md`）
-  - ページのコピーボタン（`page-copy.js`）は `data-md-url` の `.md` を読む。`.md` を
-    止めるとコピーボタンも働かなくなる
-  - dev / preview の `build_router`（`yuzu-server/src/serve.rs:152`）に Host / Origin の
-    検査が無く、WebSocket の `/__livereload` も Origin を見ない。既定の bind は
-    127.0.0.1 だが、DNS リバインディングでは loopback のサーバにも外部サイトから届く
-    （コードで経路を確認。実機では未確認）
-  - 公開の案内は GitHub Pages だけ（`README.md:60-62`・`guide/deploy.md`・
-    `yuzu new` の終了メッセージ `commands/new.rs:79-80`・雛形 deploy.yml）。docs に
-    公開範囲の注意や、社内の Web サーバ・GitLab Pages・S3 などへの置き方が無い
-    （「非公開」「社内」「認証」等で 0 件）
-- やること
-  - `.md` の配信を止める設定を足す（サイト全体と、ページ単位）。止めたページでは
-    コピーボタンを出さない
-  - docs に「HTML コメントも公開される」注意を書く
-  - dev / preview に Host の検査を入れる（`localhost` / `127.0.0.1` / `[::1]` / bind 先の
-    アドレス / 設定の許可リスト以外は 403）。WebSocket は Origin も照合する
-  - docs に「社内で公開する」ページ（公開範囲の注意・dist を nginx 等の Web サーバ・
-    GitLab Pages・S3 に置く例・`base_url` の決め方）。README と `yuzu new` の終了
-    メッセージに注意を 1 行
-- 判断点
-  - **`.md` を止める設定の形** — `llms.page_md = false` のような新キーか、ページの
-    `llms: false` で `.md` も止めるか（後者は既存の意味を広げる）。既定は今のまま
-    配信する案が有力（既存サイトの挙動を変えない）
-  - HTML コメントを出力から除く機能は v0.19 では扱わず、注意書きだけにする。除くと
-    本文 HTML が変わって `CACHE_FORMAT_VERSION` の bump が要り、この版の「キャッシュ形式を
-    変えない」と衝突する。`<!-- yuzu-lint-disable-next-line … -->` 等の指示コメントとの
-    関係の整理も要るので、採るなら v0.20 以降
-  - Host の許可リストを設定キーにするか（`dev.allowed_hosts`）。`dev.host = "0.0.0.0"`
-    で LAN に公開しているときの扱い
-
-### 84 docs と雛形を実際の動作に合わせる ✅
-
-**概要**: README・docs・雛形・CLI のヘルプのうち、実際の動作と食い違う記述を直す。
-設定例の JSON / YAML 風の書き方を TOML に揃え、図の描画方式の既定値などの誤りを正し、
-既存の Markdown フォルダから始める手順と、dist をファイルとして開けないことを
-ガイドに書く。10-07 の見直しを受けて、雛形 deploy.yml をリリースのバイナリを使う形に
-替え、FAQ と問い合わせ先（Issues）への導線を足し、docs の目次を見直す。コードの変更は
-雛形・用語集の nav 上の位置・CLI のヘルプ文言だけ。主な判断点は用語集の位置の決め方と、
-docs サイトを main とタグのどちらから公開するか。
-
-- 決定（10-11。判断点 4 つは質問に応答が無かったため推奨案を計画に書き、計画の承認で確定）と実装
-  - **docs サイトの公開元** — リリースのタグ（`v*`）の push で公開する（`docs.yml`。手動で
-    公開し直すときはタグを選んで実行する）。main と PR では ci.yml が check・build だけを行う。
-    github-pages の Environments でデプロイ元を制限しているならタグを許可する（ユーザの作業）。
-    マージから次のタグまでは、マージ直前の main から作った docs が公開されたまま
-  - **用語集の nav 上の位置** — 同じ階層の末尾。並べ替えのキーを「order → 合成ページか → 名前」に
-    した（`nav.rs` の `sort_key`。`glossary_page()` に order を入れる方法は、未指定と同じ値になって
-    名前の比較に戻るので使わない）。`page = "aaa/index"` のように index として置いた用語集は
-    ディレクトリノード自身になるので、ディレクトリの並べ替えでも合成ページかどうかを見る
-    （PR #46 のレビュー指摘）。設定は足さない。docs サイトの nav とスナップショットは
-    変わらない。order の無いページ・ディレクトリより用語集が前に並んでいた既存サイトは並びが
-    変わる（リリースノートに書く）
-  - **`base_url` の `.` 始まり** — 設定エラー（exit 2）。`yuzu.toml` はキーの位置付き
-    （`build.base_url` / `site.base_url`）、`--base-url` はフラグ名で止める。判定は
-    `yuzu_config::base_url_problem` の 1 か所。ルートに置いたサイトで `base_url = "./"` と書いて
-    偶然動いていた build は止まる（リリースノートに書く）
-  - **`yuzu init`** — 足さない。ガイドに「既存のフォルダで始める」節を書いた
-  - 雛形: `content/guide/index.md`（ガイド・order 2）を足し、サイドバーが「ホーム → ガイド
-    （はじめに）→ 用語集」、ホームの次のページがガイドになった。deploy.yml は Rust を入れず、
-    `yuzu new` した版のリリースのアーカイブ（Linux x64）を取得して SHA256SUMS で照合してから使う
-    （v0.18.1 のリリースで手順を実行し、照合の失敗で止まることも確かめた）。`cargo install` は
-    コメントに残し、対象ブランチと runner の注意を書いた。`theme/README.md` は docs のページと、
-    雛形を作った版のタグのソースを案内する。docs の GitLab Pages の例も同じ取得方法にした
-  - CLI: `-h` / `-V` / `help` サブコマンドの説明を日本語にした（clap の自動の分を止めて自前で定義。
-    `yuzu help build` は `yuzu build --help` と同じ表示）。見出しと `[default: …]` は英語のまま
-    （i18n の候補）。`--help` から README の案内を外し、`dev`・`build --watch`・`--base-url`・
-    `lint`・`--root`（new・completions では使えない）の説明を直した。`input.dir = "."` は、
-    書いていない `output.dir` ではなく `input.dir` を名指しする設定エラーにした
-  - docs: 新しいページ「インストールと最初のサイト」（既存のフォルダで始める・dist はサーバで
-    配信する）・「見た目の調整」（配信とデプロイから移した）・「よくある質問とトラブル」（実際に
-    動かして確かめた表示で 6 項目と Issues）。図のページに client と ssr の選び方と日本語の図種名。
-    設定例を TOML に揃え、既定値（図は client）・監視範囲・README の JS の説明を直し、利用者向けの
-    ページの内部の言葉を言い換えた。「開発」の表示名を「開発者向け」に。README と docs のトップに
-    Issues への案内
-  - CI: docs ゲートに JSON / YAML 風表記の否定 grep（原稿・README・雛形・スキル）と、新しいページ・
-    Issues・図の選び方の照合を足し、移した節の照合先を直した。e2e に雛形の nav の順と pager、
-    deploy.yml の新しい形
-
-- 現状（実測。10-06 時点）
-  - JSON / YAML 風の設定例: `guide/diagrams.md:11-12`・`guide/deploy.md:120`・
-    `guide/writing.md:240`・`guide/writing.md:288`（`"abbr": false`）・
-    `guide/code-and-math.md:175`・`development/index.md:72`・雛形の
-    `scaffold/index.md:25`。コピーすると設定エラーになる
-  - `guide/deploy.md:122` が「既定の `"ssr"`」と書いている（既定は client。
-    `yuzu-config/src/schema.rs:288`）
-  - README の「図は 10 図種をビルド時に SVG 化」（`README.md:21`）と「JS を使うのは
-    検索とテーマ切替だけ」（`README.md:33`）が、既定の設定の動作と違う（図は
-    mermaid.min.js、数式は KaTeX がブラウザで描く）
-  - `guide/index.md:49` が「`content/` と `theme/` を監視」と書いている（実際は
-    プロジェクトルート全体）。同じページのフォルダ構成図（33〜38 行）に
-    `snippets/` が無い
-  - 既存のフォルダから始めると: `yuzu new .` は「空ではありません」で止まり、
-    `yuzu.toml` が無いと build は「`yuzu new` で作成するか…」と案内する。空の
-    `yuzu.toml` を置いても、原稿がフォルダ直下だと `pages=0` で `404.html` だけが出る
-    （10-06 に再現。`input.dir` の既定が `content`）。ガイドに記述が無い
-  - フォルダ直下の原稿を `input.dir = "."` で読ませることはできない（出力先が
-    原稿ディレクトリと重なるとして設定エラー・exit 2。PR #23 のレビューで確認）。
-    原稿を `content/`（または任意のサブフォルダ ＋ `input.dir` の指定）へ移す必要がある
-  - dist を `file://` で開けない（リンクがサイトのルートから始まる）ことは、
-    `guide/search.md:119` の検索の注記にしか無い。`--base-url ./` は
-    `/./_assets/…` を出力する（10-06 に再現）
-  - 雛形のナビ: サイドバーに英小文字の「guide」が出る（`guide/index.md` が無い）。
-    用語集は名前順で `guide` より前に並び、ホームの「次のページ」が用語集になる。
-    本文の「次は はじめに へ」と食い違う
-  - `yuzu --help` が「ロードマップと設計は README.md を参照」と書く。`dev` の説明に
-    「WS ライブリロード」、`build --base-url` の説明に「baseUrl」「configure-pages の
-    base_path」がある。雛形の `theme/README.md` がリポジトリ内のパス
-    （`crates/yuzu-theme/assets/`）を指している
-  - 以下は 10-07 時点の実測（「10-07 見直し」の C4・D1・D4・D5・D7・D9・D12・F6）
-  - 雛形 deploy.yml は Rust を入れ、`cargo install --locked --git … --tag v__YUZU_VERSION__
-    yuzu-cli` で yuzu をソースからコンパイルする。Releases のバイナリと SHA256SUMS は
-    使っていない。対象は `branches: [main]` だけで、既定ブランチが別名だと動かない
-  - FAQ・トラブルシューティング・問い合わせ先が無い（README・docs・雛形で「issue」
-    「問い合わせ」「FAQ」「トラブル」が 0 件）
-  - docs サイトは main への push ごとに HEAD の yuzu でビルドして公開する（`docs.yml`）。
-    v0.19 の開発中は、v0.18 の利用者が見る docs に v0.19 の動作が先に出る
-  - docs の目次: インストールの手順は「ガイド」の本体（h1 は「クイックスタート」）に
-    あってサイドバーに見えない。テーマ・ダークモード・印刷が「配信とデプロイ」の中に
-    ある。内部設計の「開発」セクションが利用者向けのページと同居し、検索結果にも混ざる
-  - 図の client / ssr の選び方が書かれていない（client では図のあるページで
-    mermaid.min.js 3.5 MB を読む）。節の見出しが英語の図種名だけで、「フローチャート」
-    「ガントチャート」で検索しても 0 件
-  - 利用者向けのガイドにライブラリ名・内部の言葉が多い（syntect・two-face・vaporetto・
-    BM25・OPFS・kabosu・冪等・mtime 等）
-  - 表示とヘルプの誤り: `reference/rules.md:14` の `\[\]` と `:117` の `error\[fmt\]` が
-    コードスパンの中でバックスラッシュごと表示される・`yuzu new --help` が使えない
-    `--root` を載せる・`yuzu lint` の説明が「見出し・frontmatter」で表記ゆれに触れない・
-    `help` サブコマンドと `-h` の説明が英語
-  - JSON 風表記は docs の外にも残っている（`.claude/skills/vendor-update/SKILL.md:30` の
-    `backend: "ssr"`）
-- やること
-  - 設定例を TOML に揃える（`[markdown.mermaid]` ＋ `backend = "ssr"`、または
-    `markdown.mermaid.backend = "ssr"`）。既定値・README・監視範囲・フォルダ構成図の
-    誤りを直す
-  - ガイドに「既存のフォルダで始める」節（原稿の置き場所の条件と移す手順）と、
-    dist はサーバで配信する（`yuzu preview` で確認する・`file://` では開けない）旨を書く
-  - 雛形に `content/guide/index.md` を足す。用語集を nav の末尾に置く
-  - CLI のヘルプ文言から README への参照と内部の言葉を除く。雛形の `theme/README.md` は
-    リポジトリのパスではなく docs のページを案内する
-  - ci.yml の docs ゲートに JSON 風表記（`backend: "` 等）の否定 grep を足す
-    （`if …; then …; exit 1; fi` で書く）。スキルの記述も直す
-  - 雛形 deploy.yml を、リリースのアーカイブを取得して SHA256SUMS で照合する形に替える
-    （`cargo install` は代替の手段としてコメントに残す）。対象ブランチの注意をコメントに
-  - FAQ・トラブルシューティングのページ（検索が動かない・ポートが使用中・サブパスで
-    リンクが切れる・図が出ない・CRLF で整形差分が出る 等）を作り、README と docs の
-    トップに Issues へのリンクを置く
-  - 目次: 「インストールと最初のサイト」と「見た目（テーマ・ダークモード・印刷）」を
-    独立したページにする。「開発」セクションは開発者向けと明示する
-  - 図のページに client / ssr の選び方（JS の有無・容量・対応図種・印刷）を足し、
-    見出しに日本語の図種名を添える
-  - 利用者向けのガイドの内部の言葉を、何ができるかの説明に置き換える（実装名は注記か
-    開発セクションへ）
-  - 表示とヘルプの誤りを直す
-- 判断点
-  - **docs サイトをどこから公開するか** — 今のまま main から公開するか、タグ（リリース）で
-    公開し main は check だけにするか（`/next/` に出す案もある）。タグにすると docs の
-    修正がリリースまで公開されない
-  - **用語集の nav 上の位置** — 合成ページを常に末尾に置くか、位置の設定
-    （`markdown.glossary` に順序のキー）を足すか。常に末尾に置くと既存サイトの nav の
-    並びが変わる（全ページの HTML の nav が変わり、nav を含むスナップショットが動く）
-  - `--base-url` に `.` 始まりを渡したときに警告するか、設定エラーにするか
-    （相対パス出力への対応は大きいので v0.19 では扱わない）
-  - `yuzu init`（`yuzu.toml` だけを作る）を足すか — 足さずにガイドの手順で済ませる案が
-    有力
-
-### 85 build が壊れたページを黙って出さない ✅
-
-**概要**: `yuzu build` の最後に、リンク切れ・インクルードの失敗などの件数と
-「詳細は `yuzu check`」の 1 行を出す。原稿が 0 件のときは警告し、Mermaid の構文エラーの
-警告にはページ名を付ける。あわせて build のログを利用者向けにする（色コードと
-開発者向けの値）。10-07 の見直しを受けて、出力や原稿を黙って壊す 3 件（大文字小文字を
-区別しない FS の孤児掃除・check と build のアセット判定の食い違い・原稿の書き込み）も
-直す。終了コードは変えない（0 = 成功のまま）。主な判断点は数えるルールの範囲。
-
-- 決定（10-11。判断点 5 つともユーザが推奨案で確定。Mermaid の 1 つは 2 回尋ねて応答が無く、
-  実装の後に改めて尋ねて v0.20 へ回すと決まった）と実装
-  - **check の整形差分** — `check --no-fmt` で外せる（fmt は error のまま。設定は増やさない）。
-    fmt が変える書き方の一覧を品質チェックのページに書いた（実際に整形して確かめた。言語の無い
-    フェンスがインデントのコードブロックになる・参照形式のリンクが本文中に展開される等）
-  - **数えるルール** — リンクと取り込み（`broken-link`（画像・ルート絶対パスを含む）・
-    `broken-anchor`・`include-error`・`spec-error` の `file:` 参照）。check と同じ関数を build の
-    ページ集合（draft を除く。`--drafts` なら含む = `check_links` に `include_drafts` を足した）で
-    `build_once` の最後に回し、1 件以上なら「リンク切れ N 件・取り込みの失敗 M 件があります。
-    詳細は `yuzu check`」を warn で 1 行（cwd がプロジェクトの外なら `--root` 付きで案内）。
-    キャッシュに当たる 2 回目の build でも出る。仕様の中身の検証（`validate_api_specs`）は数えない
-  - **watch / dev** — 再ビルドのたびに出す（0 件なら出さない）
-  - **ログの時刻** — `dev` と `build --watch` だけに残し、ほかは出さない。色コードは stderr が
-    端末で `NO_COLOR` が無いときだけ（tracing-subscriber の既定は端末かどうかを見ていなかった）。
-    キャッシュの内訳（`インクリメンタルビルド body_hits=…`）は debug（`-v`）に下げた
-  - **Mermaid の構文エラーを client 描画のときも check で報告するか** — v0.20 へ回す（tankan の
-    パースだけ通すと未対応の構文を誤りと報告しうるので、切り分け方を決めてから。「v0.20 以降の候補」）。
-    SSR 時の警告には `page=` でページ名を付けた（`PageCodeRenderer::for_page`。仕様ファイル・
-    `file=` の読み込み失敗の警告も同じ）。行が図の中の行であることも文言に書いた
-  - 原稿 0 件: 「ビルドしたページが 0 件です」（原稿のディレクトリが無いときはその旨）を warn。
-    プロジェクトルート直下に `.md` があれば件数と移し方も出す
-  - 孤児掃除: 旧パスが今回書いたパスと同じファイル（same-file。Unix は dev / inode、Windows は
-    ファイル ID。walkdir の依存として既に入っている crate を直接の依存にした）なら消さずに、
-    パスの大文字小文字を今回に合わせて一時名経由で付け直す。候補は大文字小文字を畳んだ文字列で
-    探すので、Unicode の正規化（NFC / NFD）だけが違う改名は拾えない。区別する FS（Linux）の
-    挙動は実ファイルで、区別しない FS の挙動は同一性の判定を差し替えたテストで確かめた。
-    macOS の実機では Phase 86 で確認した（Windows は CI の matrix の持ち越し）
-  - 新しいルール `route-case-conflict`（warning・抑制可・`lint.rules` で外せる）: ページの route と
-    エイリアスのうち、大文字小文字だけが違う組を check で報告し、build は止めずに警告する
-  - check の画像の存在判定を、build がコピーするファイル（`scan_content_assets`）に合わせた
-    （隠しファイル・`input.ignore` の対象・シンボリックリンクはリンク切れになる）
-  - fmt / lint --fix の書き込みを `commands::rewrite_source` に集めた（同じディレクトリの一時
-    ファイル → rename・パーミッションの引き継ぎ・読み込み後に変わった原稿は書かずに止まる）
-  - PR #47 のレビュー指摘 2 件: 一時ファイルを固定名へ `fs::write` していたので、そこに置かれた
-    シンボリックリンクを辿ってリンク先を上書きし、原稿もリンクに置き換わっていた → `create_new` で
-    排他的に作り、ハンドルに書いて、消すのは自分で作ったものだけ（P1）。大文字小文字の付け直しの
-    一時名も固定名で、同じ名前の出力（public/ のコピー等）を rename で上書きしていた → まだ何も
-    無い名前を選ぶ（P2）。再レビューの指摘 1 件: 一時ファイルを既定の権限（umask 022 なら 644）で
-    作ってから元の権限へ戻していたので、その間は権限 600 の原稿でも他のユーザが読めた → Unix では
-    作成時から 600（本文を書く前に読み取りを制限）
-  - docs: 品質チェック（build の報告・`--no-fmt`・fmt が変える書き方・添付ファイルの照合）・
-    CLI（`--no-fmt`・ログの書式）・診断ルール（`route-case-conflict`）・FAQ・インストール
-  - CI: docs ゲートに 5 行。e2e に「build の報告とログ」のステップ（別のプロジェクトで、件数の
-    1 行と 2 回目の build・色と時刻・`-v` の内訳・大文字小文字の URL・`--no-fmt`・fmt の
-    パーミッション・原稿 0 件）
-  - リリースノートに書くこと
-    - `yuzu check` の画像の判定が厳しくなる（隠しファイル・`input.ignore` の対象・シンボリック
-      リンク、macOS などで大文字小文字だけが違う参照（`Fig.png` と `fig.png`）も `broken-link`）
-    - `yuzu build` は、すでにリンク切れのあるサイトで最後に WARN を 1 行出す（終了コードは 0 のまま）
-    - ログの書式: 時刻は `dev` と `build --watch` だけ・パイプ先には色を付けない・キャッシュの
-      内訳は `-v` だけ（ログから時刻を読んでいる場合は影響する）
-    - 新しい warning `route-case-conflict`（`lint.rules` で外せる）と `check --no-fmt`
-    - Cargo.lock: same-file を yuzu-core の直接の依存にした（walkdir の依存として既にあり、
-      依存の crate の集合は変わらない）
-
-- 現状（実測。10-06 時点）
-  - build の途中で警告するのは、リンク先の `.md` が見つからない場合（`urls.rs:113`。
-    ページ名付き）と、SSR 時の Mermaid の構文エラー（`highlight.rs:297`。
-    **ページ名なし**）など一部だけ。画像切れ・存在しない見出しへのリンク・
-    インクルードの失敗は build では何も出ず、`yuzu check` で初めてエラーになる。
-    README の手順（dev → build → preview）では check は CI 用に見えるので実行されない
-  - Mermaid の書き間違いは、既定の描画方式（client）では build も check も何も言わない。
-    SSR の警告も、行番号は図の中での行
-  - 描画中の警告は、キャッシュに当たったページでは出ない（本文を作り直さないため）。
-    2 回目以降の build では同じリンク切れが黙る
-  - `yuzu check --root docs`（18 ページ）は約 0.03 秒、変更なしの
-    `yuzu build --root docs` は約 0.35 秒、`--force` は約 1.1 秒（release ビルド・
-    開発コンテナ・10-06）
-  - 原稿 0 件の build は INFO の `pages=0` だけで終わる
-  - build の最後のログは `インクリメンタルビルド body_hits=… body_misses=…
-    search_hits=… orphans_removed=… elapsed=…`（`commands/build.rs:476`）。
-    パイプ先にも ANSI の色コードが出る（10-06 に再現）
-  - 以下は 10-07 時点（「10-07 見直し」の B3・B4・B6・D3。B3・B4 はコードで経路を確認し、
-    実機では未確認）
-  - 大文字小文字を区別しない FS（macOS の既定・Windows）で `Guide.md` を `guide.md` に
-    改名すると、書いたばかりの `guide/index.html` を孤児掃除（`output.rs:275` の
-    `remove_orphans`。render の後に走る）が前回の `Guide/index.html` として消す。
-    route の衝突検査は文字列の完全一致だけで、`Guide.md` と `guide/index.md` の組を
-    見逃す（並列の書き込みで勝者が実行ごとに変わる）
-  - 同じ FS では、消されなかったとしても dist のディレクトリ名は前回の `Guide/` のまま
-    残る（既存のディレクトリへ書き込むため）。大文字小文字を区別するサーバへ上げると
-    `/guide/` が 404 になる（実機未確認）
-  - 逆に大文字小文字を区別する FS（Linux 等）では、`Guide/index.html` と
-    `guide/index.html` は別のファイルで、今の孤児掃除が旧出力を正しく消している。
-    「大文字小文字を無視して一致したら消さない」とすると、旧出力が残ったうえ、次回の
-    出力マニフェストから落ちて二度と掃除されない（PR #29 のレビュー指摘）
-  - 同伴アセットの存在判定が食い違う: check は `content_dir.join(..).is_file()`
-    （`linkcheck.rs:198`。リンクを辿り、隠しファイルや `input.ignore` の対象も「ある」）、
-    build のコピー（`scan.rs:78` の `scan_content_assets`）はそれらを除く。check が通るのに
-    公開サイトで画像が切れる
-  - `yuzu fmt` / `lint --fix` は原稿を `std::fs::write` で直接書く（`commands/fmt.rs:44`・
-    `commands/lint.rs:61`）。作り直せる `.yuzu/cache/global.json` の方は tmp → rename
-  - `yuzu check` は整形差分を必ず error にする（`rules.rs:80` の `FMT`）。`lint.rules` で
-    外せるのは warning だけなので、既存の原稿を持ち込むと全ファイルが赤になる
-- やること
-  - build の最後にリンク系の診断（check と同じルール）を数え、1 件以上なら
-    「リンク切れ N 件・インクルードの失敗 M 件。詳細は `yuzu check`」を warn で出す。
-    終了コードは 0 のまま
-  - 原稿 0 件の build で警告する（`input.dir` の値と、プロジェクトルート直下に
-    `.md` があればその旨）
-  - Mermaid の構文エラーの警告にページ名を付ける
-  - build のログ: 色コードは端末のときだけ、キャッシュの内訳（`body_hits` 等）は
-    `-v` のときだけにする（`-q` / `-v` の扱いは v0.17 Phase 73 のとおり）
-  - 孤児掃除で消す旧パスが、今回書いたファイルと**同じファイルを指すときだけ**削除しない
-    （大文字小文字を無視した文字列の一致では判定しない。Unix は dev と inode、Windows は
-    ファイル ID で比べる）。そのときは、パスの大文字小文字を今回の出力に合わせて付け直す
-    （大文字小文字だけの改名は、区別しない FS では一時名を経由して rename する）。
-    別のファイルなら、従来どおり旧出力を削除する
-  - route とエイリアスの衝突検査に、大文字小文字を無視した比較（警告）を足す
-  - 検証は両方の FS で行う: 区別する FS（Linux の CI）では、改名後に旧 `Guide/index.html`
-    が消えて新しい `guide/index.html` だけが残ること。区別しない FS（macOS の既定の
-    APFS・Windows）では、新しい出力が残り、dist のパスが `guide/` になること。CI は
-    Linux だけなので、区別しない側は手元で確かめるか、持ち越しの「CI の穴」の
-    macOS / Windows の matrix で確かめる
-  - check の画像の存在判定に、build のコピー対象（`scan_content_assets` の結果）を使う
-  - 原稿の書き込みを同じディレクトリへの tmp → rename にし（パーミッションを引き継ぐ）、
-    書く直前に内容が読み込み時から変わっていないかを照合する
-- 判断点
-  - **check の整形差分を外せるようにするか** — `check --no-fmt` か設定で外すか、
-    warning に下げるか。あわせて fmt が変える項目の一覧を docs に書く
-  - **件数の数え方** — build の後に check のリンク系ルール（`check_links` /
-    `validate_includes` / `validate_spec_refs`）を全ページへ回す（キャッシュと関係なく
-    毎回正しい。docs の規模で約 0.03 秒の追加）。描画中の検出を数える案は、キャッシュに
-    当たったページの分が抜け、抜けないようにするには検出結果をキャッシュに載せる
-    （= `CACHE_FORMAT_VERSION` の bump）必要があり、この版の「キャッシュ形式を
-    変えない」と衝突するので採らない。決めるのはどのルールを数えるか（画像切れ・
-    見出しへのリンク・仕様の `$ref` まで含めるか）
-  - **数える対象のページ集合** — check は draft 込み（`build_source_pages`）、build は
-    draft を除く（`build_site_model`。`--drafts` のときだけ含む）。check のルールを
-    そのまま回すと、draft へのリンクが check では正常・出力物では切れている、という
-    食い違いが出るので、build のページ集合で回す
-  - watch / dev の再ビルドでも毎回出すか（変更が無くても同じ警告が出続ける）
-  - ログの時刻を消すか（watch / dev では再ビルドの区切りとして時刻が役に立つ）
-  - Mermaid の構文エラーを client 描画のときも check で報告するか — tankan のパースだけ
-    通すと、tankan が未対応の図種・構文との切り分けが要る（`is_unsupported` で区別
-    できる範囲だけ報告する案）。v0.19 で扱うかも含めて決める
-
-### 86 dogfooding ✅
-
-**概要**: Phase 81〜85 を docs サイト・雛形・CI・リリースの手順で実運用する。
-ライセンス一覧がアーカイブと dist に入ること、`.md` の配信設定と Host の検査、
-build の件数表示、雛形のナビと deploy.yml を実物で確かめ、CI のゲートと
-verify・release スキルを追随させる。最後に「v0.19 の方針」のリリース判定を確かめる。
-
-- 決定と実装（10-12。判断点はユーザが推奨案で確定 = 雛形にわざとリンク切れを置かない。
-  件数の表示は品質チェックのページの例で示し、CI は雛形の build が件数の警告を出さないことを
-  Phase 85 から照合している）
-  - Phase 81〜85 で済んでいたもの: release.yml のライセンス一覧の検証（81）・雛形の dist の
-    ライセンス文と vendor の README が出ないこと（81）・`.md` の配信の設定（83）・preview の
-    Host の 403（83）・JSON 風表記の否定 grep（84）・雛形の build が件数の警告を出さないこと（85）
-  - docs: 「社内で公開する」に「第三者のソフトウェアのライセンス表記」の節（dist に出る 2 つの
-    ファイルの中身と、消さないこと。検索を止めると `_search/` のものは出ない・本体の表記は
-    アーカイブ）。実際に検索を止めたビルドで確かめた
-  - CI: docs ゲートに、docs サイト自身の dist にもライセンス文が出て vendor の README が出ない
-    こと（dogfooding）と、新しい節の照合。verify スキルも同じ
-  - リリース判定（10-12 に確認）: cargo-deny は CI の deny ジョブと deps.yml（PR #47 で成功）・
-    release.yml のライセンス一覧の検証・ci.yml の e2e のライセンス文 / vendor の README /
-    `.md` の配信・Host の 403 のテスト（yuzu-server と e2e）・否定 grep・仮決めのままの判断点が
-    無いこと（84 は計画の承認で、85 は再質問で確定）。タグの前に deps.yml を手動で流す
-  - macOS（大文字小文字を区別しない APFS）での孤児掃除（Phase 85）を 10-12 にユーザが実機で確認:
-    `Notes.md` → `notes.md` の改名後も `dist/notes/index.html` が残り、dist のディレクトリ名が
-    `notes` に付け直される。もう一度 build しても残る。確認のスクリプトは git 管理外
-    （ホストの GNU の mv は大文字小文字だけの改名を「同じファイル」として断るので、一時名を経由）
-  - ブラウザでの確認で見つけた不具合（10-12）: `yuzu preview` / `yuzu dev` が `.txt` を `text/plain`、
-    `.md` を `text/markdown` で返し、文字コードを付けていなかったので、THIRD-PARTY-LICENSES.txt・
-    llms.txt・原稿の `.md` をブラウザで開くと日本語が化けた（HTML は `<meta charset>` があるので
-    化けない）。文字コードの無い `text/plain`・`text/markdown` の応答に `charset=utf-8` を付ける
-    layer を足した（yuzu-server。Host の検査の内側）。HTML・CSS・JS には付けない（HTTP の指定は
-    ページ内の `<meta charset>` より優先されるので、`public/` の Shift_JIS の HTML を化けさせて
-    いた。PR #48 のレビュー指摘）。docs の nginx の例も、charset が text/html にも必ず効くので
-    `.txt`・`.md` の location に限定した（再レビューの指摘。nginx の実機では未確認）。GitHub Pages は付けて返す（公開中の docs で確認）が、nginx の
-    既定などは付けないので、docs の「Web サーバに置く」に設定を書いた。リリースノートに書く。
-    修正後、ライセンス文 2 つの日本語が読めることをユーザがブラウザで確認した（10-12）
-  - ブラウザでの確認（新しい docs のページ・目次・図の選び方・ライセンス文の表示）をユーザが
-    済ませた（10-12）。雛形のナビの並びと pager は CI の e2e でも照合している
-  - 雛形 deploy.yml を実際の GitHub リポジトリ（公開のテスト用）でユーザが動かした（10-12）:
-    `yuzu new` した雛形を push し、リリースのアーカイブ（v0.18.1）を取得・SHA256SUMS で照合して
-    Rust のインストールやコンパイル無しにデプロイでき、公開されたページがサブパスでも崩れず、
-    ナビと検索も動いた。テスト用のリポジトリは削除済み
-
-- docs サイト: dist のライセンス文と `_assets/vendor/README.md` が出ないことを確かめる。
-  ライセンスの扱い（利用者のサイトに何が出るか）を docs に書く
-- ~~release.yml: アーカイブにライセンス一覧が入っていることを検証条件に足す
-  （release スキルの検証条件も）~~ → Phase 81 で実施済み
-- ci.yml の e2e: 雛形の build が件数の警告を出さないこと・`.md` を止める設定で `.md` が
-  出ないことを照合する（ライセンス文が出ること・vendor の README が出ないことは Phase 81 で実施済み）。
-  dev / preview に許可していない Host を送って 403 になることを確かめる。docs ゲートに
-  新しい節の grep を足す
-- 雛形 deploy.yml を実際の GitHub リポジトリで動かし、リリースのバイナリでデプロイ
-  できることを確かめる（ユーザの作業）
-- verify スキルの追随
-- 判断点: 雛形の原稿にわざとリンク切れを置いて件数表示の実例にするか（雛形の
-  `yuzu check` が失敗するようになるので、置かない案が有力）
+**v0.19 まで公開済み**。次の版（v0.20）は未策定で、候補は下の
+「[10-04 見直しの持ち越し](#10-04-見直しの持ち越し)」・「[10-07 見直し](#10-07-見直し)」と
+「[v0.20 以降の候補](#v020-以降の候補)」にある。着手時に軸を 1 つ選んで Phase を切る。
+kabosu 0.2.0 / tankan 0.2.1 / mikan 0.2.1 は crates.io で公開済み（yuzu のリリースとは
+非同期。kabosu の publish 前に fuzz を回す規律は CLAUDE.md にある）。
 
 ## v0.10.1 レビューの持ち越し
 
@@ -703,7 +46,8 @@ v0.10.1（外部コードレビュー対応）で「今回は入れない」と�
 **未確認**と書く。ファイルの行番号は 10-04（Phase 77 マージ後）時点。
 
 v0.19 で扱う項目は取り消し線にして移動先の Phase を書いた。現状は 10-06 時点で
-測り直し、詳細とともに各 Phase 節（上の「現在: v0.19」）へ移した。
+測り直し、詳細とともに各 Phase 節へ移した（v0.19 のリリース後、各 Phase 節は「これまでの
+リリース」の「完了済み: v0.19」に要約した）。
 
 ### 配布物として必要なもの
 
@@ -862,7 +206,8 @@ Phase、検索の順位は既知の「2 文字の語」とあわせて v0.20 の
 3 段階で書き分ける: 手元で確かめたもの（**10-07 に確認**）、コードで経路を追って
 断定したもの（**実機未確認**）、確かめていないもの（**未確認**）。ファイルの行番号は
 10-07 時点。v0.18.1・v0.19 へ移した項目は取り消し線にして移動先を書き、詳細は移動先に
-書いた（v0.18.1 の分はリリース後、「これまでのリリース」の「完了済み: v0.18」へ移した）。
+書いた（v0.18.1 の分はリリース後、「これまでのリリース」の「完了済み: v0.18」へ、v0.19 の分は
+「完了済み: v0.19」へ移した）。
 
 ### A. 公開範囲・情報の出し過ぎ
 
@@ -1015,7 +360,7 @@ Phase、検索の順位は既知の「2 文字の語」とあわせて v0.20 の
   - 対処案: レビューの手順と記録の残し方をスキルにする・release のバンプを PR 経由に
     してから main を保護する
 - ~~**F4 v0.19 の計画にリリース判定・ユーザの作業・後回しにできる印が無い**~~
-  → 「v0.19 の方針」に追加済み
+  → v0.19 の方針に追加済み（リリース後は「完了済み: v0.19」に要約）
 - ⬜ **F5 性能と、リリース後の不具合件数の推移を測っていない**（工数: 小〜中）
   - ベンチマークが無く、「保存から約 1 秒」（README・docs）を続けて測っていない。
     リリース後に見つかった不具合は ROADMAP の文章の中にしか無い。最後の PR のマージ
@@ -1241,12 +586,85 @@ Phase、検索の順位は既知の「2 文字の語」とあわせて v0.20 の
     黙って誤った結果を出す不具合 4 件の修正 — サイト通し番号の本文キャッシュ・
     隠しディレクトリ配下での監視・通常 build の `build_id`・外部リンク検査の `.curlrc`
   - `CACHE_FORMAT_VERSION` 22 → 23（Phase 78 の 1 回）
+- **v0.19**（Phase 81〜86）配布物と第一印象
+  - 第三者のライセンス表記 — リリースのアーカイブ（cargo-about）・利用者のサイトの dist
+    （mermaid・KaTeX と検索の wasm・分かち書きのモデル）・crates.io の 3 crate
+  - 脆弱性の窓口（SECURITY.md・private vulnerability reporting）と依存の監視（dependabot・
+    cargo-deny・同梱の vendor 資産の勧告の定期照合）
+  - 公開範囲の制御 — 原稿の `.md` の配信を止める設定（`llms.page_md` / frontmatter `pageMd`）・
+    dev / preview の Host / Origin の検査（`dev.allowed_hosts`）・docs「社内で公開する」
+  - docs と雛形を実際の動作に合わせる — 設定例の TOML 化・雛形 deploy.yml はリリースの
+    アーカイブを SHA256SUMS で照合して使う・用語集は同じ階層の末尾・CLI のヘルプの日本語化・
+    FAQ と目次の見直し・docs サイトはタグで公開
+  - build が壊れたページを黙って出さない — リンク切れ・取り込みの失敗の件数を最後に 1 行で・
+    原稿 0 件の警告・ログの時刻と色・大文字小文字を区別しない FS の孤児掃除・
+    `route-case-conflict`・`check --no-fmt`・原稿の書き込みを一時ファイル経由に
+  - dogfooding — 利用者のサイトに出るライセンス表記の docs・dev / preview がテキストファイルに
+    `charset=utf-8` を付ける
+  - **非互換**: `base_url` / `--base-url` の `.` で始まる値は設定エラー / `yuzu check` の画像の
+    判定が build のコピー対象に揃って厳しくなる（隠しファイル・`input.ignore` の対象・
+    シンボリックリンク・大文字小文字だけが違う参照）/ 用語集が同じ階層の末尾に並ぶ /
+    ログの時刻は `dev`・`build --watch` だけ・パイプ先に色を付けない・キャッシュの内訳は `-v`
+    だけ / docs サイトはリリースのタグで公開
+  - `CACHE_FORMAT_VERSION` 23 → 24（Phase 83 の 1 回）
 
 検索エンジン本体 **mikan**（旧 yuzu-index-format）と wasm ラッパ **mikan-wasm**
 （旧 yuzu-search-wasm）は v0.7 リリース後に yuzu- プレフィックスを外して改名し、
 mikan は crates.io で単独公開している（tankan と同じく独立バージョン）。
 
 各版の Phase 内訳:
+
+<details>
+<summary>完了済み: v0.19（Phase 81〜86）の内訳</summary>
+
+テーマは「**配布物と第一印象**」。10-04 の見直しで 3 人が合意した優先順位の先頭
+「配布物として必要なもの」に、10-07 の見直しで見つかった「公開してはいけないものが外へ
+出る」3 件と、初めて使う人が最初に踏む食い違いを加えて 6 つの Phase で消化した。先に
+v0.18.1（同梱 mermaid・KaTeX の勧告対応と不具合 4 件）を出している。判断点は各 Phase の
+着手時に決めた（Phase 84 は質問に応答が無く、推奨案を計画に書いて計画の承認で確定。
+Phase 85 の 1 つは 2 回尋ねて応答が無く、実装の後に改めて尋ねて確定した）。
+`CACHE_FORMAT_VERSION` は Phase 83 で frontmatter に `pageMd` を足したので 23 → 24 の 1 回。
+ブラウザ・macOS・GitHub の実リポジトリが要る確認はユーザが行った。
+
+- **81 第三者のライセンス表記** — アーカイブ用は cargo-about（0.9.2）で release.yml の
+  `licenses` ジョブがリリースのたびに作る（コミットしない）。dist 用は資産の隣にテキスト 2 枚
+  （`_assets/vendor/`・`_search/` の `THIRD-PARTY-LICENSES.txt`）で、バイナリに埋め込むので
+  生成してコミットする。mermaid は npm の tarball に切り替え、同梱の source map から束ねた
+  60 パッケージの LICENSE を集める。vendor の README は配信から外し、3 crate に LICENSE。
+  レビュー指摘で、cargo-about が本文の無い crate で SPDX の雛形に戻る（`--fail` でも止まらない）
+  ことへの補い（`about.toml` の clarify・`licenses/supplements`）を入れた
+- **82 脆弱性の窓口と依存の監視** — SECURITY.md（受領 7 日・修正 90 日が目安）。dependabot は
+  月次で、本文 HTML が変わりうる組とそれ以外に分ける。cargo-deny は licenses・bans・sources を
+  PR ごと、advisories を deps.yml（週次）に分けた。初回の勧告は syntect の `default-fancy` を
+  やめて 10 crate を依存から外して解消し、bincode だけ理由付きで除外。vendor 資産の勧告も
+  定期照合し、mermaid 11 系で直せない 5 件は「GHSA とパッケージ@版」の組で除外（mermaid 12 で
+  見直す）。検索 wasm に入る crate の版の照合もここで足した
+- **83 公開範囲の制御** — 原稿の `.md` の配信をサイト全体（`llms.page_md`）とページ単位
+  （`pageMd`）で止められる（止めたページはコピーボタンも出さず、llms.txt は HTML を指す）。
+  dev / preview は localhost・IP 以外のホスト名を `dev.allowed_hosts` に無ければ 403
+  （DNS リバインディング対策。WebSocket は Origin も）。docs「社内で公開する」。レビュー指摘で、
+  止めた生成物を出力マニフェストの有無に関係なく消すようにした
+- **84 docs と雛形を実際の動作に合わせる** — 設定例を TOML に揃え（否定 grep で CI が縛る）、
+  既定値・監視範囲・README の説明を直した。雛形に `content/guide/index.md`、用語集は同じ階層の
+  末尾（レビュー指摘で index として置いた用語集も）。雛形 deploy.yml はリリースのアーカイブを
+  SHA256SUMS で照合して使う。`-h`・`-V`・`help` を日本語に、`base_url` の `.` 始まりは設定エラー。
+  docs に「インストールと最初のサイト」「見た目の調整」「よくある質問とトラブル」と図の選び方。
+  docs サイトはリリースのタグで公開する
+- **85 build が壊れたページを黙って出さない** — check と同じ関数を build のページ集合で回し、
+  リンク切れ・取り込みの失敗を最後に 1 行で知らせる（終了コードは 0 のまま。2 回目以降の
+  build でも出る）。原稿 0 件の警告・Mermaid の警告にページ名・ログの時刻は dev / watch だけ・
+  色は端末のときだけ。大文字小文字を区別しない FS では、旧出力が今回と同じファイルなら消さずに
+  大文字小文字を付け直す（same-file で判定。macOS の実機で確認）。`route-case-conflict`・
+  check の画像の判定を build のコピー対象に・`check --no-fmt`・原稿の書き込みを一時ファイル経由に。
+  レビュー指摘で、一時ファイルを固定名にしない・作成時から 600 にする。client 描画の Mermaid の
+  構文チェックは v0.20 へ回した
+- **86 dogfooding** — 多くは 81〜85 で前倒しで済んでいた。利用者のサイトに出るライセンス表記を
+  docs に書き、docs サイト自身でも照合。ブラウザでの確認で、dev / preview がテキストファイルを
+  文字コード無しで返して日本語が化けるのを見つけ、`text/plain`・`text/markdown` に
+  `charset=utf-8` を付けた（レビュー指摘で HTML には付けない。nginx の例も同じ）。雛形
+  deploy.yml を実際の GitHub リポジトリで動かし、macOS で孤児掃除を確かめた
+
+</details>
 
 <details>
 <summary>完了済み: v0.18（Phase 76〜80）の内訳</summary>
