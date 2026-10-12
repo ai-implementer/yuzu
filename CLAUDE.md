@@ -252,6 +252,11 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - 止めた `_search/` は中のファイルを `output::list_files_under` で列挙し、同じく今回書いたもの
     以外を消す。**ディレクトリごと消す・中に今回書いたものがあれば丸ごと飛ばす、のどちらもしない**
     （public/_search/ の利用者のファイルを消す / 索引が残る。PR #42 の再レビューの指摘）
+  - **孤児掃除は旧パスが今回書いたパスと「同じファイル」なら消さない**（`remove_orphans`。
+    判定は same-file = dev / inode・ファイル ID。Phase 85）。大文字小文字を区別しない FS で
+    `Guide.md` → `guide.md` と改名すると、文字列の差分だけでは今回の出力を消す。逆に
+    **文字列の大文字小文字を無視して判定しない** = 区別する FS（Linux）で旧出力が残り、
+    マニフェストから落ちて二度と掃除されない（PR #29 のレビュー指摘）
   - **キャッシュ内容の意味が変わる変更**（本文 HTML の生成ロジック・検索 tf の重み等）では
     `yuzu-core/src/cache.rs` の `CACHE_FORMAT_VERSION` を上げる
 - **検索 tf のキャッシュはページ source ハッシュ ＋ インクルード参照先の内容ハッシュで
@@ -414,6 +419,12 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 
 - `yuzu fmt` の不変条件: 本文は format_commonmark の正規形・**frontmatter は生テキストを
   バイト温存**・冪等・差分なしなら書き込まない（mtime 温存）
+- **原稿への書き込みは `commands::rewrite_source` を必ず通す**（fmt / lint --fix。Phase 85）。
+  一時ファイル → rename・パーミッションの引き継ぎ・読み込み後に変わった原稿は書かない、の 3 つを
+  内包している。`fs::write(&page.src, …)` を直に書かない。**一時ファイルを固定名で作らない** =
+  `create_new` で排他的に、Unix では作成時から 600 で作る（固定名へ書くと置かれたリンクを辿る・
+  既定の権限で作ると本文を書いてから権限を戻すまで他人が読める。PR #47 の指摘。rename の
+  行き先の一時名も、まだ何も無い名前を選ぶ）
 - **fmt の独自記法温存は fmt 経路限定**
   - format_commonmark は `{#fig:x}` を `{\#fig:x}` へ、`[!NOTE]-` を `[!NOTE] -` へ変えるので
     `restore_yuzu_syntax` が書いた形に戻すが、これを呼ぶのは `format_document` だけ

@@ -34,7 +34,7 @@ pub mod urlpath;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub use aliases::{alias_routes, validate_aliases};
+pub use aliases::{alias_routes, validate_aliases, validate_url_case};
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{DiagBase, Diagnostic, Severity};
 pub use error::CoreError;
@@ -606,8 +606,11 @@ pub fn apply_fixes(source: &str, diags: &[Diagnostic]) -> (String, usize) {
 
 /// 内部リンク・アンカーの静的検査（`yuzu check` 用）。
 ///
-/// - `pages` には draft 込みの全ページ（[`build_source_pages`]）を渡す。
-///   リンクの**有効ターゲットは非 draft ページのみ**（ビルド成果物に実在するもの）
+/// - check は draft 込みの全ページ（[`build_source_pages`]）を、build の件数の報告は
+///   ビルドしたページ（[`build_site_model_cached`] の結果）を渡す。リンクの有効ターゲットは
+///   ビルド成果物に実在するページだけ = `include_drafts` が false なら非 draft のみ
+/// - 同伴アセット（画像等）は build がコピーするファイル（[`collect_content_assets`] と同じ
+///   列挙。`ignore` は `input.ignore`）に照合する
 /// - 外部 URL（スキーム付き）はネットワークに触れず検査しない。http / https の
 ///   出現箇所だけ [`LinkReport::external`] で返す（到達性の検査は cli の opt-in
 ///   `yuzu check --external-links` が行う = 既定経路にネットワーク I/O を入れない）
@@ -616,7 +619,9 @@ pub fn check_links(
     pages: &[Page],
     public_dir: Option<&Path>,
     content_dir: &Path,
+    ignore: &[String],
+    include_drafts: bool,
     opts: &MarkdownOptions,
 ) -> Result<LinkReport, CoreError> {
-    linkcheck::check_links(pages, public_dir, content_dir, opts)
+    linkcheck::check_links(pages, public_dir, content_dir, ignore, include_drafts, opts)
 }

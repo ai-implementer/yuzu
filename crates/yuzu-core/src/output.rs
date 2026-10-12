@@ -301,14 +301,44 @@ pub fn list_files_under(root: &Path, rel_dir: &str) -> std::io::Result<BTreeSet<
 }
 
 /// 前回書き出したが今回書き出さなかったファイルを削除し、
-/// 空になったディレクトリを root 直前まで剪定する。削除件数を返す
+/// 空になったディレクトリを root 直前まで剪定する。削除件数を返す。
+///
+/// **大文字小文字を区別しない FS（macOS・Windows の既定）**: `Guide.md` を `guide.md` に
+/// 改名すると、今回書いた `guide/index.html` は前回の `Guide/index.html` と同じファイルで、
+/// 文字列の差分だけで消すと今回の出力が消える（Phase 85）。旧パスが今回書いたパスと
+/// **同じファイルを指すときだけ**消さずに、パスの大文字小文字を今回に合わせて付け直す。
+/// 判定は文字列ではなくファイルの同一性（Unix は dev / inode、Windows はファイル ID）で行う —
+/// 区別する FS（Linux 等）では 2 つは別のファイルで、旧出力を消すのが正しい。文字列の
+/// 大文字小文字を無視して「一致したら消さない」とすると、旧出力が残ったうえ次回の
+/// マニフェストから落ちて二度と掃除されない（PR #29 のレビュー指摘）。
+/// 候補は大文字小文字を畳んだ文字列で探すので、Unicode の正規化（NFC / NFD）だけが
+/// 違う改名は拾えない
 pub fn remove_orphans(
     root: &Path,
     previous: &BTreeSet<String>,
     current: &BTreeSet<String>,
 ) -> std::io::Result<usize> {
+    remove_orphans_with(root, previous, current, |a, b| {
+        same_file::is_same_file(a, b).unwrap_or(false)
+    })
+}
+
+/// [`remove_orphans`] の本体。`same` は「2 つのパスが同じファイルか」（テストで
+/// 大文字小文字を区別しない FS を模すために差し替える）
+fn remove_orphans_with(
+    root: &Path,
+    previous: &BTreeSet<String>,
+    current: &BTreeSet<String>,
+    same: impl Fn(&Path, &Path) -> bool,
+) -> std::io::Result<usize> {
     let mut removed = 0usize;
     let mut dirs: BTreeSet<PathBuf> = BTreeSet::new();
+    // 今回書いたパスを、大文字小文字を畳んだキーで引く（同じファイルの候補探し）
+    let mut folded: std::collections::HashMap<String, Vec<&str>> = std::collections::HashMap::new();
+    for rel in current {
+        folded.entry(rel.to_lowercase()).or_default().push(rel);
+    }
+    let mut case_fixes: Vec<&str> = Vec::new();
     for rel in previous.difference(current) {
         // 前回マニフェスト（JSON）は書き換えられうるので、削除前に検証する。
         // 経路のリンク検査も込み（`dist/guide -> /outside` を経由して
@@ -323,6 +353,15 @@ pub fn remove_orphans(
                 continue;
             }
         };
+        let same_as_current = folded.get(&rel.to_lowercase()).and_then(|candidates| {
+            candidates.iter().copied().find(|cur| {
+                resolve_output_rel(root, cur).is_ok_and(|cur_path| same(&path, &cur_path))
+            })
+        });
+        if let Some(cur) = same_as_current {
+            case_fixes.push(cur);
+            continue;
+        }
         match fs::remove_file(&path) {
             Ok(()) => removed += 1,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -341,7 +380,66 @@ pub fn remove_orphans(
     for dir in dirs.iter().rev() {
         let _ = fs::remove_dir(dir);
     }
+    for rel in case_fixes {
+        match match_case(root, rel) {
+            Ok(()) => {}
+            // 付け直せなくても今回の出力は残っている（パスの大文字小文字が前回のままなだけ）
+            Err(e) => tracing::warn!(rel, "出力のパスの大文字小文字を付け直せません: {e}"),
+        }
+    }
     Ok(removed)
+}
+
+/// `rel` の各構成要素について、ディスク上の名前が大文字小文字だけ違うなら今回の名前へ
+/// 改名する（大文字小文字を区別しない FS で、既存の `Guide/` に書き込んだ出力を `guide/` に
+/// する。区別するサーバへ上げると `/guide/` が 404 になるため）。同じ名前のエントリが
+/// あれば何もしない。改名は一時名を経由する（大文字小文字だけの改名を 1 回の rename で
+/// 受け付けない FS があるため）
+fn match_case(root: &Path, rel: &str) -> std::io::Result<()> {
+    let mut parent = root.to_path_buf();
+    for name in rel.split('/') {
+        let exact = parent.join(name);
+        let mut on_disk = None;
+        for entry in fs::read_dir(&parent)? {
+            let entry_name = entry?.file_name();
+            let entry_name = entry_name.to_string_lossy();
+            if entry_name == name {
+                on_disk = None;
+                break;
+            }
+            if entry_name.to_lowercase() == name.to_lowercase() {
+                on_disk = Some(entry_name.into_owned());
+            }
+        }
+        if let Some(old) = on_disk {
+            let old = parent.join(old);
+            let tmp = unused_name(&parent, name)?;
+            ensure_no_symlink_under(root, &old)?;
+            fs::rename(&old, &tmp)?;
+            fs::rename(&tmp, &exact)?;
+        }
+        parent = exact;
+    }
+    Ok(())
+}
+
+/// `dir` の中で、まだ何も無い一時名を選ぶ。rename は行き先に既にあるものを上書きするので、
+/// 固定名だと、たまたま同じ名前の出力（public/ からコピーしたファイル等）を消していた
+/// （PR #47 のレビュー指摘）。区別しない FS では、大文字小文字違いの既存エントリも
+/// `symlink_metadata` が見つける
+fn unused_name(dir: &Path, name: &str) -> std::io::Result<PathBuf> {
+    for n in 0..100 {
+        let candidate = dir.join(format!(".{name}.yuzu-case-{n}"));
+        match fs::symlink_metadata(&candidate) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(candidate),
+            Err(e) => return Err(e),
+            Ok(_) => continue,
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "改名に使える一時名がありません（同じ名前のエントリが 100 個あります）",
+    ))
 }
 
 /// 出力マニフェスト（前回書き出した dist 相対パス一覧）を読む。破損・不在は None
@@ -429,6 +527,65 @@ mod tests {
         assert!(!dir.path().join("old").exists(), "空ディレクトリは剪定");
         assert!(dir.path().join("keep").exists(), "非空ディレクトリは残す");
         assert!(dir.path().join("index.html").exists());
+    }
+
+    /// 大文字小文字を区別する FS（Linux の CI）: `Guide/index.html` と `guide/index.html` は
+    /// 別のファイルなので、改名前の旧出力は消える（同一性で判定するので文字列が似ていても残さない）
+    #[test]
+    fn 大文字小文字だけ違う旧出力は別のファイルなら消す() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("Guide")).unwrap();
+        fs::write(root.join("Guide/index.html"), b"old").unwrap();
+        // 区別しない FS では同じ場所になるので、この前提が成り立つ環境だけで見る
+        if root.join("guide/index.html").exists() {
+            return;
+        }
+        fs::create_dir_all(root.join("guide")).unwrap();
+        fs::write(root.join("guide/index.html"), b"new").unwrap();
+        let previous = BTreeSet::from(["Guide/index.html".to_string()]);
+        let current = BTreeSet::from(["guide/index.html".to_string()]);
+
+        assert_eq!(remove_orphans(root, &previous, &current).unwrap(), 1);
+        assert!(!root.join("Guide").exists(), "旧出力とディレクトリは消える");
+        assert_eq!(fs::read(root.join("guide/index.html")).unwrap(), b"new");
+    }
+
+    /// 大文字小文字を区別しない FS（macOS・Windows の既定）: 今回の `guide/index.html` は既存の
+    /// `Guide/` に書かれて旧出力と同じファイルになる。消さずに、パスを今回の大文字小文字へ
+    /// 付け直す（Phase 85）。Linux では同一性の判定を差し替えて、その FS を模す
+    #[test]
+    fn 旧出力が今回と同じファイルなら消さずに大文字小文字を付け直す() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("Guide")).unwrap();
+        fs::write(root.join("Guide/index.html"), b"new").unwrap();
+        // 改名の一時名と同じ名前の出力（public/ からのコピー等）があっても上書きしない
+        // （PR #47 のレビュー指摘）
+        fs::write(root.join(".guide.yuzu-case-0"), b"keep").unwrap();
+        let previous = BTreeSet::from(["Guide/index.html".to_string()]);
+        let current = BTreeSet::from([
+            "guide/index.html".to_string(),
+            ".guide.yuzu-case-0".to_string(),
+        ]);
+        let case_insensitive = |a: &Path, b: &Path| {
+            a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+        };
+
+        let removed = remove_orphans_with(root, &previous, &current, case_insensitive).unwrap();
+        assert_eq!(removed, 0, "今回の出力を消さない");
+        let mut names: Vec<String> = fs::read_dir(root)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [".guide.yuzu-case-0", "guide"],
+            "ディレクトリ名を今回の大文字小文字に付け直し、一時名を残さない"
+        );
+        assert_eq!(fs::read(root.join("guide/index.html")).unwrap(), b"new");
+        assert_eq!(fs::read(root.join(".guide.yuzu-case-0")).unwrap(), b"keep");
     }
 
     #[test]

@@ -8,7 +8,6 @@
 
 use std::process::ExitCode;
 
-use anyhow::Context;
 use yuzu_core::{Diagnostic, Page};
 
 use super::diag;
@@ -58,8 +57,7 @@ pub fn run(cx: &crate::cx::Cx, fix: bool, format: diag::Format) -> anyhow::Resul
                 if applied == 0 || fixed == page.source {
                     continue;
                 }
-                std::fs::write(&page.src, &fixed)
-                    .with_context(|| format!("{} に書き込めません", page.src.display()))?;
+                super::rewrite_source(&page.src, &page.source, &fixed)?;
                 applied_this_round += applied;
                 fixed_files.insert(page.src.strip_prefix(root).unwrap_or(&page.src).to_owned());
             }

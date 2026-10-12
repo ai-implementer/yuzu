@@ -12,8 +12,6 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use anyhow::Context;
-
 use crate::out::outln;
 
 pub fn run(cx: &crate::cx::Cx, check: bool, diff: bool) -> anyhow::Result<ExitCode> {
@@ -41,8 +39,7 @@ pub fn run(cx: &crate::cx::Cx, check: bool, diff: bool) -> anyhow::Result<ExitCo
         } else if check {
             outln!("{display}");
         } else {
-            std::fs::write(&page.src, &formatted)
-                .with_context(|| format!("{} に書き込めません", page.src.display()))?;
+            super::rewrite_source(&page.src, &page.source, &formatted)?;
             outln!("整形: {display}");
         }
     }

@@ -49,15 +49,17 @@ JavaScript を使えない閲覧環境なら、ビルド時に SVG にする `ba
 使ってください（[client と ssr の選び方](diagrams.md#client-と-ssr-の選び方)）。
 
 `backend = "ssr"` で図の書き方に誤りがあると、ビルドのログに次の警告が出て、
-その図だけブラウザで描く形に切り替わります。行番号を見て図を直してください。
+その図だけブラウザで描く形に切り替わります。`page=` のページの図を、行番号
+（図の中の行）を見て直してください。
 
-    WARN mermaid の構文エラー（クライアント描画へフォールバック): 2 行目: ノード id がありません
+    WARN mermaid の構文エラー（クライアント描画へフォールバック。行は図の中の行）: 2 行目: ノード id がありません page=guide/design.md
 
 ## 改行が CRLF のファイルに整形差分が出る
 
 `yuzu check` は、改行が CRLF のファイルを整形差分（`error[fmt]`）として報告します。
-`yuzu fmt` を実行すると LF に揃います。Windows で編集する場合は、git が改行を
-変えないよう、リポジトリに `.gitattributes` を置いてください:
+`yuzu fmt` を実行すると LF に揃います（整形を後回しにするなら `yuzu check --no-fmt` で
+整形差分の検査だけを外せます）。Windows で編集する場合は、git が改行を変えないよう、
+リポジトリに `.gitattributes` を置いてください:
 
 ```text
 *.md text eol=lf

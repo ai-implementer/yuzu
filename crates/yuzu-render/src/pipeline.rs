@@ -234,7 +234,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                     }
                     None => {
                         tracing::info!(page = %page.rel.display(), "レンダ");
-                        let renderer = shared.highlighter.page_renderer();
+                        let renderer = shared.highlighter.page_renderer().for_page(&page.rel);
                         let rendered = yuzu_core::render_body_html(
                             page,
                             &md_opts,

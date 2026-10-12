@@ -118,6 +118,7 @@ IP アドレス・設定の `dev.allowed_hosts` のどれでもなければ 403 
 | `lint --format <形式>` | 出力形式（`human` / `json` / `github`。既定 `human`） |
 | `check --format <形式>` | 同上 |
 | `check --external-links` | 外部リンク（`http` / `https`）の到達性も検査する（HTTP は `curl` に委譲。HTTP 4xx を warning `external-link-broken` で報告し、到達不能・5xx・429 はスキップ件数に数える。[品質チェック](../guide/quality.md#外部リンクの検査opt-in)参照） |
+| `check --no-fmt` | 整形差分（`fmt`）を検査しない。既存の原稿を持ち込んで整形を後回しにするとき（[品質チェック](../guide/quality.md#yuzu-check--統合チェック)参照） |
 | `llms --full` | llms-full.txt（全ページの正規化 Markdown 連結）を出力 |
 
 ## シェル補完
@@ -179,6 +180,14 @@ yuzu dev -v     # 出力先パスなどの debug ログも表示
 RUST_LOG=warn yuzu build   # -q と同じ
 RUST_LOG=debug yuzu dev    # -v と同じ
 ```
+
+ビルドの最後には、ビルドしたページのリンク切れ・取り込みの失敗の件数が 1 件以上なら
+警告が 1 行出ます（終了コードは 0 のまま。詳細は `yuzu check`）。キャッシュの内訳
+（`インクリメンタルビルド body_hits=…`）は `-v` のときだけ出ます。
+
+行頭の時刻は `yuzu dev` と `yuzu build --watch` のときだけ出ます（再ビルドの区切りに
+なるため）。色は標準エラーが端末のときだけ付き、パイプやファイルへ出すときと、
+環境変数 `NO_COLOR` があるときは付きません。
 
 ログはすべて標準エラーに出るため、標準出力のパイプやリダイレクトは
 影響を受けません。`yuzu build 2>&1 | head` のように読み手が先に閉じても、

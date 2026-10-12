@@ -27,7 +27,7 @@ fn report(files: &[(&str, &str)], public: &[&str]) -> LinkReport {
     }
     let opts = MarkdownOptions::default();
     let pages = build_source_pages(&content, &[], &opts).unwrap();
-    check_links(&pages, Some(&public_dir), &content, &opts).unwrap()
+    check_links(&pages, Some(&public_dir), &content, &[], false, &opts).unwrap()
 }
 
 fn rules(diags: &[Diagnostic]) -> Vec<&str> {
@@ -195,6 +195,61 @@ fn 画像の相対参照は実在チェック() {
     // ディレクトリ風リンク（拡張子なし）は検査対象外
     let diags = check(&[("index.md", "# t\n\n[dir](guide/)\n")], &[]);
     assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// 同伴アセットは build がコピーするファイルに照合する。隠しファイル・`input.ignore` の
+/// 対象は build がコピーしないので、ディスクにあっても公開サイトでは切れる（Phase 85）
+#[test]
+fn 画像は_build_がコピーするファイルに照合する() {
+    let dir = tempfile::tempdir().unwrap();
+    let content = dir.path().join("content");
+    for (rel, source) in [
+        (
+            "index.md",
+            "# t\n\n![ある](fig.png)\n\n![隠し](.hidden.png)\n\n![除外](drafts/x.png)\n",
+        ),
+        ("fig.png", ""),
+        (".hidden.png", ""),
+        ("drafts/x.png", ""),
+    ] {
+        let path = content.join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, source).unwrap();
+    }
+    let opts = MarkdownOptions::default();
+    let ignore = vec!["drafts/**".to_string()];
+    let pages = build_source_pages(&content, &ignore, &opts).unwrap();
+    let diags = check_links(&pages, None, &content, &ignore, false, &opts)
+        .unwrap()
+        .diags;
+    let messages: Vec<&str> = diags.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(
+        rules(&diags),
+        ["broken-link", "broken-link"],
+        "{messages:?}"
+    );
+    assert!(messages[0].contains(".hidden.png"), "{messages:?}");
+    assert!(messages[1].contains("drafts/x.png"), "{messages:?}");
+}
+
+/// `--drafts` のビルド（dev --drafts 等）では draft も出力されるので、リンク先として有効
+#[test]
+fn drafts_を含むビルドでは_draft_へのリンクは切れていない() {
+    let dir = tempfile::tempdir().unwrap();
+    let content = dir.path().join("content");
+    fs::create_dir_all(&content).unwrap();
+    fs::write(
+        content.join("index.md"),
+        "# t\n\n[wip](wip.md)\n\n[/wip](/wip/)\n",
+    )
+    .unwrap();
+    fs::write(content.join("wip.md"), "---\ndraft: true\n---\n# wip\n").unwrap();
+    let opts = MarkdownOptions::default();
+    let pages = build_source_pages(&content, &[], &opts).unwrap();
+    let published = check_links(&pages, None, &content, &[], false, &opts).unwrap();
+    assert_eq!(rules(&published.diags), ["broken-link", "broken-link"]);
+    let with_drafts = check_links(&pages, None, &content, &[], true, &opts).unwrap();
+    assert!(with_drafts.diags.is_empty(), "{:?}", with_drafts.diags);
 }
 
 #[test]

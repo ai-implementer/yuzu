@@ -13,6 +13,7 @@ pub fn run(
     cx: &crate::cx::Cx,
     format: diag::Format,
     external_links: bool,
+    no_fmt: bool,
 ) -> anyhow::Result<ExitCode> {
     let rc = super::load_project(cx)?;
     let root = &rc.root;
@@ -26,8 +27,12 @@ pub fn run(
         // 文書規約
         diags.extend(yuzu_core::lint_page(page, &opts, &lint_opts)?);
         // fmt 差分（ファイル単位・位置なし）。合成ページは `yuzu fmt` の
-        // 対象外なので差分を報告しても直しようがない
-        if !page.is_generated() && yuzu_core::format_document(page, &opts)? != page.source {
+        // 対象外なので差分を報告しても直しようがない。`--no-fmt` なら見ない
+        // （fmt は error のまま外せないので、既存の原稿を持ち込むと全ファイルが赤になる）
+        if !no_fmt
+            && !page.is_generated()
+            && yuzu_core::format_document(page, &opts)? != page.source
+        {
             diags.push(Diagnostic {
                 rule: yuzu_core::rules::FMT.id,
                 severity: yuzu_core::rules::FMT.severity,
@@ -50,6 +55,8 @@ pub fn run(
     // ページ URL の一意性（`x.md` と `x/index.md` は同じ URL になる）。
     // alias と同じく draft 込みで検証する（公開前に矛盾を検出する）
     diags.extend(yuzu_core::validate_routes(&pages));
+    // 大文字小文字だけが違う URL（warning。区別しない FS で出力が 1 つにまとまる）
+    diags.extend(yuzu_core::validate_url_case(&pages, &opts));
     // コンテンツインクルード（file=）の参照切れ・ルート外・行範囲外
     diags.extend(super::diag::config_diagnostics(&rc));
     diags.extend(yuzu_core::validate_includes(&pages, root, &opts));
@@ -63,7 +70,14 @@ pub fn run(
     let yuzu_core::LinkReport {
         diags: link_diags,
         external,
-    } = yuzu_core::check_links(&pages, rc.public_dir.as_deref(), &rc.content_dir, &opts)?;
+    } = yuzu_core::check_links(
+        &pages,
+        rc.public_dir.as_deref(),
+        &rc.content_dir,
+        &rc.config.input.ignore,
+        false,
+        &opts,
+    )?;
     diags.extend(link_diags);
     // 外部リンクの到達性（opt-in。ここだけがネットワークに触れる）。
     // 診断は下の抑制の漏斗を通す = lintDisable / 行コメント / lint.rules が効く

@@ -87,6 +87,10 @@ pub const SPEC_WARNING: Rule = warning("spec-warning");
 // `lint.rules` で例外を通せる warning にする ---
 pub const EXTERNAL_LINK_BROKEN: Rule = warning("external-link-broken");
 
+// --- 大文字小文字だけが違う URL（Phase 85）。区別しない FS では出力が 1 か所にまとまり
+// 片方が失われるが、区別する FS とサーバでは別の URL として動くので warning にする ---
+pub const ROUTE_CASE_CONFLICT: Rule = warning("route-case-conflict");
+
 // --- 抑制機構自身のルール（warning）。自身を抑制できると古びた抑制が
 // 黙って溜まるため、抑制不可で固定する ---
 pub const INVALID_LINT_SUPPRESSION: Rule = warning_unsuppressible("invalid-lint-suppression");
@@ -117,6 +121,7 @@ pub const RULES: &[Rule] = &[
     FMT,
     SPEC_WARNING,
     EXTERNAL_LINK_BROKEN,
+    ROUTE_CASE_CONFLICT,
     INVALID_LINT_SUPPRESSION,
     UNUSED_LINT_SUPPRESSION,
 ];

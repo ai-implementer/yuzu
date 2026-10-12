@@ -13,7 +13,7 @@
 //! - アンカーは `Page.toc` の id（本文 HTML と同一の採番）で照合する。
 //!   自前 slugify はしない
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::MarkdownOptions;
@@ -50,20 +50,44 @@ pub struct LinkReport {
     pub external: Vec<ExternalLink>,
 }
 
+/// リンク先として照合する集合（ページ・public/・同伴アセット）
+struct Targets<'a> {
+    /// rel（/ 区切り）→ ページ。draft も引ける（専用メッセージを出すため）
+    by_rel: HashMap<String, &'a Page>,
+    /// route → ページ。有効ターゲットはビルド成果物に実在するページだけ
+    by_route: HashMap<&'a str, &'a Page>,
+    public_dir: Option<&'a Path>,
+    /// build がコピーする同伴アセット（content 相対・/ 区切り）。`is_file()` で見ると
+    /// 隠しファイル・`input.ignore` の対象・シンボリックリンクも「ある」になり、
+    /// check は通るのに公開サイトで画像が切れていた。build のコピーと同じ列挙
+    /// （`scan_content_assets`）を使う
+    assets: HashSet<String>,
+    /// draft も出力に含めるビルド（`--drafts`）か
+    include_drafts: bool,
+}
+
 pub(crate) fn check_links(
     pages: &[Page],
     public_dir: Option<&Path>,
     content_dir: &Path,
+    ignore: &[String],
+    include_drafts: bool,
     opts: &MarkdownOptions,
 ) -> Result<LinkReport, CoreError> {
-    // rel（/ 区切り）→ ページ。draft も引ける（専用メッセージを出すため）
-    let by_rel: HashMap<String, &Page> = pages.iter().map(|p| (rel_to_slash(&p.rel), p)).collect();
-    // route → ページ。有効ターゲットは非 draft のみ（ビルド成果物に実在するもの）
-    let by_route: HashMap<&str, &Page> = pages
-        .iter()
-        .filter(|p| !p.frontmatter.draft)
-        .map(|p| (p.route.as_str(), p))
-        .collect();
+    let targets = Targets {
+        by_rel: pages.iter().map(|p| (rel_to_slash(&p.rel), p)).collect(),
+        by_route: pages
+            .iter()
+            .filter(|p| include_drafts || !p.frontmatter.draft)
+            .map(|p| (p.route.as_str(), p))
+            .collect(),
+        public_dir,
+        assets: crate::scan::scan_content_assets(content_dir, ignore)?
+            .iter()
+            .map(|f| rel_to_slash(&f.rel))
+            .collect(),
+        include_drafts,
+    };
 
     let mut out = Vec::new();
     let mut external = Vec::new();
@@ -83,15 +107,7 @@ pub(crate) fn check_links(
                 });
                 continue;
             }
-            check_one(
-                page,
-                &link,
-                &by_rel,
-                &by_route,
-                public_dir,
-                content_dir,
-                &mut out,
-            );
+            check_one(page, &link, &targets, &mut out);
         }
     }
     Ok(LinkReport {
@@ -100,15 +116,7 @@ pub(crate) fn check_links(
     })
 }
 
-fn check_one(
-    page: &Page,
-    link: &LinkRef,
-    by_rel: &HashMap<String, &Page>,
-    by_route: &HashMap<&str, &Page>,
-    public_dir: Option<&Path>,
-    content_dir: &Path,
-    out: &mut Vec<Diagnostic>,
-) {
+fn check_one(page: &Page, link: &LinkRef, targets: &Targets, out: &mut Vec<Diagnostic>) {
     let url = link.url.as_str();
     if url.is_empty() {
         return;
@@ -143,7 +151,7 @@ fn check_one(
     if let Some(rest) = path.strip_prefix('/') {
         // 著者がエンコード済みで書いた `/%E8%A8%AD…/` を生の route へ戻す
         let rest = percent_decode(rest);
-        check_absolute(page, link, &rest, frag, by_route, public_dir, out);
+        check_absolute(page, link, &rest, frag, targets, out);
         return;
     }
 
@@ -155,7 +163,7 @@ fn check_one(
     if path.ends_with(".md") {
         let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
         let resolved = resolve_relative(&dir, path);
-        match by_rel.get(&resolved) {
+        match targets.by_rel.get(&resolved) {
             None => push(
                 out,
                 page,
@@ -163,7 +171,7 @@ fn check_one(
                 rules::BROKEN_LINK,
                 format!("リンク先 `{url}` が見つかりません"),
             ),
-            Some(target) if target.frontmatter.draft => {
+            Some(target) if target.frontmatter.draft && !targets.include_drafts => {
                 push(
                     out,
                     page,
@@ -195,7 +203,7 @@ fn check_one(
     if last.contains('.') {
         let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
         let resolved = resolve_relative(&dir, path);
-        if !content_dir.join(&resolved).is_file() {
+        if !targets.assets.contains(&resolved) {
             let kind = if link.is_image { "画像" } else { "参照先" };
             push(
                 out,
@@ -214,8 +222,7 @@ fn check_absolute(
     link: &LinkRef,
     rest: &str,
     frag: Option<&str>,
-    by_route: &HashMap<&str, &Page>,
-    public_dir: Option<&Path>,
+    targets: &Targets,
     out: &mut Vec<Diagnostic>,
 ) {
     // ビルド生成物
@@ -223,15 +230,18 @@ fn check_absolute(
         return;
     }
     // public/ のファイル
-    if public_dir.is_some_and(|dir| dir.join(rest).is_file()) {
+    if targets
+        .public_dir
+        .is_some_and(|dir| dir.join(rest).is_file())
+    {
         return;
     }
     // ページ route（末尾スラッシュの省略は許容）
-    let target = by_route.get(rest).or_else(|| {
+    let target = targets.by_route.get(rest).or_else(|| {
         if rest.ends_with('/') {
             None
         } else {
-            by_route.get(format!("{rest}/").as_str())
+            targets.by_route.get(format!("{rest}/").as_str())
         }
     });
     if let Some(target) = target {

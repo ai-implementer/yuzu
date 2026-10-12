@@ -119,6 +119,9 @@ grep -q 'id="dist-はサーバで配信する"' docs/dist/guide/install/index.ht
 test -f docs/dist/guide/appearance/index.html && test -f docs/dist/guide/faq/index.html  # 見た目・FAQ の独立ページ（Phase 84）
 grep -q 'id="client-と-ssr-の選び方"' docs/dist/guide/diagrams/index.html           # 図の選び方（Phase 84）
 grep -q 'github.com/ai-implementer/yuzu/issues' docs/dist/index.html                  # Issues への導線（Phase 84）
+grep -q -- '--no-fmt' docs/dist/reference/cli/index.html && grep -q 'NO_COLOR' docs/dist/reference/cli/index.html  # check --no-fmt・ログの書式（Phase 85）
+grep -q 'route-case-conflict' docs/dist/reference/rules/index.html                  # 大文字小文字だけが違う URL（Phase 85）
+grep -q '取り込みの失敗' docs/dist/guide/quality/index.html && grep -q 'end list' docs/dist/guide/quality/index.html  # build の報告・fmt が変える書き方（Phase 85）
 ! grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/  # JSON / YAML 風の設定例が無い（Phase 84）
 grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --root docs --section 開発者向け "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
@@ -195,6 +198,10 @@ test "${PIPESTATUS[0]}" -eq 0 && test -f dist/_search/manifest.json && echo "OK 
 for sh in bash zsh fish powershell elvish; do <repo>/target/debug/yuzu completions $sh | grep -q quiet || echo "NG $sh"; done
 <repo>/target/debug/yuzu completions bash > "<scratchpad>/yuzu.bash" && bash -n "<scratchpad>/yuzu.bash" && echo "OK bash -n"
 <repo>/target/debug/yuzu completions bash --root .                            # exit 2（プロジェクトを読まない）
+# build の報告とログ（Phase 85。CI の「e2e (build の報告とログ)」と同じ。別のプロジェクトで見る）:
+# リンク切れは 2 回目（キャッシュに当たる）の build でも 1 行出て exit 0・パイプ先に色と時刻が出ない・
+# キャッシュの内訳は -v だけ・Guide.md と guide/ は route-case-conflict・check --no-fmt・
+# fmt がパーミッションを引き継ぐ・原稿 0 件の警告。手順は ci.yml の該当ステップをそのまま流す
 # --base-url は設定より優先（deploy.yml が configure-pages の base_path を渡す契約）
 <repo>/target/debug/yuzu build --base-url /docs/ && grep -q '/docs/_assets/' dist/index.html
 # 共有カード（Phase 76）: パスだけの base では og:image が出ず、フル URL なら canonical / og:url / og:image が絶対 URL で出る
