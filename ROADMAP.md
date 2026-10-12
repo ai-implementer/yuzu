@@ -499,8 +499,8 @@ docs サイトを main とタグのどちらから公開するか。
     ファイル ID。walkdir の依存として既に入っている crate を直接の依存にした）なら消さずに、
     パスの大文字小文字を今回に合わせて一時名経由で付け直す。候補は大文字小文字を畳んだ文字列で
     探すので、Unicode の正規化（NFC / NFD）だけが違う改名は拾えない。区別する FS（Linux）の
-    挙動は実ファイルで、区別しない FS の挙動は同一性の判定を差し替えたテストで確かめた
-    （macOS・Windows の実機は Phase 86 の確認か CI の matrix の持ち越しで）
+    挙動は実ファイルで、区別しない FS の挙動は同一性の判定を差し替えたテストで確かめた。
+    macOS の実機では Phase 86 で確認した（Windows は CI の matrix の持ち越し）
   - 新しいルール `route-case-conflict`（warning・抑制可・`lint.rules` で外せる）: ページの route と
     エイリアスのうち、大文字小文字だけが違う組を check で報告し、build は止めずに警告する
   - check の画像の存在判定を、build がコピーするファイル（`scan_content_assets`）に合わせた
@@ -633,9 +633,19 @@ verify・release スキルを追随させる。最後に「v0.19 の方針」の
     release.yml のライセンス一覧の検証・ci.yml の e2e のライセンス文 / vendor の README /
     `.md` の配信・Host の 403 のテスト（yuzu-server と e2e）・否定 grep・仮決めのままの判断点が
     無いこと（84 は計画の承認で、85 は再質問で確定）。タグの前に deps.yml を手動で流す
-  - 残り（ユーザの作業）: ブラウザでの確認（新しい docs のページ・ライセンス文の表示・雛形の
-    ナビ）・雛形 deploy.yml を実際の GitHub リポジトリで動かす・大文字小文字を区別しない FS
-    （macOS）での孤児掃除（Phase 85。手順のスクリプトを用意した）
+  - macOS（大文字小文字を区別しない APFS）での孤児掃除（Phase 85）を 10-12 にユーザが実機で確認:
+    `Notes.md` → `notes.md` の改名後も `dist/notes/index.html` が残り、dist のディレクトリ名が
+    `notes` に付け直される。もう一度 build しても残る。確認のスクリプトは git 管理外
+    （ホストの GNU の mv は大文字小文字だけの改名を「同じファイル」として断るので、一時名を経由）
+  - ブラウザでの確認で見つけた不具合（10-12）: `yuzu preview` / `yuzu dev` が `.txt` を `text/plain`、
+    `.md` を `text/markdown` で返し、文字コードを付けていなかったので、THIRD-PARTY-LICENSES.txt・
+    llms.txt・原稿の `.md` をブラウザで開くと日本語が化けた（HTML は `<meta charset>` があるので
+    化けない）。文字コードの無い `text/*` の応答に `charset=utf-8` を付ける layer を足した
+    （yuzu-server。Host の検査の内側）。GitHub Pages は付けて返す（公開中の docs で確認）が、nginx の
+    既定などは付けないので、docs の「Web サーバに置く」に設定を書いた。リリースノートに書く。
+    修正後、ライセンス文 2 つの日本語が読めることをユーザがブラウザで確認した（10-12）
+  - 残り（ユーザの作業）: ブラウザでの確認（新しい docs のページ・雛形のナビ）・雛形 deploy.yml を
+    実際の GitHub リポジトリで動かす
 
 - docs サイト: dist のライセンス文と `_assets/vendor/README.md` が出ないことを確かめる。
   ライセンスの扱い（利用者のサイトに何が出るか）を docs に書く
