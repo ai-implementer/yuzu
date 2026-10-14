@@ -37,8 +37,8 @@ macOS・Windows のバイナリが CI でテストされていない穴と、fuz
   mikan・tankan がハング・メモリ超過で止まらない
 - 変わるもの: frontmatter の読み込み（YAML パーサ）・検索のスコア（wasm 側）・テーマ
   （テンプレート・CSS・JS。スナップショットが変わる）・設定キー（見た目・`search: false`）・
-  docs・CI。`CACHE_FORMAT_VERSION` は 88（frontmatter の読み方）と 89（frontmatter の
-  `search`）で上がる見込み。検索インデックスの `FORMAT_VERSION` は据え置く（スコアの計算を
+  docs・CI。`CACHE_FORMAT_VERSION` は 88（frontmatter の読み方）・89（frontmatter の
+  `search`）・91 の PR (1)（描画される href が変わるなら）で上がる見込み。検索インデックスの `FORMAT_VERSION` は据え置く（スコアの計算を
   wasm 側に置けば、新しい manifest と古い wasm の組でも壊れない）。MSRV は 88 の判断点
 - Phase は「87 Windows・macOS のテスト → 88 frontmatter の読み込み → 89 検索の順位 →
   90 読者側の UI と見た目の設定 → 91 既存の原稿から始める人・他のツールから来た人へ → 92 fuzz →
@@ -55,20 +55,23 @@ macOS・Windows のバイナリが CI でテストされていない穴と、fuz
   導入経路を見る「導入派」・1 人で保守する範囲と戻せない決定を見る「範囲派」）で 2 巡協議し、
   リリース判定・延期候補・Phase 89・91・92 を直した。提案された機能（既存 Markdown 向けの
   `init`・公開物の詳細な JSON・PR 検証 CI の生成）は判定に入れず、最初の外部利用者を観察して
-  から判断する候補にした（「v0.21 以降の候補」）
+  から判断する候補にした（「v0.21 以降の候補」）。同じ日の再レビュー（検索資産の照合に同梱の
+  JS が入っていない）も同じ 3 人格で 2 巡協議し、照合の対象・トップページの警告の条件・公開物の
+  要約・fuzz の受け入れ条件を具体的にした
 - **リリース判定**（すべて満たしたらリリースする。どれもタグの前に確かめられる）
   - `deny.toml` から RUSTSEC-2024-0449 の除外が外れ、deps.yml が成功している
   - タグを打つコミットで、ci.yml の Windows と macOS の `cargo test` が通っている
   - docs で「設定」と検索して、URL が `/reference/config/` で始まる結果が上位 3 件に入る
     （ci.yml の docs ゲートで照合する。照合はネイティブの `yuzu search` なので、コミットした
-    検索 wasm が今の mikan のソースから作られていることも 89 で足す照合で確かめる）
+    検索 wasm と同梱の JS が今のソースから作られていることも 89 で足す照合で確かめる）
   - `--base-url` 付きで作った docs の dist で、`rel="icon"` の href が base の下を指し、その
     ファイルが dist にある（ci.yml で照合する。公開サイトはタグの後に更新されるので、公開 URL
     の確認はリリース後の作業にして判定には入れない）
   - fuzz.yml に定期実行（schedule）があり、定期実行と同じ秒数の手動実行で、mikan の対象が
-    成功し、tankan の対象がハング・メモリ超過で落ちていない。tankan の panic が残るなら
-    リリースノートに書く（panic は yuzu が回収してクライアント描画に切り替える）。直せない
-    panic で毎回止まるなら、tankan の対象を定期実行から外してリリースノートに書く
+    成功し、tankan の対象が指定した秒数を最後まで実行して、ハング（`timeout-*`）・メモリ超過
+    （`oom-*`）の artifact が 0 件。tankan の panic（`crash-*`）が残るなら件数をリリースノートに
+    書く（panic は yuzu が回収してクライアント描画に切り替える）。panic を受け流して最後まで
+    実行できない（92 の判断点）なら、tankan の対象を定期実行から外してリリースノートに書く
   - 仮決めのままの判断点が無い（残すならリリースノートに書く）
 - **ユーザの作業**
 
@@ -182,12 +185,29 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
 - やること: 同義語のグループの中では最大の点だけを数える。タイトルとの一致を優遇する。
   frontmatter `search: false` でページを索引から外す。B5 は辞書の指紋を再ビルドのたびに比べ、
   違えばセッションを作り直す。2 文字の語の誤字補正はほかの語でも確かめ、再現すれば語の長さで切る
-- 検索 wasm を作り直す（vendor-update スキル）。あわせて、作り直し忘れを CI で検出する:
-  `scripts/build-search-wasm.sh` が mikan・mikan-wasm のソース（src・assets・Cargo.toml）の
-  ハッシュを wasm の横に記録し、ci.yml が今のソースと照合する。CI の検索の照合はネイティブの
-  `yuzu search` を通り、`third-party-licenses.sh check` は crate と版の集合しか比べないので、
-  版を上げない mikan の変更では wasm が古いままでも CI が通る（PR #53 の協議で整合派が指摘。
-  92 の `Shard::parse` の修正も同じ）
+- 検索 wasm を作り直す（vendor-update スキル）。あわせて、作り直し忘れを CI で検出する。
+  CI の検索の照合はネイティブの `yuzu search` を通り、`third-party-licenses.sh check` は crate と
+  版の集合しか比べないので、版を上げない mikan の変更では wasm が古いままでも CI が通る
+  （PR #53 の協議で整合派が指摘。92 の `Shard::parse` の修正も同じ）
+  - wasm と `search.js`: `scripts/build-search-wasm.sh` が次の入力のハッシュを wasm の横に記録し、
+    ci.yml が今の入力と照合する（記録を書くのはこのスクリプトだけ）。対象は mikan・mikan-wasm の
+    `src/` と Cargo.toml / wasm32 向けの依存の木（`cargo tree -p mikan-wasm --target
+    wasm32-unknown-unknown -e normal,features`。`third-party-licenses.sh:113-115` と同じく
+    接頭辞と path 依存の行（絶対パスと workspace の版を含む）を除く。wasm-bindgen の版と
+    features の違いもここに出る）/ ルート Cargo.toml の `[profile.release]` と
+    `[profile.wasm-release]` / スクリプト自身
+  - 入れないもの: Cargo.lock の全体とルート Cargo.toml の全体（wasm に関係しない依存の更新と
+    リリースの版上げでも落ちる。08-01 以降、この 2 ファイルを変えたコミットは 31 件、mikan の
+    `src/` を変えたコミットは 0 件）/ `mikan/assets`（分かち書きのモデルは `builtin-model` の
+    ときだけ埋め込まれ、wasm では無効 = `mikan/src/lib.rs:53-56`）/ rustc と wasm-opt の版
+    （stable で固定していないので記録だけにする）。テストだけの変更でも照合は落ちるが、mikan を
+    変えることは少ないので受け入れる（記録だけを更新する手段は作らない = 作り直し忘れの抜け道になる）
+  - 同梱の手書きの JS（`crates/mikan-wasm/js/*.js`。スクリプトがコピーするだけ
+    = `build-search-wasm.sh:44`）は、コピー先とのバイト一致で照合する（PR #53 の再レビューの指摘）
+  - wasm をバイト比較で照合しないのは、コミットした wasm にビルドした人の
+    `~/.cargo/registry` の絶対パスが入っていて（10-14 に 45 か所を確認）、CI で作ると必ず違う
+    バイトになるため。この絶対パスはすべての利用者のサイトの `_search/` に配られるので、
+    作り直すときに `--remap-path-prefix` で取り除く
 - 判断点: スコアの変更を wasm 側だけに置いて `FORMAT_VERSION` を据え置けるか / タイトルの
   優遇の重み / `search: false` はページ単位に限るか（協議の推奨は限る。frontmatter の形は
   後から戻せない）
@@ -216,7 +236,8 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
   `aria-label`、表記を「Ctrl/Cmd+K」に、失敗時の文言を読者向けに。テーマの追加は
   add-theme-asset スキルの手順で。ci.yml の docs のビルド（`ci.yml:130`）は `--base-url` を
   付けないので、サブパスで 404 になる今の不具合を検出できない。`--base-url` 付きのビルドで
-  `rel="icon"` の href と実ファイルを照合する（リリース判定）
+  `rel="icon"` の href と実ファイルを照合する（リリース判定）。リリース判定は docs の dist を
+  見るので、docs サイトへの favicon の設定もこの Phase で行う（93 から移した）
 - 判断点: 設定キーの名前と型（`site.favicon`・フッター・ヘッダーのリンク。協議の推奨は
   この 3 つの最小限に絞る）/ Admonition のラベルを日本語にする設定を入れるか（i18n の候補
   `theme.strings` と重なる）/ テーマ切替をライト・ダーク・OS に従うの 3 状態にするか
@@ -229,7 +250,8 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
 **概要**: 既存の Markdown を持ち込んだ人が黙って壊れたサイトを出さないようにし、他の
 ツールから来た人がつまずく違いを 1 ページにまとめる（10-07 見直しの D6）。PR #53 の協議で、
 導入の手順で実際に止まる所（上の「現状の確認」の最後の項目）をこの Phase に加えた。
-2 つの PR に分ける: (1) `input.dir` の外を指すリンクの扱い、(2) それ以外。
+3 つの PR に分ける: (1) `input.dir` の外を指すリンクの扱い、(2) それ以外、(3) `search.page` /
+`markdown.glossary.page` の `"/"` を設定エラーにする（v0.19.1 の入口検証の漏れ。小さいので先に出してよい）。
 
 - 現状
   - 既存の Markdown を持ち込むと: `docs/README.md` がトップページにならず `/` が 404・警告も
@@ -255,12 +277,29 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
     （`linkcheck.rs`）と描画（`urls.rs`）は同じ関数を通るので両側が揃う（93 の R5 とは独立）。
     描画される href が変わるなら `CACHE_FORMAT_VERSION` を上げる。既存のサイトで check が新たに
     失敗しうることをリリースノートに書く
-  - PR (2): トップページ（`index.md`）が無いときの警告と、0 件の警告を `input.dir` の下も数える
-    ように直す。`yuzu new` のエラーから手順の節へ案内する。build の最後に何を出したかの 1 行の
-    要約（ページ・原稿の `.md`・llms.txt / llms-full.txt・検索・public の件数）を出し、ページ数の
+  - PR (2): トップページが無いときの警告と、0 件の警告を `input.dir` の下も数えるように直す。
+    `yuzu new` のエラーから手順の節へ案内する。build の最後に何を出したかの 1 行の要約
+    （ページ・原稿の `.md`・llms.txt / llms-full.txt・検索・public の件数）を出し、ページ数の
     食い違いの答えにする。一覧は `SiteOutput::emitted` と `Page::emits_page_md` から作る（別の
     一覧を持つと v0.19.1 の R1 と同じずれが起きる）。用語の Markdown の記号をエスケープして
     から合成する（B8）
+  - PR (2) の条件（PR #53 の再レビューと協議で決めた。導入派が 0.19.1 で 8 通りを試した）
+    - トップページの警告は `index.md` の有無ではなく「build したページ（draft と `input.ignore`
+      を除いた後）に route が空のものが無く、`public/index.html` も無い」で判定し、理由（draft・
+      ignore・`README.md` がある等）を添える。`public/index.html` だけなら警告しない。draft を
+      含む check では判定がずれるので、警告は build と dev で出す。判定の関数を単体テストで
+      8 通り確かめ、e2e は配線の確認に 1 件
+    - `public/` のファイルが生成物（トップページ・原稿の `.md`・llms 等）を上書きしたら警告する
+      （同伴アセットの上書きは仕様なので除く）。`public/` はルート直下に固定なので、Web アプリの
+      リポジトリの直下に yuzu.toml を置くと、アプリの `public/index.html` がトップページを黙って
+      上書きする（導入派が再現）
+    - 要約は「生成した Markdown」と「実際に配信されるファイル」を混同しない: 件数は出力の
+      記録（今回書いたもの）から数え、`public/` の `.md` は原稿の `.md` に数えない。`--force` と
+      増分ビルド（書き込みを省いたファイルも数える）で同じ件数になることを確かめる
+  - PR (3): `synth_page_problem`（`urlpath.rs:144-147`）は trim した後に空なら「作らない」と
+    みなすので、`search.page = "/"` は検索結果ページを作らずに build も check も成功する（10-14 に
+    確認）。元の値が空でないのに trim した後に空になるなら設定エラーにする（エイリアスの `"/"` は
+    すでに設定エラー = `aliases.rs:57`）。空文字は今までどおり「作らない」
   - PR (2) の docs: 「他のツールとの違い・よくある書き方」のページ（90 で足す設定キーも
     含める）。deploy.md に雛形 deploy.yml の全文と `--root` での書き換えを載せる。PR を検証する
     （公開しない）workflow の例を yml ファイルにして `file=` で取り込み、ci.yml の SHA の照合
@@ -295,21 +334,30 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
     では見つからない。`:137`・`:157` は postings の読み込みの中で、`parse` だけを呼ぶ対象では
     届かない。64 bit では今のコードでも `term_count = u32::MAX` はエラーで返るので、素直に書いた
     単体テストは直す前から通る（PR #53 の協議で整合派が指摘）
+  - postings には位置情報がある。`postings_with_positions`（`shard.rs:153`）の `:163` の
+    `with_capacity(pos_count)` と `:166` の加算は、この関数からしか通らない（PR #53 の再レビューの
+    協議で範囲派が指摘）。fuzz.yml は実行時間（`-max_total_time`）しか指定しておらず、
+    `-timeout` の既定は 1200 秒なので、300 秒の実行ではハングを報告しない
 - やること
-  - `Shard::parse` を `checked_*` と確保量の上限で直す。長さの計算を usize の幅に依らない関数
-    （u64 か checked の u32）に切り出し、その関数を単体テストで確かめる。直したら検索 wasm を
-    作り直す（89 で足す照合が作り直し忘れを検出する）
-  - fuzz の対象に mikan（postings まで読む）と tankan の `render_svg`（corpus を種にする）を
-    足す。対象ごとに別のジョブにして（`fail-fast: false`）、tankan の panic で他の対象が止まら
-    ないようにする。`-timeout` を既定（1200 秒）より短くしてハングを検出する。キャッシュの
-    対象を広げる
+  - `Shard::parse` を `checked_*` と確保量の上限で直す（`:137`・`:157`・`:163`）。長さの計算を
+    usize の幅に依らない関数（u64 か checked の u32）に切り出し、その関数を単体テストで確かめる。
+    直したら検索 wasm を作り直す（89 で足す照合が作り直し忘れを検出する）
+  - fuzz の対象に mikan（位置情報付きの postings まで読む）と tankan の `render_svg`（corpus を
+    種にする）を足す。対象ごとに別のジョブにして（`fail-fast: false`）、tankan の panic で他の
+    対象が止まらないようにする。キャッシュの対象を広げる
+  - 制限の値は fuzz.yml の対象ごとの設定（matrix）の 1 か所に書く: 実行時間
+    （`-max_total_time`）・ハングの判定（`-timeout`。既定の 1200 秒より短く）・メモリの上限
+    （`-rss_limit_mb`。既定と同じ 2048 でもリリース判定の基準なので明記する）。ジョブに
+    `timeout-minutes` を付ける。publish-crate スキルの手元での実行は fuzz.yml の値を参照する
   - fuzz.yml に定期実行を足し、リリース判定のとおり手動で 1 回実行して確かめる。見つかった
     ハング・メモリ超過は直す。tankan / mikan を直したらパッチ版を出す（publish-crate スキル）
 - 判断点: 定期実行の頻度と 1 回の時間 / tankan で見つかった panic をどこまで直すか（ハングと
   メモリ超過は必ず直す。panic は yuzu が回収するので延期できる）/ panic を延期するときの
-  ハーネスの作り（libFuzzer は最初のクラッシュで止まるので、直していない panic があると定期
-  実行が毎回同じ入力で失敗し、ハングを探せない。既知の panic をハーネスで受け流す作りが要るか
-  は**未確認**。作れなければ、リリース判定のとおり tankan の対象を定期実行から外す）
+  実行の仕方。libFuzzer は最初のクラッシュで止まるので、直していない panic があると定期実行が
+  毎回同じ入力で失敗し、ハングを探せない。協議の案は `-fork` と `-ignore_crashes=1` で最後まで
+  実行し、`-ignore_timeouts=0`・`-ignore_ooms=0` を明記する（fork のときはハングとメモリ超過も
+  既定で受け流す見込みのため）。この動作は**未確認**で、使えなければリリース判定のとおり tankan
+  の対象を定期実行から外す
 - 工数: 小〜中
 
 ### 93 dogfooding と整理 ⬜
@@ -336,7 +384,7 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
   - axum を既定の features のまま使っていて、使っていない json / form / query が入る
   - ROADMAP は 1,700 行あまりで、約 7 割が完了済みの内訳。候補に「誰の何を解決するか」が
     書かれていない（10-04 見直しの「ROADMAP.md の肥大化」）
-- やること: docs サイトに favicon・フッターを設定する。R4・R5・R9。運用文書の古い記述の残り。
+- やること: docs サイトにフッターを設定する（favicon は 90 で設定する）。R4・R5・R9。運用文書の古い記述の残り。
   axum の features。完了済みの内訳を移し、ROADMAP は「現在」と候補と各版の 1 行の要約にする
 - 判断点: 完了済みの内訳の置き場所（docs サイトの開発者向けのページとして公開するか、
   リポジトリ内の別ファイルにするか）
@@ -746,7 +794,10 @@ v0.20 で扱う項目は取り消し線にして移動先の Phase を書き、�
 PR #53 のレビュアー側の協議で提案され、こちらの 3 人格の協議（v0.20 の方針を参照）でも
 「需要はまだ仮説で、今ある機能と docs でおおむね足りる」と見た。どれも、最初の外部利用者の
 導入を観察してから（上の「最初の外部利用者」）着手するかを判断する。v0.20 の Phase 91 には、
-導入で実際に止まる所の修正と docs だけを入れた。
+導入で実際に止まる所の修正と docs だけを入れた。再レビューは「非破壊 init → PR 検証 CI の生成 →
+詳細な JSON」の順を提案したが、順序は観察で多かった止まり方から決める（3 人格とも、順序を先に
+決めずに前提だけを書く意見）。前提は、init は `input.dir = "."` の扱い、JSON は v0.21 の
+互換性の方針。
 
 - **既存 Markdown 向けの非破壊 `init`** — 原稿のディレクトリを指定し、最小の yuzu.toml だけを
   作る（既存の設定があれば止まる。原稿の移動・変換・公開はしない）
