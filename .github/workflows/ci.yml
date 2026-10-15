@@ -856,7 +856,8 @@ jobs:
         with:
           key: test-cross
       - name: test
-        run: cargo test --locked --workspace
+        # 失敗した crate があっても残りを実行して、OS ごとの失敗を 1 回の実行で全部出す
+        run: cargo test --locked --workspace --no-fail-fast
 
   # cargo-deny の licenses・bans・sources（設定は deny.toml。Phase 82）。結果が Cargo.lock だけで
   # 決まる検査なので PR ごとに回す。advisories は新しい勧告で無関係な PR を落とさないよう
