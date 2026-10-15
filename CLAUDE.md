@@ -435,6 +435,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 
 - `yuzu fmt` の不変条件: 本文は format_commonmark の正規形・**frontmatter は生テキストを
   バイト温存**・冪等・差分なしなら書き込まない（mtime 温存）
+  - **改行コードは原稿のまま**（`format_document` は LF にそろえて整形し、`LineEnding::of` で
+    原稿の改行コードへ戻す）。整形差分の判定は `same_ignoring_line_endings` を通す（fmt と
+    check の 2 か所。`==` で比べると、Windows の git が CRLF で取り出した原稿がすべて差分になる。Phase 87）
 - **原稿への書き込みは `commands::rewrite_source` を必ず通す**（fmt / lint --fix。Phase 85）。
   一時ファイル → rename・パーミッションの引き継ぎ・読み込み後に変わった原稿は書かない、の 3 つを
   内包している。`fs::write(&page.src, …)` を直に書かない。**一時ファイルを固定名で作らない** =

@@ -75,11 +75,14 @@ fn 本文が空でも壊れない() {
     assert_eq!(format_str(""), "");
 }
 
+/// CRLF の本文は CRLF のまま整形する（Phase 87 までは LF に変えていた。Windows の git が CRLF で
+/// 取り出す原稿で、改行コードだけが違う整形差分が全ファイルに出ていた）
 #[test]
-fn crlf_の本文は_lf_に正規化される() {
+fn crlf_の本文は_crlf_のまま整形する() {
     let out = format_str("# 見出し\r\n\r\n一行目\r\n二行目\r\n");
-    assert!(!out.contains('\r'), "out:\n{out:?}");
-    assert_eq!(out, "# 見出し\n\n一行目\n二行目\n");
+    assert_eq!(out, "# 見出し\r\n\r\n一行目\r\n二行目\r\n");
+    let out = format_str("見出し\r\n===\r\n");
+    assert_eq!(out, "# 見出し\r\n");
 }
 
 /// Phase 7 記法（Admonition・脚注）のサンプル。
@@ -320,4 +323,50 @@ fn yuzu_lint_以外の_html_コメントは空行付きのまま温存する() {
         "普通のコメントの空行が消えた:\n{out}"
     );
     assert_eq!(format_str(&out), out, "冪等でない:\n{out}");
+}
+
+/// Windows の git が既定（core.autocrlf=true）で CRLF にして取り出した原稿は、改行コードだけの
+/// 違いでは整形差分にならない。整形した結果も原稿の改行コード（CRLF）で返る（Phase 87）
+#[test]
+fn crlf_の原稿は改行コードを保って整形し改行だけの違いは差分にしない() {
+    use yuzu_core::{LineEnding, same_ignoring_line_endings};
+
+    // 正規形の原稿を CRLF にしたもの: 整形しても同じバイト列
+    let formatted_lf = format_str(SAMPLE);
+    let formatted_crlf = formatted_lf.replace('\n', "\r\n");
+    assert_eq!(LineEnding::of(&formatted_crlf), LineEnding::Crlf);
+    assert_eq!(format_str(&formatted_crlf), formatted_crlf);
+
+    // 整形が要る CRLF の原稿: 結果はすべて CRLF（LF だけの改行が残らない）で、frontmatter は
+    // CRLF のままバイト温存。LF の原稿を整形した結果とは改行コードだけが違う
+    let source_crlf = SAMPLE.replace('\n', "\r\n");
+    let out = format_str(&source_crlf);
+    assert!(
+        !out.replace("\r\n", "").contains('\n'),
+        "LF が残った: {out:?}"
+    );
+    assert!(
+        out.starts_with("---\r\n# コメント行も温存される\r\ntitle: \"引用符 付きタイトル\"\r\n"),
+        "{out:?}"
+    );
+    assert_eq!(out, formatted_crlf);
+    assert!(
+        !same_ignoring_line_endings(&out, &source_crlf),
+        "整形差分はある"
+    );
+    // 冪等
+    assert_eq!(format_str(&out), out);
+
+    // CRLF と LF が混ざった正規形の原稿: 改行コードだけの違いなので差分にしない
+    let mixed = formatted_lf.replacen('\n', "\r\n", 2);
+    assert!(same_ignoring_line_endings(&format_str(&mixed), &mixed));
+}
+
+#[test]
+fn 改行コードは最初の改行で決める() {
+    use yuzu_core::LineEnding;
+    assert_eq!(LineEnding::of("a\r\nb\n"), LineEnding::Crlf);
+    assert_eq!(LineEnding::of("a\nb\r\n"), LineEnding::Lf);
+    assert_eq!(LineEnding::of("改行なし"), LineEnding::Lf);
+    assert_eq!(LineEnding::Crlf.apply("a\nb\n"), "a\r\nb\r\n");
 }

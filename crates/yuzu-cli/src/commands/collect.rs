@@ -75,8 +75,14 @@ pub(crate) fn collect(
             diags.extend(yuzu_core::lint_page(page, opts, &lint)?);
             // fmt 差分（ファイル単位・位置なし）。合成ページは `yuzu fmt` の
             // 対象外なので差分を報告しても直しようがない。`--no-fmt` なら見ない
-            // （fmt は error のまま外せないので、既存の原稿を持ち込むと全ファイルが赤になる）
-            if fmt && !page.is_generated() && yuzu_core::format_document(page, opts)? != page.source
+            // （fmt は error のまま外せないので、既存の原稿を持ち込むと全ファイルが赤になる）。
+            // 改行コードだけの違いは差分にしない（Windows の git は CRLF で取り出す。Phase 87）
+            if fmt
+                && !page.is_generated()
+                && !yuzu_core::same_ignoring_line_endings(
+                    &yuzu_core::format_document(page, opts)?,
+                    &page.source,
+                )
             {
                 // 差分の中身は診断に載せない（github 形式は改行を %0A にするため
                 // 巨大な 1 行注釈になる）。見たい人を `fmt --diff` へ案内する

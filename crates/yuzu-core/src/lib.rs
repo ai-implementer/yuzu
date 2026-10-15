@@ -556,16 +556,21 @@ pub fn normalize_markdown(page: &Page, opts: &MarkdownOptions) -> Result<String,
 /// - frontmatter のつもりの記述が読まれていないページ（閉じ忘れ等）も原文のまま返す。
 ///   整形すると先頭の `---` が区切り線の `-----` に変わり、frontmatter だった痕跡が
 ///   消える。直し方は lint の `frontmatter-unrecognized` が知らせる
+/// - 改行コードは原稿に合わせる（[`LineEnding::of`]）。整形は LF にそろえた本文で行い、結果を
+///   原稿の改行コードへ戻す。改行コードだけの違いを整形差分にするかは呼び出し側が
+///   [`same_ignoring_line_endings`] で決める
 pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
-    if frontmatter::detect_unrecognized(&page.source, || {
-        markdown::frontmatter_raw(&page.source, opts).map(|(raw, _)| raw)
+    let line_ending = LineEnding::of(&page.source);
+    let source = to_lf(&page.source);
+    if frontmatter::detect_unrecognized(&source, || {
+        markdown::frontmatter_raw(&source, opts).map(|(raw, _)| raw)
     })
     .is_some()
     {
         return Ok(page.source.to_string());
     }
-    match markdown::catch_formatter_panic(|| markdown::format_document(&page.source, opts)) {
-        Some(result) => result,
+    match markdown::catch_formatter_panic(|| markdown::format_document(&source, opts)) {
+        Some(result) => result.map(|formatted| line_ending.apply(&formatted)),
         None => {
             tracing::warn!(
                 page = %page.rel.display(),
@@ -574,6 +579,50 @@ pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, Co
             Ok(page.source.to_string())
         }
     }
+}
+
+/// 原稿の改行コード。`yuzu fmt` は整形結果をこの改行コードで書き戻す（Phase 87）。
+///
+/// Windows の git は既定（`core.autocrlf=true`）で原稿を CRLF で取り出すので、LF で比べると
+/// すべての原稿が整形差分になり、`yuzu check` が error で落ちていた
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineEnding {
+    Lf,
+    Crlf,
+}
+
+impl LineEnding {
+    /// 最初の改行で決める（改行が無ければ LF）。CRLF と LF が混ざった原稿は最初の改行に
+    /// そろえる（混ざっていること自体は差分にしない = [`same_ignoring_line_endings`]）
+    pub fn of(text: &str) -> Self {
+        match text.find('\n') {
+            Some(i) if text[..i].ends_with('\r') => Self::Crlf,
+            _ => Self::Lf,
+        }
+    }
+
+    /// LF で書いた文字列をこの改行コードにする
+    pub fn apply(self, lf_text: &str) -> String {
+        match self {
+            Self::Lf => lf_text.to_string(),
+            Self::Crlf => lf_text.replace('\n', "\r\n"),
+        }
+    }
+}
+
+/// CRLF を LF にそろえる（CR だけの改行は扱わない）
+fn to_lf(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.contains("\r\n") {
+        std::borrow::Cow::Owned(text.replace("\r\n", "\n"))
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
+}
+
+/// 改行コード（CRLF / LF）の違いを除いて同じ文字列か。`yuzu fmt --check` と `yuzu check` は
+/// これで整形差分を判定する（改行コードだけの違いは差分にしない。Phase 87 のユーザの判断）
+pub fn same_ignoring_line_endings(a: &str, b: &str) -> bool {
+    to_lf(a) == to_lf(b)
 }
 
 /// 文書規約の診断（`yuzu lint` / `yuzu check` 用）。
