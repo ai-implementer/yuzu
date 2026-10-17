@@ -362,6 +362,37 @@ fn crlf_の原稿は改行コードを保って整形し改行だけの違いは
     assert!(same_ignoring_line_endings(&format_str(&mixed), &mixed));
 }
 
+/// frontmatter は改行コードも含めてバイト温存する。LF と CRLF が混ざった frontmatter を原稿の
+/// 改行コード（最初の改行）へそろえない。そろえるのは frontmatter の後ろ（本文）だけ
+/// （PR #54 のレビュー指摘。整形が要る本文があると属性行の CRLF が LF に変わっていた）
+#[test]
+fn 改行コードが混ざった_frontmatter_もバイト温存する() {
+    // 先頭の区切りが LF（= 原稿は LF）で、属性行の一部が CRLF
+    let out = format_str("---\ntitle: a\r\norder: 2\n---\n\n見出し\n===\n");
+    assert_eq!(out, "---\ntitle: a\r\norder: 2\n---\n\n# 見出し\n");
+    assert_eq!(format_str(&out), out, "冪等");
+
+    // 先頭の区切りが CRLF（= 原稿は CRLF）で、属性行の一部が LF。閉じの区切りの後ろが CRLF
+    let out = format_str("---\r\ntitle: a\norder: 2\r\n---\r\n\r\n見出し\r\n===\r\n");
+    assert_eq!(out, "---\r\ntitle: a\norder: 2\r\n---\r\n\r\n# 見出し\r\n");
+    assert_eq!(format_str(&out), out, "冪等");
+
+    // 本文が無い・BOM 付き・CR が続く（`\r\r\n`）原稿でも frontmatter の範囲を取り違えない
+    assert_eq!(
+        format_str("---\ntitle: a\r\n---\n"),
+        "---\ntitle: a\r\n---\n"
+    );
+    let out = format_str("\u{feff}---\ntitle: a\r\norder: 2\n---\n\n見出し\n===\n");
+    assert!(
+        out.ends_with("---\ntitle: a\r\norder: 2\n---\n\n# 見出し\n"),
+        "{out:?}"
+    );
+    assert_eq!(
+        format_str("---\ntitle: a\r\r\nb: 1\n---\n\n見出し\n===\n"),
+        "---\ntitle: a\r\r\nb: 1\n---\n\n# 見出し\n"
+    );
+}
+
 #[test]
 fn 改行コードは最初の改行で決める() {
     use yuzu_core::LineEnding;

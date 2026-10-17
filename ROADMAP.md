@@ -147,7 +147,9 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
   - **CRLF の原稿** — Windows の git は既定（`core.autocrlf=true`）で原稿を CRLF で取り出すので、
     `yuzu fmt --check` と `yuzu check` がすべての原稿を整形差分（error）にしていた（build はできる）。
     改行コードだけの違いは差分にせず、`yuzu fmt` は原稿の改行コードで書き戻す（`LineEnding`・
-    `same_ignoring_line_endings`。CRLF と LF が混ざった原稿も差分にしない）
+    `same_ignoring_line_endings`。CRLF と LF が混ざった原稿も差分にしない）。原稿の改行コードへ
+    戻すのは frontmatter の後ろだけで、frontmatter は改行コードも原稿のバイトのまま残す（PR #54 の
+    レビュー指摘。全文を戻していたため、LF と CRLF が混ざった属性行がそろっていた）
   - **通らないテスト** — 「コードの不具合」と「テストの前提」に分け、不具合は直し、前提は外して
     ここに記録する。CLI の e2e を Windows で実行するのは v0.21 へ移せる候補のまま（行っていない）
 - 結果: macOS は最初の実行ですべて通った。Windows は 2 回の修正で通った

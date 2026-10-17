@@ -559,6 +559,7 @@ pub fn normalize_markdown(page: &Page, opts: &MarkdownOptions) -> Result<String,
 /// - 改行コードは原稿に合わせる（[`LineEnding::of`]）。整形は LF にそろえた本文で行い、結果を
 ///   原稿の改行コードへ戻す。改行コードだけの違いを整形差分にするかは呼び出し側が
 ///   [`same_ignoring_line_endings`] で決める
+/// - frontmatter は改行コードも原稿のまま（LF と CRLF が混ざっていてもそろえない）
 pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, CoreError> {
     let line_ending = LineEnding::of(&page.source);
     let source = to_lf(&page.source);
@@ -570,7 +571,13 @@ pub fn format_document(page: &Page, opts: &MarkdownOptions) -> Result<String, Co
         return Ok(page.source.to_string());
     }
     match markdown::catch_formatter_panic(|| markdown::format_document(&source, opts)) {
-        Some(result) => result.map(|formatted| line_ending.apply(&formatted)),
+        Some(result) => result.map(|doc| {
+            let rest = line_ending.apply(&doc.rest);
+            match doc.frontmatter {
+                Some(lf_raw) => format!("{}{rest}", original_of_lf(&page.source, &lf_raw)),
+                None => rest,
+            }
+        }),
         None => {
             tracing::warn!(
                 page = %page.rel.display(),
@@ -617,6 +624,30 @@ fn to_lf(text: &str) -> std::borrow::Cow<'_, str> {
     } else {
         std::borrow::Cow::Borrowed(text)
     }
+}
+
+/// LF にそろえた原稿（[`to_lf`]）から読んだ frontmatter を、原稿の同じ範囲のバイト列で返す。
+///
+/// frontmatter は改行コードもバイト温存する（全文を LF にそろえて整形した結果をそのまま原稿の
+/// 改行コードへ戻すと、LF と CRLF が混ざった属性行がそろってしまう。PR #54 のレビュー指摘）。
+/// comrak は先頭の BOM を除いて frontmatter を読むので、BOM の後ろから数える
+fn original_of_lf<'a>(source: &'a str, lf_raw: &str) -> &'a str {
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
+    let bytes = source.as_bytes();
+    // to_lf は CRLF を LF 1 バイトにするだけなので、原稿を前から CRLF ごとに読み進めれば
+    // LF にそろえた側の位置と対応する
+    let (mut i, mut lf_len) = (0, 0);
+    while lf_len < lf_raw.len() && i < bytes.len() {
+        i += if bytes[i..].starts_with(b"\r\n") {
+            2
+        } else {
+            1
+        };
+        lf_len += 1;
+    }
+    let original = &source[..i];
+    debug_assert_eq!(to_lf(original), lf_raw);
+    original
 }
 
 /// 改行コード（CRLF / LF）の違いを除いて同じ文字列か。`yuzu fmt --check` と `yuzu check` は
