@@ -1,0 +1,12 @@
+# 改行コードは LF にそろえる。Windows（git の既定は core.autocrlf=true）でも、テストの入力と
+# スナップショットを Linux と同じバイトで取り出すため（Phase 87）。
+# 利用者の原稿の CRLF は yuzu が扱う（fmt・check は改行コードだけの違いを差分にしない）
+* text=auto eol=lf
+
+# 改行コードを含めてバイトのまま残すもの
+# kabosu の toml-test（CRLF の解釈を試す入力を含む。上流のスイートのまま）
+crates/kabosu/tests/toml-test/** -text
+# 上流のライセンス文を写したもの（CRLF が混ざる。生成物はバイトのまま埋め込む・照合する）
+crates/yuzu-index/assets/search/THIRD-PARTY-LICENSES.txt -text
+crates/yuzu-theme/assets/static/vendor/THIRD-PARTY-LICENSES.txt -text
+licenses/*-acknowledgements.md -text

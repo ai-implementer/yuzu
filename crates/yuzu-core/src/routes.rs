@@ -327,7 +327,9 @@ mod tests {
             (GeneratedKind::Glossary, "markdown.glossary.page"),
             (GeneratedKind::Search, "search.page"),
         ] {
-            let diags = validate_routes(&[generated_page("a\\b.md", "a\\b/", kind)]);
+            // `\` ではなく `|` で試す（`\` は Windows でパスの区切りになり、`rel` に残らない。
+            // 設定値の `\` は入口の synth_page_problem がすべての OS で拒否する。Phase 87）
+            let diags = validate_routes(&[generated_page("a|b.md", "a|b/", kind)]);
             let hits: Vec<_> = diags
                 .iter()
                 .filter(|d| d.rule.id == "unsafe-page-path")
@@ -345,7 +347,14 @@ mod tests {
     fn 出力パスとして使えない文字を含むファイル名はエラーになる() {
         // `\` は output::write_under が拒否する（通すと書き出し途中で I/O エラー）。
         // 制御文字は URL・HTML・ログのどれでも見えない切れ目になる
-        for rel in ["a\\b.md", "guide/x\ty.md", "a\nb.md"] {
+        // `\` を含むファイル名は Windows では作れない（`\` はパスの区切り）ので、Windows では
+        // 試さない（テストの前提の違い。Phase 87 で ROADMAP の 87 節に記録）
+        let rels: &[&str] = if cfg!(windows) {
+            &["guide/x\ty.md", "a\nb.md"]
+        } else {
+            &["a\\b.md", "guide/x\ty.md", "a\nb.md"]
+        };
+        for &rel in rels {
             let route = rel.trim_end_matches(".md").to_string() + "/";
             let diags = validate_routes(&[page(rel, &route)]);
             let hits: Vec<_> = diags

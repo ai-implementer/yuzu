@@ -836,6 +836,29 @@ jobs:
           test "$status" -eq 2
           grep -q 'yuzu.toml:2:1: `search.page` の値 `../search` は使えません' "$RUNNER_TEMP/bad-config.err"
 
+  # Windows と macOS の cargo test（Phase 87）。配布している 4 ターゲットのうち、Linux 以外は
+  # release.yml で --version を確かめるだけだった。静的検査・docs・e2e は check ジョブ（ubuntu）
+  # だけで行う。ランナーは release.yml の build ジョブと同じ（配布するバイナリを作る OS で確かめる）
+  test-cross:
+    strategy:
+      # 片方の OS の失敗で、もう片方の結果を隠さない
+      fail-fast: false
+      matrix:
+        runner: [windows-2025, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # SHA ピンでは ref 名からツールチェインを推定できないため toolchain の明示が必須
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: test-cross
+      - name: test
+        # 失敗した crate があっても残りを実行して、OS ごとの失敗を 1 回の実行で全部出す
+        run: cargo test --locked --workspace --no-fail-fast
+
   # cargo-deny の licenses・bans・sources（設定は deny.toml。Phase 82）。結果が Cargo.lock だけで
   # 決まる検査なので PR ごとに回す。advisories は新しい勧告で無関係な PR を落とさないよう
   # deps.yml（週次の定期実行・依存を変える PR）に分けている。

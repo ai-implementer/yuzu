@@ -416,7 +416,8 @@ fn 外部リンクは_http_と_https_だけを位置付きで返す() {
         .iter()
         .map(|e| {
             (
-                e.rel.to_string_lossy().into_owned(),
+                // `/` 区切りで比べる（`to_string_lossy` だと Windows で `guide\a.md` になる。Phase 87）
+                yuzu_core::urlpath::rel_to_slash(&e.rel),
                 e.url.clone(),
                 e.span.start_line,
                 e.is_image,

@@ -28,7 +28,9 @@ pub fn run(cx: &crate::cx::Cx, check: bool, diff: bool) -> anyhow::Result<ExitCo
     // `fs::write` が実在しない content/glossary.md を新規作成してしまう**
     for page in pages.iter().filter(|p| !p.is_generated()) {
         let formatted = yuzu_core::format_document(page, &opts)?;
-        if formatted == page.source {
+        // 改行コードだけの違いは差分にしない（整形結果は原稿の改行コードで返る。Windows の git は
+        // 既定で CRLF で取り出すので、LF で比べると全ファイルが差分になっていた。Phase 87）
+        if yuzu_core::same_ignoring_line_endings(&formatted, &page.source) {
             continue;
         }
         changed += 1;

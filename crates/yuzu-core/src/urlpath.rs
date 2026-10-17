@@ -138,9 +138,11 @@ pub(crate) fn synth_page_rel(raw: &str) -> Option<std::path::PathBuf> {
 /// 合成ページの route の設定値（`search.page` / `markdown.glossary.page`）が使えない理由。
 /// 空（ページを作らない）は問題なし。
 ///
-/// 絶対パス・ドライブレター・`..`・`.`・空の階層を拒否する。`..` を弾くのは
+/// 絶対パス・ドライブレター・`..`・`.`・空の階層・`\` を拒否する。`..` を弾くのは
 /// `content_dir.join(rel)` が外へ出ないため。以前は不正な値で黙ってページを作らず、
-/// build も check も成功していた（10-12 レビューの R3）
+/// build も check も成功していた（10-12 レビューの R3）。
+/// `\` はどこにあっても拒否する。Windows では `\` がパスの区切りになるので、`"a\\b"` が
+/// Windows では `a/b` のページになり、ほかの OS では使えない文字のエラーになっていた（Phase 87）
 pub fn synth_page_problem(raw: &str) -> Option<&'static str> {
     let route = raw.trim().trim_matches('/');
     if route.is_empty() {
@@ -149,8 +151,8 @@ pub fn synth_page_problem(raw: &str) -> Option<&'static str> {
     let bad_segment = route
         .split('/')
         .any(|s| s.is_empty() || s == "." || s == "..");
-    (route.starts_with('\\') || route.contains(':') || bad_segment).then_some(
-        "content 相対のパス（例: `search`・`help/search`）で書いてください。`..`・`.`・空の階層（`//`）・`\\` 始まり・`:` は使えません",
+    (route.contains('\\') || route.contains(':') || bad_segment).then_some(
+        "content 相対のパス（例: `search`・`help/search`）で書いてください。`..`・`.`・空の階層（`//`）・`\\`・`:` は使えません",
     )
 }
 
@@ -194,6 +196,8 @@ mod tests {
             "a//b",
             "C:/x",
             "\\x",
+            // 途中の `\` も拒否する（Windows では区切りになり、OS で結果が変わっていた）
+            "a\\b",
             "a:b",
         ] {
             assert!(synth_page_problem(bad).is_some(), "{bad}");

@@ -117,7 +117,7 @@ macOS・Windows のバイナリが CI でテストされていない穴と、fuz
   `..` を捨てるので `/README/`（= `docs/README.md`）に解決され、`check --no-fmt` は
   「問題ありません」と出る。原稿 0 件の警告はルート直下の `.md` しか数えない
 
-### 87 Windows・macOS のテスト ⬜
+### 87 Windows・macOS のテスト ✅
 
 **概要**: 配布している 4 ターゲットのうち、テストしているのは Linux だけ。ci.yml に
 Windows と macOS の `cargo test` を足し、落ちたテストを直す。
@@ -135,6 +135,36 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
   main だけへ下げる）/ Windows で通らないテストを `cfg` で外すか直すか / CLI の e2e を
   Windows でも実行するか
 - 工数: 中（Windows で何件落ちるかが分からない）
+- 決定（10-15。ユーザが推奨案で決めた）と実装
+  - **実行の頻度** — PR ごと（料金は確かめないまま推奨どおりに始めた）。ci.yml の `test-cross`
+    ジョブ（windows-2025・macos-15 = release.yml の build と同じランナー）で
+    `cargo test --locked --workspace --no-fail-fast`。所要は Windows 約 5 分 40 秒・macOS 約
+    2 分 50 秒（check ジョブは約 4 分 30 秒）。`--no-fail-fast` は、最初の実行で yuzu-cli の失敗で
+    止まり、後の crate の結果が出なかったため
+  - **改行コード** — `.gitattributes` で LF にそろえ、Windows でもテストの入力とスナップショットを
+    同じバイトで取り出す。CRLF の解釈を試す kabosu の toml-test と、上流のライセンス文を写した
+    もの（CRLF が混ざる）は `-text` でバイトのまま残した（既存のファイルは renormalize で変わらない）
+  - **CRLF の原稿** — Windows の git は既定（`core.autocrlf=true`）で原稿を CRLF で取り出すので、
+    `yuzu fmt --check` と `yuzu check` がすべての原稿を整形差分（error）にしていた（build はできる）。
+    改行コードだけの違いは差分にせず、`yuzu fmt` は原稿の改行コードで書き戻す（`LineEnding`・
+    `same_ignoring_line_endings`。CRLF と LF が混ざった原稿も差分にしない）。原稿の改行コードへ
+    戻すのは frontmatter の後ろだけで、frontmatter は改行コードも原稿のバイトのまま残す（PR #54 の
+    レビュー指摘。全文を戻していたため、LF と CRLF が混ざった属性行がそろっていた）
+  - **通らないテスト** — 「コードの不具合」と「テストの前提」に分け、不具合は直し、前提は外して
+    ここに記録する。CLI の e2e を Windows で実行するのは v0.21 へ移せる候補のまま（行っていない）
+- 結果: macOS は最初の実行ですべて通った。Windows は 2 回の修正で通った
+  - **Windows で動作が違った不具合（直した。リリースノートに書く）**: 人向けの診断のパスが
+    `content\guide/x.md` のように `\` と `/` の混ざった表記になっていた（json・github 形式と同じ
+    `/` 区切りにした）/ 合成ページの route の設定値に `\` を書くと、Windows では区切りになって
+    別のページ（`a/b`）になり、ほかの OS では使えない文字のエラーになっていた（入口の検証で
+    すべての OS の設定エラーにした）/ 上の CRLF の原稿
+  - **テストの前提で外したもの**: `\` を含むファイル名の入力 1 件（Windows では `\` がパスの
+    区切りでファイル名にできない。`routes.rs` のテスト）。外部リンクのテストは rel を `/` 区切りで
+    比べるよう直した（外してはいない）。もとから Unix だけのテストは 20 件（シンボリックリンクと
+    権限 600 を作るもの。Windows ではリンクの作成に権限が要る）で、preview のテストのモジュール
+    もこれに合わせて Unix だけにした
+  - **確かめていないこと**: Windows の実機での CLI の動作（e2e）。ログの `page=` は Windows では
+    `\` 区切りで出る見込み（**実機未確認**。人向けの診断と違い、表記はそろえていない）
 
 ### 88 frontmatter の読み込み ⬜
 

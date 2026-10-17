@@ -208,7 +208,7 @@ glob 評価が想定外になるため）。
 | `crossref.numbering` | `"page"` \| `"site"` / `"page"` | [図表番号](../guide/writing.md#図表番号と相互参照)の採番単位（ページ内連番 / サイト全体の通し番号） |
 | `glossary.terms` | table / `{}` | [用語集](../guide/writing.md#用語集と略語)の辞書（略語 → 説明文）。`[markdown.glossary.terms]` のテーブルで書く。空なら機能ごと無効 |
 | `glossary.abbr` | bool / `true` | 本文の初出を `<abbr title="説明">` にする（`false` で用語集ページだけ生成） |
-| `glossary.page` | string / `"glossary"` | 用語集ページの URL（`content` 相対・拡張子なし）。`""` で生成しない。`..`・`.`・空の階層（`//`）・`:` を含む値は設定エラー |
+| `glossary.page` | string / `"glossary"` | 用語集ページの URL（`content` 相対・拡張子なし）。`""` で生成しない。`..`・`.`・空の階層（`//`）・`\`・`:` を含む値は設定エラー |
 | `glossary.page_title` | string / `"用語集"` | 用語集ページのタイトル（h1 とサイドバーの表示名） |
 
 ## lint

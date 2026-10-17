@@ -239,28 +239,20 @@ fn severity_str(severity: Severity) -> &'static str {
 }
 
 /// `content/guide/x.md:12:1: warning[rule] メッセージ` 形式。
-/// ファイル単位の診断（span なし）は位置を省く
+/// ファイル単位の診断（span なし）は位置を省く。パスは json・github 形式と同じく `/` 区切り
+/// （`display()` だと Windows で `content\guide/x.md` のように混ざっていた。Phase 87）
 fn human_lines(diags: &[Diagnostic], prefix: &Path, root_prefix: &Path) -> Vec<String> {
     diags
         .iter()
         .map(|d| {
-            let path = base_prefix(d, prefix, root_prefix).join(&d.rel);
+            let path = slash(&base_prefix(d, prefix, root_prefix).join(&d.rel));
             let severity = severity_str(d.severity());
             match d.span {
                 Some(span) => format!(
-                    "{}:{}:{}: {severity}[{}] {}",
-                    path.display(),
-                    span.start_line,
-                    span.start_col,
-                    d.rule.id,
-                    d.message
+                    "{path}:{}:{}: {severity}[{}] {}",
+                    span.start_line, span.start_col, d.rule.id, d.message
                 ),
-                None => format!(
-                    "{}: {severity}[{}] {}",
-                    path.display(),
-                    d.rule.id,
-                    d.message
-                ),
+                None => format!("{path}: {severity}[{}] {}", d.rule.id, d.message),
             }
         })
         .collect()

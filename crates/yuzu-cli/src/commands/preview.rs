@@ -73,14 +73,14 @@ pub(crate) fn symlink_guard(project_root: &Path) -> PathGuard {
     })
 }
 
-#[cfg(test)]
+// テストはシンボリックリンクを作るので Unix だけ（Windows はリンクの作成に権限が要る）
+#[cfg(all(test, unix))]
 mod tests {
     use super::symlink_guard;
 
     /// 出力先までの中間ディレクトリ（`root/alias -> outside`）のリンクも拒否する。
     /// build は `ensure_no_symlink_under(root, output_dir)` で同じ構成を拒否するので、
     /// preview だけが配信できてはいけない
-    #[cfg(unix)]
     #[test]
     fn 出力先までの中間ディレクトリのリンクも拒否する() {
         let tmp = tempfile::tempdir().unwrap();

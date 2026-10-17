@@ -746,13 +746,26 @@ pub(crate) fn strip_frontmatter(source: &str, opts: &MarkdownOptions) -> String 
     }
 }
 
-/// 全文を整形した Markdown を返す（`yuzu fmt` 用）。
+/// 全文の整形結果（[`format_document`]）。frontmatter と、その後ろに続ける整形済みの部分を
+/// 分けて持つ。呼び出し側（`crate::format_document`）は LF にそろえた原稿を整形するので、
+/// frontmatter だけ原稿のバイト列へ戻してから結合する（改行コードも温存する。Phase 87）
+pub(crate) struct FormattedDocument {
+    /// frontmatter の生テキスト（区切り行込み・末尾の空白を除く）。渡した原稿のまま
+    pub frontmatter: Option<String>,
+    /// frontmatter の後ろに続ける部分（frontmatter と本文の間の空行・本文・末尾改行）
+    pub rest: String,
+}
+
+/// 全文を整形する（`yuzu fmt` 用）。
 ///
 /// 本文は [`normalize_markdown`] と同じ `format_commonmark` の正規形。
 /// frontmatter は YAML を再シリアライズせず**生テキストをバイト温存**して
 /// 再結合する（コメント・キー順・クォートを壊さない）。
 /// 末尾改行は常に 1 個、frontmatter と本文の間は空行 1 つに正規化する
-pub(crate) fn format_document(source: &str, opts: &MarkdownOptions) -> Result<String, CoreError> {
+pub(crate) fn format_document(
+    source: &str,
+    opts: &MarkdownOptions,
+) -> Result<FormattedDocument, CoreError> {
     let arena = Arena::new();
     // 脚注定義の位置・未参照定義を温存する（fmt は書き手の構成を動かさない）
     let options = comrak_options_keep_footnotes(opts);
@@ -775,11 +788,15 @@ pub(crate) fn format_document(source: &str, opts: &MarkdownOptions) -> Result<St
     let body = restore_yuzu_syntax(body);
     let body = body.trim_end();
 
-    Ok(match (fm_raw, body.is_empty()) {
-        (Some(raw), true) => format!("{}\n", raw.trim_end()),
-        (Some(raw), false) => format!("{}\n\n{body}\n", raw.trim_end()),
+    let rest = match (&fm_raw, body.is_empty()) {
+        (Some(_), true) => "\n".to_string(),
+        (Some(_), false) => format!("\n\n{body}\n"),
         (None, true) => String::new(),
         (None, false) => format!("{body}\n"),
+    };
+    Ok(FormattedDocument {
+        frontmatter: fm_raw.map(|raw| raw.trim_end().to_string()),
+        rest,
     })
 }
 
@@ -1104,12 +1121,13 @@ mod tests {
     fn fmt_はフェンスの表示メタを温存し冪等() {
         let source = "# 見出し\n\n```rust title=\"src/main.rs\" {2,4-6} showLineNumbers\nfn main() {}\n```\n";
         let opts = MarkdownOptions::default();
-        let once = format_document(source, &opts).unwrap();
+        // frontmatter の無い原稿なので、整形結果は `rest` だけ
+        let once = format_document(source, &opts).unwrap().rest;
         assert!(
             once.contains("```rust title=\"src/main.rs\" {2,4-6} showLineNumbers\n"),
             "情報文字列が逐語温存される:\n{once}"
         );
-        let twice = format_document(&once, &opts).unwrap();
+        let twice = format_document(&once, &opts).unwrap().rest;
         assert_eq!(once, twice, "冪等");
     }
 }
