@@ -481,6 +481,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - 特に `docs/yuzu.toml` の 25-45 行目（`[markdown]` ブロック）はインクルードの `lines=` で
     引用されているので、この範囲を動かすと原稿の中身と CI が同時に壊れる
     （`verify` スキルに直す箇所の一覧あり）
+- **ci.yml の check ジョブは `target/package` を消してからキャッシュする**（`drop target/package
+  before caching`）。Swatinem/rust-cache の掃除が `target/` の下をたどって kabosu のソースの `tests/` を
+  テスト用のプロファイルとみなし、await せずに開いて ENOENT の注記を出す（キャッシュが完全一致しない
+  run だけ。ジョブは失敗しない）。`cargo package` の出力を使う検査はこの手順より前に置く
 - **ci.yml の否定ゲートに `! cmd` を書かない**
   - GitHub Actions の `bash -e` でも `!` で反転したコマンドは errexit の対象外で、失敗しても
     次の行へ進む（= ゲートになっていない）
