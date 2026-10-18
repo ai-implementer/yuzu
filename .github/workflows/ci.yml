@@ -98,6 +98,15 @@ jobs:
             exit 1
           fi
 
+      # target/package（cargo package が展開したソースと .crate。検証ビルドの成果物は target/ の
+      # 通常の場所に入る）をキャッシュに残さない。Swatinem/rust-cache（v2.9.2・上流の main も同じ）の
+      # 掃除は target/ の下をたどり、kabosu のソースの tests/ を「テスト用のプロファイル」とみなして、
+      # tests/target・tests/trybuild を await せずに開くので、ENOENT が未処理のエラーとして注記に出る
+      # （キャッシュが完全一致しない run の復元時と保存時。ジョブは失敗しない）。
+      # target/package を使う検査（上の 2 つ）の後に置く
+      - name: drop target/package before caching
+        run: rm -rf target/package
+
       # wasm32 でのコンパイル可能性を確認する
       # - mikan-wasm: 成果物は scripts/build-search-wasm.sh で vendor 済み
       # - tankan: wasm ターゲットの担保（M5。I/O・時刻・乱数非依存を維持する）
