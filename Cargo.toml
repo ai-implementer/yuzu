@@ -5,9 +5,9 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.19.1"
 edition = "2024"
-# 1.87: mikan が使う ruzstd（0.8.2 から。0.9 も同じ）が 1.87 で安定化した API（is_multiple_of）を使う。
-# kabosu・tankan は依存が軽く 1.85 で通るので、各 Cargo.toml で 1.85 を宣言する
-rust-version = "1.87"
+# 1.99: 10-18 に当時の最新の stable へ上げた。kabosu・tankan も同じ版（rust-version.workspace）。
+# cargo の依存の選び方はワークスペースでいちばん低い MSRV に合わせるので、そろえないと依存を上げられない
+rust-version = "1.99"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ai-implementer/yuzu"
 authors = ["ai-implementer"]
@@ -20,7 +20,7 @@ comrak = { version = "0.55", default-features = false }
 # 避けるため default-features = false にし、使う feature だけを並べる。
 # default-fancy は使わない = 実行時に読むのは同梱の読み込み済みデータ（dump）だけで、
 # plist-load・yaml-load は要らない。入れると plist 経由の quick-xml・time と yaml-rust に
-# 勧告が出る（Phase 82 の cargo-deny で判明。time の修正版は MSRV 1.87 では上げられない）
+# 勧告が出る（Phase 82 の cargo-deny で判明）
 syntect = { version = "5.3", default-features = false, features = [
   "default-syntaxes",
   "default-themes",

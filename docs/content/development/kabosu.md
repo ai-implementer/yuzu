@@ -15,7 +15,7 @@ yuzu 固有の設定スキーマやファイル操作を含めず、crates.io �
 ## 境界と依存保証
 
 - workspace 内の `crates/kabosu` で開発し、独立した `0.1.0` から公開する
-- edition 2024、MSRV 1.85、`MIT OR Apache-2.0`
+- edition 2024、MSRV 1.99（ワークスペースと同じ）、`MIT OR Apache-2.0`
 - `#![forbid(unsafe_code)]`
 - 常時 `#![no_std] + alloc`。v0.1 では feature を設けない
 - Sans I/O とし、ファイル探索・読み書き・環境変数処理を持たない
@@ -181,6 +181,6 @@ to_string<T>(&T) -> Result<String, EncodeError>
 - dev 依存の `toml` crate との対応範囲内の差分テスト
 - 公式 toml-test（vendor）の valid と invalid の全件
 - panic、hang、不正な UTF-8 境界を検出する fuzzing
-- Rust 1.85 と現在の stable の CI
+- MSRV（1.99）と現在の stable の CI
 - `no_std + alloc` ビルド
 - `cargo package` 後の依存ゼロ検査

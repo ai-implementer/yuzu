@@ -8,8 +8,7 @@ name = "kabosu"
 description = "Dependency-free TOML parser and encoder with spans, hand-written decode, no_std + alloc"
 version = "0.2.0"
 edition.workspace = true
-# 依存が軽く 1.85 で通る（ワークスペースの 1.87 は mikan の依存の都合）。MSRV ジョブが 1.85 で検査する
-rust-version = "1.85"
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true

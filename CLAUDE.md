@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## プロジェクト概要
 
 yuzu は Markdown の設計書を静的 HTML ドキュメントサイトに変換する Rust 製ツール
-（Cargo workspace、MSRV 1.87 / edition 2024。公開ライブラリの kabosu・tankan は 1.85）。
+（Cargo workspace、MSRV 1.99 / edition 2024。公開ライブラリの kabosu・tankan も同じ）。
 
 - **日本語で書く** — 対話・コメント・ドキュメント・テスト名すべて
 - **コミットはユーザの指示があるまで行わない**（push もユーザが行う運用）
@@ -493,8 +493,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - リポジトリの `rust-toolchain.toml`（stable）が rustup の既定より優先されるので、
     `dtolnay/rust-toolchain` で古い版を入れるだけでは stable で検査してしまう。
     `rustc --version` の確認も外さない
-  - MSRV はワークスペース 1.87（mikan の依存 ruzstd の都合）・kabosu と tankan は 1.85。
-    依存を上げて MSRV が上がったら、README・リリースノート（release.yml）・docs も直す
+  - MSRV は 1.99（10-18 に当時の最新の stable へ上げた）。kabosu・tankan も `rust-version.workspace`
+    で同じ版にする — cargo の依存の選び方はワークスペースでいちばん低い MSRV に合わせるので、
+    1 つだけ低いと依存が上がらない（1.85 の kabosu・tankan のせいで、1.88 を要る globset 0.4.20・sha2 0.11.1 等が止まっていた）。
+    MSRV を変えたら、README・リリースノート（release.yml）・docs も直す
 - `docs/design/` は git 管理外のローカル設計ノート。公開物（コード・README・コミット）から
   参照しない
 
