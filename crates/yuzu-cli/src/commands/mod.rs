@@ -302,4 +302,32 @@ mod tests {
         .unwrap();
         super::read_config(dir.path()).unwrap();
     }
+
+    /// `"/"` は `/` を外すと空になり、以前は「作らない」と同じ扱いで build も check も成功していた
+    /// （v0.20 Phase 91）。空文字だけが「作らない」
+    #[test]
+    fn 合成ページの_route_に_サイトのルートは設定エラー() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("yuzu.toml"),
+            "[search]\npage = \"/\"\n\n[markdown.glossary]\npage = \" / \"\n",
+        )
+        .unwrap();
+        let err = super::read_config(dir.path()).unwrap_err();
+        let yuzu_config::ConfigError::Invalid { issues, .. } = &err else {
+            panic!("Invalid を期待: {err}");
+        };
+        let got: Vec<(&str, usize)> = issues
+            .iter()
+            .map(|i| (i.key_path.as_str(), i.line))
+            .collect();
+        assert_eq!(got, [("search.page", 2), ("markdown.glossary.page", 5)]);
+        assert!(
+            issues[0]
+                .message
+                .contains("サイトのルート（`/`）には置けません"),
+            "{}",
+            issues[0].message
+        );
+    }
 }

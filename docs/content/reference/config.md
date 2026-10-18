@@ -225,7 +225,7 @@ glob 評価が想定外になるため）。
 | `crossref.numbering` | `"page"` \| `"site"` / `"page"` | [図表番号](../guide/writing.md#図表番号と相互参照)の採番単位（ページ内連番 / サイト全体の通し番号） |
 | `glossary.terms` | table / `{}` | [用語集](../guide/writing.md#用語集と略語)の辞書（略語 → 説明文）。`[markdown.glossary.terms]` のテーブルで書く。空なら機能ごと無効 |
 | `glossary.abbr` | bool / `true` | 本文の初出を `<abbr title="説明">` にする（`false` で用語集ページだけ生成） |
-| `glossary.page` | string / `"glossary"` | 用語集ページの URL（`content` 相対・拡張子なし）。`""` で生成しない。`..`・`.`・空の階層（`//`）・`\`・`:` を含む値は設定エラー |
+| `glossary.page` | string / `"glossary"` | 用語集ページの URL（`content` 相対・拡張子なし）。`""` で生成しない。`..`・`.`・空の階層（`//`）・`\`・`:` を含む値と、サイトのルート（`"/"`）は設定エラー |
 | `glossary.page_title` | string / `"用語集"` | 用語集ページのタイトル（h1 とサイドバーの表示名） |
 
 ## lint
@@ -241,7 +241,7 @@ glob 評価が想定外になるため）。
 | キー | 型 / 既定 | 説明 |
 | --- | --- | --- |
 | `enabled` | bool / `true` | 全文検索（インデックス生成と検索 UI） |
-| `page` | string / `""` | [検索結果ページ](../guide/search.md#検索結果ページ)の route。**空なら生成しない**（既存の `content/search.md` 等と衝突しないための既定）。`glossary.page` と同じく `..` 等を含む値は設定エラー |
+| `page` | string / `""` | [検索結果ページ](../guide/search.md#検索結果ページ)の route。**空なら生成しない**（既存の `content/search.md` 等と衝突しないための既定）。`glossary.page` と同じく `..` 等を含む値と `"/"` は設定エラー |
 | `page_title` | string / `"検索"` | 検索結果ページのタイトル |
 | `page_size` | integer / `10` | 検索結果ページで 1 回に表示する件数（「さらに表示」で追加） |
 | `dictionary` | string / なし | 分かち書きのモデルの差し替え（vaporetto のモデル形式。プロジェクト相対パス） |

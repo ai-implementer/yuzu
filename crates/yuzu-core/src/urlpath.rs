@@ -158,7 +158,11 @@ pub(crate) fn synth_page_rel(raw: &str) -> Option<std::path::PathBuf> {
 pub fn synth_page_problem(raw: &str) -> Option<&'static str> {
     let route = raw.trim().trim_matches('/');
     if route.is_empty() {
-        return None;
+        // `"/"` は `/` を外すと空になり、以前は「作らない」と同じ扱いで黙ってページが消えていた
+        // （v0.20 Phase 91。エイリアスの `"/"` はすでに設定エラー）
+        return (!raw.trim().is_empty()).then_some(
+            "サイトのルート（`/`）には置けません（トップページと重なります）。ページを作らないときは空文字（`\"\"`）にしてください",
+        );
     }
     let bad_segment = route
         .split('/')
@@ -211,6 +215,10 @@ mod tests {
             // 途中の `\` も拒否する（Windows では区切りになり、OS で結果が変わっていた）
             "a\\b",
             "a:b",
+            // サイトのルートは「作らない」ではなく設定エラー（v0.20 Phase 91）
+            "/",
+            "//",
+            " / ",
         ] {
             assert!(synth_page_problem(bad).is_some(), "{bad}");
             assert_eq!(synth_page_rel(bad), None, "{bad}");
