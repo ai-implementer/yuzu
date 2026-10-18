@@ -180,6 +180,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - 外部 URL の判定は `urlpath::is_external_url`、フル URL かは `has_url_scheme`（先頭の `scheme://`）。
     **`contains("://")` で判定しない** = `/search/?q=https://…` を外部扱いにして base が付かず、
     リンク検査も飛ばしていた（PR #66 のレビュー指摘）
+  - 相対参照の解決 `urlpath::resolve_relative` は `..` が content より上へ出ると `None`。
+    リンク検査は warning `link-outside-content`、描画は href を書いたまま残す（v0.20 Phase 91。
+    以前は出た分の `..` を捨て、`../README.md` が中の別のページに解決されていた）
 - **アンカー採番** — extract_meta / 本文 HTML 化 / extract_plain_sections の
   **3 経路とも全見出しを文書順に** Anchorizer へ通す（片方で見出しを飛ばすと id がずれる）
   - 本文 HTML の見出しは `markdown/heading.rs` の HeadingAdapter が描く（id は見出し自身・
