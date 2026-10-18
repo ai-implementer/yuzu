@@ -332,6 +332,8 @@ jobs:
           grep -q 'id="検索から外す"' docs/dist/guide/search/index.html
           # Phase 90: favicon・フッター・ヘッダーのリンクの説明
           grep -q 'id="faviconフッターヘッダーのリンク"' docs/dist/guide/appearance/index.html
+          # Phase 91: content の外を指すリンクのルールと説明
+          grep -q 'link-outside-content' docs/dist/reference/rules/index.html && grep -q 'link-outside-content' docs/dist/guide/writing/index.html
           # 設定例は TOML で書く（JSON / YAML 風の `markdown.mermaid.backend: "ssr"` や
           # `"abbr": false` はコピーすると設定エラーになる）。原稿・README・雛形・スキルを見る
           if grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/; then

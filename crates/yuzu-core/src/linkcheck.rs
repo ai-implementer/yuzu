@@ -163,7 +163,10 @@ fn check_one(page: &Page, link: &LinkRef, targets: &Targets, out: &mut Vec<Diagn
     // 相対 `.md` リンク → ページに照合
     if path.ends_with(".md") {
         let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
-        let resolved = resolve_relative(&dir, path);
+        let Some(resolved) = resolve_relative(&dir, path) else {
+            push_outside_content(out, page, link, url);
+            return;
+        };
         match targets.by_rel.get(&resolved) {
             None => push(
                 out,
@@ -203,7 +206,10 @@ fn check_one(page: &Page, link: &LinkRef, targets: &Targets, out: &mut Vec<Diagn
     let last = path.rsplit('/').next().unwrap_or(path);
     if last.contains('.') {
         let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
-        let resolved = resolve_relative(&dir, path);
+        let Some(resolved) = resolve_relative(&dir, path) else {
+            push_outside_content(out, page, link, url);
+            return;
+        };
         if !targets.assets.contains(&resolved) {
             let kind = if link.is_image { "画像" } else { "参照先" };
             push(
@@ -294,4 +300,18 @@ fn push(
         Some(link.span),
         message,
     ));
+}
+
+/// content の外を指す相対リンク（`..` がルートより上へ出る）。描画は href を書いたまま残す
+fn push_outside_content(out: &mut Vec<Diagnostic>, page: &Page, link: &LinkRef, url: &str) {
+    push(
+        out,
+        page,
+        link,
+        rules::LINK_OUTSIDE_CONTENT,
+        format!(
+            "リンク先 `{url}` は content/ の外を指しています。content/ の外のファイルはサイトに出ないので、\
+             リンクは書いたまま残します（フル URL で書くか、ファイルを content/ の下へ移してください）"
+        ),
+    );
 }

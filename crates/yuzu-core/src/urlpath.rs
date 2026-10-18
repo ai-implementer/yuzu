@@ -106,8 +106,12 @@ pub fn split_suffix(url: &str) -> (&str, &str) {
     }
 }
 
-/// 相対パスを `dir`（`/` 区切り、空 = ルート）基準で解決し、`/` 区切りに正規化する
-pub fn resolve_relative(dir: &str, target: &str) -> String {
+/// 相対パスを `dir`（`/` 区切り、空 = ルート）基準で解決し、`/` 区切りに正規化する。
+///
+/// `..` がルート（content）より上へ出るなら `None`。以前は出た分の `..` を捨てていたので、
+/// `../README.md` が content の `README.md` のページに黙って解決されていた（v0.20 Phase 91）。
+/// リンク検査（`linkcheck.rs`）と描画（yuzu-render `urls.rs`）が共有する
+pub fn resolve_relative(dir: &str, target: &str) -> Option<String> {
     let mut parts: Vec<&str> = if dir.is_empty() {
         Vec::new()
     } else {
@@ -117,12 +121,12 @@ pub fn resolve_relative(dir: &str, target: &str) -> String {
         match seg {
             "" | "." => {}
             ".." => {
-                parts.pop();
+                parts.pop()?;
             }
             s => parts.push(s),
         }
     }
-    parts.join("/")
+    Some(parts.join("/"))
 }
 
 /// 相対パスを `/` 区切りの文字列へ正規化する（Windows でも出力 URL を安定させる）
@@ -186,10 +190,20 @@ mod tests {
 
     #[test]
     fn 相対解決() {
-        assert_eq!(resolve_relative("guide", "./index.md"), "guide/index.md");
-        assert_eq!(resolve_relative("guide", "../index.md"), "index.md");
-        assert_eq!(resolve_relative("", "a/b.md"), "a/b.md");
-        assert_eq!(resolve_relative("a/b", "../../c.md"), "c.md");
+        let some = |s: &str| Some(s.to_string());
+        assert_eq!(
+            resolve_relative("guide", "./index.md"),
+            some("guide/index.md")
+        );
+        assert_eq!(resolve_relative("guide", "../index.md"), some("index.md"));
+        assert_eq!(resolve_relative("", "a/b.md"), some("a/b.md"));
+        assert_eq!(resolve_relative("a/b", "../../c.md"), some("c.md"));
+        // 一度下りてから上がるのはルートの中
+        assert_eq!(resolve_relative("", "x/../c.md"), some("c.md"));
+        // ルート（content）より上へ出る `..` は None（以前は捨てて中のページに解決していた）
+        assert_eq!(resolve_relative("", "../README.md"), None);
+        assert_eq!(resolve_relative("guide", "../../README.md"), None);
+        assert_eq!(resolve_relative("", "../content/a.md"), None);
     }
 
     #[test]

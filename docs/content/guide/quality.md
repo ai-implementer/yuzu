@@ -184,6 +184,9 @@ katakana-choon = false
   になりません（外部リンクの例外指定を書いても既定のオフライン CI は落ちません）。
   `--external-links` を付けた実行でも、到達性を判定できずスキップした URL
   （接続失敗・タイムアウト・5xx・429）への抑制は同じ扱いです
+- `yuzu lint` は check が追加するルール（`link-outside-content`・`route-case-conflict`・
+  `spec-warning` など）を評価しないので、それらへの抑制も lint では
+  `unused-lint-suppression` になりません（不要になった抑制は `yuzu check` が知らせます）
 
 ### ディレクトリ階層の制限（`lint.max_directory_depth`）
 

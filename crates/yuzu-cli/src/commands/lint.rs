@@ -20,8 +20,8 @@ pub fn run(cx: &crate::cx::Cx, fix: bool, format: diag::Format) -> anyhow::Resul
     let rc = super::load_project(cx)?;
     let root = &rc.root;
     let opts = yuzu_render::markdown_options(&rc.config);
-    // lint は外部リンクを評価しない（その抑制を unused にしない）
-    let lint_opts = diag::lint_options(&rc, false);
+    // lint は check だけのルール（リンク・外部リンク・URL の衝突等）を評価しない（その抑制を unused にしない）
+    let lint_opts = diag::lint_options(&rc, diag::Evaluates::Lint);
     let collect = |pages: &[Page]| -> anyhow::Result<Vec<Diagnostic>> {
         let mut diags = Vec::new();
         for page in pages {

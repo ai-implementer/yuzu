@@ -66,7 +66,7 @@ pub(crate) fn collect(
             live_reload,
         } => (false, false, false, include_drafts, live_reload),
     };
-    let mut lint = diag::lint_options(rc, external_links);
+    let mut lint = diag::lint_options(rc, diag::Evaluates::Check { external_links });
     let mut diags = Vec::new();
 
     if check {

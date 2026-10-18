@@ -111,9 +111,12 @@ impl UrlRewriter for UrlResolver {
         let path = path.as_str();
 
         // 相対 `.md` リンク → ページ route へ解決
+        // content の外を指す（`..` がルートより上へ出る）相対参照は書いたまま残す。外のファイルは
+        // サイトに出ないので、中の別のページ・ファイルへ解決しない（check が `link-outside-content`
+        // で知らせる。v0.20 Phase 91）
         if path.ends_with(".md") {
             let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
-            let resolved = resolve_relative(&dir, path);
+            let resolved = resolve_relative(&dir, path)?;
             let route = match self.routes.get(&resolved) {
                 Some(route) => route.clone(),
                 None => {
@@ -137,7 +140,7 @@ impl UrlRewriter for UrlResolver {
         let last = path.rsplit('/').next().unwrap_or(path);
         if last.contains('.') {
             let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
-            let resolved = resolve_relative(&dir, path);
+            let resolved = resolve_relative(&dir, path)?;
             return Some(format!("{}{}{}", self.base, encode_path(&resolved), suffix));
         }
         None
@@ -217,6 +220,17 @@ mod tests {
         assert!(r.rewrite(&p, "https://example.com/a.md").is_none());
         assert!(r.rewrite(&p, "#section").is_none());
         assert!(r.rewrite(&p, "mailto:a@example.com").is_none());
+    }
+
+    /// content の外を指す相対参照は書いたまま残す（v0.20 Phase 91）。以前は出た分の `..` を
+    /// 捨てていたので、`../../index.md` がトップページに黙って解決されていた
+    #[test]
+    fn content_の外を指す相対参照は書き換えない() {
+        let (r, p) = resolver("/docs/");
+        assert_eq!(r.rewrite(&p, "../index.md").as_deref(), Some("/docs/"));
+        assert!(r.rewrite(&p, "../../index.md").is_none());
+        assert!(r.rewrite(&p, "../../README.md#usage").is_none());
+        assert!(r.rewrite(&p, "../../src/main.rs").is_none());
     }
 
     #[test]

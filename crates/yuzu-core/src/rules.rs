@@ -91,6 +91,12 @@ pub const EXTERNAL_LINK_BROKEN: Rule = warning("external-link-broken");
 // 片方が失われるが、区別する FS とサーバでは別の URL として動くので warning にする ---
 pub const ROUTE_CASE_CONFLICT: Rule = warning("route-case-conflict");
 
+// --- content（`input.dir`）の外を指す相対リンク（v0.20 Phase 91）。外のファイルはサイトに
+// 出ない。既存の原稿は `docs/` から `../src/` を指すことが多いので、`lint.rules`・`lintDisable`・
+// 行コメントで外せる warning にする（外さなければ check は終了コード 1。以前は出た分の `..` を
+// 捨て、中の別のページに解決していた）---
+pub const LINK_OUTSIDE_CONTENT: Rule = warning("link-outside-content");
+
 // --- 抑制機構自身のルール（warning）。自身を抑制できると古びた抑制が
 // 黙って溜まるため、抑制不可で固定する ---
 pub const INVALID_LINT_SUPPRESSION: Rule = warning_unsuppressible("invalid-lint-suppression");
@@ -122,8 +128,30 @@ pub const RULES: &[Rule] = &[
     SPEC_WARNING,
     EXTERNAL_LINK_BROKEN,
     ROUTE_CASE_CONFLICT,
+    LINK_OUTSIDE_CONTENT,
     INVALID_LINT_SUPPRESSION,
     UNUSED_LINT_SUPPRESSION,
+];
+
+/// `yuzu lint` が評価しないルール（check と build だけが評価する。docs の「yuzu check が追加する
+/// ルール」）。lint はこれらを「評価しなかったルール」として渡し、その抑制を
+/// `unused-lint-suppression` にしない（PR #68 のレビュー指摘。`route-case-conflict` は Phase 85 から、
+/// 発火する抑制まで lint が未使用と報告して終了コード 1 にしていた）。**lint が評価しないルールを
+/// 足したらここにも足す**（docs の節との一致と、RULES の分け方をテストが縛る）
+pub const CHECK_ONLY: &[Rule] = &[
+    BROKEN_LINK,
+    BROKEN_ANCHOR,
+    ALIAS_INVALID,
+    ALIAS_CONFLICT,
+    ROUTE_CONFLICT,
+    UNSAFE_PAGE_PATH,
+    INCLUDE_ERROR,
+    SPEC_ERROR,
+    FMT,
+    SPEC_WARNING,
+    EXTERNAL_LINK_BROKEN,
+    ROUTE_CASE_CONFLICT,
+    LINK_OUTSIDE_CONTENT,
 ];
 
 /// ID からルール定義を引く（未知 ID は None = `lintDisable` の検証で使う）
@@ -210,6 +238,62 @@ mod tests {
             checked >= 22,
             "表の行が {checked} 行しか見つからない（形式が変わった？）"
         );
+    }
+
+    /// docs の `## {heading}` から次の `## ` までの本文
+    fn section<'a>(doc: &'a str, heading: &str) -> &'a str {
+        let start = doc
+            .find(&format!("\n## {heading}\n"))
+            .unwrap_or_else(|| panic!("docs に `## {heading}` が無い"));
+        let body = &doc[start + 1..];
+        let end = body[3..].find("\n## ").map_or(body.len(), |i| i + 3);
+        &body[..end]
+    }
+
+    /// 表の行（`| \`rule-id\` | …`）の 1 列目の ID
+    fn row_ids(text: &str) -> Vec<&str> {
+        text.lines()
+            .filter_map(|l| l.strip_prefix("| `")?.split_once('`').map(|(id, _)| id))
+            .collect()
+    }
+
+    /// CHECK_ONLY は docs の「yuzu check が追加するルール」の節と一致し、lint の節とは重ならない。
+    /// lint の節とあわせて全ルールを過不足なく分ける（新ルールを足したときにどちらかへ入れ忘れると落ちる）
+    #[test]
+    fn check_only_は_docs_の_check_の節と一致する() {
+        let doc = rules_md();
+        let check = section(&doc, "yuzu check が追加するルール");
+        let lint = section(&doc, "yuzu lint のルール");
+        let check_rows = row_ids(check);
+        let lint_rows = row_ids(lint);
+        for id in &check_rows {
+            assert!(
+                CHECK_ONLY.iter().any(|r| r.id == *id),
+                "docs の check の節の `{id}` が CHECK_ONLY に無い"
+            );
+        }
+        for rule in CHECK_ONLY {
+            assert!(
+                !lint_rows.contains(&rule.id),
+                "`{}` は CHECK_ONLY なのに docs の lint の節にある",
+                rule.id
+            );
+            // spec-warning は表ではなく本文で説明している
+            assert!(
+                check.contains(&format!("`{}`", rule.id)),
+                "`{}` が docs の check の節に無い",
+                rule.id
+            );
+        }
+        for rule in RULES {
+            let in_check = CHECK_ONLY.contains(rule);
+            let in_lint = lint_rows.contains(&rule.id);
+            assert!(
+                in_check != in_lint,
+                "`{}` は CHECK_ONLY と docs の lint の節のどちらか一方だけに入れる",
+                rule.id
+            );
+        }
     }
 
     #[test]
