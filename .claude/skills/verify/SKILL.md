@@ -124,6 +124,7 @@ grep -q 'route-case-conflict' docs/dist/reference/rules/index.html              
 grep -q '取り込みの失敗' docs/dist/guide/quality/index.html && grep -q 'end list' docs/dist/guide/quality/index.html  # build の報告・fmt が変える書き方（Phase 85）
 test -s docs/dist/_assets/vendor/THIRD-PARTY-LICENSES.txt && test -s docs/dist/_search/THIRD-PARTY-LICENSES.txt && test ! -e docs/dist/_assets/vendor/README.md  # docs にもライセンス表記（Phase 86）
 grep -q 'id="第三者のソフトウェアのライセンス表記"' docs/dist/guide/internal/index.html  # 利用者のサイトに出るライセンス表記の説明（Phase 86）
+grep -q 'id="yaml-の書き方"' docs/dist/guide/writing/index.html  # frontmatter の YAML の読み方（Phase 88）
 ! grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/  # JSON / YAML 風の設定例が無い（Phase 84）
 grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --root docs --section 開発者向け "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
@@ -221,6 +222,11 @@ printf -- '---\ntitle: 閉じ忘れ\n\n本文\n' > content/unclosed.md
 printf -- '---\n\n# 区切り線で始まる\n\n本文\n' > content/hr-first.md
 <repo>/target/debug/yuzu check --format json 2>/dev/null | grep -B2 '"path": "content/' | grep -c frontmatter-unrecognized   # 1（unclosed.md だけ）
 rm content/unclosed.md content/hr-first.md
+# frontmatter の書き間違いは全ページ分を日本語・ファイル上の行と列で出し exit 2（Phase 88。CI と同じ）
+printf -- '---\n\ntitle: a\norder: "最初"\ndraft: yes\n---\n\n# a\n' > content/fm-a.md
+printf -- '---\naliases: old/\n---\n\n# b\n' > content/fm-b.md
+<repo>/target/debug/yuzu build 2>&1 | grep -E '（3 件）|fm-a.md:4:8|fm-a.md:5:8|fm-b.md:2:10' | wc -l   # 4・exit 2
+rm content/fm-a.md content/fm-b.md
 <repo>/target/debug/yuzu fmt --check && <repo>/target/debug/yuzu lint && <repo>/target/debug/yuzu check
 # 異常系: 壊れリンクを注入して check が終了コード 1 を返すこと（CI と同じ）
 echo '[壊れリンク](missing.md)' >> content/index.md

@@ -31,6 +31,7 @@ mod site_output;
 mod suppress;
 mod traits;
 pub mod urlpath;
+pub mod yaml;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,7 +39,7 @@ use std::path::{Path, PathBuf};
 pub use aliases::{alias_routes, validate_aliases, validate_url_case};
 pub use cache::{BuildCache, CacheStats, CachedBody, CachedMeta, CachedSection};
 pub use diagnostics::{DiagBase, Diagnostic, Severity};
-pub use error::CoreError;
+pub use error::{CoreError, FrontmatterProblem};
 pub use include::{
     IncludeRef, SpecRefError, SpecSource, collect_include_specs, resolve_include,
     resolve_spec_file, resolve_spec_source, validate_includes, validate_spec_refs,
@@ -351,6 +352,8 @@ fn load_pages_cached(
 ) -> Result<Vec<Page>, CoreError> {
     let files = scan::scan_markdown_files(content_dir, ignore)?;
     let mut pages = Vec::new();
+    // frontmatter の書き間違いは最初のページで止めず、全ページ分を集めてから返す
+    let mut frontmatter_problems = Vec::new();
 
     for file in files {
         let source = fs::read_to_string(&file.abs).map_err(|source| CoreError::Io {
@@ -372,7 +375,14 @@ fn load_pages_cached(
         let (frontmatter, title, toc, labels) = match cached {
             Some(meta) => (meta.frontmatter, meta.title, meta.toc, meta.labels),
             None => {
-                let meta = markdown::extract_meta(&source, opts, &file.abs)?;
+                let meta = match markdown::extract_meta(&source, opts, &file.abs) {
+                    Ok(meta) => meta,
+                    Err(CoreError::Frontmatter { problems }) => {
+                        frontmatter_problems.extend(problems);
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                };
                 let title = meta
                     .frontmatter
                     .title
@@ -407,6 +417,11 @@ fn load_pages_cached(
             crossref_offset: Default::default(),
             source,
             generated: None,
+        });
+    }
+    if !frontmatter_problems.is_empty() {
+        return Err(CoreError::Frontmatter {
+            problems: frontmatter_problems,
         });
     }
     Ok(pages)

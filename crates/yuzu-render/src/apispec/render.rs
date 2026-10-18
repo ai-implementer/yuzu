@@ -4,7 +4,7 @@
 //! [`SpecVersion::V2`] の分岐でのみ吸収し、3.x パスの挙動は変えない。
 //!
 //! 設計:
-//! - 入力（YAML / JSON）は `serde_yaml_ng` で `serde_json::Value` に読む。
+//! - 入力（YAML / JSON）は `yuzu_core::yaml::to_json` で `serde_json::Value` に読む。
 //!   yuzu-render の serde_json は `preserve_order` 有効なので Map は記述順を保つ
 //!   （= 出力は決定的。HashMap の非決定順序を混ぜない）
 //! - 走査中の全テキストは [`escape_html`] を通してから埋め込む（XSS 安全）
@@ -43,7 +43,7 @@ pub(super) fn render(
     origin: Option<&str>,
     files: &dyn SpecFiles,
 ) -> String {
-    let value: Value = match serde_yaml_ng::from_str(source) {
+    let value: Value = match yuzu_core::yaml::to_json(source) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(error = %e, "API 仕様のパースに失敗しました");
@@ -101,7 +101,7 @@ pub(super) fn check(
     origin: Option<&str>,
     files: &dyn SpecFiles,
 ) -> Vec<super::SpecIssue> {
-    let value: Value = match serde_yaml_ng::from_str(source) {
+    let value: Value = match yuzu_core::yaml::to_json(source) {
         Ok(v) => v,
         // パースできなければ以降の検査は無意味（描画もエラーボックスで打ち切る）
         Err(e) => {
@@ -189,7 +189,7 @@ fn load_documents(main_key: &str, main: Value, files: &dyn SpecFiles) -> DocSet 
                 tracing::warn!(file = %path, "仕様ファイルの読み込みに失敗: {reason}");
                 failed.insert(path, reason);
             }
-            Ok(text) => match serde_yaml_ng::from_str::<Value>(&text) {
+            Ok(text) => match yuzu_core::yaml::to_json(&text) {
                 Err(e) => {
                     tracing::warn!(file = %path, error = %e, "仕様ファイルのパースに失敗");
                     failed.insert(path, format!("パースに失敗しました: {e}"));
@@ -1256,6 +1256,15 @@ paths:
         // レスポンスボディのプロパティ
         assert!(html.contains("<code>name</code>"));
         assert!(html.ends_with("</section>\n"));
+    }
+
+    /// 明示のコアタグは引用符より優先する（PR #55 のレビュー指摘。`!!bool "true"` を文字列として
+    /// 読み、「null 許容」の表示が黙って消えていた）
+    #[test]
+    fn タグ付きの引用符の真偽値も_nullable_として読む() {
+        let src = "openapi: 3.0.3\ninfo:\n  title: T\n  version: \"1\"\npaths:\n  /a:\n    get:\n      responses:\n        \"200\":\n          description: ok\n          content:\n            application/json:\n              schema:\n                type: string\n                nullable: !!bool \"true\"\n";
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(html.contains("null 許容"), "{html}");
     }
 
     /// $ref 解決（components/schemas 参照）

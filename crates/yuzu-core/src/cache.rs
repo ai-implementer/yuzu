@@ -66,7 +66,9 @@ use crate::model::{Frontmatter, TocEntry};
 ///   CachedMeta の Frontmatter に `readingTime` を追加（Phase 78。bump を 1 回に束ねた）
 /// - v24: CachedMeta の Frontmatter に `pageMd`（ページ単位 Markdown を配信しない）を追加
 ///   （Phase 83。旧キャッシュは `pageMd` を読まずに作られているので捨てる）
-pub const CACHE_FORMAT_VERSION: u32 = 24;
+/// - v25: frontmatter の YAML パーサを serde_yaml_ng から saphyr へ置き換え（Phase 88）。
+///   最後のキーのブロックスカラーに末尾の改行が付くなど、CachedMeta の Frontmatter の値が変わりうる
+pub const CACHE_FORMAT_VERSION: u32 = 25;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
