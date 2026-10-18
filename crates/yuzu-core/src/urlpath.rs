@@ -73,7 +73,19 @@ pub fn percent_decode(s: &str) -> String {
 /// render の書き換え（`UrlResolver::rewrite`）と linkcheck の「触らない」判定が
 /// 共有する唯一の定義
 pub fn is_external_url(url: &str) -> bool {
-    url.contains("://") || url.starts_with("mailto:") || url.starts_with("tel:")
+    has_url_scheme(url) || url.starts_with("mailto:") || url.starts_with("tel:")
+}
+
+/// 先頭が `scheme://` のフル URL か。スキームは RFC 3986 の形（英字で始まり、英数字・`+`・`-`・`.`）。
+/// 文字列のどこかに `://` があるかでは判定しない = `/search/?q=https://example.com/` は
+/// クエリに URL を含むサイト内リンク（PR #66 のレビュー指摘。base が付かなかった）
+pub fn has_url_scheme(url: &str) -> bool {
+    let Some((scheme, _)) = url.split_once("://") else {
+        return false;
+    };
+    let mut chars = scheme.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 /// `yuzu check --external-links` の検査対象か（`http://` / `https://` だけ。
@@ -270,6 +282,19 @@ mod tests {
         }
         for url in ["guide/a.md", "/images/x.png", "#frag", "a:b.md"] {
             assert!(!is_external_url(url), "{url}");
+        }
+        // スキームは先頭だけを見る（クエリ・フラグメントの URL で外部扱いにしない）
+        assert!(is_external_url("HTTPS://example.com/"));
+        assert!(is_external_url("git+ssh://example.com/repo"));
+        for url in [
+            "/search/?q=https://example.com/",
+            "guide/?next=http://x",
+            "a.md#https://x",
+            "://x",
+            "1http://x",
+        ] {
+            assert!(!is_external_url(url), "{url}");
+            assert!(!has_url_scheme(url), "{url}");
         }
         assert!(is_http_url("https://example.com/"));
         assert!(is_http_url("HTTP://example.com/"));

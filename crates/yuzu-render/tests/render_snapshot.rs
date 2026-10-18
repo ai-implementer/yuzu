@@ -403,7 +403,11 @@ fn favicon_とフッターとヘッダーのリンクを出す() {
     let dir = build_fixture_with_config(LiveReloadMode::None, |rc| {
         rc.config.site.favicon = Some("/images/favicon.svg".to_string());
         rc.config.site.footer = Some(
-            "社外秘 · [ガイド](/guide/getting-started/) · [外部](https://example.com/)".into(),
+            concat!(
+                "社外秘 · [ガイド](/guide/getting-started/) · [外部](https://example.com/)",
+                " · [例の検索](/search/?q=https://example.com/)"
+            )
+            .into(),
         );
         rc.config.site.header_links = vec![
             yuzu_config::HeaderLink {
@@ -418,6 +422,11 @@ fn favicon_とフッターとヘッダーのリンクを出す() {
                 text: "手引き".into(),
                 url: "/guide/".into(),
             },
+            // クエリに URL を含むサイト内リンクにも base を前置する（PR #66 のレビュー指摘）
+            yuzu_config::HeaderLink {
+                text: "検索の例".into(),
+                url: "/search/?q=https://example.com/".into(),
+            },
         ];
     });
     let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
@@ -428,7 +437,8 @@ fn favicon_とフッターとヘッダーのリンクを出す() {
     assert!(
         index.contains(concat!(
             r#"<footer class="site-footer">社外秘 · <a href="/docs/guide/getting-started/">ガイド</a>"#,
-            r#" · <a href="https://example.com/">外部</a></footer>"#
+            r#" · <a href="https://example.com/">外部</a>"#,
+            r#" · <a href="/docs/search/?q=https://example.com/">例の検索</a></footer>"#
         )),
         "{index}"
     );
@@ -436,6 +446,7 @@ fn favicon_とフッターとヘッダーのリンクを出す() {
         r#"<a href="https://github.com/example/docs">GitHub</a>"#,
         r#"<a href="mailto:docs@example.com">連絡</a>"#,
         r#"<a href="/docs/guide/">手引き</a>"#,
+        r#"<a href="/docs/search/?q=https://example.com/">検索の例</a>"#,
     ] {
         // ヘッダーと、狭い画面用のナビの下の 2 か所
         assert_eq!(index.matches(link).count(), 2, "{link}: {index}");

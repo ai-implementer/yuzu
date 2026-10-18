@@ -236,7 +236,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     // og:image は絶対 URL が必須。フル URL 指定はそのまま、パス指定は base がフル URL の
     // ときだけ解決する（ローカルビルドでは出ないのが普通なので debug ログに留める）
     let image_url = cfg.site.image.as_deref().and_then(|p| {
-        if p.contains("://") {
+        if yuzu_core::urlpath::has_url_scheme(p) {
             Some(p.to_string())
         } else if resolver.is_absolute_base() {
             Some(resolver.public_url(p))
