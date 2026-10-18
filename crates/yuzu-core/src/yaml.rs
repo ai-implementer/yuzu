@@ -109,10 +109,10 @@ fn validate(node: &Node<'_>) -> Result<(), (Marker, String)> {
         View::Mapping(map) => {
             let mut seen = HashSet::new();
             for (key, value) in map {
-                if let View::Scalar { text, .. } = view(key) {
-                    if !seen.insert(text) {
-                        return Err((key.span.start, DUPLICATE_KEY.to_string()));
-                    }
+                if let View::Scalar { text, .. } = view(key)
+                    && !seen.insert(text)
+                {
+                    return Err((key.span.start, DUPLICATE_KEY.to_string()));
                 }
                 validate(key)?;
                 validate(value)?;
@@ -193,10 +193,10 @@ impl<'a> SpannedEventReceiver<'a> for Budgeted<'a> {
                 self.nodes += 1;
             }
             Event::SequenceEnd | Event::MappingEnd => {
-                if let Some((anchor, start)) = self.open.pop() {
-                    if anchor > 0 {
-                        self.anchors.insert(anchor, self.nodes - start);
-                    }
+                if let Some((anchor, start)) = self.open.pop()
+                    && anchor > 0
+                {
+                    self.anchors.insert(anchor, self.nodes - start);
                 }
             }
             Event::Alias(id) => {

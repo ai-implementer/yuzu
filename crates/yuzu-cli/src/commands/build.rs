@@ -119,10 +119,10 @@ pub fn run(
     host: Option<yuzu_config::BindAddr>,
 ) -> anyhow::Result<()> {
     // フラグの値は watch 中も変わらないので、検証はここで 1 回（yuzu.toml 側は load が見る）
-    if let Some(raw) = &base_url {
-        if let Some(problem) = yuzu_config::base_url_problem(raw) {
-            anyhow::bail!("--base-url の値 `{raw}` は使えません。{problem}");
-        }
+    if let Some(raw) = &base_url
+        && let Some(problem) = yuzu_config::base_url_problem(raw)
+    {
+        anyhow::bail!("--base-url の値 `{raw}` は使えません。{problem}");
     }
     let overrides = Overrides { base_url, host };
     let rc = load_config(cx, &overrides)?;
@@ -747,12 +747,13 @@ fn collect_git_dates(rc: &ResolvedConfig) -> Option<std::collections::HashMap<St
     for line in String::from_utf8_lossy(&output.stdout).lines() {
         if let Some(date) = line.strip_prefix('\u{1}') {
             current_date = date.to_string();
-        } else if let Some(rel) = line.strip_prefix(&content_prefix) {
-            if !rel.is_empty() && !current_date.is_empty() {
-                dates
-                    .entry(rel.to_string())
-                    .or_insert_with(|| current_date.clone());
-            }
+        } else if let Some(rel) = line.strip_prefix(&content_prefix)
+            && !rel.is_empty()
+            && !current_date.is_empty()
+        {
+            dates
+                .entry(rel.to_string())
+                .or_insert_with(|| current_date.clone());
         }
     }
     Some(dates)

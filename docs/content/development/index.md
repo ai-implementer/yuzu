@@ -9,7 +9,7 @@ description: ワークスペース構成・依存方向・凍結した設計判�
 このセクションは、yuzu 本体の内部設計を説明する開発者向けのページです。
 使い方は[ガイド](../guide/index.md)を見てください。
 
-yuzu は Cargo workspace（MSRV 1.87 / edition 2024。公開ライブラリの kabosu・tankan は MSRV 1.85）で、役割ごとに
+yuzu は Cargo workspace（MSRV 1.99 / edition 2024。公開ライブラリの kabosu・tankan も同じ）で、役割ごとに
 crate を分けています。
 
 ## ワークスペース構成

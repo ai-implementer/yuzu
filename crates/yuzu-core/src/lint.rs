@@ -423,18 +423,18 @@ fn check_code_meta(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic
 
         // 特別レンダリング言語（mermaid / openapi / jsonschema / math）は
         // 表示メタ自体が無視されるので、個別の指摘ではなくその事実だけ伝える
-        if let Some(lang) = lang {
-            if crate::is_special_render_lang(lang, opts) {
-                if !meta.is_empty() || !issues.is_empty() {
-                    push(
-                        fence.span,
-                        format!(
-                            "{lang} ブロックでは表示メタ（title / 行ハイライト / 行番号）は無視されます"
-                        ),
-                    );
-                }
-                continue;
+        if let Some(lang) = lang
+            && crate::is_special_render_lang(lang, opts)
+        {
+            if !meta.is_empty() || !issues.is_empty() {
+                push(
+                    fence.span,
+                    format!(
+                        "{lang} ブロックでは表示メタ（title / 行ハイライト / 行番号）は無視されます"
+                    ),
+                );
             }
+            continue;
         }
 
         // `tab=` は隣接する `tab=` 付きフェンスと 2 枚以上そろって初めて効く。

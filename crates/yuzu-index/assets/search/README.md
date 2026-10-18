@@ -20,13 +20,15 @@
 
 ## 現在の成果物
 
-- 生成日: 2026-10-18（wasm-bindgen 0.2.126 / binaryen version_131 / wasm-opt -Oz。
-  開発コンテナ（Linux aarch64）で生成）。mikan の版を 0.2.2 に上げた（crates.io へ ruzstd 0.9.1 の
-  修正を届けるパッチ版。ソースは 0.2.1 と同一）ことに追随した再 vendor。版から作られるハッシュの
-  差で 236 バイトが変わり、サイズ・コード・エクスポート API は変わらない（`search.js` は前回とバイト同一）
-- その前: 2026-10-18（同じツールの版）。ruzstd 0.8.2 → 0.9.1（RUSTSEC-2026-0344。
+- 生成日: 2026-10-18（wasm-bindgen 0.2.126 / binaryen version_131 / wasm-opt -Oz / rustc 1.99.1。
+  開発コンテナ（Linux aarch64）で生成）。MSRV を 1.99 へ上げたときの clippy の修正で mikan の
+  `shard.rs` が `chunks_exact(4)` から `as_chunks::<4>()` になったことに追随した再 vendor。
+  動作とエクスポート API は変わらない（`search.js` は前回とバイト同一）
+- その前: 2026-10-18（同じツールの版）。mikan の版を 0.2.2 に上げた（ソースは 0.2.1 と同一）ことに
+  追随した再 vendor。版から作られるハッシュの差で 236 バイトが変わった
+- さらに前: 2026-10-18（同じツールの版）。ruzstd 0.8.2 → 0.9.1（RUSTSEC-2026-0344。
   分かち書きモデルの伸長に使う）に追随した再 vendor
-- さらに前: 2026-10-10（同じツールの版。dependabot の cargo の組（serde 1.0.229・
+- 2026-10-10（同じツールの版。dependabot の cargo の組（serde 1.0.229・
   serde_json 1.0.151・thiserror 2.0.21）に追随した再 vendor）
 - それより前: 2026-08-01（同じツールの版。Phase 53 の検索結果グループ絞り込みに伴う再 vendor。
   エクスポート API に `searchIn` / `groups` を**追加**した（既存の `search(query, limit)` は
@@ -34,7 +36,7 @@
   「絞り込んでいないのに絞り込んだ件数」を出す事故を避けるため）。
   インデックスフォーマットは v3 のまま（`docGroups` / `groups` は
   `serde(default)` の後方互換フィールド））
-- `search_bg.wasm`: 505KB（516,870 bytes。vaporetto + fst + BM25 エンジン + フレーズ隣接照合 +
+- `search_bg.wasm`: 504KB（516,408 bytes。vaporetto + fst + BM25 エンジン + フレーズ隣接照合 +
   近接ブースト + 動的抜粋 + 同義語クエリ拡張 + 文字単位 Levenshtein DFA
   （levenshtein_automata）+ グループ絞り込み込み。gzip 転送で概ね半分以下）
 - `search.js`: 14KB（wasm-bindgen --target web の ES module グルー）

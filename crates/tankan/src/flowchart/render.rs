@@ -128,28 +128,28 @@ pub(crate) fn to_svg(
         );
 
         // ラベル（背景付き）
-        if let Some((lx, ly)) = edge.label_at {
-            if !edge.label.is_empty() {
-                let lw = max_width(&edge.label, fs);
-                let lh = edge.label.len() as f32 * line_h;
-                let anchor_start = edge.self_loop;
-                let rect_x = if anchor_start {
-                    lx - 2.0
-                } else {
-                    lx - lw / 2.0 - 4.0
-                };
-                svg.raw(r#"<g class="tk-edge-label">"#);
-                svg.rect("", rect_x, ly - lh / 2.0 - 2.0, lw + 8.0, lh + 4.0, "");
-                svg.text_lines(
-                    "",
-                    if anchor_start { lx + 2.0 } else { lx },
-                    ly - lh / 2.0 + fs * 0.85,
-                    line_h,
-                    if anchor_start { "start" } else { "middle" },
-                    &edge.label,
-                );
-                svg.raw("</g>");
-            }
+        if let Some((lx, ly)) = edge.label_at
+            && !edge.label.is_empty()
+        {
+            let lw = max_width(&edge.label, fs);
+            let lh = edge.label.len() as f32 * line_h;
+            let anchor_start = edge.self_loop;
+            let rect_x = if anchor_start {
+                lx - 2.0
+            } else {
+                lx - lw / 2.0 - 4.0
+            };
+            svg.raw(r#"<g class="tk-edge-label">"#);
+            svg.rect("", rect_x, ly - lh / 2.0 - 2.0, lw + 8.0, lh + 4.0, "");
+            svg.text_lines(
+                "",
+                if anchor_start { lx + 2.0 } else { lx },
+                ly - lh / 2.0 + fs * 0.85,
+                line_h,
+                if anchor_start { "start" } else { "middle" },
+                &edge.label,
+            );
+            svg.raw("</g>");
         }
     }
 

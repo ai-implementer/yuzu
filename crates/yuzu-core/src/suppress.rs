@@ -124,12 +124,13 @@ pub fn apply_suppressions(
                 }
             }
             // 1b: ページ単位（frontmatter lintDisable）
-            if let Some((rel, set)) = by_page.get_key_value(d.rel.as_path()) {
-                if set.contains(d.rule.id) && d.rule.suppressible {
-                    used.insert((rel, d.rule.id));
-                    suppressed += 1;
-                    continue;
-                }
+            if let Some((rel, set)) = by_page.get_key_value(d.rel.as_path())
+                && set.contains(d.rule.id)
+                && d.rule.suppressible
+            {
+                used.insert((rel, d.rule.id));
+                suppressed += 1;
+                continue;
             }
         }
         kept.push(d);
@@ -153,10 +154,10 @@ pub fn apply_suppressions(
                 continue;
             }
         }
-        if let Some((rel, set)) = by_page.get_key_value(rel.as_path()) {
-            if set.contains(rule) {
-                used.insert((rel, rule));
-            }
+        if let Some((rel, set)) = by_page.get_key_value(rel.as_path())
+            && set.contains(rule)
+        {
+            used.insert((rel, rule));
         }
     }
 

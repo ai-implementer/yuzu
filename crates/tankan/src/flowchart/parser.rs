@@ -398,10 +398,11 @@ impl Parser {
         if let Some(shape) = shape {
             self.nodes[id].shape = shape;
         }
-        if let Some(label) = label {
-            if !label.is_empty() && !label[0].is_empty() {
-                self.nodes[id].label = label;
-            }
+        if let Some(label) = label
+            && !label.is_empty()
+            && !label[0].is_empty()
+        {
+            self.nodes[id].label = label;
         }
         id
     }

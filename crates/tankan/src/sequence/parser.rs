@@ -445,13 +445,13 @@ fn split_box_color(rest: &str) -> (Option<String>, &str) {
     let rest = trim_line(rest);
     // rgb(...) / rgba(...) は括弧まで含めて色
     for prefix in ["rgb(", "rgba("] {
-        if rest.to_ascii_lowercase().starts_with(prefix) {
-            if let Some(close) = rest.find(')') {
-                return (
-                    Some(rest[..=close].to_string()),
-                    trim_line(&rest[close + 1..]),
-                );
-            }
+        if rest.to_ascii_lowercase().starts_with(prefix)
+            && let Some(close) = rest.find(')')
+        {
+            return (
+                Some(rest[..=close].to_string()),
+                trim_line(&rest[close + 1..]),
+            );
         }
     }
     let first = rest.split_whitespace().next().unwrap_or("");

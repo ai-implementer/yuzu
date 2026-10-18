@@ -73,11 +73,11 @@ struct GuardedBackend {
 
 impl GuardedBackend {
     fn check(&self, path: &Path) -> io::Result<()> {
-        if let Some(guard) = &self.guard {
-            if let Err(reason) = guard(path) {
-                tracing::warn!(path = %path.display(), reason = %reason, "配信しません");
-                return Err(io::Error::new(io::ErrorKind::NotFound, reason));
-            }
+        if let Some(guard) = &self.guard
+            && let Err(reason) = guard(path)
+        {
+            tracing::warn!(path = %path.display(), reason = %reason, "配信しません");
+            return Err(io::Error::new(io::ErrorKind::NotFound, reason));
         }
         Ok(())
     }
@@ -279,10 +279,11 @@ async fn add_utf8_charset(mut res: Response) -> Response {
         .trim()
         .to_ascii_lowercase();
     let plain_text = mime == "text/plain" || mime == "text/markdown";
-    if plain_text && !value.to_ascii_lowercase().contains("charset=") {
-        if let Ok(with_charset) = HeaderValue::from_str(&format!("{value}; charset=utf-8")) {
-            res.headers_mut().insert(header::CONTENT_TYPE, with_charset);
-        }
+    if plain_text
+        && !value.to_ascii_lowercase().contains("charset=")
+        && let Ok(with_charset) = HeaderValue::from_str(&format!("{value}; charset=utf-8"))
+    {
+        res.headers_mut().insert(header::CONTENT_TYPE, with_charset);
     }
     res
 }

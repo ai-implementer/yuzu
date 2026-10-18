@@ -165,12 +165,12 @@ fn collect_pages<'a>(
     visited: &mut HashSet<&'a str>,
     out: &mut Vec<&'a Page>,
 ) {
-    if let Some(route) = node.route.as_deref() {
-        if let Some(&page) = by_route.get(route) {
-            if visited.insert(page.route.as_str()) && page.frontmatter.llms {
-                out.push(page);
-            }
-        }
+    if let Some(route) = node.route.as_deref()
+        && let Some(&page) = by_route.get(route)
+        && visited.insert(page.route.as_str())
+        && page.frontmatter.llms
+    {
+        out.push(page);
     }
     for child in &node.children {
         collect_pages(child, by_route, visited, out);

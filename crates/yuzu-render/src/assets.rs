@@ -57,15 +57,15 @@ pub(crate) fn write_theme_assets(
         )?;
     }
 
-    if let Some(theme_static) = theme_dir.map(|d| d.join("static")) {
-        if theme_static.is_dir() {
-            copy_tree(
-                &theme_static,
-                SiteOutput::ThemeAssets.path(),
-                output_dir,
-                outputs,
-            )?;
-        }
+    if let Some(theme_static) = theme_dir.map(|d| d.join("static"))
+        && theme_static.is_dir()
+    {
+        copy_tree(
+            &theme_static,
+            SiteOutput::ThemeAssets.path(),
+            output_dir,
+            outputs,
+        )?;
     }
     Ok(())
 }

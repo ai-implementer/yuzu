@@ -202,22 +202,22 @@ fn 独自診断を_raw_と_diagnostic_で追加できる() {
             let entry = d.raw("mode");
             d.finish();
             // raw で取ったエントリは finish 後も使える（テーブル借用は cx と独立）
-            if let Some(entry) = entry {
-                if entry.node().as_str() != Some("fast") {
-                    let mut path = cx.key_path().clone();
-                    path.push(kabosu::KeySegment::new(
-                        String::from("mode"),
-                        entry.key_span(),
-                    ));
-                    cx.diagnostic(Diagnostic::new(
-                        DiagnosticCode::Custom("mode-invalid".into()),
-                        Severity::Error,
-                        String::from("mode must be \"fast\""),
-                        path,
-                        entry.node().span(),
-                    ));
-                    return None;
-                }
+            if let Some(entry) = entry
+                && entry.node().as_str() != Some("fast")
+            {
+                let mut path = cx.key_path().clone();
+                path.push(kabosu::KeySegment::new(
+                    String::from("mode"),
+                    entry.key_span(),
+                ));
+                cx.diagnostic(Diagnostic::new(
+                    DiagnosticCode::Custom("mode-invalid".into()),
+                    Severity::Error,
+                    String::from("mode must be \"fast\""),
+                    path,
+                    entry.node().span(),
+                ));
+                return None;
             }
             Some(Strict)
         }

@@ -356,10 +356,8 @@ fn find_relation_token(s: &str) -> Option<RelToken> {
             i += 1;
             continue;
         }
-        if !in_quote {
-            if let Some(tok) = match_token_at(s, i) {
-                return Some(tok);
-            }
+        if !in_quote && let Some(tok) = match_token_at(s, i) {
+            return Some(tok);
         }
         i += 1;
     }

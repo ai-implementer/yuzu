@@ -239,6 +239,12 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
   ユーザの判断で別の PR（#56。10-18 にマージ）にし、0.9.1 へ上げて検索 wasm と通知を
   作り直した。crates.io の mikan 0.2.1 は ruzstd 0.8 のままだったので、ruzstd の要件だけを上げた
   mikan 0.2.2 を公開した（#58。10-18。ソースは 0.2.1 と同一）
+- 別件（Phase の外）: 10-18 にユーザの判断で MSRV を当時の最新の stable 1.99 へ上げた（ワークスペース
+  1.87・kabosu と tankan 1.85 から。3 つとも同じ版）。cargo の依存の選び方はワークスペースでいちばん
+  低い MSRV に合わせるので、1.85 のままだと globset 0.4.20・sha2 0.11.1（1.88）・comrak 0.56（1.89）・
+  ordered-float 5.5（1.90）が上がらなかった。clippy の指摘 53 件（let チェーンへのまとめ直し 48 件・
+  `is_multiple_of` 4 件・`as_chunks` 1 件）を直した。依存の更新は別の PR。kabosu・tankan・mikan の
+  crates.io の MSRV は次に公開するときに変わる。リリースノートに書く
 
 ### 89 検索の順位 ⬜
 

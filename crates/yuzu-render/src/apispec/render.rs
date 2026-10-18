@@ -209,12 +209,11 @@ fn load_documents(main_key: &str, main: Value, files: &dyn SpecFiles) -> DocSet 
 fn collect_file_refs(doc_key: &str, v: &Value, out: &mut Vec<String>) {
     match v {
         Value::Object(map) => {
-            if let Some(Value::String(r)) = map.get("$ref") {
-                if let Some((path, _)) = split_file_ref(r) {
-                    if let Ok(norm) = normalize_rel_path(&parent_dir(doc_key), path) {
-                        out.push(norm);
-                    }
-                }
+            if let Some(Value::String(r)) = map.get("$ref")
+                && let Some((path, _)) = split_file_ref(r)
+                && let Ok(norm) = normalize_rel_path(&parent_dir(doc_key), path)
+            {
+                out.push(norm);
             }
             for val in map.values() {
                 collect_file_refs(doc_key, val, out);
@@ -355,10 +354,10 @@ impl<'a> Renderer<'a> {
             SpecVersion::V3 => (root.pointer("/components/schemas"), "/components/schemas"),
             SpecVersion::V2 => (root.get("definitions"), "/definitions"),
         };
-        if let Some(map) = schemas.and_then(|v| v.as_object()) {
-            if !map.is_empty() {
-                out.push_str(&self.render_schema_index(map, prefix));
-            }
+        if let Some(map) = schemas.and_then(|v| v.as_object())
+            && !map.is_empty()
+        {
+            out.push_str(&self.render_schema_index(map, prefix));
         }
         out.push_str("</section>\n");
         out
@@ -386,10 +385,10 @@ impl<'a> Renderer<'a> {
                 format!("{prefix}/{}", pointer_escape(name)),
             ));
             // スカラ型は render_scalar が description を自前で出す（二重表示回避）
-            if !is_scalar_like(schema) {
-                if let Some(d) = schema.get("description").and_then(|v| v.as_str()) {
-                    out.push_str(&format!("<p class=\"api-desc\">{}</p>\n", esc(d)));
-                }
+            if !is_scalar_like(schema)
+                && let Some(d) = schema.get("description").and_then(|v| v.as_str())
+            {
+                out.push_str(&format!("<p class=\"api-desc\">{}</p>\n", esc(d)));
             }
             out.push_str(&self.render_schema(schema, 0));
             self.stack.pop();
@@ -409,10 +408,10 @@ impl<'a> Renderer<'a> {
         }
         // スカラ型ルートは render_scalar が description を自前で出すため、
         // ここでも出すと二重表示になる（object/array/combinator/$ref は出さないので担う）
-        if !is_scalar_like(root) {
-            if let Some(d) = root.get("description").and_then(|v| v.as_str()) {
-                out.push_str(&format!("<p class=\"api-desc\">{}</p>\n", esc(d)));
-            }
+        if !is_scalar_like(root)
+            && let Some(d) = root.get("description").and_then(|v| v.as_str())
+        {
+            out.push_str(&format!("<p class=\"api-desc\">{}</p>\n", esc(d)));
         }
         out.push_str(&self.render_schema(root, 0));
         out.push_str("</section>\n");
@@ -929,10 +928,10 @@ impl<'a> Renderer<'a> {
                 .and_then(|v| v.as_object())
                 .is_some_and(|o| !o.is_empty());
         }
-        if ty == Some("array") || (ty.is_none() && schema.get("items").is_some()) {
-            if let Some(items) = schema.get("items") {
-                return self.should_expand(items);
-            }
+        if (ty == Some("array") || (ty.is_none() && schema.get("items").is_some()))
+            && let Some(items) = schema.get("items")
+        {
+            return self.should_expand(items);
         }
         false
     }

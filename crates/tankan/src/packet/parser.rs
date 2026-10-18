@@ -74,11 +74,11 @@ pub(crate) fn parse(source: &str) -> Result<PacketDiagram, Error> {
                 }
                 continue;
             }
-            if packet_indent.is_some() {
-                if let Some((key, value)) = line.split_once(':') {
-                    apply_config(&mut diagram, key.trim(), value.trim(), line_no)?;
-                    config_key_line = line_no;
-                }
+            if packet_indent.is_some()
+                && let Some((key, value)) = line.split_once(':')
+            {
+                apply_config(&mut diagram, key.trim(), value.trim(), line_no)?;
+                config_key_line = line_no;
             }
             continue;
         }

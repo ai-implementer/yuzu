@@ -244,25 +244,23 @@ fn restore_yuzu_syntax(body: String) -> String {
 fn restore_line(text: &str) -> String {
     // キャプション行の末尾ラベル: `... {\#fig:x}` → `... {#fig:x}`
     // （行末が `{\#…}` で、中身に空白を含まないものだけ）
-    if let Some(head) = text.strip_suffix('}') {
-        if let Some((before, label)) = head.rsplit_once("{\\#") {
-            if !label.is_empty()
-                && !label.contains(char::is_whitespace)
-                && crossref::parse_caption(before.trim_start_matches(['>', ' '])).is_some()
-            {
-                return format!("{before}{{#{label}}}");
-            }
-        }
+    if let Some(head) = text.strip_suffix('}')
+        && let Some((before, label)) = head.rsplit_once("{\\#")
+        && !label.is_empty()
+        && !label.contains(char::is_whitespace)
+        && crossref::parse_caption(before.trim_start_matches(['>', ' '])).is_some()
+    {
+        return format!("{before}{{#{label}}}");
     }
     // Admonition の折りたたみマーカー: `> [!NOTE] - 題` → `> [!NOTE]- 題`
     if let Some(marker_at) = text.find("] ") {
         let (head, rest) = text.split_at(marker_at);
         if head.trim_start().starts_with("> [!") || head.trim_start().starts_with("[!") {
             let after = &rest[2..];
-            if let Some(marker) = after.chars().next() {
-                if marker == '-' || marker == '+' {
-                    return format!("{head}]{after}");
-                }
+            if let Some(marker) = after.chars().next()
+                && (marker == '-' || marker == '+')
+            {
+                return format!("{head}]{after}");
             }
         }
     }
@@ -311,10 +309,10 @@ pub(crate) fn render_body_html(
                 fragment_nodes.push((node, meta.include));
                 continue;
             }
-            if let Some(tab) = &meta.tab {
-                if tabs::has_tab_neighbor(node, opts) {
-                    tab_members.push((node, tab.clone()));
-                }
+            if let Some(tab) = &meta.tab
+                && tabs::has_tab_neighbor(node, opts)
+            {
+                tab_members.push((node, tab.clone()));
             }
         }
     }
@@ -384,10 +382,10 @@ pub(crate) fn render_body_html(
 
     for node in root.descendants() {
         // 折りたたみ Admonition（`> [!NOTE]- タイトル`）→ <details> へ組み替える
-        if let NodeValue::Alert(alert) = &node.data.borrow().value {
-            if let Some((collapse, title)) = collapse::parse_title(alert.title.as_deref()) {
-                collapsibles.push((node, collapse::open_tag(alert.alert_type, collapse, &title)));
-            }
+        if let NodeValue::Alert(alert) = &node.data.borrow().value
+            && let Some((collapse, title)) = collapse::parse_title(alert.title.as_deref())
+        {
+            collapsibles.push((node, collapse::open_tag(alert.alert_type, collapse, &title)));
         }
 
         // コードブロック → フックが返した HTML（HtmlBlock）へ差し替え
@@ -428,10 +426,10 @@ pub(crate) fn render_body_html(
 
         // リンク・画像の URL 書き換え（値の変更だけなので走査中で安全）
         let mut data = node.data.borrow_mut();
-        if let NodeValue::Link(link) | NodeValue::Image(link) = &mut data.value {
-            if let Some(rewritten) = urls.rewrite(page, &link.url) {
-                link.url = rewritten;
-            }
+        if let NodeValue::Link(link) | NodeValue::Image(link) = &mut data.value
+            && let Some(rewritten) = urls.rewrite(page, &link.url)
+        {
+            link.url = rewritten;
         }
     }
 
@@ -530,36 +528,36 @@ pub(crate) fn render_body_html(
     // A〜D はいずれも兄弟順を保つので、ここでの再帰順 = 文書順 = 初出の順になる。
     // 用語集ページ自身は置換しない（説明文の中で自分の用語が光るのは無意味）。
     // 検索結果ページ等の他の合成ページは対象のまま（本文がほぼ無いので実質無影響）
-    if page.generated != Some(crate::model::GeneratedKind::Glossary) {
-        if let Some(matcher) = glossary::Matcher::new(&opts.glossary) {
-            let mut used = std::collections::HashSet::new();
-            let mut splits = Vec::new();
-            collect_abbr(root, &matcher, &mut used, &mut splits);
-            for (node, pieces) in splits {
-                let start = node.data.borrow().sourcepos.start;
-                let alloc = |value: NodeValue| {
-                    arena.alloc(AstNode::new(std::cell::RefCell::new(
-                        comrak::nodes::Ast::new(value, start),
-                    )))
-                };
-                for piece in pieces {
-                    match piece {
-                        glossary::Piece::Text(text) => {
-                            node.insert_before(alloc(NodeValue::Text(text.into())));
-                        }
-                        glossary::Piece::Abbr { term, desc } => {
-                            node.insert_before(alloc(NodeValue::HtmlInline(
-                                glossary::abbr_open_tag(&desc),
-                            )));
-                            node.insert_before(alloc(NodeValue::Text(term.into())));
-                            node.insert_before(alloc(NodeValue::HtmlInline(
-                                glossary::ABBR_CLOSE_TAG.to_string(),
-                            )));
-                        }
+    if page.generated != Some(crate::model::GeneratedKind::Glossary)
+        && let Some(matcher) = glossary::Matcher::new(&opts.glossary)
+    {
+        let mut used = std::collections::HashSet::new();
+        let mut splits = Vec::new();
+        collect_abbr(root, &matcher, &mut used, &mut splits);
+        for (node, pieces) in splits {
+            let start = node.data.borrow().sourcepos.start;
+            let alloc = |value: NodeValue| {
+                arena.alloc(AstNode::new(std::cell::RefCell::new(
+                    comrak::nodes::Ast::new(value, start),
+                )))
+            };
+            for piece in pieces {
+                match piece {
+                    glossary::Piece::Text(text) => {
+                        node.insert_before(alloc(NodeValue::Text(text.into())));
+                    }
+                    glossary::Piece::Abbr { term, desc } => {
+                        node.insert_before(alloc(NodeValue::HtmlInline(glossary::abbr_open_tag(
+                            &desc,
+                        ))));
+                        node.insert_before(alloc(NodeValue::Text(term.into())));
+                        node.insert_before(alloc(NodeValue::HtmlInline(
+                            glossary::ABBR_CLOSE_TAG.to_string(),
+                        )));
                     }
                 }
-                node.detach();
             }
+            node.detach();
         }
     }
 
@@ -595,10 +593,10 @@ pub(crate) fn normalize_markdown(
 
     // format_commonmark は FrontMatter ノードを（区切り行込みの生テキストごと）
     // 再出力するため、AST から外す。FrontMatter は常に Document の第一子
-    if let Some(first) = root.first_child() {
-        if matches!(first.data.borrow().value, NodeValue::FrontMatter(_)) {
-            first.detach();
-        }
+    if let Some(first) = root.first_child()
+        && matches!(first.data.borrow().value, NodeValue::FrontMatter(_))
+    {
+        first.detach();
     }
 
     let mut out = String::new();
@@ -919,14 +917,14 @@ fn collect_sections<'a>(
                 // 足す（見出し境界は作らない = 断片に見出しは来ない契約）。
                 // 読めない場合は黙って諦める（既存の include と同じ方針）
                 if lang == Some(fragment::FRAGMENT_LANG) {
-                    if let (Some(spec), Some(root)) = (&meta.include, project_root) {
-                        if let Ok(text) = crate::include::resolve_include(root, spec) {
-                            sections
-                                .last_mut()
-                                .unwrap()
-                                .body
-                                .push_str(&fragment::collect_plain_text(&text, opts));
-                        }
+                    if let (Some(spec), Some(root)) = (&meta.include, project_root)
+                        && let Ok(text) = crate::include::resolve_include(root, spec)
+                    {
+                        sections
+                            .last_mut()
+                            .unwrap()
+                            .body
+                            .push_str(&fragment::collect_plain_text(&text, opts));
                     }
                     return;
                 }

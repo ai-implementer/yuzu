@@ -731,10 +731,10 @@ fn is_valid_float(body: &str) -> bool {
     if !is_valid_integer(int) {
         return false;
     }
-    if let Some(f) = frac {
-        if !is_digit_run(f, 10) {
-            return false;
-        }
+    if let Some(f) = frac
+        && !is_digit_run(f, 10)
+    {
+        return false;
     }
     if let Some(e) = exp {
         let e = e.strip_prefix(['+', '-']).unwrap_or(e);
