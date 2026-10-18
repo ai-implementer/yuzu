@@ -225,7 +225,8 @@ function setup(root) {
 
   function showError(err) {
     console.error("[yuzu-search]", err);
-    statusBox.textContent = "検索を初期化できませんでした（コンソール参照）";
+    // 読者向けの文言にする（原因は開発者向けにコンソールへ出す）
+    statusBox.textContent = "検索を読み込めませんでした。ページを再読み込みしてください";
     moreBtn.hidden = true;
   }
 

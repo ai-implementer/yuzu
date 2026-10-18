@@ -42,7 +42,7 @@ function setup() {
     return clientPromise;
   }
 
-  // "/" or Cmd/Ctrl+K でフォーカス
+  // "/" or Ctrl/Cmd+K でフォーカス
   document.addEventListener("keydown", (ev) => {
     const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "");
     if ((ev.key === "/" && !typing) || ((ev.metaKey || ev.ctrlKey) && ev.key === "k")) {
@@ -234,7 +234,8 @@ function setup() {
 
   function showError(err) {
     console.error("[yuzu-search]", err);
-    resultsBox.innerHTML = `<div class="search-empty">検索を初期化できませんでした（コンソール参照）</div>`;
+    // 読者向けの文言にする（原因は開発者向けにコンソールへ出す）
+    resultsBox.innerHTML = `<div class="search-empty">検索を読み込めませんでした。ページを再読み込みしてください</div>`;
     open();
   }
 }

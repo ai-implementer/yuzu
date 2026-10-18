@@ -39,11 +39,11 @@ expression: index
 </div>
 <div class="header-tools">
 <div class="search" id="yuzu-search">
-<input type="search" id="yuzu-search-input" placeholder="検索 ( / )" autocomplete="off"
+<input type="search" id="yuzu-search-input" placeholder="検索 ( / )" aria-label="サイト内を検索" autocomplete="off"
        role="combobox" aria-expanded="false" aria-controls="yuzu-search-results">
 <div class="search-results" id="yuzu-search-results" role="listbox" hidden></div>
 </div>
-<button id="theme-toggle" type="button" aria-label="ダークモード切替" title="ダークモード切替">◐</button>
+<button id="theme-toggle" type="button" aria-label="配色を切り替える" title="配色を切り替える">◐</button>
 </div>
 </header>
 <div class="layout">

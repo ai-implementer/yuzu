@@ -23,4 +23,5 @@
 <nav class="sidebar-nav" aria-label="サイト内ナビゲーション">
 {{ nav_list(nav) }}
 </nav>
-</aside>
+{# site.header_links は狭い画面ではヘッダーに収まらないので、ナビの下にも出す（CSS が広い画面では隠す） #}{% if site.header_links %}<nav class="sidebar-links" aria-label="サイトのリンク">{% for link in site.header_links %}<a href="{{ link.url | url }}">{{ link.text }}</a>{% endfor %}</nav>
+{% endif %}</aside>

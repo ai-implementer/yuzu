@@ -48,7 +48,7 @@ pub use linkcheck::{ExternalLink, LinkReport};
 pub use markdown::crossref::CaptionKind;
 pub use markdown::fence::{CodeBlockMeta, IncludeSpec};
 pub use markdown::fragment::FRAGMENT_LANG;
-pub use markdown::{FenceBlock, RenderedBody, extract_fence_blocks};
+pub use markdown::{FenceBlock, RenderedBody, extract_fence_blocks, render_inline_markdown};
 pub use model::{
     CrossrefLabel, Frontmatter, GeneratedKind, NavNode, Page, PlainSection, ReadingStats,
     SiteModel, SourceSpan, TocEntry,
