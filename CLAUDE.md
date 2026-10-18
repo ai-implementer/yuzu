@@ -216,6 +216,11 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   抑制は `Collected::suppress` を通した後でしか読めない。build はルールで絞って数える
   （以前は build が `lint.rules` を直接読み、`lintDisable` が効かなかった）。`Diagnostic` は
   `Rule` を持ち、深刻度はそこから決まる（`Diagnostic::new(rule, rel, span, message)`）
+  - **`yuzu lint` が評価しないルールは `rules::CHECK_ONLY` に足す**。lint は
+    `diag::lint_options(rc, Evaluates::Lint)` でこれを「評価しなかったルール」として渡す。
+    足し忘れると lint がその抑制を `unused-lint-suppression` にして終了コード 1 になる
+    （PR #68 のレビュー指摘。`route-case-conflict` は Phase 85 からこうなっていた）。
+    docs の「yuzu check が追加するルール」の節との一致はテストが縛る
 - **設定値の検証** — cli の `commands::read_config`（`load_project` と watch 中の読み直しが共有。
   R3）。yuzu-core・yuzu-render が持つ規則（`synth_page_problem`・`toc_levels_problem`）を
   `yuzu_config::load_with` に渡し、位置付きの設定エラーにする。**使う側で不正値を黙って捨てない**

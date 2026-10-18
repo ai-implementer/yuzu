@@ -45,15 +45,19 @@ pub fn config_diagnostics(rc: &yuzu_config::ResolvedConfig) -> Vec<Diagnostic> {
 /// `yuzu.toml` の lint 設定を core の [`LintOptions`] へ写す（`lint` / `check` 共通。
 /// 変換を 1 箇所に置き、片方のコマンドだけ配線されて有効ルールが食い違うのを防ぐ）。
 ///
-/// `external_links` はこの実行で外部リンク検査を行うか（`check --external-links`
-/// だけ true。`lint` は常に false）。false なら `external-link-broken` を
-/// 「評価しなかったルール」として渡し、その抑制が `unused-lint-suppression` に
-/// ならないようにする（例外指定のある原稿で既定のオフライン CI が落ちない）
-pub fn lint_options(rc: &yuzu_config::ResolvedConfig, external_links: bool) -> LintOptions {
-    let mut unevaluated_rules = std::collections::BTreeSet::new();
-    if !external_links {
-        unevaluated_rules.insert(yuzu_core::rules::EXTERNAL_LINK_BROKEN.id.to_string());
-    }
+/// この実行で評価しないルールを「評価しなかったルール」として渡し、その抑制が
+/// `unused-lint-suppression` にならないようにする（[`Evaluates`]）
+pub fn lint_options(rc: &yuzu_config::ResolvedConfig, evaluates: Evaluates) -> LintOptions {
+    use yuzu_core::rules;
+    let unevaluated_rules = match evaluates {
+        Evaluates::Lint => rules::CHECK_ONLY.iter().map(|r| r.id.to_string()).collect(),
+        Evaluates::Check {
+            external_links: false,
+        } => [rules::EXTERNAL_LINK_BROKEN.id.to_string()].into(),
+        Evaluates::Check {
+            external_links: true,
+        } => std::collections::BTreeSet::new(),
+    };
     LintOptions {
         max_directory_depth: rc.config.lint.max_directory_depth,
         terms: rc.config.lint.terms.clone(),
@@ -63,6 +67,18 @@ pub fn lint_options(rc: &yuzu_config::ResolvedConfig, external_links: bool) -> L
         // 判定できなかった出現箇所は check が外部検査の後に埋める
         unevaluated_occurrences: Vec::new(),
     }
+}
+
+/// この実行がどのルールを評価するか（[`lint_options`] の「評価しなかったルール」の元）
+#[derive(Debug, Clone, Copy)]
+pub enum Evaluates {
+    /// `yuzu lint`: 文書規約だけ。check だけのルール（`rules::CHECK_ONLY`）は評価しない
+    /// （PR #68 のレビュー指摘。以前は `route-case-conflict` 等の抑制を未使用と報告していた）
+    Lint,
+    /// `yuzu check`（と build の件数の報告）。`external_links` は `--external-links` を
+    /// 付けたか。付けなければ `external-link-broken` を評価しない（例外指定のある原稿で
+    /// 既定のオフライン CI が落ちない）
+    Check { external_links: bool },
 }
 
 /// 診断の出力形式（`--format`）
@@ -752,5 +768,59 @@ mod tests {
             diag("c", Severity::Warning, "c.md", None, None),
         ];
         assert_eq!(counts(&diags), (1, 2));
+    }
+
+    /// PR #68 のレビュー指摘: lint は check だけのルールを評価しないので、その抑制を
+    /// `unused-lint-suppression` にしない（以前は check は通るのに lint が終了コード 1 になった。
+    /// `route-case-conflict` は Phase 85 から）。lint と同じ手順で抑制を適用して確かめる
+    #[test]
+    fn lint_は_check_だけのルールの抑制を未使用にしない() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("yuzu.toml", "");
+        write(
+            "content/a.md",
+            "---\nlintDisable: [link-outside-content, route-case-conflict, spec-warning]\n---\n\n\
+             # a\n\n<!-- yuzu-lint-disable-next-line link-outside-content -->\n[外](../README.md)\n",
+        );
+        let rc = yuzu_config::load(&root).unwrap();
+        let opts = yuzu_render::markdown_options(&rc.config);
+        let pages =
+            yuzu_core::build_source_pages(&rc.content_dir, &rc.config.input.ignore, &opts).unwrap();
+        let lint = |evaluates: Evaluates| {
+            let lint_opts = lint_options(&rc, evaluates);
+            let mut diags = Vec::new();
+            for page in &pages {
+                diags.extend(yuzu_core::lint_page(page, &opts, &lint_opts).unwrap());
+            }
+            diags.extend(yuzu_core::lint_project(&pages, &opts).unwrap());
+            yuzu_core::apply_suppressions(diags, &pages, &opts, &lint_opts)
+        };
+        let unused = |outcome: &yuzu_core::SuppressionOutcome| {
+            outcome
+                .diags
+                .iter()
+                .filter(|d| d.rule.id == "unused-lint-suppression")
+                .count()
+        };
+
+        let outcome = lint(Evaluates::Lint);
+        assert_eq!(unused(&outcome), 0, "{:?}", outcome.diags);
+        // 評価しなかったルールを無効化の件数に数えない
+        assert_eq!(outcome.disabled, 0);
+
+        // 同じ診断の集まりを check として扱うと（リンク検査を足していないので）未使用になる =
+        // 上の 0 件は Evaluates::Lint の「評価しなかったルール」による
+        assert_eq!(
+            unused(&lint(Evaluates::Check {
+                external_links: false
+            })),
+            4
+        );
     }
 }

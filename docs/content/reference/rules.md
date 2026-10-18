@@ -180,5 +180,7 @@ term-variant = false
   抑制はそのまま生き返ります。`--external-links` を付けない実行での
   `external-link-broken` の抑制も同じ扱いです（評価していないルールは
   発火しようがないため）。付けた実行でも、到達性を判定できずスキップした
-  URL への抑制は unused にしません（発火したかどうかを判定できないため）
+  URL への抑制は unused にしません（発火したかどうかを判定できないため）。
+  `yuzu lint` での「yuzu check が追加するルール」への抑制も同じ扱いです
+  （lint はそれらを評価しません）
 - 集計行には「（無効化 N 件）」、`--format json` には `summary.disabled` が出ます
