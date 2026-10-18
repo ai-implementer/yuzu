@@ -643,6 +643,24 @@ mod tests {
         let got = problems("---\ntitle: a\ntitle: b\n---\n");
         assert_eq!((got[0].0, got[0].1), (3, 1));
         assert!(got[0].2.contains("重複"), "{got:?}");
+        // 引用符だけが違う同名のキーも重複（PR #55 のレビュー指摘。以前は後の false が勝ち、
+        // 下書きのページが公開されていた）
+        let got = problems("---\ntitle: a\ndraft: true\n\"draft\": false\n---\n");
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!((got[0].0, got[0].1), (4, 1));
+        assert!(got[0].2.contains("重複"), "{got:?}");
+    }
+
+    #[test]
+    fn 明示のコアタグ付きの値はタグの型で読む() {
+        let fm = parse_frontmatter("---\ndraft: !!bool \"true\"\norder: !!int '3'\n---\n").unwrap();
+        assert!(fm.draft);
+        assert_eq!(fm.order, Some(3));
+        let got = problems("---\ndraft: !!bool yes\n---\n");
+        assert!(
+            got.len() == 1 && got[0].2.contains("`!!bool` のタグ"),
+            "{got:?}"
+        );
     }
 
     #[test]

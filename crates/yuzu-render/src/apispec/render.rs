@@ -1258,6 +1258,15 @@ paths:
         assert!(html.ends_with("</section>\n"));
     }
 
+    /// 明示のコアタグは引用符より優先する（PR #55 のレビュー指摘。`!!bool "true"` を文字列として
+    /// 読み、「null 許容」の表示が黙って消えていた）
+    #[test]
+    fn タグ付きの引用符の真偽値も_nullable_として読む() {
+        let src = "openapi: 3.0.3\ninfo:\n  title: T\n  version: \"1\"\npaths:\n  /a:\n    get:\n      responses:\n        \"200\":\n          description: ok\n          content:\n            application/json:\n              schema:\n                type: string\n                nullable: !!bool \"true\"\n";
+        let html = render_spec(SpecKind::OpenApi, src, None, &NoFiles);
+        assert!(html.contains("null 許容"), "{html}");
+    }
+
     /// $ref 解決（components/schemas 参照）
     #[test]
     fn ローカル_ref_を解決して参照先を描画する() {

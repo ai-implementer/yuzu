@@ -4,13 +4,16 @@
 //! 型の解釈は [`resolve`] が行う。解釈は置き換え前の serde_yaml_ng に合わせてある
 //! （先頭 0 の 10 進数・`_` 区切りは文字列、`0b`・符号付きの 16 進 / 8 進は整数、u64 まで）。
 //! 読み込みでそろえるもの:
-//! - 重複キーはエラー
+//! - 重複キーはエラー。引用符やタグだけが違う同名のキー（`draft` と `"draft"`）も重複とみる
+//!   （saphyr は `early_parse` 無効だとスタイルとタグも比べて別のキーとして通すので、[`validate`] が見る）
+//! - 明示のコアタグ（`!!bool` / `!!int` / `!!float` / `!!null`）に合わない値はエラー
+//!   （serde_yaml_ng と同じ。合う値は引用符より優先して型を決める）
 //! - 別名（alias）で展開するノード数に上限を掛ける（saphyr は展開を数えないので、
 //!   入れ子の別名で指数的に膨らむ文書がメモリを食い尽くす）
 //! - 位置は 1 始まりの行とバイト基準の列（yuzu.toml のエラー・診断と同じ規約）。
 //!   saphyr の位置は文字数なので [`byte_offset`] で直す
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use saphyr::{AnnotatedMapping, MarkedYaml, ScalarStyle, Tag, YamlData, YamlLoader};
 use saphyr_parser::{Event, Marker, Parser, ScanError, Span, SpannedEventReceiver};
@@ -74,7 +77,86 @@ pub(crate) fn load(text: &str) -> Result<Option<Node<'_>>, LoadError> {
                 .to_string(),
         });
     }
-    Ok(docs.pop())
+    let root = docs.pop();
+    if let Some(Err((mark, message))) = root.as_ref().map(validate) {
+        return Err(LoadError {
+            offset: byte_offset(text, mark),
+            message,
+        });
+    }
+    Ok(root)
+}
+
+/// 重複キーの文言（saphyr が見つけた重複と [`validate`] が見つけた重複で同じにする）
+const DUPLICATE_KEY: &str =
+    "キーが重複しています（同じキーは 1 回だけ書けます。引用符の有無は区別しません）";
+
+/// saphyr が見ない 2 つを確かめる: 引用符やタグだけが違う同名のキーと、明示のコアタグに
+/// 合わない値。キーはスカラーの原文で比べる（frontmatter も JSON への写しもキーを原文で使うので、
+/// 原文が同じなら同じキーになる）
+fn validate(node: &Node<'_>) -> Result<(), (Marker, String)> {
+    match view(node) {
+        View::Scalar { text, tag, .. } => {
+            if let Some(message) = tag_problem(text, tag) {
+                return Err((node.span.start, message));
+            }
+        }
+        View::Sequence(items) => {
+            for item in items {
+                validate(item)?;
+            }
+        }
+        View::Mapping(map) => {
+            let mut seen = HashSet::new();
+            for (key, value) in map {
+                if let View::Scalar { text, .. } = view(key) {
+                    if !seen.insert(text) {
+                        return Err((key.span.start, DUPLICATE_KEY.to_string()));
+                    }
+                }
+                validate(key)?;
+                validate(value)?;
+            }
+        }
+        View::Other => {}
+    }
+    Ok(())
+}
+
+/// 明示のコアタグに合わない値の文言（`!!int "x"`・`!!bool yes`）
+fn tag_problem(text: &str, tag: Option<&Tag>) -> Option<String> {
+    let suffix = core_tag(tag)?;
+    let resolved = resolve_tagged(text, suffix)?;
+    let (fits, kind) = match suffix {
+        "bool" => (matches!(resolved, Plain::Bool(_)), "真偽値"),
+        "int" => (matches!(resolved, Plain::Int(_) | Plain::UInt(_)), "整数"),
+        "float" => (matches!(resolved, Plain::Float(_)), "小数"),
+        _ => (resolved == Plain::Null, "値なし（null）"),
+    };
+    (!fits).then(|| format!("`!!{suffix}` のタグが付いた `{text}` は{kind}として読めません"))
+}
+
+/// コアタグ（`tag:yaml.org,2002:` の `!!bool` など）の名前
+fn core_tag(tag: Option<&Tag>) -> Option<&str> {
+    tag.filter(|t| t.is_yaml_core_schema())
+        .map(|t| t.suffix.as_str())
+}
+
+/// 型を指定するコアタグ（`!!bool` / `!!int` / `!!float` / `!!null`）が付いた値の解釈。
+/// 引用符の有無に依らず原文を解釈する。ほかのタグは `None`（タグで型を決めない）
+fn resolve_tagged(text: &str, suffix: &str) -> Option<Plain> {
+    // ブロック（`!!int |`）の値は末尾に改行が付くので外してから読む
+    let resolved = resolve_plain(text.trim_end_matches(['\n', '\r']));
+    match suffix {
+        "bool" | "int" | "null" => Some(resolved),
+        // `!!float 1` は小数の 1.0
+        "float" => Some(match resolved {
+            Plain::Int(v) => Plain::Float(v as f64),
+            Plain::UInt(v) => Plain::Float(v as f64),
+            other => other,
+        }),
+        _ => None,
+    }
 }
 
 /// 別名の展開を数えながら saphyr の loader へイベントを渡す。
@@ -136,7 +218,7 @@ impl<'a> SpannedEventReceiver<'a> for Budgeted<'a> {
 fn scan_message(e: &ScanError) -> String {
     let info = e.info();
     let message = match info {
-        "duplicated key in mapping" => "キーが重複しています（同じキーは 1 回だけ書けます）",
+        "duplicated key in mapping" => DUPLICATE_KEY,
         "while parsing a flow sequence, expected ',' or ']'" => {
             "`[` で始めた配列が閉じていません（`]` がありません）"
         }
@@ -225,13 +307,26 @@ pub(crate) enum Plain {
     Str,
 }
 
-/// スカラーを解釈する。引用符・ブロック（`|` / `>`）・`!!str` のタグは文字列
+/// スカラーを解釈する。明示のコアタグを引用符より先に見る（`!!bool "true"` は真偽値・
+/// `!!str 1` は文字列。serde_yaml_ng と同じ。タグに合わない値は [`load`] がエラーにしている）。
+/// タグが無ければ、引用符・ブロック（`|` / `>`）は文字列
 pub(crate) fn resolve(text: &str, style: ScalarStyle, tag: Option<&Tag>) -> Plain {
-    let str_tag = tag.is_some_and(|t| t.is_yaml_core_schema() && t.suffix == "str");
-    if style != ScalarStyle::Plain || str_tag {
-        return Plain::Str;
+    match core_tag(tag) {
+        Some("str") => Plain::Str,
+        Some(suffix) => match resolve_tagged(text, suffix) {
+            Some(resolved) => resolved,
+            None => untagged(text, style),
+        },
+        None => untagged(text, style),
     }
-    resolve_plain(text)
+}
+
+fn untagged(text: &str, style: ScalarStyle) -> Plain {
+    if style == ScalarStyle::Plain {
+        resolve_plain(text)
+    } else {
+        Plain::Str
+    }
 }
 
 /// 引用符の無いスカラーを解釈する
@@ -508,6 +603,62 @@ mod tests {
             to_json("[a]: 1\n").unwrap_err().message,
             "マッピングのキーに配列やマッピングは使えません"
         );
+    }
+
+    /// PR #55 のレビュー指摘: saphyr は `early_parse` 無効だとスタイルとタグも比べるので、
+    /// 引用符だけが違う同名のキーを別のキーとして通し、後の値が黙って勝っていた
+    #[test]
+    fn 引用符やタグだけが違う同名のキーも重複にする() {
+        for (text, line) in [
+            ("a: 1\n\"a\": 2\n", 2),
+            ("a: 1\n'a': 2\n", 2),
+            ("200: x\n\"200\": y\n", 2),
+            ("a: 1\n!!str a: 2\n", 2),
+            ("x:\n  a: 1\n  b: 2\n  \"a\": 3\n", 4),
+            ("- {a: 1, \"a\": 2}\n", 1),
+        ] {
+            let e = to_json(text).unwrap_err();
+            assert_eq!(e.message, DUPLICATE_KEY, "{text:?}");
+            assert_eq!(e.line, line, "{text:?}");
+        }
+        // 別の階層の同名キーは重複ではない
+        assert!(to_json("a: 1\nb:\n  a: 2\n").is_ok());
+    }
+
+    /// PR #55 のレビュー指摘: 引用符を先に見て `!!bool "true"` を文字列にしていた
+    /// （OpenAPI の `nullable: !!bool "true"` の「null 許容」が消えた）
+    #[test]
+    fn 明示のコアタグは引用符より先に見る() {
+        assert_eq!(
+            to_json(
+                "b: !!bool \"true\"\nf: !!bool 'false'\ni: !!int \"42\"\nh: !!int \"0x10\"\nfl: !!float \"1\"\nn: !!null \"~\"\ns: !!str 1\nblock: !!int |\n  42\ncustom: !x \"1\"\n"
+            )
+            .unwrap(),
+            json!({"b": true, "f": false, "i": 42, "h": 16, "fl": 1.0, "n": null, "s": "1", "block": 42, "custom": "1"})
+        );
+        // タグに合わない値はエラー（serde_yaml_ng と同じ）
+        for (text, expected) in [
+            (
+                "v: !!int \"x\"\n",
+                "`!!int` のタグが付いた `x` は整数として読めません",
+            ),
+            (
+                "v: !!bool yes\n",
+                "`!!bool` のタグが付いた `yes` は真偽値として読めません",
+            ),
+            (
+                "v: !!int 010\n",
+                "`!!int` のタグが付いた `010` は整数として読めません",
+            ),
+            (
+                "v: !!null x\n",
+                "`!!null` のタグが付いた `x` は値なし（null）として読めません",
+            ),
+        ] {
+            let e = to_json(text).unwrap_err();
+            assert_eq!(e.message, expected, "{text:?}");
+            assert_eq!(e.line, 1, "値の位置: {text:?}");
+        }
     }
 
     #[test]

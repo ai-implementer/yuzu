@@ -197,6 +197,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - **saphyr の位置は文字数**（バイトではない）。`byte_offset` を通してからバイト基準の列にする
   - **saphyr は別名（`*x`）の展開を数えない** = 入れ子の別名で指数的に膨らむ。`load` の
     `Budgeted` が上限を掛けているので、saphyr の `load_from_str` を直に呼ばない
+  - **`early_parse` 無効だと saphyr はキーをスタイルとタグ込みで比べる** = `draft` と `"draft"` を
+    別のキーとして通す（後の値が黙って勝つ）。同名キーの重複と、明示のコアタグ（`!!bool "true"`）を
+    引用符より先に見るのは `load` の `validate` と `resolve`（PR #55 のレビュー指摘）
 - **dist に出すサイト単位の生成物** — yuzu-core `site_output.rs` の `SiteOutput`
   （404.html・llms・sitemap・syntect.css・build_id・`_assets`・`_search`）。書き出し（pipeline）・
   止めた生成物の掃除（`unpublished_outputs`）・check のリンクの有効ターゲットがすべて
