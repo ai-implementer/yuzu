@@ -45,12 +45,15 @@ use mikan::{Bm25Params, BuildOptions, DocumentInput, SectionInput, TokenizerMeta
 let docs = vec![DocumentInput {
     title: "ホーム".to_string(),
     url: "".to_string(),
+    group: None,
     sections: vec![SectionInput {
         anchor: None,
         heading: None,
         text: "ようこそ".to_string(),
         doc_len: 1,
         tf: vec![("ようこそ".to_string(), 1, vec![0])],
+        // この doc のタイトルの token（検索時のタイトル一致の倍率に使う）
+        title_terms: vec![],
     }],
 }];
 let opts = BuildOptions {
@@ -63,6 +66,7 @@ let opts = BuildOptions {
     typo: TypoParams { enabled: true, max_edits: 1 },
     max_terms_per_shard: 16384,
     synonyms: vec![],
+    groups: vec![],
 };
 
 let built = build(&docs, &opts)?;

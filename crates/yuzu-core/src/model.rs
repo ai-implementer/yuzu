@@ -37,9 +37,12 @@ pub struct Frontmatter {
     /// 出さない。llms.txt のリンクはページの HTML を指す（サイト全体は `llms.page_md`）
     #[serde(rename = "pageMd")]
     pub page_md: bool,
+    /// false ならこのページを検索インデックスに載せない（ページの全節。nav・sitemap・llms には
+    /// 載る。Phase 89。節ごとには外せない = frontmatter の形を最小にする）
+    pub search: bool,
 }
 
-// llms・readingTime・pageMd の既定を true にするため derive ではなく手書き
+// llms・readingTime・pageMd・search の既定を true にするため derive ではなく手書き
 // （serde のコンテナ #[serde(default)] もこの Default を使う）
 impl Default for Frontmatter {
     fn default() -> Self {
@@ -53,6 +56,7 @@ impl Default for Frontmatter {
             lint_disable: Vec::new(),
             reading_time: true,
             page_md: true,
+            search: true,
         }
     }
 }
@@ -200,9 +204,9 @@ impl Page {
         self.generated.is_none_or(GeneratedKind::in_listings)
     }
 
-    /// 検索インデックスに載せるか
+    /// 検索インデックスに載せるか（frontmatter の `search: false` も見る）
     pub fn in_search_index(&self) -> bool {
-        self.generated.is_none_or(GeneratedKind::in_listings)
+        self.frontmatter.search && self.generated.is_none_or(GeneratedKind::in_listings)
     }
 
     /// sitemap.xml に載せるか

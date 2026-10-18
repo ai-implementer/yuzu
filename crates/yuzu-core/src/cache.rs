@@ -70,7 +70,9 @@ use crate::model::{Frontmatter, TocEntry};
 ///   最後のキーのブロックスカラーに末尾の改行が付くなど、CachedMeta の Frontmatter の値が変わりうる
 /// - v26: comrak 0.55 → 0.56（autolink の解釈を cmark-gfm に合わせた変更と、位置情報の修正。
 ///   docs と雛形の出力は変わらなかったが、本文 HTML と CachedMeta の位置が変わりうる）
-pub const CACHE_FORMAT_VERSION: u32 = 26;
+/// - v27: CachedSection に節のタイトルの token（`title_terms`。検索時のタイトル一致の倍率）、
+///   CachedMeta の Frontmatter に `search`（検索から外す）を追加（Phase 89。bump を 1 回に束ねた）
+pub const CACHE_FORMAT_VERSION: u32 = 27;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +114,9 @@ pub struct CachedSection {
     /// （body → heading → title、境界にギャップ）上のトークン添字・昇順・絶対値
     /// （delta 化はシャードエンコード時に行う）
     pub tf: Vec<(String, u32, Vec<u32>)>,
+    /// 節のタイトルの token（先頭の節はページタイトル、ほかの節は見出し）。
+    /// 検索時のタイトル一致の倍率に使う（mikan の `SectionInput::title_terms`）
+    pub title_terms: Vec<String>,
 }
 
 /// 1 ページぶんのキャッシュエントリ（`pages/<sha256(rel)>.json`）

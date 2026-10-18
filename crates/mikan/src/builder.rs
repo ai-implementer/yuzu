@@ -21,6 +21,10 @@ pub struct SectionInput {
     pub doc_len: u32,
     /// (term, 重み付き出現数, 出現位置の昇順列)
     pub tf: Vec<(String, u32, Vec<u32>)>,
+    /// この doc のタイトルの token（yuzu では先頭の節がページタイトル、ほかの節が見出し）。
+    /// 検索時にタイトルと一致した doc の点を上げるのに使う（[`Manifest::doc_title_terms`]）。
+    /// `tf` に無い token は語彙に無いので無視される
+    pub title_terms: Vec<String>,
 }
 
 /// 1 ドキュメント（yuzu では 1 ページ）ぶんの入力。1 ページは複数セクション（doc）を持つ
@@ -70,6 +74,8 @@ pub fn build(docs: &[DocumentInput], opts: &BuildOptions) -> Result<BuiltIndex, 
     // （同じ入力なら同じ manifest バイト列になる = 決定性を保つ）
     let mut groups: Vec<String> = opts.groups.clone();
     let mut doc_groups: Vec<u16> = Vec::new();
+    // doc_id 順のタイトルの token（term_id は辞書が確定した後に引く）
+    let mut doc_title_tokens: Vec<&[String]> = Vec::new();
 
     for doc in docs {
         let group_id = doc.group.as_ref().map_or(crate::UNGROUPED, |name| {
@@ -84,6 +90,7 @@ pub fn build(docs: &[DocumentInput], opts: &BuildOptions) -> Result<BuiltIndex, 
         for section in &doc.sections {
             doc_lens.push(section.doc_len);
             doc_groups.push(group_id);
+            doc_title_tokens.push(&section.title_terms);
             // doc_id 昇順で処理しているので postings は自然に昇順になる
             for (term, count, positions) in &section.tf {
                 terms.entry(term.clone()).or_default().push(Posting {
@@ -109,6 +116,25 @@ pub fn build(docs: &[DocumentInput], opts: &BuildOptions) -> Result<BuiltIndex, 
         fst_builder.insert(term, term_id as u64)?;
     }
     let terms_fst = fst_builder.into_inner()?;
+
+    // タイトルの token → term_id（語彙に無いものは捨てる。昇順・重複なし = 決定的）
+    let term_ids: std::collections::HashMap<&str, u32> = terms
+        .keys()
+        .enumerate()
+        .map(|(id, term)| (term.as_str(), id as u32))
+        .collect();
+    let doc_title_terms: Vec<Vec<u32>> = doc_title_tokens
+        .iter()
+        .map(|tokens| {
+            let mut ids: Vec<u32> = tokens
+                .iter()
+                .filter_map(|t| term_ids.get(t.as_str()).copied())
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            ids
+        })
+        .collect();
 
     // postings の doc_id 昇順を保証（HashMap 経由でも上の理由で保たれるが、明示的に）
     let mut postings: Vec<Vec<Posting>> = terms.into_values().collect();
@@ -152,6 +178,7 @@ pub fn build(docs: &[DocumentInput], opts: &BuildOptions) -> Result<BuiltIndex, 
         content_hash: String::new(),
         doc_groups,
         groups,
+        doc_title_terms,
     };
 
     Ok(BuiltIndex {
@@ -228,7 +255,19 @@ mod tests {
                 .into_iter()
                 .map(|(t, c, p)| (t.to_string(), c, p))
                 .collect(),
+            title_terms: Vec::new(),
         }
+    }
+
+    #[test]
+    fn タイトルの_token_を_term_id_にして_doc_ごとに持つ() {
+        let mut lead = section("a b", vec![("a", 1, vec![0]), ("b", 1, vec![1])]);
+        // 語彙に無い token（z）は捨て、重複は 1 つにする
+        lead.title_terms = vec!["b".into(), "z".into(), "b".into(), "a".into()];
+        let rest = section("c", vec![("c", 1, vec![0])]);
+        let built = build(&[doc_in("T", "t/", None, vec![lead, rest])], &opts()).unwrap();
+        // 辞書順の term_id: a=0, b=1, c=2
+        assert_eq!(built.manifest.doc_title_terms, vec![vec![0, 1], vec![]]);
     }
 
     #[test]
