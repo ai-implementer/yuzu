@@ -44,7 +44,7 @@ use comrak::{
 };
 
 use crate::MarkdownOptions;
-use crate::error::CoreError;
+use crate::error::{CoreError, FrontmatterProblem};
 use crate::frontmatter::{looks_like_misread_thematic_break, parse_frontmatter};
 use crate::markdown::fence::parse_fence_info;
 use crate::model::{
@@ -146,15 +146,29 @@ pub(crate) fn extract_meta(
                 }
             }
             NodeValue::FrontMatter(raw) => {
-                frontmatter = parse_frontmatter(raw).map_err(|message| CoreError::Frontmatter {
-                    path: src_path.to_path_buf(),
-                    message: if looks_like_misread_thematic_break(raw) {
-                        format!(
-                            "{message}（先頭の `---` を区切り線のつもりで書いた場合は、後ろの `---` までが frontmatter として読まれています。先頭の区切り線は `***` で書いてください）"
-                        )
-                    } else {
-                        message
-                    },
+                frontmatter = parse_frontmatter(raw).map_err(|problems| {
+                    let misread = looks_like_misread_thematic_break(raw);
+                    let problems = problems
+                        .into_iter()
+                        .map(|p| {
+                            // raw はファイルの 1 行目から始まるので、raw の中の位置 = ファイル上の位置
+                            let (line, col) = crate::yaml::line_col(raw, p.offset);
+                            FrontmatterProblem {
+                                path: src_path.to_path_buf(),
+                                line,
+                                col,
+                                message: if misread {
+                                    format!(
+                                        "{}（先頭の `---` を区切り線のつもりで書いた場合は、後ろの `---` までが frontmatter として読まれています。先頭の区切り線は `***` で書いてください）",
+                                        p.message
+                                    )
+                                } else {
+                                    p.message
+                                },
+                            }
+                        })
+                        .collect();
+                    CoreError::Frontmatter { problems }
                 })?;
             }
             NodeValue::Heading(heading) => {

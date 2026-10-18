@@ -25,7 +25,7 @@
 
 use crate::diagnostics::{DiagBase, Diagnostic};
 use crate::error::CoreError;
-use crate::frontmatter::{KNOWN_KEYS, detect_unrecognized, yaml_body};
+use crate::frontmatter::{KNOWN_KEYS, detect_unrecognized, top_level_keys};
 use crate::markdown;
 use crate::model::{Page, SourceSpan, TocEntry};
 use crate::rules;
@@ -547,27 +547,21 @@ fn check_frontmatter_unrecognized(page: &Page, opts: &MarkdownOptions, out: &mut
 
 /// frontmatter の未知キー検出。
 /// パースは build 時に済んでいる（不正 YAML はここへ来る前に CoreError）ため、
-/// ここでの再パース失敗は黙って無視する
+/// 読めなければキーは空で、黙って何もしない
 fn check_frontmatter_keys(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Diagnostic>) {
     let Some((raw, fm_span)) = markdown::frontmatter_raw(&page.source, opts) else {
         return;
     };
-    let Ok(value) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(yaml_body(&raw)) else {
-        return;
-    };
-    let Some(mapping) = value.as_mapping() else {
-        return;
-    };
 
-    for key in mapping.keys().filter_map(|k| k.as_str()) {
-        if KNOWN_KEYS.contains(&key) {
+    for (key, line) in top_level_keys(&raw) {
+        if KNOWN_KEYS.contains(&key.as_str()) {
             continue;
         }
         out.push(Diagnostic {
             rule: rules::FRONTMATTER_UNKNOWN_KEY,
             base: DiagBase::Content,
             rel: page.rel.clone(),
-            span: Some(key_span(&raw, &fm_span, key)),
+            span: Some(line_span(&raw, &fm_span, line - 1)),
             message: format!(
                 "frontmatter に未知のキー `{key}` があります（対応キー: {}）",
                 KNOWN_KEYS.join("/")
@@ -581,18 +575,21 @@ fn check_frontmatter_keys(page: &Page, opts: &MarkdownOptions, out: &mut Vec<Dia
 /// raw は `---` 区切り行込みなので、行オフセットは fm_span.start_line 起点。
 /// `suppress.rs` の `lintDisable` 検証も同じフォールバックを使う
 pub(crate) fn key_span(raw: &str, fm_span: &SourceSpan, key: &str) -> SourceSpan {
-    for (idx, line) in raw.lines().enumerate() {
-        if line.trim_start().starts_with(&format!("{key}:")) {
-            let line_no = fm_span.start_line + idx;
-            return SourceSpan {
-                start_line: line_no,
-                start_col: 1,
-                end_line: line_no,
-                end_col: line.chars().count().max(1),
-            };
-        }
+    raw.lines()
+        .position(|line| line.trim_start().starts_with(&format!("{key}:")))
+        .map_or(*fm_span, |idx| line_span(raw, fm_span, idx))
+}
+
+/// raw の idx 行目（0 始まり）の行全体の span
+fn line_span(raw: &str, fm_span: &SourceSpan, idx: usize) -> SourceSpan {
+    let line_no = fm_span.start_line + idx;
+    let line = raw.lines().nth(idx).unwrap_or_default();
+    SourceSpan {
+        start_line: line_no,
+        start_col: 1,
+        end_line: line_no,
+        end_col: line.chars().count().max(1),
     }
-    *fm_span
 }
 
 /// `fix` を持つ診断をソースへ適用する（`yuzu lint --fix` 用）。

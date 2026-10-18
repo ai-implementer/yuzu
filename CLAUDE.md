@@ -149,6 +149,8 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   使わない）/ rust-embed / axum + notify + WebSocket（dev サーバ）
 - TOML 設定は自作の kabosu（依存ゼロ。v0.14 で serde + JSONC から移行。
   JSONC の互換読み込みは作らない）
+- YAML（frontmatter・openapi / jsonschema）は saphyr（v0.20 Phase 88 で serde_yaml_ng から移行）。
+  型の解釈は yuzu-core `yaml.rs` が自前で行う（下の「1 実装で共有する箇所」）
 - rayon（ページ並列化。出力はスレッド数に依らずバイト同一）
 - comrak・syntect・two-face は onig（C 依存）を引かないよう **必ず
   `default-features = false`**（Cargo.toml のコメント参照）。`deny.toml` の bans が onig・
@@ -190,6 +192,11 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     `validate_spec_refs` もここ
   - **仕様の中身の検証だけが yuzu-render**
 - **エイリアス** — `aliases.rs`（render と check）
+- **YAML の読み込み** — yuzu-core `yaml.rs`（frontmatter・未知キーの lint・openapi / jsonschema。
+  Phase 88）。スカラーの解釈 `resolve` は置き換え前の serde_yaml_ng と同じ境界（`010` は文字列等）
+  - **saphyr の位置は文字数**（バイトではない）。`byte_offset` を通してからバイト基準の列にする
+  - **saphyr は別名（`*x`）の展開を数えない** = 入れ子の別名で指数的に膨らむ。`load` の
+    `Budgeted` が上限を掛けているので、saphyr の `load_from_str` を直に呼ばない
 - **dist に出すサイト単位の生成物** — yuzu-core `site_output.rs` の `SiteOutput`
   （404.html・llms・sitemap・syntect.css・build_id・`_assets`・`_search`）。書き出し（pipeline）・
   止めた生成物の掃除（`unpublished_outputs`）・check のリンクの有効ターゲットがすべて

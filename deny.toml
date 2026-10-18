@@ -23,13 +23,6 @@ ignore = [
   # yuzu が同梱したデータだけを読み、原稿や読者の入力は渡らない。代わりの版が無いので、
   # syntect・vaporetto が bincode を外したら除外をやめる
   { id = "RUSTSEC-2025-0141", reason = "syntect・vaporetto が同梱データの読み込みに使う。代わりの版が無い" },
-  # unsafe-libyaml はメンテナンス終了（脆弱性ではない。10-12 に勧告 DB へ追加された）。
-  # serde_yaml_ng（最新の 0.10.0）が frontmatter の読み込みに使う。読むのはサイトの執筆者が
-  # 書いた原稿の frontmatter だけで、読者の入力は渡らない。代わりの版が無く、勧告が挙げる
-  # 安全な Rust の YAML パーサ（serde-saphyr 等）への置き換えは frontmatter の解釈とエラー文言に
-  # 関わるので v0.20 の候補（ROADMAP「10-04 見直しの持ち越し」の frontmatter の型エラー）。
-  # 置き換えたら除外をやめる
-  { id = "RUSTSEC-2024-0449", reason = "serde_yaml_ng が執筆者の frontmatter の読み込みに使う。代わりの版が無い" },
 ]
 
 [licenses]

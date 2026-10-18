@@ -1,7 +1,7 @@
 //! OpenAPI / JSON Schema のビルド時レンダリング（SSR）。
 //!
 //! 方針:
-//! - 入力（YAML / JSON テキスト）を serde_yaml_ng で `serde_json::Value` に読み、
+//! - 入力（YAML / JSON テキスト）を `yuzu_core::yaml::to_json`（frontmatter と同じ読み込み口）で `serde_json::Value` に読み、
 //!   Value 走査で HTML を組み立てる（構造体に固く落とさず未知フィールドに耐える）
 //! - **Err を返さない**: パース失敗・未対応形式は警告ログ＋エラーボックス HTML を
 //!   返す（ビルドは止めない = draft 執筆に優しい）。呼び出し側は常に埋め込むだけ

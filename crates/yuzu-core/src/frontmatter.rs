@@ -1,6 +1,13 @@
-//! frontmatter（YAML）のパース
+//! frontmatter（YAML）の読み込み。
+//!
+//! YAML の読み込みは [`crate::yaml`]（openapi / jsonschema と共有）。ここではキーごとに型を
+//! 検査し、書き間違いを位置付きで全件集める（yuzu.toml の設定エラーと同じ考え方）。
+//! 未知のキーは読み飛ばす（`frontmatter-unknown-key` の lint が警告する）
+
+use saphyr::ScalarStyle;
 
 use crate::model::Frontmatter;
+use crate::yaml::{self, Node, Plain, View, resolve, view};
 
 /// [`Frontmatter`] が受理するトップレベルキー（lint の未知キー検出用）。
 /// フィールドを増やすときはここにも足す（乖離は下のテストで検知する）
@@ -16,14 +23,266 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "pageMd",
 ];
 
+/// frontmatter の書き間違い 1 件。位置は raw の中のバイト位置で、raw はファイルの
+/// 先頭から始まる（comrak は frontmatter を 1 行目からしか切り出さない）ので、
+/// [`yaml::line_col`] で raw の中の行・列にすればそのままファイル上の位置になる
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Problem {
+    pub offset: usize,
+    pub message: String,
+}
+
 /// comrak の front matter extension が切り出した生テキスト
-/// （`---` 区切り行を含む）から YAML 部分を取り出してパースする
-pub(crate) fn parse_frontmatter(raw: &str) -> Result<Frontmatter, String> {
-    let body = yaml_body(raw);
-    if body.is_empty() {
-        return Ok(Frontmatter::default());
+/// （`---` 区切り行を含む）から YAML 部分を取り出して読む。
+/// 書き間違いはキーごとに検査して全件返す（構文エラーは最初の 1 件で止まる）
+pub(crate) fn parse_frontmatter(raw: &str) -> Result<Frontmatter, Vec<Problem>> {
+    let (start, body) = yaml_body_at(raw);
+    let root = yaml::load(body).map_err(|e| {
+        vec![Problem {
+            offset: start + e.offset,
+            message: e.message,
+        }]
+    })?;
+    let mut decoder = Decoder {
+        start,
+        body,
+        problems: Vec::new(),
+    };
+    let frontmatter = match root {
+        Some(root) => decoder.frontmatter(&root),
+        None => Frontmatter::default(),
+    };
+    if decoder.problems.is_empty() {
+        Ok(frontmatter)
+    } else {
+        Err(decoder.problems)
     }
-    serde_yaml_ng::from_str(body).map_err(|e| e.to_string())
+}
+
+/// キーごとの型の検査。型が違う値は既定値のままにして、書き間違いを集める
+struct Decoder<'b> {
+    /// body の raw の中での開始位置
+    start: usize,
+    body: &'b str,
+    problems: Vec<Problem>,
+}
+
+impl Decoder<'_> {
+    fn frontmatter(&mut self, root: &Node<'_>) -> Frontmatter {
+        let mut fm = Frontmatter::default();
+        let map = match view(root) {
+            View::Mapping(map) => map,
+            // `---` の間がコメントだけ・`~` だけ
+            View::Scalar { text, style, tag } if resolve(text, style, tag) == Plain::Null => {
+                return fm;
+            }
+            _ => {
+                self.push(
+                    root,
+                    "frontmatter は `title: ページ名` のような「キー: 値」の行で書いてください"
+                        .to_string(),
+                );
+                return fm;
+            }
+        };
+        // KNOWN_KEYS と同じ集合（全キーを読むことは下のテストが縛る）
+        for (key, value) in map {
+            let View::Scalar { text: key, .. } = view(key) else {
+                continue;
+            };
+            match key {
+                "title" => fm.title = self.string(key, value),
+                "order" => fm.order = self.int(key, value),
+                "draft" => self.bool(key, value, &mut fm.draft),
+                "description" => fm.description = self.string(key, value),
+                "llms" => self.bool(key, value, &mut fm.llms),
+                "aliases" => fm.aliases = self.strings(key, value),
+                "lintDisable" => fm.lint_disable = self.strings(key, value),
+                "readingTime" => self.bool(key, value, &mut fm.reading_time),
+                "pageMd" => self.bool(key, value, &mut fm.page_md),
+                _ => {}
+            }
+        }
+        fm
+    }
+
+    /// 文字列。スカラーは書いたとおりの原文（`title: 1.0` は `"1.0"`）、値なしは `None`
+    fn string(&mut self, key: &str, node: &Node<'_>) -> Option<String> {
+        match view(node) {
+            View::Scalar { text, style, tag } => {
+                (resolve(text, style, tag) != Plain::Null).then(|| text.to_string())
+            }
+            _ => {
+                self.mismatch(key, node, "文字列", "");
+                None
+            }
+        }
+    }
+
+    /// 整数。値なしは `None`（指定しないのと同じ）
+    fn int(&mut self, key: &str, node: &Node<'_>) -> Option<i64> {
+        let View::Scalar { text, style, tag } = view(node) else {
+            self.mismatch(key, node, "整数", "");
+            return None;
+        };
+        let out_of_range = match resolve(text, style, tag) {
+            Plain::Int(v) => return Some(v),
+            Plain::Null => return None,
+            Plain::UInt(_) => true,
+            // i64 にも u64 にも収まらない 10 進数は小数として読まれる
+            Plain::Float(_) => is_decimal(unsigned(text)),
+            _ => false,
+        };
+        if out_of_range {
+            self.push(
+                node,
+                format!(
+                    "`{key}` の整数が範囲外です（-9223372036854775808 から 9223372036854775807 まで）"
+                ),
+            );
+        } else {
+            let hint = int_hint(text, style);
+            self.mismatch(key, node, "整数", &hint);
+        }
+        None
+    }
+
+    /// 真偽値。型が違えば `slot` を既定値のままにする
+    fn bool(&mut self, key: &str, node: &Node<'_>, slot: &mut bool) {
+        let View::Scalar { text, style, tag } = view(node) else {
+            self.mismatch(key, node, "真偽値", "");
+            return;
+        };
+        match resolve(text, style, tag) {
+            Plain::Bool(b) => *slot = b,
+            Plain::Null => self.push(
+                node,
+                format!("`{key}` に値がありません（`true` か `false` を書いてください）"),
+            ),
+            _ => {
+                let hint = bool_hint(text, style);
+                self.mismatch(key, node, "真偽値", &hint);
+            }
+        }
+    }
+
+    /// 文字列の配列。値なしは空
+    fn strings(&mut self, key: &str, node: &Node<'_>) -> Vec<String> {
+        match view(node) {
+            View::Sequence(items) => {
+                let mut out = Vec::new();
+                for (n, item) in items.iter().enumerate() {
+                    match view(item) {
+                        View::Scalar { text, style, tag }
+                            if resolve(text, style, tag) != Plain::Null =>
+                        {
+                            out.push(text.to_string());
+                        }
+                        _ => {
+                            let found = kind_name(item);
+                            self.push(
+                                item,
+                                format!(
+                                    "`{key}` の {} 番目の型が違います（期待: 文字列、実際: {found}）",
+                                    n + 1
+                                ),
+                            );
+                        }
+                    }
+                }
+                out
+            }
+            View::Scalar { text, style, tag } if resolve(text, style, tag) == Plain::Null => {
+                Vec::new()
+            }
+            View::Scalar { text, .. } => {
+                let hint = format!("。1 つだけでも `[{text}]` のように配列で書いてください");
+                self.mismatch(key, node, "文字列の配列", &hint);
+                Vec::new()
+            }
+            _ => {
+                self.mismatch(key, node, "文字列の配列", "");
+                Vec::new()
+            }
+        }
+    }
+
+    fn mismatch(&mut self, key: &str, node: &Node<'_>, expected: &str, hint: &str) {
+        let found = kind_name(node);
+        self.push(
+            node,
+            format!("`{key}` の型が違います（期待: {expected}、実際: {found}）{hint}"),
+        );
+    }
+
+    fn push(&mut self, node: &Node<'_>, message: String) {
+        self.problems.push(Problem {
+            offset: self.start + yaml::byte_offset(self.body, node.span.start),
+            message,
+        });
+    }
+}
+
+/// 値の種類の日本語名（型の違いの文言用。yuzu.toml の文言と同じ呼び方）
+fn kind_name(node: &Node<'_>) -> &'static str {
+    match view(node) {
+        View::Scalar { text, style, tag } => match resolve(text, style, tag) {
+            Plain::Null => "値なし",
+            Plain::Bool(_) => "真偽値",
+            Plain::Int(_) | Plain::UInt(_) => "整数",
+            Plain::Float(_) => "小数",
+            Plain::Str => "文字列",
+        },
+        View::Sequence(_) => "配列",
+        View::Mapping(_) => "マッピング",
+        View::Other => "値",
+    }
+}
+
+/// 真偽値のつもりで書かれた文字列への案内。YAML 1.1 の真偽値（`yes` / `no`・`on` / `off`）は
+/// YAML 1.2 では文字列なので、黙って読み替えずに書き直しを案内する（Phase 88 の決定）
+fn bool_hint(text: &str, style: ScalarStyle) -> String {
+    let yaml11 = matches!(
+        text.to_ascii_lowercase().as_str(),
+        "yes" | "no" | "on" | "off" | "y" | "n"
+    );
+    if style == ScalarStyle::Plain && yaml11 {
+        format!(
+            "。`{text}` は YAML 1.1 の真偽値の書き方で、YAML 1.2 では文字列です。`true` か `false` で書いてください"
+        )
+    } else if style != ScalarStyle::Plain && matches!(yaml::resolve_plain(text), Plain::Bool(_)) {
+        "。引用符を外してください".to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// 整数のつもりで書かれた文字列への案内。先頭 0 の 10 進数（`010`）は YAML 1.1 では
+/// 8 進数なので、どちらにも読み替えずに書き直しを案内する（Phase 88 の決定）
+fn int_hint(text: &str, style: ScalarStyle) -> String {
+    let digits = unsigned(text);
+    if style != ScalarStyle::Plain {
+        if matches!(yaml::resolve_plain(text), Plain::Int(_)) {
+            return "。引用符を外してください".to_string();
+        }
+    } else if digits.len() > 1 && digits.starts_with('0') && is_decimal(digits) {
+        return format!(
+            "。`{text}` は YAML 1.1 では 8 進数の書き方です。先頭の 0 を外して書いてください"
+        );
+    } else if digits.contains('_') && is_decimal(&digits.replace('_', "")) {
+        return "。`_` で区切らずに書いてください".to_string();
+    }
+    String::new()
+}
+
+/// 先頭の符号を外す
+fn unsigned(text: &str) -> &str {
+    text.strip_prefix(['+', '-']).unwrap_or(text)
+}
+
+/// 空でない 10 進の数字だけの並びか
+fn is_decimal(s: &str) -> bool {
+    !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// frontmatter のつもりで書かれたのに、frontmatter として読まれていない形
@@ -130,24 +389,57 @@ fn is_toml_key_line(line: &str) -> bool {
 /// - YAML として壊れている → キーの形の行が 1 つも無ければ誤読（壊れた frontmatter の
 ///   エラーに区切り線の案内を添えるかどうかにだけ使う）
 pub(crate) fn looks_like_misread_thematic_break(raw: &str) -> bool {
-    let body = yaml_body(raw);
-    if body.is_empty() {
+    let (_, body) = yaml_body_at(raw);
+    if body.trim().is_empty() {
         return false;
     }
-    match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(body) {
-        Ok(value) => !value.is_mapping(),
+    match yaml::load(body) {
+        Ok(Some(root)) => !matches!(view(&root), View::Mapping(_)),
+        // コメントだけ
+        Ok(None) => true,
         Err(_) => !body.lines().any(|l| is_yaml_key_line(l.trim_start())),
     }
 }
 
-/// 生テキストから `---` 区切りを外した YAML 部分を返す
-pub(crate) fn yaml_body(raw: &str) -> &str {
+/// トップレベルのキーと、その行（raw の中の 1 始まり = ファイル上の行）。
+/// YAML として読めない・マッピングでないなら空（読めない frontmatter は build が止める）
+pub(crate) fn top_level_keys(raw: &str) -> Vec<(String, usize)> {
+    let (start, body) = yaml_body_at(raw);
+    let Ok(Some(root)) = yaml::load(body) else {
+        return Vec::new();
+    };
+    let View::Mapping(map) = view(&root) else {
+        return Vec::new();
+    };
+    map.keys()
+        .filter_map(|key| match view(key) {
+            View::Scalar { text, .. } => {
+                let offset = start + yaml::byte_offset(body, key.span.start);
+                Some((text.to_string(), yaml::line_col(raw, offset).0))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// 生テキストから `---` 区切りを外した YAML 部分と、その raw の中での開始位置（バイト）。
+/// 先頭の空行は外し（位置は開始位置に足す）、閉じの `---` の直前の改行は残す
+/// （最後のキーがブロックスカラー `|` / `>` のとき、YAML の仕様どおり値の末尾に改行が付く。
+/// 以前は切り出しで改行を落としていたので、最後のキーのときだけ改行が無かった。Phase 88 の決定）
+pub(crate) fn yaml_body_at(raw: &str) -> (usize, &str) {
+    let lead = raw.len() - raw.trim_start().len();
     let trimmed = raw.trim();
-    trimmed
+    let (start, inner) = match trimmed
         .strip_prefix("---")
         .and_then(|s| s.strip_suffix("---"))
-        .unwrap_or(trimmed)
-        .trim()
+    {
+        Some(inner) => (lead + "---".len(), inner),
+        None => (lead, trimmed),
+    };
+    // 空行だけを外す（最初のキーの字下げは残す = 全体を字下げしたマッピングも読める）
+    let space = inner.len() - inner.trim_start().len();
+    let blank = inner[..space].rfind('\n').map_or(0, |i| i + 1);
+    (start + blank, &inner[blank..])
 }
 
 #[cfg(test)]
@@ -209,21 +501,162 @@ mod tests {
     }
 
     /// KNOWN_KEYS と Frontmatter 構造体の乖離検知
-    /// （フィールドを追加して KNOWN_KEYS を忘れると未知キー lint が誤検知する）
+    /// （フィールドを追加して KNOWN_KEYS を忘れると未知キー lint が誤検知する）。
+    /// キー名はキャッシュの JSON と同じ serde の名前（camelCase の rename）で比べる
     #[test]
     fn known_keys_は_frontmatter_のフィールドと一致する() {
-        let yaml = serde_yaml_ng::to_string(&crate::model::Frontmatter::default()).unwrap();
-        let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).unwrap();
-        let mut fields: Vec<String> = value
-            .as_mapping()
-            .unwrap()
-            .keys()
-            .map(|k| k.as_str().unwrap().to_string())
-            .collect();
+        let value = serde_json::to_value(crate::model::Frontmatter::default()).unwrap();
+        let mut fields: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
         fields.sort();
         let mut known: Vec<String> = super::KNOWN_KEYS.iter().map(|k| k.to_string()).collect();
         known.sort();
         assert_eq!(fields, known);
+    }
+
+    /// KNOWN_KEYS のすべてを読む（読み込みの match にキーを足し忘れると既定値のまま黙って残る）
+    #[test]
+    fn known_keys_をすべて読む() {
+        let fm = parse_frontmatter(
+            "---\ntitle: t\norder: -3\ndraft: true\ndescription: d\nllms: false\naliases: [a/]\nlintDisable: [x]\nreadingTime: false\npageMd: false\n---\n",
+        )
+        .unwrap();
+        let value = serde_json::to_value(&fm).unwrap();
+        let default = serde_json::to_value(crate::model::Frontmatter::default()).unwrap();
+        for key in super::KNOWN_KEYS {
+            assert_ne!(value[key], default[key], "`{key}` が既定値のまま");
+        }
+    }
+
+    /// 書き間違いの (行, 列, 文言)。raw の行・列 = ファイル上の行・列
+    fn problems(raw: &str) -> Vec<(usize, usize, String)> {
+        parse_frontmatter(raw)
+            .unwrap_err()
+            .into_iter()
+            .map(|p| {
+                let (line, col) = crate::yaml::line_col(raw, p.offset);
+                (line, col, p.message)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn 型の違いは日本語でファイル上の位置と全件を返す() {
+        // 先頭の空行・コメントがあっても行はファイル上の行
+        let got = problems(
+            "---\n\n# メモ\ntitle: x\norder: \"最初\"\ndraft: maybe\naliases: [a, [b]]\n---\n",
+        );
+        assert_eq!(
+            got,
+            [
+                (
+                    5,
+                    8,
+                    "`order` の型が違います（期待: 整数、実際: 文字列）".to_string()
+                ),
+                (
+                    6,
+                    8,
+                    "`draft` の型が違います（期待: 真偽値、実際: 文字列）".to_string()
+                ),
+                (
+                    7,
+                    14,
+                    "`aliases` の 2 番目の型が違います（期待: 文字列、実際: 配列）".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn 列はバイト基準で数える() {
+        // 「あいう」は 9 バイト（`[b]` は文字数なら 16 列目、バイトなら 22 列目）
+        let got = problems("---\nタイトル: x\naliases: [あいう, [b]]\n---\n");
+        assert_eq!((got[0].0, got[0].1), (3, 22));
+        let got = problems("---\r\ntitle: x\r\norder: x\r\n---\r\n");
+        assert_eq!((got[0].0, got[0].1), (3, 8), "CRLF でも行がずれない");
+    }
+
+    #[test]
+    fn yaml_1_1_の書き方はエラーにして書き直しを案内する() {
+        for (raw, expected) in [
+            (
+                "---\ndraft: yes\n---\n",
+                "`yes` は YAML 1.1 の真偽値の書き方",
+            ),
+            (
+                "---\nllms: Off\n---\n",
+                "`Off` は YAML 1.1 の真偽値の書き方",
+            ),
+            (
+                "---\norder: 010\n---\n",
+                "`010` は YAML 1.1 では 8 進数の書き方",
+            ),
+            ("---\norder: 1_000\n---\n", "`_` で区切らずに"),
+            ("---\ndraft: \"true\"\n---\n", "引用符を外して"),
+            ("---\norder: '3'\n---\n", "引用符を外して"),
+            ("---\naliases: old/\n---\n", "`[old/]` のように配列で"),
+            ("---\ndraft:\n---\n", "`draft` に値がありません"),
+            (
+                "---\norder: 9223372036854775808\n---\n",
+                "`order` の整数が範囲外です",
+            ),
+            ("---\n- a\n- b\n---\n", "「キー: 値」の行で書いて"),
+        ] {
+            let got = problems(raw);
+            assert!(
+                got.len() == 1 && got[0].2.contains(expected),
+                "{raw:?} → {got:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn 文字列のキーは書いたとおりの原文で読む() {
+        // serde_yaml_ng と同じ値（数値・真偽値の形でも文字列のキーなら原文）
+        let fm = parse_frontmatter(
+            "---\ntitle: 0x10\ndescription: 1.0\nlintDisable: [x, 1, true]\n---\n",
+        )
+        .unwrap();
+        assert_eq!(fm.title.as_deref(), Some("0x10"));
+        assert_eq!(fm.description.as_deref(), Some("1.0"));
+        assert_eq!(fm.lint_disable, ["x", "1", "true"]);
+        // 値なしは未指定と同じ（`aliases:` は空・`order:` は None）
+        let fm = parse_frontmatter("---\ntitle: ~\norder:\naliases:\n---\n").unwrap();
+        assert!(fm.title.is_none() && fm.order.is_none() && fm.aliases.is_empty());
+        // 引用符付きの `null` は文字列
+        let fm = parse_frontmatter("---\ntitle: 'null'\n---\n").unwrap();
+        assert_eq!(fm.title.as_deref(), Some("null"));
+    }
+
+    #[test]
+    fn 最後のキーのブロックスカラーも末尾の改行を残す() {
+        let last = parse_frontmatter("---\ntitle: >\n  a\n  b\n---\n").unwrap();
+        let middle = parse_frontmatter("---\ntitle: >\n  a\n  b\norder: 1\n---\n").unwrap();
+        assert_eq!(last.title.as_deref(), Some("a b\n"));
+        assert_eq!(last.title, middle.title, "キーの位置で値が変わらない");
+        let strip = parse_frontmatter("---\ntitle: >-\n  a\n  b\n---\n").unwrap();
+        assert_eq!(strip.title.as_deref(), Some("a b"));
+    }
+
+    #[test]
+    fn 重複キーは構文エラーで位置を返す() {
+        let got = problems("---\ntitle: a\ntitle: b\n---\n");
+        assert_eq!((got[0].0, got[0].1), (3, 1));
+        assert!(got[0].2.contains("重複"), "{got:?}");
+    }
+
+    #[test]
+    fn トップレベルのキーをファイル上の行と一緒に返す() {
+        let keys = super::top_level_keys("---\n\ntitle: x\nfoo:\n  bar: 1\n\"quoted\": 2\n---\n");
+        assert_eq!(
+            keys,
+            [
+                ("title".to_string(), 3),
+                ("foo".to_string(), 4),
+                ("quoted".to_string(), 6)
+            ]
+        );
+        assert!(super::top_level_keys("---\ntitle: [x\n---\n").is_empty());
     }
 
     /// comrak の切り出しを模した判定（テストでは「閉じの `---` 行があれば切り出す」）

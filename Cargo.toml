@@ -45,10 +45,15 @@ clap_complete = "4.6"
 # 既定 feature の text（TextDiff）だけあれば足りる（inline / bytes / serde は不要）
 similar = { version = "3.2", default-features = false, features = ["text"] }
 # 設定（yuzu.toml）は自作の kabosu で読む（下の内部 crate 参照）。serde はキャッシュ・
-# 検索索引・診断の JSON 出力・frontmatter の YAML 用で、設定には使わない
+# 検索索引・診断の JSON 出力用で、設定にも YAML にも使わない
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml_ng = "0.10"
+# YAML（frontmatter・openapi / jsonschema）。純 Rust の YAML 1.2 パーサで、位置付きの値の木を
+# 読み、型の解釈は yuzu-core の yaml.rs が行う（Phase 88。serde_yaml_ng は依存の unsafe-libyaml が
+# メンテナンス終了）。saphyr の既定 feature は encoding だけで、文字列から読むので使わない。
+# saphyr-parser はイベントを数えて別名の展開に上限を掛けるために直接使う（saphyr と同じ版にする）
+saphyr = { version = "0.2.2", default-features = false }
+saphyr-parser = "0.2.2"
 # --- 検索（Phase 3）---
 # term 辞書＋タイポトレランス（Levenshtein オートマトン）。純 Rust・wasm 可
 fst = { version = "0.4", features = ["levenshtein"] }
