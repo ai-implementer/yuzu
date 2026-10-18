@@ -31,7 +31,7 @@
   前回とバイト同一）。この回から `--remap-path-prefix` でビルドした人の `$CARGO_HOME` を
   `/cargo` に置き換えたので、wasm に絶対パスが入らない（以前は `~/.cargo/registry` が 45 か所）。
   PR #65 のレビュー指摘（複数語の同義語の未知語・重なる同義語グループ・引用符付きの検索の
-  タイトル一致）の修正を含む
+  タイトル一致）と再レビューの指摘（重なる同義語グループの判定をメンバーの表記で行う）の修正を含む
 - 以前の生成（新しい順。ツールの版はどれも同じ）
   - 2026-10-18: MSRV 1.99 で上げられるようになった globset 0.4.20 を依存ごと上げたとき、wasm に
     入る memchr（2.8.3）と serde の derive が使う proc-macro2・quote・syn・unicode-ident の版が
@@ -46,7 +46,7 @@
     **追加**した（既存の `search(query, limit)` は据え置き ＝ 固定 URL の HTTP キャッシュに残った
     旧 wasm が引数を黙って無視して「絞り込んでいないのに絞り込んだ件数」を出す事故を避けるため）。
     インデックスフォーマットは v3 のまま（`docGroups` / `groups` は `serde(default)` の後方互換フィールド）
-- `search_bg.wasm`: 516KB（527,448 bytes。vaporetto + fst + BM25 エンジン + フレーズ隣接照合 +
+- `search_bg.wasm`: 515KB（527,031 bytes。vaporetto + fst + BM25 エンジン + フレーズ隣接照合 +
   近接ブースト + 動的抜粋 + 同義語クエリ拡張 + 文字単位 Levenshtein DFA
   （levenshtein_automata）+ グループ絞り込み + 同義語のまとめ + タイトル一致の倍率込み。gzip 転送で概ね半分以下）
 - `search.js`: 14KB（wasm-bindgen --target web の ES module グルー）
