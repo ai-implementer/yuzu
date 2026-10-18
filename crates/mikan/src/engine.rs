@@ -126,9 +126,11 @@ fn parse_query(query: &str) -> (String, Vec<String>) {
 /// 同義語の例を書いた節だった）
 #[derive(Debug, Default)]
 struct SynonymSlot {
+    /// メンバーの表記（重なるグループをまとめる判定に使う。[`Self::overlaps`]）
+    names: Vec<String>,
     /// 1 語のメンバーの term_id（まとめて 1 語として数える）
     single: Vec<u32>,
-    /// 複数語のメンバーの term_id 列（全語が語彙にあるものだけ）。語ごとの点の合計を
+    /// 複数語のメンバーの term_id 列（語彙にある token だけ）。語ごとの点の合計を
     /// 1 つの候補とし、グループの点は 1 語のメンバーの点と候補の点の最大
     multi: Vec<Vec<u32>>,
 }
@@ -141,11 +143,17 @@ impl SynonymSlot {
             .chain(self.multi.iter().flatten().copied())
     }
 
+    /// 同じメンバーを含むか（表記が同じメンバー、または同じ term の 1 語のメンバー）。
+    /// 構成 token が一部共通なだけ（"client error" と "server error" の error）では重ならない =
+    /// 別の概念をまとめない（PR #65 の再レビューの指摘）。複数語のメンバーを term_id 列で
+    /// 比べないのは、語彙に無い token を除いた残り（どちらも error だけ）が同じになるため
     fn overlaps(&self, other: &SynonymSlot) -> bool {
-        self.term_ids().any(|id| other.term_ids().any(|o| o == id))
+        self.names.iter().any(|n| other.names.contains(n))
+            || self.single.iter().any(|id| other.single.contains(id))
     }
 
     fn absorb(&mut self, other: SynonymSlot) {
+        self.names.extend(other.names);
         self.single.extend(other.single);
         for ids in other.multi {
             if !self.multi.contains(&ids) {
@@ -155,7 +163,8 @@ impl SynonymSlot {
     }
 }
 
-/// 同じ term を含むグループを 1 つにまとめる（推移的に。A と C、C と B が重なれば 3 つで 1 つ）
+/// 同じメンバーを含むグループを 1 つにまとめる（推移的に。A と C、C と B が重なれば 3 つで 1 つ）。
+/// 一致はメンバー全体で見る（[`SynonymSlot::overlaps`]）
 fn merge_overlapping(slots: Vec<SynonymSlot>) -> Vec<SynonymSlot> {
     let mut merged: Vec<SynonymSlot> = Vec::new();
     for mut slot in slots {
@@ -563,7 +572,10 @@ impl SearchEngine {
             if in_query.is_empty() {
                 continue;
             }
-            let mut slot = SynonymSlot::default();
+            let mut slot = SynonymSlot {
+                names: group.clone(),
+                ..SynonymSlot::default()
+            };
             for member in group {
                 // 語彙にある token だけを使う。複数語のメンバーに語彙に無い語があっても、
                 // 既知の語で探す（メンバーごと捨てると、クエリの中の既知の語まで消える。
@@ -598,7 +610,7 @@ impl SearchEngine {
             }
             synonym_slots.push(slot);
         }
-        // 同じ語を含むグループ（lint.terms と search.synonyms の両方に書いた等）は 1 つに
+        // 同じメンバーを含むグループ（lint.terms と search.synonyms の両方に書いた等）は 1 つに
         // まとめる。別々に数えると、その語の点を 2 回足す（PR #65 のレビュー指摘）
         let synonym_slots = merge_overlapping(synonym_slots);
         for slot in &synonym_slots {
@@ -1141,6 +1153,77 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// PR #65 の再レビューの指摘: 構成 token が 1 つ共通なだけ（"client error" と "server error" の
+    /// error）でグループをまとめていたので、別の概念が 1 つの語になり、「alpha beta」でタイトルが
+    /// alpha だけの doc にも全語一致の倍率が掛かっていた
+    #[test]
+    fn 複数語のメンバーの一部が共通なだけではグループをまとめない() {
+        use super::{SynonymSlot, merge_overlapping};
+        let slot = |names: &[&str], single: Vec<u32>, multi: Vec<Vec<u32>>| SynonymSlot {
+            names: names.iter().map(|n| n.to_string()).collect(),
+            single,
+            multi,
+        };
+        // error（3）が共通なだけ → 2 つのまま。語彙に無い client・server を除くと、どちらの
+        // 複数語のメンバーも [3] になるが、表記が違うのでまとめない
+        for (a, b) in [
+            (vec![vec![2, 3]], vec![vec![5, 3]]),
+            (vec![vec![3]], vec![vec![3]]),
+        ] {
+            let kept = merge_overlapping(vec![
+                slot(&["alpha", "client error"], vec![1], a),
+                slot(&["beta", "server error"], vec![4], b),
+            ]);
+            assert_eq!(kept.len(), 2, "{kept:?}");
+        }
+        // 同じ表記のメンバー・同じ term の 1 語のメンバーを含むならまとめる
+        assert_eq!(
+            merge_overlapping(vec![
+                slot(&["設定", "コンフィグ"], vec![1], vec![]),
+                slot(&["config", "設定"], vec![1], vec![]),
+            ])
+            .len(),
+            1
+        );
+        assert_eq!(
+            merge_overlapping(vec![
+                slot(&["Web", "www"], vec![1], vec![]),
+                slot(&["web", "ウェブ"], vec![1], vec![]),
+            ])
+            .len(),
+            1,
+            "表記は違っても同じ term（正規化で同じ token）"
+        );
+        assert_eq!(
+            merge_overlapping(vec![
+                slot(&["alpha", "client error"], vec![1], vec![vec![2, 3]]),
+                slot(&["gamma", "client error"], vec![7], vec![vec![2, 3]]),
+            ])
+            .len(),
+            1
+        );
+
+        // 検索では: タイトルが alpha だけの doc は「alpha beta」で一部一致の倍率
+        let docs = ["alpha の 説明", "beta の 説明", "error が 出る"];
+        let syn = vec![
+            vec!["alpha".to_string(), "client error".to_string()],
+            vec!["beta".to_string(), "server error".to_string()],
+        ];
+        let mut engine = build_index_with_synonyms(&docs, 1024, syn);
+        let base = engine.search("alpha beta", 10);
+        let alpha = engine.terms.get("alpha").unwrap() as u32;
+        engine.manifest.doc_title_terms = vec![vec![alpha], vec![], vec![]];
+        let boosted = engine.search("alpha beta", 10);
+        let s0 = |hits: &[super::Hit]| hits.iter().find(|h| h.doc_id == 0).unwrap().score;
+        let expected = s0(&base) * (1.0 + (super::TITLE_BOOST - 1.0) / 2.0);
+        assert!(
+            (s0(&boosted) - expected).abs() < 1e-5,
+            "base={} boosted={} expected={expected}",
+            s0(&base),
+            s0(&boosted)
+        );
     }
 
     #[test]
