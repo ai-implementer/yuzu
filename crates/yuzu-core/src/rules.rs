@@ -91,6 +91,12 @@ pub const EXTERNAL_LINK_BROKEN: Rule = warning("external-link-broken");
 // 片方が失われるが、区別する FS とサーバでは別の URL として動くので warning にする ---
 pub const ROUTE_CASE_CONFLICT: Rule = warning("route-case-conflict");
 
+// --- content（`input.dir`）の外を指す相対リンク（v0.20 Phase 91）。外のファイルはサイトに
+// 出ない。既存の原稿は `docs/` から `../src/` を指すことが多いので、`lint.rules`・`lintDisable`・
+// 行コメントで外せる warning にする（外さなければ check は終了コード 1。以前は出た分の `..` を
+// 捨て、中の別のページに解決していた）---
+pub const LINK_OUTSIDE_CONTENT: Rule = warning("link-outside-content");
+
 // --- 抑制機構自身のルール（warning）。自身を抑制できると古びた抑制が
 // 黙って溜まるため、抑制不可で固定する ---
 pub const INVALID_LINT_SUPPRESSION: Rule = warning_unsuppressible("invalid-lint-suppression");
@@ -122,6 +128,7 @@ pub const RULES: &[Rule] = &[
     SPEC_WARNING,
     EXTERNAL_LINK_BROKEN,
     ROUTE_CASE_CONFLICT,
+    LINK_OUTSIDE_CONTENT,
     INVALID_LINT_SUPPRESSION,
     UNUSED_LINT_SUPPRESSION,
 ];

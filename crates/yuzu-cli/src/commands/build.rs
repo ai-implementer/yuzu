@@ -626,8 +626,8 @@ fn warn_if_no_pages(rc: &ResolvedConfig, site: &yuzu_core::SiteModel) {
 ///
 /// - 大文字小文字だけが違う URL は 1 件ずつ警告する（区別する FS とサーバでは別の URL として
 ///   動くため止めない）
-/// - リンク切れ（画像切れ・見出しへのリンクも含む）と取り込みの失敗は数えて、1 件以上なら
-///   1 行で知らせる（Phase 85）
+/// - リンク切れ（画像切れ・見出しへのリンクも含む）・content の外を指すリンク・取り込みの失敗は
+///   数えて、1 件以上なら 1 行で知らせる（Phase 85。外を指すリンクは v0.20 Phase 91）
 ///
 /// 診断は check と同じ収集（`collect`）と抑制を通す。frontmatter の `lintDisable`・
 /// `lint.rules` の解釈が check と食い違わない（10-12 レビューの R2）。ページ集合はビルドの
@@ -644,17 +644,21 @@ fn report_problems(
     let BuildProblems {
         case_conflicts,
         links,
+        outside,
         includes,
     } = build_problems(rc, site, md_opts, include_drafts, live_reload)?;
     for d in &case_conflicts {
         tracing::warn!(page = %d.rel.display(), "{}", d.message);
     }
-    if links + includes == 0 {
+    if links + outside + includes == 0 {
         return Ok(());
     }
     let mut counts = Vec::new();
     if links > 0 {
         counts.push(format!("リンク切れ {links} 件"));
+    }
+    if outside > 0 {
+        counts.push(format!("content/ の外を指すリンク {outside} 件"));
     }
     if includes > 0 {
         counts.push(format!("取り込みの失敗 {includes} 件"));
@@ -673,6 +677,8 @@ struct BuildProblems {
     case_conflicts: Vec<yuzu_core::Diagnostic>,
     /// リンク切れ・見出しへのリンク切れの件数
     links: usize,
+    /// content の外を指す相対リンクの件数（warning。書いたまま残す。v0.20 Phase 91）
+    outside: usize,
     /// コンテンツインクルードと仕様の `file:` 参照の失敗の件数
     includes: usize,
 }
@@ -706,6 +712,7 @@ fn build_problems(
             .count()
     };
     let links = count(&[rules::BROKEN_LINK, rules::BROKEN_ANCHOR]);
+    let outside = count(&[rules::LINK_OUTSIDE_CONTENT]);
     let includes = count(&[rules::INCLUDE_ERROR, rules::SPEC_ERROR]);
     let case_conflicts = outcome
         .diags
@@ -715,6 +722,7 @@ fn build_problems(
     Ok(BuildProblems {
         case_conflicts,
         links,
+        outside,
         includes,
     })
 }
@@ -1169,6 +1177,38 @@ mod tests {
         assert!(after.case_conflicts.is_empty(), "抑制が効いていない");
         // 抑制できないリンク切れは数えたまま
         assert_eq!(after.links, 1);
+    }
+
+    /// v0.20 Phase 91: content の外を指すリンクはリンク切れと別に数え、`lint.rules` で外せる
+    #[test]
+    fn build_は_content_の外を指すリンクを数え_lint_rules_で外せる() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("README.md", "# 外\n");
+        write(
+            "content/index.md",
+            "# t\n\n[外の README](../README.md)\n\n[外のソース](../src/main.rs)\n",
+        );
+        let problems = || {
+            let rc = yuzu_config::load(&root).unwrap();
+            let md_opts = yuzu_render::markdown_options(&rc.config);
+            let site =
+                yuzu_core::build_site_model(&rc.content_dir, &rc.config.input.ignore, &md_opts)
+                    .unwrap();
+            build_problems(&rc, &site, &md_opts, false, LiveReloadMode::None).unwrap()
+        };
+
+        write("yuzu.toml", "");
+        let before = problems();
+        assert_eq!((before.links, before.outside), (0, 2));
+
+        write("yuzu.toml", "[lint.rules]\nlink-outside-content = false\n");
+        assert_eq!(problems().outside, 0);
     }
 
     /// PR #42 の再レビューの指摘: public/_search/ に利用者のファイルがあっても、止めた

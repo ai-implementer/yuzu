@@ -4,7 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use yuzu_core::{
-    Diagnostic, LinkReport, MarkdownOptions, OutputSwitches, build_source_pages, check_links,
+    Diagnostic, LinkReport, MarkdownOptions, OutputSwitches, Severity, build_source_pages,
+    check_links,
 };
 
 /// 既定の設定で出す生成物（llms・ハイライト・検索あり。base_url がパスなので sitemap なし）
@@ -264,6 +265,55 @@ fn クエリに_url_を含むサイト内リンクも照合する() {
     );
     assert_eq!(rules(&diags), ["broken-link"]);
     assert!(diags[0].message.contains("/nai/"), "{}", diags[0].message);
+}
+
+/// content の外を指す相対リンクは warning（v0.20 Phase 91）。以前は出た分の `..` を捨てて
+/// 中のページ・ファイルに照合していたので、`../README.md` は content の README.md に当たって通っていた
+#[test]
+fn content_の外を指す相対リンクは_link_outside_content() {
+    let diags = check(
+        &[
+            (
+                "index.md",
+                "# t\n\n[外の README](../README.md)\n\n[外のソース](../src/main.rs)\n\n[中](guide/../README.md)\n",
+            ),
+            (
+                "guide/a.md",
+                "# a\n\n[外](../../README.md#使い方)\n\n![外の図](../../fig.png)\n",
+            ),
+            ("README.md", "# 中の README\n"),
+            ("src/main.rs", ""),
+        ],
+        &[],
+    );
+    let mut got: Vec<(&str, &str, &str)> = diags
+        .iter()
+        .map(|d| {
+            (
+                d.rule.id,
+                d.rel.to_str().unwrap(),
+                if d.message.contains("../README.md") {
+                    "README"
+                } else if d.message.contains("main.rs") {
+                    "main.rs"
+                } else {
+                    "fig"
+                },
+            )
+        })
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            ("link-outside-content", "guide/a.md", "README"),
+            ("link-outside-content", "guide/a.md", "fig"),
+            ("link-outside-content", "index.md", "README"),
+            ("link-outside-content", "index.md", "main.rs"),
+        ],
+        "{diags:?}"
+    );
+    assert!(diags.iter().all(|d| d.severity() == Severity::Warning));
 }
 
 #[test]

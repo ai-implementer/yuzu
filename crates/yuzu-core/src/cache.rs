@@ -74,7 +74,9 @@ use crate::model::{Frontmatter, TocEntry};
 ///   CachedMeta の Frontmatter に `search`（検索から外す）を追加（Phase 89。bump を 1 回に束ねた）
 /// - v28: 外部 URL の判定を先頭のスキームだけで行う（Phase 90。PR #66 のレビュー指摘）。
 ///   `/search/?q=https://…` のようにクエリに URL を含むリンクにも base が付き、本文 HTML が変わる
-pub const CACHE_FORMAT_VERSION: u32 = 28;
+/// - v29: content の外を指す相対リンク（`..` がルートより上へ出る）を書いたまま残す（Phase 91）。
+///   以前は出た分の `..` を捨てて中のページ・ファイルの URL にしていた
+pub const CACHE_FORMAT_VERSION: u32 = 29;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

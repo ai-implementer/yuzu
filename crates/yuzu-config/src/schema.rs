@@ -410,6 +410,7 @@ pub const DISABLEABLE_RULES: &[&str] = &[
     "halfwidth-kana",
     "heading-level-skip",
     "katakana-choon",
+    "link-outside-content",
     "route-case-conflict",
     "spec-warning",
     "term-variant",

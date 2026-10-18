@@ -78,13 +78,14 @@ content/guide/x.md:12:1: warning[duplicate-h1] 本文に h1 が 2 個以上あ�
 
 ## yuzu check が追加するルール
 
-深刻度は `external-link-broken` と `route-case-conflict` を除いてすべて error で、常時有効・
+深刻度は `external-link-broken`・`link-outside-content`・`route-case-conflict` を除いてすべて error で、常時有効・
 `--fix` では直せません。
 
 | ルール | 検出内容 |
 | --- | --- |
 | `broken-link` | 内部リンクの切れ（外部 URL は既定では検査しません）。ビルドの生成物（`/404.html`・`/llms.txt`・`/sitemap.xml`・`/_search/` など）へのリンクは、今の設定で出力するものだけを有効にします（`llms.enabled = false` なら `/llms.txt` は切れ。`public/` に同じパスのファイルがあれば有効） |
 | `external-link-broken` | `check --external-links` を付けたときだけ。外部リンク（`http` / `https`）が HTTP 4xx を返した。warning で、`lintDisable`・行コメント・`lint.rules` で抑制できます。DNS 失敗・タイムアウト・5xx・429 は診断にせず「スキップ N 件」（`summary.skipped`）に数えます |
+| `link-outside-content` | 相対リンクの `..` が `content/`（`input.dir`）より上へ出る（`docs/content/index.md` から `../README.md`・`../../src/main.rs` を指すなど）。`content/` の外のファイルはサイトに出ないので、リンクは書いたまま残します。warning で、`yuzu build` も件数を知らせます。既存の原稿を持ち込んですぐには直せないときは、`lintDisable`・行コメント・`lint.rules` で抑制できます（抑制しなければ、ほかの warning と同じく check は終了コード 1）。直すにはフル URL（GitHub のファイルの URL など）で書くか、ファイルを `content/` の下へ移します |
 | `broken-anchor` | 見出し・図表ラベルへのアンカーの切れ |
 | `alias-invalid` | frontmatter `aliases` の値が URL として解釈できない（`#` `?` を含む・出力パスに使えない文字を含む等） |
 | `alias-conflict` | エイリアスが実ページや他のエイリアスと衝突する |
