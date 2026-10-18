@@ -47,6 +47,20 @@ pub(crate) struct SiteCtx<'a> {
     pub locale: Option<String>,
     /// `<meta name="generator">` の値
     pub generator: &'static str,
+    /// `<link rel="icon">` の href（`site.favicon`、無ければ public/favicon.ico。base 前置済み）
+    pub favicon_url: Option<String>,
+    /// フッターの HTML（`site.footer` のインラインの Markdown を描画したもの。書き手が書いた
+    /// ものなので本文と同じく `| safe` で埋める）
+    pub footer_html: Option<String>,
+    /// ヘッダーのリンク（`site.header_links`。URL は base 前置済み）
+    pub header_links: Vec<LinkCtx<'a>>,
+}
+
+/// ヘッダーのリンク 1 つ
+#[derive(Serialize)]
+pub(crate) struct LinkCtx<'a> {
+    pub text: &'a str,
+    pub url: String,
 }
 
 /// `<meta name="generator">` の値。**バージョンは含めない** — 含めるとリリースの

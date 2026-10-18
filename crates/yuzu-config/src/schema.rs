@@ -48,6 +48,24 @@ pub struct SiteConfig {
     /// フル URL も可。og:image は絶対 URL が必須のため、パス指定は `base_url` が
     /// フル URL のときだけ出力される。未指定なら og:image を出さない
     pub image: Option<String>,
+    /// ブラウザのタブに出すアイコン（例: `/images/favicon.svg`。public/ 配下を指す）。フル URL も可。
+    /// 未指定なら public/favicon.ico があればそれを使う（サブパス配信でも base の下を指す。
+    /// ブラウザが自分で探すのはドメイン直下の /favicon.ico だけなので、`<link rel="icon">` を出す）
+    pub favicon: Option<String>,
+    /// ページの末尾に出すフッターの文言（インラインの Markdown。リンク・強調が書ける。
+    /// 例: `社外秘 · [社内ポータル](https://portal.example.com/)`）。未指定ならフッターを出さない
+    pub footer: Option<String>,
+    /// ヘッダーに並べるリンク（`[[site.header_links]]` の `text` と `url`）
+    pub header_links: Vec<HeaderLink>,
+}
+
+/// ヘッダーのリンク 1 つ（`[[site.header_links]]`）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeaderLink {
+    /// 表示する文字
+    pub text: String,
+    /// リンク先。`/` で始まるサイト内のパスは base を前置し、フル URL・`mailto:` 等はそのまま
+    pub url: String,
 }
 
 impl Default for SiteConfig {
@@ -59,6 +77,9 @@ impl Default for SiteConfig {
             lang: "ja".to_string(),
             logo: None,
             image: None,
+            favicon: None,
+            footer: None,
+            header_links: Vec::new(),
         }
     }
 }

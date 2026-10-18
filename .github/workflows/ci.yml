@@ -148,7 +148,7 @@ jobs:
           # エイリアス（guide/quality の旧 URL）にリダイレクト HTML が生成される
           grep -q 'http-equiv="refresh"' docs/dist/guide/lint/index.html
           # コンテンツインクルード: yuzu.toml の引用が展開されている
-          grep -q '<figcaption>yuzu.toml:25-45</figcaption>' docs/dist/guide/code-and-math/index.html
+          grep -q '<figcaption>yuzu.toml:27-47</figcaption>' docs/dist/guide/code-and-math/index.html
           # 図表番号: キャプションの採番と参照リンクの自動補完
           grep -q 'id="fig:deps"' docs/dist/development/index.html
           grep -q '<a href="#fig:deps">図 1</a>' docs/dist/development/index.html
@@ -330,6 +330,8 @@ jobs:
           # Phase 89: 検索の並び順（タイトル一致の優遇）と search: false の説明
           grep -q 'id="結果の並び順"' docs/dist/guide/search/index.html
           grep -q 'id="検索から外す"' docs/dist/guide/search/index.html
+          # Phase 90: favicon・フッター・ヘッダーのリンクの説明
+          grep -q 'id="faviconフッターヘッダーのリンク"' docs/dist/guide/appearance/index.html
           # 設定例は TOML で書く（JSON / YAML 風の `markdown.mermaid.backend: "ssr"` や
           # `"abbr": false` はコピーすると設定エラーになる）。原稿・README・雛形・スキルを見る
           if grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/; then
@@ -343,6 +345,18 @@ jobs:
             echo "docs で SSR フォールバックが発生している（上記ページ）" >&2
             exit 1
           fi
+          # Phase 90（リリース判定）: サブパス配信（docs.yml と同じ --base-url）で、favicon の
+          # link が base の下を指し、そのファイルが dist にある（以前は link が無く、ブラウザが
+          # 探すドメイン直下の /favicon.ico は 404 だった）。docs/dist を作り直すので最後に置く
+          target/debug/yuzu build --root docs --base-url /yuzu/
+          href="$(grep -oE '<link rel="icon" href="[^"]*"' docs/dist/index.html | sed -E 's/.*href="([^"]*)"/\1/')"
+          case "$href" in
+            /yuzu/*) ;;
+            *) echo "favicon の href が base の下を指していない: '$href'" >&2; exit 1 ;;
+          esac
+          test -f "docs/dist/${href#/yuzu/}"
+          grep -q '<footer class="site-footer">' docs/dist/index.html
+          grep -q 'class="header-links"' docs/dist/index.html
 
       # e2e: サンプルプロジェクト生成 → ビルド → ネイティブ検索（誤字クエリ込み）
       - name: e2e (yuzu new && yuzu build && yuzu search)

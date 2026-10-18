@@ -1036,6 +1036,37 @@ pub struct FenceBlock {
     pub span: SourceSpan,
 }
 
+/// 1 段落ぶんのインラインの Markdown を HTML にする（`site.footer` 等。外側の `<p>` は外す）。
+/// リンク・画像の URL は `rewrite` で書き換える（サイト内のパスに base を前置する等。
+/// `None` なら書いたまま）。本文と同じ comrak の設定で描画する（生 HTML も通る = 本文と同じく
+/// 書き手が書いたもの）。frontmatter の区切りは見ない
+pub fn render_inline_markdown(
+    text: &str,
+    opts: &MarkdownOptions,
+    rewrite: &dyn Fn(&str) -> Option<String>,
+) -> Result<String, CoreError> {
+    let arena = Arena::new();
+    let mut options = comrak_options(opts);
+    options.extension.front_matter_delimiter = None;
+    let root = parse_document(&arena, text, &options);
+    for node in root.descendants() {
+        let mut data = node.data.borrow_mut();
+        if let NodeValue::Link(link) | NodeValue::Image(link) = &mut data.value
+            && let Some(rewritten) = rewrite(&link.url)
+        {
+            link.url = rewritten;
+        }
+    }
+    let mut out = String::new();
+    comrak::format_html(root, &options, &mut out)?;
+    let html = out.trim();
+    Ok(html
+        .strip_prefix("<p>")
+        .and_then(|s| s.strip_suffix("</p>"))
+        .unwrap_or(html)
+        .to_string())
+}
+
 /// fenced コードブロックを本文つきで列挙する。comrak を触るのはこのモジュールだけ
 /// なので、`yuzu check` の apispec 検証のように本文を crate 外で解釈する経路は
 /// これを使う（[`extract_fence_meta`] は情報文字列と行数しか持たない）

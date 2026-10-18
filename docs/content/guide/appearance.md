@@ -1,7 +1,7 @@
 ---
 title: 見た目の調整
 order: 9
-description: テーマの上書き・配色・ダークモード・印刷と PDF
+description: テーマの上書き・配色・favicon・フッター・ヘッダーのリンク・ダークモード・印刷と PDF
 ---
 
 # 見た目の調整
@@ -31,6 +31,27 @@ accent = "#0a6cff"
 accent = "#7fb2ff"
 ```
 
+## favicon・フッター・ヘッダーのリンク
+
+テンプレートを上書きしなくても、設定でタブのアイコン・ページの末尾の文言・ヘッダーの
+リンクを足せます（キーの一覧は[設定リファレンス](../reference/config.md#site)）。
+
+```toml
+[site]
+favicon = "/images/favicon.svg" # public/ 配下のパス
+footer = "社外秘 · [社内ポータル](https://portal.example.com/)" # インラインの Markdown
+
+[[site.header_links]]
+text = "GitHub"
+url = "https://github.com/example/docs"
+```
+
+- `favicon` を書かなくても、`public/favicon.ico` を置けばそれを使います。ブラウザが
+  自分で探すのはドメイン直下の `/favicon.ico` だけなので、`base_url = "/docs/"` の
+  ようなサブパス配信では、yuzu が `base_url` の下を指す `<link rel="icon">` を出します
+- フッターの文言は印刷・PDF にも残ります（「社外秘」などの表示に使えます）
+- ヘッダーのリンクは、狭い画面ではナビを開いたときの一番下に出ます
+
 ## ダークモード
 
 ダークモードの扱いは `theme.dark` で選びます。
@@ -43,7 +64,11 @@ accent = "#7fb2ff"
 
 OS の設定に従うのは CSS（`prefers-color-scheme`）なので、JavaScript が無効でも
 効き、OS 側でライト / ダークを切り替えるとその場で追従します。ボタンで選んだ配色は
-ブラウザに保存され、次に開いたときも同じになります。v0.18 までの `dark = true` は
+ブラウザに保存され、次に開いたときも同じになります。
+
+切替ボタンは押すたびに「OS の設定」→ 今の見た目の反対 → もう一方 →「OS の設定」の順に
+変わります（◐ が OS の設定、☀ がライト、☾ がダーク）。今の状態と次の状態は、
+ボタンにポインタを重ねると出ます（スクリーンリーダーも読み上げます）。v0.18 までの `dark = true` は
 `"toggle"`、`dark = false` は `"light"` として読みます（見た目は変わりません）。
 
 ## 印刷と PDF

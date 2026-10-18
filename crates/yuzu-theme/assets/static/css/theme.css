@@ -252,6 +252,49 @@ body {
   gap: 0.6rem;
 }
 
+/* site.header_links（ヘッダーのリンク）。狭い画面ではナビの下（.sidebar-links）に移す */
+.header-links {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-right: 0.3rem;
+}
+
+.header-links a,
+.sidebar-links a {
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.header-links a:hover,
+.sidebar-links a:hover {
+  color: var(--accent);
+}
+
+.sidebar-links {
+  display: none;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin: 1rem 1.25rem 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+/* site.footer（ページの末尾の文言）。「社外秘」等の表示に使うので印刷にも残す */
+.site-footer {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.site-footer a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 /* ---- 検索 ---- */
 
 .search {
@@ -266,7 +309,8 @@ body {
   border-radius: var(--radius-md);
   background: var(--bg-subtle);
   color: var(--fg);
-  font-size: 0.9rem;
+  /* 16px 未満の入力欄は iOS Safari がフォーカス時に画面を拡大するので 1rem にする（Phase 90） */
+  font-size: 1rem;
 }
 
 #yuzu-search-input:focus,
@@ -1836,6 +1880,15 @@ body.has-copy-js .markdown-body pre.highlight[data-lang]::before {
 @media (max-width: 50rem) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* ヘッダーのリンクはナビの下へ移す（ヘッダーに収まらない） */
+  .header-links {
+    display: none;
+  }
+
+  .sidebar-links {
+    display: flex;
   }
 
   .sidebar {

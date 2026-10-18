@@ -151,6 +151,17 @@ pub fn validate_pages(site: &SiteModel, rc: &ResolvedConfig) -> Result<(), Rende
 }
 
 /// サイト全体を `dist/` に書き出す
+/// 設定に書いたリンク（`site.favicon`・`site.header_links`・`site.footer` のリンク）の配信 URL。
+/// フル URL・`mailto:` 等とページ内の `#…` はそのまま、それ以外はサイトのルートからのパスとして
+/// base を前置する（`/guide/` と `guide/` は同じ。`site.logo` と同じ規則）
+fn site_link_url(resolver: &UrlResolver, url: &str) -> String {
+    if yuzu_core::urlpath::is_external_url(url) || url.starts_with('#') {
+        url.to_string()
+    } else {
+        resolver.public_url(url)
+    }
+}
+
 pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     let rc = params.config;
     let cfg = &rc.config;
@@ -225,7 +236,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     // og:image は絶対 URL が必須。フル URL 指定はそのまま、パス指定は base がフル URL の
     // ときだけ解決する（ローカルビルドでは出ないのが普通なので debug ログに留める）
     let image_url = cfg.site.image.as_deref().and_then(|p| {
-        if p.contains("://") {
+        if yuzu_core::urlpath::has_url_scheme(p) {
             Some(p.to_string())
         } else if resolver.is_absolute_base() {
             Some(resolver.public_url(p))
@@ -234,6 +245,28 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             None
         }
     });
+    // favicon: 設定が無ければ public/favicon.ico を使う。ブラウザが自分で探すのはドメイン
+    // 直下の /favicon.ico だけなので、サブパス配信（base_url = "/docs/"）では link が要る
+    let favicon_url = match cfg.site.favicon.as_deref() {
+        Some(p) => Some(site_link_url(&resolver, p)),
+        None => rc
+            .public_dir
+            .as_ref()
+            .filter(|dir| dir.join("favicon.ico").is_file())
+            .map(|_| resolver.public_url("favicon.ico")),
+    };
+    // フッター（インラインの Markdown）。リンクはヘッダーのリンクと同じくサイトのルートからの
+    // パスとして解決する（全ページで同じ文言なので、ページ相対には解決できない）
+    let footer_html = cfg
+        .site
+        .footer
+        .as_deref()
+        .map(|text| {
+            yuzu_core::render_inline_markdown(text, &md_opts, &|url| {
+                Some(site_link_url(&resolver, url))
+            })
+        })
+        .transpose()?;
     let site_ctx = SiteCtx {
         title: &cfg.site.title,
         description: cfg.site.description.as_deref(),
@@ -242,6 +275,17 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         image_url,
         locale: crate::context::og_locale(&cfg.site.lang),
         generator: crate::context::GENERATOR,
+        favicon_url,
+        footer_html,
+        header_links: cfg
+            .site
+            .header_links
+            .iter()
+            .map(|link| crate::context::LinkCtx {
+                text: &link.text,
+                url: site_link_url(&resolver, &link.url),
+            })
+            .collect(),
     };
     // theme.css_vars / css_vars_dark → head に注入する CSS 変数上書き（全ページ共通）
     let theme_css_vars =

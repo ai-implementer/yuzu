@@ -10,7 +10,8 @@
 use std::collections::HashMap;
 
 use yuzu_core::urlpath::{
-    encode_path, is_external_url, percent_decode, rel_to_slash, resolve_relative, split_suffix,
+    encode_path, has_url_scheme, is_external_url, percent_decode, rel_to_slash, resolve_relative,
+    split_suffix,
 };
 use yuzu_core::{Page, SiteModel, UrlRewriter};
 
@@ -78,7 +79,7 @@ impl UrlResolver {
     /// 設定で指定されたサイト内パス（ロゴ等）を配信 URL へ解決する。
     /// フル URL はそのまま、`/foo` と `foo` はともにサイトルート起点として base を前置する
     pub fn public_url(&self, path: &str) -> String {
-        if path.contains("://") {
+        if has_url_scheme(path) {
             return path.to_string();
         }
         format!("{}{}", self.base, path.trim_start_matches('/'))
@@ -353,6 +354,20 @@ mod tests {
         assert_eq!(
             r.public_url("https://cdn.example.com/logo.png"),
             "https://cdn.example.com/logo.png"
+        );
+        // クエリに URL を含むサイト内パスにも base を前置する（PR #66 のレビュー指摘）
+        assert_eq!(
+            r.public_url("/search/?q=https://example.com/"),
+            "/docs/search/?q=https://example.com/"
+        );
+    }
+
+    #[test]
+    fn クエリに_url_を含むサイト内リンクにも_base_を前置する() {
+        let (r, p) = resolver("/docs/");
+        assert_eq!(
+            r.rewrite(&p, "/search/?q=https://example.com/").as_deref(),
+            Some("/docs/search/?q=https://example.com/")
         );
     }
 }

@@ -15,7 +15,8 @@
 {% endif %}{% if site.image_url %}<meta property="og:image" content="{{ site.image_url | url }}">
 {% endif %}{% if site.locale %}<meta property="og:locale" content="{{ site.locale }}">
 {% endif %}<meta name="twitter:card" content="summary">{# URL 系の値はこちらで生成した安全な文字列なので safe を通す（/ の実体参照化を避ける） #}
-<link rel="stylesheet" href="{{ asset_url | url }}css/theme.css">
+{% if site.favicon_url %}<link rel="icon" href="{{ site.favicon_url | url }}">
+{% endif %}<link rel="stylesheet" href="{{ asset_url | url }}css/theme.css">
 {% if highlight_enabled %}<link rel="stylesheet" href="{{ asset_url | url }}css/syntect.css">
 {% endif %}{% if theme_css_vars %}{# yuzu.toml theme.css_vars 由来（値は render 側で検証済み） #}<style>
 {{ theme_css_vars | safe }}</style>
@@ -114,7 +115,8 @@
 </main>
 {% include "partials/toc.jinja" %}
 </div>
-<script src="{{ asset_url | url }}js/theme.js"></script>
+{% if site.footer_html %}<footer class="site-footer">{# site.footer（インラインの Markdown を render 側で描画済み。書き手が書いたものなので本文と同じく safe） #}{{ site.footer_html | safe }}</footer>
+{% endif %}<script src="{{ asset_url | url }}js/theme.js"></script>
 <script src="{{ asset_url | url }}js/nav.js"></script>
 <script src="{{ asset_url | url }}js/scrollspy.js"></script>
 <script src="{{ asset_url | url }}js/copy-button.js"></script>

@@ -248,6 +248,24 @@ fn 外部_url_は検査しない() {
     assert!(diags.is_empty(), "{diags:?}");
 }
 
+/// クエリに URL を含むサイト内リンクは外部 URL ではない（PR #66 のレビュー指摘。文字列のどこかに
+/// `://` があると外部扱いにして、リンク先を照合していなかった）
+#[test]
+fn クエリに_url_を含むサイト内リンクも照合する() {
+    let diags = check(
+        &[
+            (
+                "index.md",
+                "# t\n\n[ある](/guide/?q=https://example.com/)\n\n[ない](/nai/?q=https://example.com/)\n",
+            ),
+            ("guide/index.md", "# g\n"),
+        ],
+        &[],
+    );
+    assert_eq!(rules(&diags), ["broken-link"]);
+    assert!(diags[0].message.contains("/nai/"), "{}", diags[0].message);
+}
+
 #[test]
 fn 画像の相対参照は実在チェック() {
     let diags = check(

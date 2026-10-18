@@ -19,8 +19,8 @@ use kabosu::{
 
 use crate::schema::{
     BindAddr, BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DarkMode,
-    DevConfig, GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,
-    MarkdownConfig, MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig,
+    DevConfig, GitConfig, GlossaryConfig, HeaderLink, HighlightConfig, InputConfig, LintConfig,
+    LlmsConfig, MarkdownConfig, MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig,
     SearchConfig, ShardConfig, SiteConfig, ThemeConfig, TocConfig, TypoToleranceConfig,
 };
 
@@ -73,7 +73,59 @@ table_codec!(SiteConfig {
     "lang" => lang,
     "logo" => logo,
     "image" => image,
+    "favicon" => favicon,
+    "footer" => footer,
+    "header_links" => header_links,
 });
+
+/// `[[site.header_links]]` の 1 つ。`text` と `url` は必須で、`url` に `javascript:` のような
+/// スクリプトを実行するスキームは書けない（テンプレートの href にそのまま入るため）
+impl Decode for HeaderLink {
+    fn decode(node: &Node, cx: &mut DecodeContext<'_>) -> Option<Self> {
+        let mut d = TableDecoder::new(node, cx)?;
+        let text: Option<String> = d.required("text");
+        let url: Option<String> = d.required("url");
+        d.finish();
+        let (text, url) = (text?, url?);
+        let scheme = url
+            .split_once(':')
+            .map(|(s, _)| s.trim().to_ascii_lowercase())
+            .filter(|s| !s.contains('/'));
+        let problem = if text.trim().is_empty() {
+            Some(("text", "表示する文字が空です".to_string()))
+        } else if url.trim().is_empty() {
+            Some(("url", "リンク先が空です".to_string()))
+        } else if matches!(scheme.as_deref(), Some("javascript" | "data" | "vbscript")) {
+            Some((
+                "url",
+                format!("`{url}` は使えません（スクリプトを実行するスキームは書けません）"),
+            ))
+        } else {
+            None
+        };
+        if let Some((key, message)) = problem {
+            let path = cx.key_path().clone();
+            cx.diagnostic(Diagnostic::new(
+                DiagnosticCode::Custom("invalid-value".into()),
+                Severity::Error,
+                format!("`{path}.{key}` の値: {message}"),
+                path,
+                node.span(),
+            ));
+            return None;
+        }
+        Some(Self { text, url })
+    }
+}
+
+impl Encode for HeaderLink {
+    fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), EncodeError> {
+        let mut t = encoder.table();
+        t.field("text", &self.text)?;
+        t.field("url", &self.url)?;
+        Ok(())
+    }
+}
 
 table_codec!(InputConfig {
     "dir" => dir,

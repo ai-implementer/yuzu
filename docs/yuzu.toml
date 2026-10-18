@@ -7,6 +7,8 @@ description = "Markdown の設計書を静的 HTML ドキュメントサイト�
 lang = "ja"
 logo = "/images/yuzu-logo.svg"
 image = "/images/og.png" # 共有カード（og:image）。base_url がフル URL の公開ビルドでだけ出る
+favicon = "/images/yuzu-logo.svg" # タブのアイコン（base_url の下を指す link を出す）
+footer = "yuzu は MIT OR Apache-2.0 で配布しています"
 
 [input]
 dir = "content"
@@ -70,3 +72,8 @@ edit_url = "https://github.com/ai-implementer/yuzu/edit/main/docs/content/{path}
 
 [dev]
 port = 5173
+
+# ヘッダーのリンク（狭い画面ではナビの下に出る）。[site] の外に書いても site の表に入る
+[[site.header_links]]
+text = "GitHub"
+url = "https://github.com/ai-implementer/yuzu"

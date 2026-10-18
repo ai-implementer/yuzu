@@ -396,6 +396,86 @@ fn url_で意味を持つ文字を含むファイル名はエンコードして�
 
 /// 設定由来の URL（route ではないのでビルドは通る）はテンプレートで
 /// エスケープされ、属性や `<script>` の文脈を壊さない
+/// `site.favicon`・`site.footer`・`site.header_links`（Phase 90）。リンクはサイトのルートからの
+/// パスとして base（フィクスチャは `/docs/`）を前置し、フル URL・mailto はそのまま
+#[test]
+fn favicon_とフッターとヘッダーのリンクを出す() {
+    let dir = build_fixture_with_config(LiveReloadMode::None, |rc| {
+        rc.config.site.favicon = Some("/images/favicon.svg".to_string());
+        rc.config.site.footer = Some(
+            concat!(
+                "社外秘 · [ガイド](/guide/getting-started/) · [外部](https://example.com/)",
+                " · [例の検索](/search/?q=https://example.com/)"
+            )
+            .into(),
+        );
+        rc.config.site.header_links = vec![
+            yuzu_config::HeaderLink {
+                text: "GitHub".into(),
+                url: "https://github.com/example/docs".into(),
+            },
+            yuzu_config::HeaderLink {
+                text: "連絡".into(),
+                url: "mailto:docs@example.com".into(),
+            },
+            yuzu_config::HeaderLink {
+                text: "手引き".into(),
+                url: "/guide/".into(),
+            },
+            // クエリに URL を含むサイト内リンクにも base を前置する（PR #66 のレビュー指摘）
+            yuzu_config::HeaderLink {
+                text: "検索の例".into(),
+                url: "/search/?q=https://example.com/".into(),
+            },
+        ];
+    });
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(
+        index.contains(r#"<link rel="icon" href="/docs/images/favicon.svg">"#),
+        "{index}"
+    );
+    assert!(
+        index.contains(concat!(
+            r#"<footer class="site-footer">社外秘 · <a href="/docs/guide/getting-started/">ガイド</a>"#,
+            r#" · <a href="https://example.com/">外部</a>"#,
+            r#" · <a href="/docs/search/?q=https://example.com/">例の検索</a></footer>"#
+        )),
+        "{index}"
+    );
+    for link in [
+        r#"<a href="https://github.com/example/docs">GitHub</a>"#,
+        r#"<a href="mailto:docs@example.com">連絡</a>"#,
+        r#"<a href="/docs/guide/">手引き</a>"#,
+        r#"<a href="/docs/search/?q=https://example.com/">検索の例</a>"#,
+    ] {
+        // ヘッダーと、狭い画面用のナビの下の 2 か所
+        assert_eq!(index.matches(link).count(), 2, "{link}: {index}");
+    }
+}
+
+/// `site.favicon` が無くても public/favicon.ico があれば base の下を指す link を出す
+/// （ブラウザが自分で探すのはドメイン直下だけなので、サブパス配信では 404 になっていた）
+#[test]
+fn favicon_の設定が無ければ_public_の_favicon_ico_を指す() {
+    let dir = build_fixture_with(|root| {
+        fs::create_dir_all(root.join("public")).unwrap();
+        fs::write(root.join("public/favicon.ico"), b"ico").unwrap();
+    });
+    let index = fs::read_to_string(dir.path().join("dist/index.html")).unwrap();
+    assert!(
+        index.contains(r#"<link rel="icon" href="/docs/favicon.ico">"#),
+        "{index}"
+    );
+    assert!(dir.path().join("dist/favicon.ico").is_file());
+
+    // どちらも無ければ出さない（既定の出力は変わらない）
+    let plain = build_fixture(LiveReloadMode::None);
+    let index = fs::read_to_string(plain.path().join("dist/index.html")).unwrap();
+    assert!(!index.contains(r#"rel="icon""#));
+    assert!(!index.contains("site-footer"));
+    assert!(!index.contains("header-links"));
+}
+
 #[test]
 fn 設定由来の_url_に危険な文字があってもエスケープされる() {
     let dir = build_fixture_with(|root| {

@@ -72,7 +72,9 @@ use crate::model::{Frontmatter, TocEntry};
 ///   docs と雛形の出力は変わらなかったが、本文 HTML と CachedMeta の位置が変わりうる）
 /// - v27: CachedSection に節のタイトルの token（`title_terms`。検索時のタイトル一致の倍率）、
 ///   CachedMeta の Frontmatter に `search`（検索から外す）を追加（Phase 89。bump を 1 回に束ねた）
-pub const CACHE_FORMAT_VERSION: u32 = 27;
+/// - v28: 外部 URL の判定を先頭のスキームだけで行う（Phase 90。PR #66 のレビュー指摘）。
+///   `/search/?q=https://…` のようにクエリに URL を含むリンクにも base が付き、本文 HTML が変わる
+pub const CACHE_FORMAT_VERSION: u32 = 28;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

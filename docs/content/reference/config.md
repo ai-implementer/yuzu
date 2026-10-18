@@ -144,6 +144,23 @@ edit_url = "https://github.com/me/docs/edit/main/content/{path}"
 | `base_url` | string / なし | サブパス配信時の基点（例 `"/docs/"`。[詳細](../guide/deploy.md)）。フル URL なら canonical / `og:url` / sitemap も出る。`.` で始まる相対パス（`"./"` など）は設定エラー |
 | `logo` | string / なし | ヘッダーのロゴ画像（`public/` 配下のパス。未指定なら 🍊） |
 | `image` | string / なし | 共有カードの画像 `og:image`（`public/` 配下のパスかフル URL。パス指定は `base_url` がフル URL のときだけ出る。[詳細](../guide/deploy.md#共有カードogpと-canonical)） |
+| `favicon` | string / なし | タブのアイコン（`public/` 配下のパスかフル URL）。未指定でも `public/favicon.ico` があればそれを使う。どちらも `base_url` の下を指す `<link rel="icon">` を出す |
+| `footer` | string / なし | ページの末尾に出す文言（インラインの Markdown。リンク・強調が書ける）。未指定ならフッターを出さない |
+| `header_links` | 表の配列 / なし | ヘッダーに並べるリンク（`[[site.header_links]]` に `text` と `url`。どちらも必須）。狭い画面ではナビの下に出る |
+
+`favicon`・`footer` のリンク・`header_links` の `url` は、`/` で始まるサイト内のパスに
+`base_url` を前置し、フル URL と `mailto:` はそのまま使います。`javascript:` のような
+スクリプトを実行するスキームは設定エラーです。
+
+```toml
+[site]
+favicon = "/images/favicon.svg"
+footer = "社外秘 · [社内ポータル](https://portal.example.com/)"
+
+[[site.header_links]]
+text = "GitHub"
+url = "https://github.com/example/docs"
+```
 
 ## input / output
 
