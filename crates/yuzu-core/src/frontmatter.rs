@@ -21,6 +21,7 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "lintDisable",
     "readingTime",
     "pageMd",
+    "search",
 ];
 
 /// frontmatter の書き間違い 1 件。位置は raw の中のバイト位置で、raw はファイルの
@@ -100,6 +101,7 @@ impl Decoder<'_> {
                 "lintDisable" => fm.lint_disable = self.strings(key, value),
                 "readingTime" => self.bool(key, value, &mut fm.reading_time),
                 "pageMd" => self.bool(key, value, &mut fm.page_md),
+                "search" => self.bool(key, value, &mut fm.search),
                 _ => {}
             }
         }
@@ -517,7 +519,7 @@ mod tests {
     #[test]
     fn known_keys_をすべて読む() {
         let fm = parse_frontmatter(
-            "---\ntitle: t\norder: -3\ndraft: true\ndescription: d\nllms: false\naliases: [a/]\nlintDisable: [x]\nreadingTime: false\npageMd: false\n---\n",
+            "---\ntitle: t\norder: -3\ndraft: true\ndescription: d\nllms: false\naliases: [a/]\nlintDisable: [x]\nreadingTime: false\npageMd: false\nsearch: false\n---\n",
         )
         .unwrap();
         let value = serde_json::to_value(&fm).unwrap();

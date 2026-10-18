@@ -18,14 +18,24 @@
     （CI）が今の依存（mikan-wasm の wasm32 向け通常依存）と照合し、依存が変わったのに
     作り直していなければ失敗する（Phase 82）
 
+- `wasm-inputs.sha256`: wasm の入力（mikan・mikan-wasm のソースと Cargo.toml、wasm32 向けの
+  依存の木と features、ルート Cargo.toml の wasm のプロファイル、`build-search-wasm.sh` 自身）の
+  ハッシュ。`build-search-wasm.sh` だけが書き、CI が `build-search-wasm.sh --check` で今の入力と
+  照合する（作り直し忘れの検出。Phase 89）。dist へは出さない（`copy_wasm_assets` の一覧に無い）
+
 ## 現在の成果物
 
 - 生成日: 2026-10-18（wasm-bindgen 0.2.126 / binaryen version_131 / wasm-opt -Oz / rustc 1.99.1。
-  開発コンテナ（Linux aarch64）で生成）。MSRV 1.99 で上げられるようになった globset 0.4.20 を
-  依存ごと上げたとき、wasm に入る memchr（2.8.3）と serde の derive が使う proc-macro2・quote・
-  syn・unicode-ident の版が変わったことに追随した再 vendor。コードとエクスポート API は変わらない
-  （`search.js` は前回とバイト同一）
+  開発コンテナ（Linux aarch64）で生成）。Phase 89 の検索の順位（同義語をまとめて 1 語として
+  数える・タイトル一致の倍率）に伴う再 vendor。エクスポート API は変わらない（`search.js` は
+  前回とバイト同一）。この回から `--remap-path-prefix` でビルドした人の `$CARGO_HOME` を
+  `/cargo` に置き換えたので、wasm に絶対パスが入らない（以前は `~/.cargo/registry` が 45 か所）。
+  PR #65 のレビュー指摘（複数語の同義語の未知語・重なる同義語グループ・引用符付きの検索の
+  タイトル一致）と再レビューの指摘（重なる同義語グループの判定をメンバーの表記で行う）の修正を含む
 - 以前の生成（新しい順。ツールの版はどれも同じ）
+  - 2026-10-18: MSRV 1.99 で上げられるようになった globset 0.4.20 を依存ごと上げたとき、wasm に
+    入る memchr（2.8.3）と serde の derive が使う proc-macro2・quote・syn・unicode-ident の版が
+    変わったことに追随
   - 2026-10-18: MSRV を 1.99 へ上げたときの clippy の修正で mikan の `shard.rs` が
     `chunks_exact(4)` から `as_chunks::<4>()` になったことに追随
   - 2026-10-18: mikan の版を 0.2.2 に上げた（ソースは 0.2.1 と同一）ことに追随。版から
@@ -36,9 +46,9 @@
     **追加**した（既存の `search(query, limit)` は据え置き ＝ 固定 URL の HTTP キャッシュに残った
     旧 wasm が引数を黙って無視して「絞り込んでいないのに絞り込んだ件数」を出す事故を避けるため）。
     インデックスフォーマットは v3 のまま（`docGroups` / `groups` は `serde(default)` の後方互換フィールド）
-- `search_bg.wasm`: 504KB（516,359 bytes。vaporetto + fst + BM25 エンジン + フレーズ隣接照合 +
+- `search_bg.wasm`: 515KB（527,031 bytes。vaporetto + fst + BM25 エンジン + フレーズ隣接照合 +
   近接ブースト + 動的抜粋 + 同義語クエリ拡張 + 文字単位 Levenshtein DFA
-  （levenshtein_automata）+ グループ絞り込み込み。gzip 転送で概ね半分以下）
+  （levenshtein_automata）+ グループ絞り込み + 同義語のまとめ + タイトル一致の倍率込み。gzip 転送で概ね半分以下）
 - `search.js`: 14KB（wasm-bindgen --target web の ES module グルー）
 - `search-client.js`: 6.1KB（フェッチ ＋ OPFS キャッシュ ＋ wasm 起動
   オーケストレーション。`groups()` は絞り込み非対応の wasm では空配列を返す）

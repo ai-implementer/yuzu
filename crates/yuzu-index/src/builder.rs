@@ -251,6 +251,7 @@ pub fn build_search_index_with(
                     text: s.text.clone(),
                     doc_len: s.doc_len,
                     tf: s.tf.clone(),
+                    title_terms: s.title_terms.clone(),
                 })
                 .collect(),
         })
@@ -456,15 +457,22 @@ fn compute_sections(
                 next_pos += FIELD_POS_GAP;
             };
         add(tokenizer.tokenize(&section.body), 1, &mut tf);
+        // 節のタイトル（検索時のタイトル一致の倍率に使う）: 見出しのある節は見出し、
+        // 先頭の節はページタイトル
+        let mut title_terms = Vec::new();
         if let Some(heading) = &section.heading {
-            add(tokenizer.tokenize(heading), HEADING_WEIGHT, &mut tf);
+            let tokens = tokenizer.tokenize(heading);
+            title_terms.extend(tokens.iter().cloned());
+            add(tokens, HEADING_WEIGHT, &mut tf);
         }
         // ページタイトルは**リード doc（先頭セクション）だけ**に載せる。
         // 全セクションに載せると同一ページの全 doc がタイトル語で同点ヒットして
         // 重複ノイズになり、df も膨らんで idf が下がる。リード doc は空本文でも
         // 必ず生成されるため「タイトル検索 → ページ先頭 1 件」の挙動が保たれる
         if sec_idx == 0 {
-            add(tokenizer.tokenize(&page.title), TITLE_WEIGHT, &mut tf);
+            let tokens = tokenizer.tokenize(&page.title);
+            title_terms.extend(tokens.iter().cloned());
+            add(tokens, TITLE_WEIGHT, &mut tf);
         }
         // postings の決定性（バイト同一の出力）のため tf はソートして保存する
         let mut tf: Vec<(String, u32, Vec<u32>)> = tf
@@ -478,6 +486,7 @@ fn compute_sections(
             text: single_line(&section.body),
             doc_len,
             tf,
+            title_terms,
         });
     }
     Ok(out)

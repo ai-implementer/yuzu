@@ -41,6 +41,12 @@ pub struct Manifest {
     /// グループ id（= 添字）→ 表示名。並び順は書き手が決める（yuzu ではナビ順）
     #[serde(default)]
     pub groups: Vec<String>,
+    /// doc_id（= 添字）→ その doc のタイトルの term_id（昇順。yuzu では先頭の節がページ
+    /// タイトル、ほかの節が見出し）。検索時にタイトルと一致した doc の点を上げる
+    /// （[`crate::SearchEngine`] の `TITLE_BOOST`）。`groups` と同じく `default` で後方互換に
+    /// してあり、古い manifest では空 = 倍率が掛からないだけ。古い wasm はこの項目を読まない
+    #[serde(default)]
+    pub doc_title_terms: Vec<Vec<u32>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -11,7 +11,7 @@ description: 汎用ライブラリ（tankan / mikan / kabosu）を crates.io へ
 | crate | 役割 | 備考 |
 | --- | --- | --- |
 | tankan | Mermaid 互換 SSR | |
-| mikan | 検索エンジン（旧 yuzu-index-format） | native / wasm で 1 実装共有 |
+| mikan | 検索エンジン（旧 yuzu-index-format） | native / wasm で 1 実装共有。**0.2.2 の後に `SectionInput::title_terms` を足した（破壊的。Phase 89）= 次は 0.3.0**。版を上げると検索 wasm も作り直す（CI の `search wasm inputs`） |
 | kabosu | TOML パーサ（依存ゼロ・no_std + alloc） | **publish 前に fuzz を必ず一度回す** |
 
 公開しない crate: **mikan-wasm**（wasm 成果物を作るビルド用。`publish = false`）と

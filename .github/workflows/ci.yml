@@ -71,6 +71,12 @@ jobs:
       - name: third-party licenses pins
         run: scripts/third-party-licenses.sh check
 
+      # 検索 wasm の作り直し忘れ（Phase 89）。下の docs ゲートの検索の照合はネイティブの
+      # yuzu search を通り、上の照合は crate と版の集合しか比べないので、版を上げない mikan の
+      # 変更では wasm が古いままでも通ってしまう。wasm の入力のハッシュと同梱の JS を照合する
+      - name: search wasm inputs
+        run: scripts/build-search-wasm.sh --check
+
       # 雛形 deploy.yml（yuzu new が作る）の actions は、このリポジトリのワークフローと同じ
       # SHA・版のコメントにする。dependabot は .github/ の外を見ないので、actions の更新 PR で
       # 雛形だけが古い版に残るのを止める（Phase 82 の後、dependabot の最初の PR で判明）
@@ -178,6 +184,11 @@ jobs:
           # エンジン側で絞り込めて件数も絞り込み後になる（ブラウザ操作は CI で
           # 検証できないので、同一エンジンを通る CLI で担保する）
           target/debug/yuzu search --root docs --section 開発者向け "キャッシュ" | grep -q '/development/'
+          # Phase 89（リリース判定）: 「設定」で設定のページが上位 3 件に入る。以前は同義語の例を
+          # 書いた節が 1 位で、設定のページは 14 位だった。ネイティブの yuzu search はブラウザと
+          # 同じエンジンを通る（wasm の作り直し忘れは search wasm inputs の照合が見る）
+          target/debug/yuzu search --root docs --format json --limit 3 "設定" \
+            | jq -e 'any(.[]; .url | startswith("reference/config/"))' >/dev/null
           # 絞り込み UI の配線ゲート（機能自体はブラウザ操作なので CI では検証できない。
           # Phase 54 でチップは結果ページ search-page.js へ移動した）
           grep -q 'search-filter-chip' docs/dist/_assets/js/search-page.js
@@ -316,6 +327,9 @@ jobs:
           grep -q 'id="第三者のソフトウェアのライセンス表記"' docs/dist/guide/internal/index.html
           # Phase 88: frontmatter の YAML の読み方（YAML 1.2・YAML 1.1 の書き方はエラー）の説明
           grep -q 'id="yaml-の書き方"' docs/dist/guide/writing/index.html
+          # Phase 89: 検索の並び順（タイトル一致の優遇）と search: false の説明
+          grep -q 'id="結果の並び順"' docs/dist/guide/search/index.html
+          grep -q 'id="検索から外す"' docs/dist/guide/search/index.html
           # 設定例は TOML で書く（JSON / YAML 風の `markdown.mermaid.backend: "ssr"` や
           # `"abbr": false` はコピーすると設定エラーになる）。原稿・README・雛形・スキルを見る
           if grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/; then

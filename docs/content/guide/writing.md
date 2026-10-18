@@ -63,7 +63,7 @@ id は見出しの文字を小文字にし、空白を `-` に変え、記号を
 
 ## frontmatter
 
-各ページの先頭に YAML frontmatter を書けます。使えるキーは次の 9 つです
+各ページの先頭に YAML frontmatter を書けます。使えるキーは次の 10 個です
 （未知のキーは `yuzu lint` が警告します）:
 
 ```yaml
@@ -77,6 +77,7 @@ aliases: ["guide/old-name/"] # 旧 URL（リダイレクトを生成）
 lintDisable: ["term-variant"] # このページに限り lint ルールを抑制
 readingTime: false # このページに読了時間・文字数を出さない
 pageMd: false # このページの原稿の .md を配信しない（コピーボタンも出さない）
+search: false # このページを検索の対象から外す（ナビ・sitemap には載る）
 ---
 ```
 

@@ -153,6 +153,66 @@ fn 日本語クエリでランク付き結果が返る() {
     assert!(results.iter().all(|r| r.url != "guide/theme/"));
 }
 
+/// frontmatter の `search: false` のページは索引に載らない（ページの全節。Phase 89）
+#[test]
+fn search_false_のページは索引に載らない() {
+    let content = tempfile::tempdir().unwrap();
+    write(
+        content.path(),
+        "index.md",
+        "---\ntitle: ホーム\n---\n# ホーム\n\n全文検索の説明です。\n",
+    );
+    write(
+        content.path(),
+        "secret.md",
+        "---\ntitle: 隠す\nsearch: false\n---\n# 隠す\n\n全文検索に出したくない頁です。\n\n## 節\n\n全文検索の節。\n",
+    );
+    let md_opts = MarkdownOptions::default();
+    let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+    // nav には載る（検索だけから外す）
+    assert!(site.pages.iter().any(|p| p.route == "secret/"));
+    let dist = tempfile::tempdir().unwrap();
+    build_search_index(&site, &md_opts, &IndexParams::default(), dist.path()).unwrap();
+    let results = search_dist(dist.path(), "全文検索", 10).unwrap();
+    assert!(!results.is_empty());
+    assert!(
+        results.iter().all(|r| r.url != "secret/"),
+        "results={results:?}"
+    );
+}
+
+/// 長い本文の先頭の節でも、タイトルがクエリの語ならタイトル一致の倍率で上に来る（Phase 89）
+#[test]
+fn タイトル一致の倍率で長い本文のページも上に来る() {
+    let content = tempfile::tempdir().unwrap();
+    let long = "設定の説明が続く長い本文です。".repeat(30);
+    write(
+        content.path(),
+        "config.md",
+        &format!("---\ntitle: 設定\n---\n# 設定\n\n{long}\n"),
+    );
+    write(
+        content.path(),
+        "other.md",
+        "---\ntitle: ほか\n---\n# ほか\n\n設定を変えます。\n",
+    );
+    let md_opts = MarkdownOptions::default();
+    let site = yuzu_core::build_site_model(content.path(), &[], &md_opts).unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    build_search_index(&site, &md_opts, &IndexParams::default(), dist.path()).unwrap();
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(dist.path().join("_search/manifest.json")).unwrap())
+            .unwrap();
+    assert!(
+        manifest["docTitleTerms"]
+            .as_array()
+            .is_some_and(|docs| docs.iter().any(|t| !t.as_array().unwrap().is_empty())),
+        "manifest にタイトルの語が入る"
+    );
+    let results = search_dist(dist.path(), "設定", 10).unwrap();
+    assert_eq!(results[0].url, "config/", "results={results:?}");
+}
+
 #[test]
 fn タイトル一致は重み付けで上位に来る() {
     let (_content, dist) = build_fixture();

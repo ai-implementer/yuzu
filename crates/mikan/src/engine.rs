@@ -35,6 +35,11 @@ const SYN_EXPANSION_LIMIT: usize = 8;
 /// 引用符なしの複数語クエリで「連続して出てくるページ」を上位に寄せる
 /// フレーズ検索の soft 版（Phase 34）。ヒット集合は変えずスコアだけ動かす
 const PROXIMITY_BOOST: f32 = 1.2;
+/// タイトル一致の倍率（doc のタイトルにクエリの全語が入っているとき。一部なら一致した語の
+/// 割合に比例）。BM25 は長い節ほど点が下がるので、タイトルが語そのものでも本文の長い
+/// ページは上位に来なかった（Phase 89。docs で「設定」の設定のページが 14 位だった）。
+/// タイトルは manifest の `doc_title_terms`（古い manifest では空 = 倍率なし）
+const TITLE_BOOST: f32 = 1.5;
 
 /// 検索ヒット（doc_id は SiteModel.pages の並び順の添字）
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -114,10 +119,87 @@ fn parse_query(query: &str) -> (String, Vec<String>) {
     (plain, phrases)
 }
 
+/// クエリに含まれた同義語のグループ 1 つ。メンバーをまとめて 1 語として数える
+/// （出現数はメンバーの合計、df はメンバーの最大 = Lucene の SynonymQuery と同じ）。
+/// メンバーごとに点を足すと、同義語の組をそのまま書いた節が 2 語分の点を得て、
+/// 珍しいメンバーの高い idf で上位を占める（Phase 89 で直した。docs の「設定」の 1 位が
+/// 同義語の例を書いた節だった）
+#[derive(Debug, Default)]
+struct SynonymSlot {
+    /// メンバーの表記（重なるグループをまとめる判定に使う。[`Self::overlaps`]）
+    names: Vec<String>,
+    /// 1 語のメンバーの term_id（まとめて 1 語として数える）
+    single: Vec<u32>,
+    /// 複数語のメンバーの term_id 列（語彙にある token だけ）。語ごとの点の合計を
+    /// 1 つの候補とし、グループの点は 1 語のメンバーの点と候補の点の最大
+    multi: Vec<Vec<u32>>,
+}
+
+impl SynonymSlot {
+    fn term_ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.single
+            .iter()
+            .copied()
+            .chain(self.multi.iter().flatten().copied())
+    }
+
+    /// 同じメンバーを含むか（表記が同じメンバー、または同じ term の 1 語のメンバー）。
+    /// 構成 token が一部共通なだけ（"client error" と "server error" の error）では重ならない =
+    /// 別の概念をまとめない（PR #65 の再レビューの指摘）。複数語のメンバーを term_id 列で
+    /// 比べないのは、語彙に無い token を除いた残り（どちらも error だけ）が同じになるため
+    fn overlaps(&self, other: &SynonymSlot) -> bool {
+        self.names.iter().any(|n| other.names.contains(n))
+            || self.single.iter().any(|id| other.single.contains(id))
+    }
+
+    fn absorb(&mut self, other: SynonymSlot) {
+        self.names.extend(other.names);
+        self.single.extend(other.single);
+        for ids in other.multi {
+            if !self.multi.contains(&ids) {
+                self.multi.push(ids);
+            }
+        }
+    }
+}
+
+/// 同じメンバーを含むグループを 1 つにまとめる（推移的に。A と C、C と B が重なれば 3 つで 1 つ）。
+/// 一致はメンバー全体で見る（[`SynonymSlot::overlaps`]）
+fn merge_overlapping(slots: Vec<SynonymSlot>) -> Vec<SynonymSlot> {
+    let mut merged: Vec<SynonymSlot> = Vec::new();
+    for mut slot in slots {
+        // 重なる既存のグループをすべて取り込んでから入れる
+        while let Some(i) = merged.iter().position(|m| m.overlaps(&slot)) {
+            let existing = merged.swap_remove(i);
+            slot.absorb(existing);
+        }
+        merged.push(slot);
+    }
+    for slot in &mut merged {
+        slot.single.sort_unstable();
+        slot.single.dedup();
+    }
+    merged
+}
+
+/// 通常部（引用符の外）の解決結果
+struct PlainTerms {
+    /// 同義語のグループに入らない語の term_id → スコア重み（完全一致 1.0・タイポ 0.5）
+    terms: HashMap<u32, f32>,
+    /// クエリに含まれた同義語のグループ
+    synonym_slots: Vec<SynonymSlot>,
+    /// タイトル一致の判定単位: クエリの語ごとの候補の term_id（完全一致・タイポ・同義語）
+    title_units: Vec<Vec<u32>>,
+}
+
 /// クエリ解決の結果（通常語＋フレーズ）
 struct ResolvedQuery {
-    /// term_id → スコア重み（通常語のタイポ・同義語込み。フレーズ構成 term は 1.0）
+    /// term_id → スコア重み（同義語のグループに入らない語。タイポ込み。フレーズ構成 term は 1.0）
     terms: HashMap<u32, f32>,
+    /// クエリに含まれた同義語のグループ（[`SynonymSlot`]）
+    synonym_slots: Vec<SynonymSlot>,
+    /// タイトル一致の判定単位（[`PlainTerms::title_units`]）
+    title_units: Vec<Vec<u32>>,
     /// tokenize 済みフレーズごとの term_id 列（全 token が語彙にある場合のみ）
     phrases: Vec<Vec<u32>>,
     /// 語彙に無い token を含むフレーズがあった（= どの doc にも一致し得ない）
@@ -178,7 +260,14 @@ impl SearchEngine {
         let mut ids: Vec<u32> = resolved
             .terms
             .keys()
-            .filter_map(|&term_id| self.shard_for_term(term_id))
+            .copied()
+            .chain(
+                resolved
+                    .synonym_slots
+                    .iter()
+                    .flat_map(SynonymSlot::term_ids),
+            )
+            .filter_map(|term_id| self.shard_for_term(term_id))
             .filter(|id| !self.shards.contains_key(id))
             .collect();
         ids.sort_unstable();
@@ -264,37 +353,56 @@ impl SearchEngine {
             allowed = Some(next);
         }
 
-        let doc_count = self.manifest.doc_count as f32;
-        let avg_len = self.manifest.avg_doc_len.max(1.0);
-        let (k1, b) = (self.manifest.bm25.k1, self.manifest.bm25.b);
-
         let mut scores: HashMap<u32, f32> = HashMap::new();
         for (&term_id, &weight) in &resolved.terms {
-            let Some(shard_id) = self.shard_for_term(term_id) else {
+            let Some(postings) = self.postings_of(term_id) else {
                 continue;
             };
-            let Some(shard) = self.shards.get(&shard_id) else {
-                continue;
-            };
-            let local = term_id - self.manifest.shards[shard_id as usize].term_start;
-            let Ok(postings) = shard.postings(local) else {
-                continue;
-            };
-
-            // Lucene 型の非負 idf
-            let df = postings.len() as f32;
-            let idf = ((doc_count - df + 0.5) / (df + 0.5) + 1.0).ln();
-
+            let idf = self.idf(postings.len());
             for (doc_id, tf) in postings {
-                let len = self
-                    .manifest
-                    .doc_lens
-                    .get(doc_id as usize)
-                    .copied()
-                    .unwrap_or(0) as f32;
-                let tf = tf as f32;
-                let tf_component = tf * (k1 + 1.0) / (tf + k1 * (1.0 - b + b * len / avg_len));
-                *scores.entry(doc_id).or_insert(0.0) += weight * idf * tf_component;
+                *scores.entry(doc_id).or_insert(0.0) +=
+                    weight * idf * self.tf_component(doc_id, tf);
+            }
+        }
+
+        // 同義語のグループ: メンバーをまとめて 1 語として数える（SynonymSlot）
+        for slot in &resolved.synonym_slots {
+            let mut slot_scores: HashMap<u32, f32> = HashMap::new();
+            // 1 語のメンバー: 出現数は合計、df はメンバーの最大
+            let mut tf_sum: HashMap<u32, u32> = HashMap::new();
+            let mut df_max = 0;
+            for &term_id in &slot.single {
+                let Some(postings) = self.postings_of(term_id) else {
+                    continue;
+                };
+                df_max = df_max.max(postings.len());
+                for (doc_id, tf) in postings {
+                    *tf_sum.entry(doc_id).or_insert(0) += tf;
+                }
+            }
+            let idf = self.idf(df_max);
+            for (doc_id, tf) in tf_sum {
+                slot_scores.insert(doc_id, idf * self.tf_component(doc_id, tf));
+            }
+            // 複数語のメンバー: 語ごとの点の合計を 1 つの候補にし、グループの点は候補の最大
+            for ids in &slot.multi {
+                let mut member: HashMap<u32, f32> = HashMap::new();
+                for &term_id in ids {
+                    let Some(postings) = self.postings_of(term_id) else {
+                        continue;
+                    };
+                    let idf = self.idf(postings.len());
+                    for (doc_id, tf) in postings {
+                        *member.entry(doc_id).or_insert(0.0) += idf * self.tf_component(doc_id, tf);
+                    }
+                }
+                for (doc_id, score) in member {
+                    let entry = slot_scores.entry(doc_id).or_insert(0.0);
+                    *entry = entry.max(score);
+                }
+            }
+            for (doc_id, score) in slot_scores {
+                *scores.entry(doc_id).or_insert(0.0) += score;
             }
         }
 
@@ -310,6 +418,25 @@ impl SearchEngine {
             for doc_id in self.phrase_docs(pair) {
                 if let Some(score) = scores.get_mut(&doc_id) {
                     *score *= PROXIMITY_BOOST;
+                }
+            }
+        }
+
+        // タイトル一致: doc のタイトルにクエリの語が入っていれば、一致した語の割合に比例して
+        // 点を上げる（全語一致で TITLE_BOOST 倍）。ヒット集合は変えない
+        if !resolved.title_units.is_empty() {
+            let units = resolved.title_units.len() as f32;
+            for (doc_id, score) in scores.iter_mut() {
+                let Some(title) = self.manifest.doc_title_terms.get(*doc_id as usize) else {
+                    continue;
+                };
+                let matched = resolved
+                    .title_units
+                    .iter()
+                    .filter(|unit| unit.iter().any(|id| title.binary_search(id).is_ok()))
+                    .count();
+                if matched > 0 {
+                    *score *= 1.0 + (TITLE_BOOST - 1.0) * matched as f32 / units;
                 }
             }
         }
@@ -422,51 +549,144 @@ impl SearchEngine {
         variants
     }
 
-    /// クエリを token → term_id（重み付き）へ解決する。
-    /// 完全一致を優先し、未ヒット token だけタイポ展開する。
-    /// 同義語変形（expand_queries）のトークンは完全一致のみ weight 1.0 で加える
-    /// （辞書で同一視された語なのでペナルティなし。変形へのタイポ展開はしない）
-    fn resolve_terms(&self, query: &str) -> HashMap<u32, f32> {
-        let mut resolved: HashMap<u32, f32> = HashMap::new();
-        let merge = |resolved: &mut HashMap<u32, f32>, id: u64, weight: f32| {
-            let entry = resolved.entry(id as u32).or_insert(0.0);
+    /// 通常部（引用符の外）を term_id へ解決する。
+    ///
+    /// - 同義語のグループのメンバーがクエリに含まれたら、そのグループを 1 つの
+    ///   [`SynonymSlot`] にする（照合は [`Self::expand_queries`] と同じ部分一致）。
+    ///   クエリの中のメンバーの token はこのグループの語として扱い、ほかの語の点に数えない
+    /// - 残りの token は完全一致を優先し、未ヒットのものだけタイポ展開する（従来どおり）
+    fn resolve_terms(&self, query: &str) -> PlainTerms {
+        let tokens = self.tokenizer.tokenize(query);
+        let mut claimed = vec![false; tokens.len()];
+        let mut synonym_slots: Vec<SynonymSlot> = Vec::new();
+        let mut title_units: Vec<Vec<u32>> = Vec::new();
+
+        for group in &self.manifest.synonyms {
+            if synonym_slots.len() >= SYN_EXPANSION_LIMIT {
+                break;
+            }
+            let in_query: Vec<&String> = group
+                .iter()
+                .filter(|m| !m.is_empty() && query.contains(m.as_str()))
+                .collect();
+            if in_query.is_empty() {
+                continue;
+            }
+            let mut slot = SynonymSlot {
+                names: group.clone(),
+                ..SynonymSlot::default()
+            };
+            for member in group {
+                // 語彙にある token だけを使う。複数語のメンバーに語彙に無い語があっても、
+                // 既知の語で探す（メンバーごと捨てると、クエリの中の既知の語まで消える。
+                // PR #65 のレビュー指摘）
+                let member_tokens = self.tokenizer.tokenize(member);
+                let ids: Vec<u32> = member_tokens
+                    .iter()
+                    .filter_map(|t| self.terms.get(t).map(|id| id as u32))
+                    .collect();
+                match (member_tokens.len(), ids.len()) {
+                    (_, 0) => {}
+                    (1, _) => slot.single.push(ids[0]),
+                    _ => slot.multi.push(ids),
+                }
+            }
+            // どのメンバーも語彙に無いグループは、元の token を通常の語として残す
+            // （タイポ展開の機会を奪わない）
+            if slot.single.is_empty() && slot.multi.is_empty() {
+                continue;
+            }
+            // クエリの中のメンバーの token はこのグループの語として扱い、通常の語に数えない
+            // （語彙に無い token を通常の語に残すと、タイポ展開で同じ語を 2 回数える。既知の
+            // token はグループの候補の側で数える）
+            for member in in_query {
+                for member_token in self.tokenizer.tokenize(member) {
+                    if let Some(i) =
+                        (0..tokens.len()).find(|&i| !claimed[i] && tokens[i] == member_token)
+                    {
+                        claimed[i] = true;
+                    }
+                }
+            }
+            synonym_slots.push(slot);
+        }
+        // 同じメンバーを含むグループ（lint.terms と search.synonyms の両方に書いた等）は 1 つに
+        // まとめる。別々に数えると、その語の点を 2 回足す（PR #65 のレビュー指摘）
+        let synonym_slots = merge_overlapping(synonym_slots);
+        for slot in &synonym_slots {
+            title_units.push(slot.term_ids().collect());
+        }
+
+        let mut terms: HashMap<u32, f32> = HashMap::new();
+        let merge = |terms: &mut HashMap<u32, f32>, unit: &mut Vec<u32>, id: u64, weight: f32| {
+            let entry = terms.entry(id as u32).or_insert(0.0);
             *entry = entry.max(weight);
+            unit.push(id as u32);
         };
-
-        for (i, variant) in self.expand_queries(query).iter().enumerate() {
-            let is_original = i == 0;
-            for token in self.tokenizer.tokenize(variant) {
-                if let Some(id) = self.terms.get(&token) {
-                    merge(&mut resolved, id, 1.0);
-                    continue;
-                }
-                if !is_original {
-                    continue; // 同義語変形は完全一致のみ（タイポ展開しない）
-                }
-
-                let max_edits = self.manifest.typo.max_edits.min(1);
-                if !self.manifest.typo.enabled
-                    || max_edits == 0
-                    || token.chars().count() < LEV_MIN_CHARS
-                {
-                    continue;
-                }
+        for (token, _) in tokens
+            .iter()
+            .zip(&claimed)
+            .filter(|(_, claimed)| !**claimed)
+        {
+            let mut unit = Vec::new();
+            if let Some(id) = self.terms.get(token) {
+                merge(&mut terms, &mut unit, id, 1.0);
+            } else if self.manifest.typo.enabled
+                && self.manifest.typo.max_edits.min(1) > 0
+                && token.chars().count() >= LEV_MIN_CHARS
+            {
                 // 文字単位の Levenshtein DFA（levenshtein_automata）。
                 // UTF-8 バイト列を辿りながら Unicode 文字の編集距離を数えるため、
                 // 「ダーく」→「ダーク」のような日本語 1 文字のゆれにも効く
-                let dfa = self.lev_builder.build_dfa(&token);
+                let dfa = self.lev_builder.build_dfa(token);
                 let mut stream = self.terms.search(&dfa).into_stream();
                 let mut expanded = 0;
                 while let Some((_, id)) = stream.next() {
-                    merge(&mut resolved, id, LEV_WEIGHT);
+                    merge(&mut terms, &mut unit, id, LEV_WEIGHT);
                     expanded += 1;
                     if expanded >= LEV_EXPANSION_LIMIT {
                         break;
                     }
                 }
             }
+            if !unit.is_empty() {
+                title_units.push(unit);
+            }
         }
-        resolved
+        PlainTerms {
+            terms,
+            synonym_slots,
+            title_units,
+        }
+    }
+
+    /// term の (doc_id, tf) 列（ロード済みシャードから）。未ロードなら None
+    fn postings_of(&self, term_id: u32) -> Option<Vec<(u32, u32)>> {
+        let shard_id = self.shard_for_term(term_id)?;
+        let shard = self.shards.get(&shard_id)?;
+        let local = term_id - self.manifest.shards[shard_id as usize].term_start;
+        shard.postings(local).ok()
+    }
+
+    /// Lucene 型の非負 idf
+    fn idf(&self, df: usize) -> f32 {
+        let doc_count = self.manifest.doc_count as f32;
+        let df = df as f32;
+        ((doc_count - df + 0.5) / (df + 0.5) + 1.0).ln()
+    }
+
+    /// BM25 の tf の項（文書長で正規化した飽和曲線）
+    fn tf_component(&self, doc_id: u32, tf: u32) -> f32 {
+        let avg_len = self.manifest.avg_doc_len.max(1.0);
+        let (k1, b) = (self.manifest.bm25.k1, self.manifest.bm25.b);
+        let len = self
+            .manifest
+            .doc_lens
+            .get(doc_id as usize)
+            .copied()
+            .unwrap_or(0) as f32;
+        let tf = tf as f32;
+        tf * (k1 + 1.0) / (tf + k1 * (1.0 - b + b * len / avg_len))
     }
 
     /// クエリ全体（通常部＋引用フレーズ）を解決する。
@@ -474,7 +694,11 @@ impl SearchEngine {
     /// 構成 term を weight 1.0 でスコア対象に加える
     fn resolve_query(&self, query: &str) -> ResolvedQuery {
         let (plain, phrases) = parse_query(query);
-        let mut terms = self.resolve_terms(&plain);
+        let PlainTerms {
+            mut terms,
+            synonym_slots,
+            mut title_units,
+        } = self.resolve_terms(&plain);
         let mut phrase_ids: Vec<Vec<u32>> = Vec::new();
         let mut has_unresolvable_phrase = false;
         for phrase in &phrases {
@@ -491,6 +715,9 @@ impl SearchEngine {
                     for &id in &ids {
                         let entry = terms.entry(id).or_insert(0.0);
                         *entry = entry.max(1.0);
+                        // フレーズの構成語もタイトル一致の判定に含める（完全一致の条件は
+                        // 上のフレーズ照合が別に見る。PR #65 のレビュー指摘）
+                        title_units.push(vec![id]);
                     }
                     phrase_ids.push(ids);
                 }
@@ -515,6 +742,8 @@ impl SearchEngine {
 
         ResolvedQuery {
             terms,
+            synonym_slots,
+            title_units,
             phrases: phrase_ids,
             has_unresolvable_phrase,
             proximity_pairs,
@@ -706,6 +935,7 @@ mod tests {
             content_hash: String::new(),
             doc_groups,
             groups,
+            doc_title_terms: Vec::new(),
         };
 
         let mut engine =
@@ -852,6 +1082,218 @@ mod tests {
                 .any(|s| s.mark && s.text.contains("ブラウザ")),
             "{segments:?}"
         );
+    }
+
+    /// 同義語のメンバーをまとめて 1 語として数える（Phase 89）。以前はメンバーごとに点を
+    /// 足したので、両方を書いた doc が 2 語分の点を得て、珍しいメンバーの高い idf で
+    /// 上位を占めた（docs の「設定」の 1 位が同義語の例を書いた節だった）
+    #[test]
+    fn 同義語のメンバーを両方含む_doc_も_1_語分の点にする() {
+        // doc0 は両方のメンバーを 1 回ずつ、doc1 は片方を 2 回。出現数の合計と長さが同じ
+        let docs = ["設定とコンフィグ", "設定と設定", "テーマを上書きする"];
+        let syn = vec![vec!["設定".to_string(), "コンフィグ".to_string()]];
+        let engine = build_index_with_synonyms(&docs, 1024, syn);
+        for query in ["設定", "コンフィグ"] {
+            let hits = engine.search(query, 10);
+            assert_eq!(hits.len(), 2, "{query}: {hits:?}");
+            assert!(
+                (hits[0].score - hits[1].score).abs() < 1e-6,
+                "{query}: 同じ出現数なら同点: {hits:?}"
+            );
+        }
+        // どちらのメンバーで探しても同じ点（同義語として同じ扱い）
+        assert_eq!(engine.search("設定", 10), engine.search("コンフィグ", 10));
+    }
+
+    /// PR #65 のレビュー指摘: 複数語のメンバーに語彙に無い token があると、メンバーごと捨てて
+    /// いたのに、クエリの中の token は同義語のグループの語として外していたので、既知の語まで
+    /// 検索の対象から消えていた（「web client」で web の doc がヒットしなくなった）
+    #[test]
+    fn 複数語のメンバーに未知の語があっても既知の語で探す() {
+        let docs = ["browser を使う", "web で見る", "テーマを上書きする"];
+        let syn = vec![vec!["browser".to_string(), "web client".to_string()]];
+        let engine = build_index_with_synonyms(&docs, 1024, syn);
+        let mut ids: Vec<u32> = engine
+            .search("web client", 10)
+            .iter()
+            .map(|h| h.doc_id)
+            .collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [0, 1], "browser の doc と web の doc の両方");
+    }
+
+    /// PR #65 のレビュー指摘: 同じ語を含む同義語のグループが 2 つあると（lint.terms と
+    /// search.synonyms の両方に書いた等）、その語の点を 2 回足していた
+    #[test]
+    fn 同じ語を含む同義語のグループが重なっても_1_回だけ数える() {
+        let docs = ["設定を保存する", "保存する"];
+        let one = build_index_with_synonyms(
+            &docs,
+            1024,
+            vec![vec!["設定".to_string(), "コンフィグ".to_string()]],
+        );
+        for groups in [
+            // 同じグループが 2 つ
+            vec![
+                vec!["設定".to_string(), "コンフィグ".to_string()],
+                vec!["設定".to_string(), "コンフィグ".to_string()],
+            ],
+            // 一部が重なるグループ
+            vec![
+                vec!["設定".to_string(), "コンフィグ".to_string()],
+                vec!["設定".to_string(), "config".to_string()],
+            ],
+        ] {
+            let two = build_index_with_synonyms(&docs, 1024, groups.clone());
+            for query in ["設定", "設定 保存"] {
+                assert_eq!(
+                    one.search(query, 10),
+                    two.search(query, 10),
+                    "{query}: {groups:?}"
+                );
+            }
+        }
+    }
+
+    /// PR #65 の再レビューの指摘: 構成 token が 1 つ共通なだけ（"client error" と "server error" の
+    /// error）でグループをまとめていたので、別の概念が 1 つの語になり、「alpha beta」でタイトルが
+    /// alpha だけの doc にも全語一致の倍率が掛かっていた
+    #[test]
+    fn 複数語のメンバーの一部が共通なだけではグループをまとめない() {
+        use super::{SynonymSlot, merge_overlapping};
+        let slot = |names: &[&str], single: Vec<u32>, multi: Vec<Vec<u32>>| SynonymSlot {
+            names: names.iter().map(|n| n.to_string()).collect(),
+            single,
+            multi,
+        };
+        // error（3）が共通なだけ → 2 つのまま。語彙に無い client・server を除くと、どちらの
+        // 複数語のメンバーも [3] になるが、表記が違うのでまとめない
+        for (a, b) in [
+            (vec![vec![2, 3]], vec![vec![5, 3]]),
+            (vec![vec![3]], vec![vec![3]]),
+        ] {
+            let kept = merge_overlapping(vec![
+                slot(&["alpha", "client error"], vec![1], a),
+                slot(&["beta", "server error"], vec![4], b),
+            ]);
+            assert_eq!(kept.len(), 2, "{kept:?}");
+        }
+        // 同じ表記のメンバー・同じ term の 1 語のメンバーを含むならまとめる
+        assert_eq!(
+            merge_overlapping(vec![
+                slot(&["設定", "コンフィグ"], vec![1], vec![]),
+                slot(&["config", "設定"], vec![1], vec![]),
+            ])
+            .len(),
+            1
+        );
+        assert_eq!(
+            merge_overlapping(vec![
+                slot(&["Web", "www"], vec![1], vec![]),
+                slot(&["web", "ウェブ"], vec![1], vec![]),
+            ])
+            .len(),
+            1,
+            "表記は違っても同じ term（正規化で同じ token）"
+        );
+        assert_eq!(
+            merge_overlapping(vec![
+                slot(&["alpha", "client error"], vec![1], vec![vec![2, 3]]),
+                slot(&["gamma", "client error"], vec![7], vec![vec![2, 3]]),
+            ])
+            .len(),
+            1
+        );
+
+        // 検索では: タイトルが alpha だけの doc は「alpha beta」で一部一致の倍率
+        let docs = ["alpha の 説明", "beta の 説明", "error が 出る"];
+        let syn = vec![
+            vec!["alpha".to_string(), "client error".to_string()],
+            vec!["beta".to_string(), "server error".to_string()],
+        ];
+        let mut engine = build_index_with_synonyms(&docs, 1024, syn);
+        let base = engine.search("alpha beta", 10);
+        let alpha = engine.terms.get("alpha").unwrap() as u32;
+        engine.manifest.doc_title_terms = vec![vec![alpha], vec![], vec![]];
+        let boosted = engine.search("alpha beta", 10);
+        let s0 = |hits: &[super::Hit]| hits.iter().find(|h| h.doc_id == 0).unwrap().score;
+        let expected = s0(&base) * (1.0 + (super::TITLE_BOOST - 1.0) / 2.0);
+        assert!(
+            (s0(&boosted) - expected).abs() < 1e-5,
+            "base={} boosted={} expected={expected}",
+            s0(&base),
+            s0(&boosted)
+        );
+    }
+
+    #[test]
+    fn 同義語のグループ以外の語は従来どおり足し合わせる() {
+        let docs = ["設定を保存する", "設定を読む", "保存する"];
+        let syn = vec![vec!["設定".to_string(), "コンフィグ".to_string()]];
+        let engine = build_index_with_synonyms(&docs, 1024, syn);
+        let hits = engine.search("コンフィグ 保存", 10);
+        // 両方の語を含む doc0 が 1 位
+        assert_eq!(hits[0].doc_id, 0, "{hits:?}");
+        assert_eq!(hits.len(), 3, "{hits:?}");
+    }
+
+    /// タイトル（見出し）にクエリの語が入っている doc の点を上げる（Phase 89）
+    #[test]
+    fn タイトルに語が入っている_doc_を上げる() {
+        // doc0 は少し長いので、倍率なしでは短い doc1 に負ける
+        let docs = ["設定 の 説明 を 書く", "設定 を 変える"];
+        let mut engine = build_index(&docs, 1024);
+        let before = engine.search("設定", 10);
+        assert_eq!(
+            before[0].doc_id, 1,
+            "倍率なしでは短い doc1 が上: {before:?}"
+        );
+
+        // doc0 のタイトルを「設定」にする
+        let id = engine.terms.get("設定").unwrap() as u32;
+        engine.manifest.doc_title_terms = vec![vec![id], vec![]];
+        let after = engine.search("設定", 10);
+        assert_eq!(after[0].doc_id, 0, "{after:?}");
+        let s0 = |hits: &[super::Hit]| hits.iter().find(|h| h.doc_id == 0).unwrap().score;
+        assert!(
+            (s0(&after) - s0(&before) * super::TITLE_BOOST).abs() < 1e-5,
+            "全語一致で TITLE_BOOST 倍"
+        );
+
+        // 2 語のうち 1 語だけ一致なら、割合に比例（1 + (TITLE_BOOST - 1) / 2 倍）
+        let half_before = {
+            let mut e = build_index(&docs, 1024);
+            e.manifest.doc_title_terms = Vec::new();
+            s0(&e.search("設定 説明", 10))
+        };
+        let half_after = s0(&engine.search("設定 説明", 10));
+        assert!(
+            (half_after - half_before * (1.0 + (super::TITLE_BOOST - 1.0) / 2.0)).abs() < 1e-5,
+            "before={half_before} after={half_after}"
+        );
+    }
+
+    /// PR #65 のレビュー指摘: タイトル一致の判定を引用符の外の語だけで作っていたので、
+    /// `"設定"` のような引用符付きの検索にはタイトルの優遇が掛からなかった
+    #[test]
+    fn 引用符付きの検索もタイトル一致の判定に含める() {
+        let docs = ["設定 の 説明 を 書く", "設定 を 変える"];
+        let mut engine = build_index(&docs, 1024);
+        let id = engine.terms.get("設定").unwrap() as u32;
+        engine.manifest.doc_title_terms = vec![vec![id], vec![]];
+        let plain = engine.search("設定", 10);
+        let quoted = engine.search("\"設定\"", 10);
+        assert_eq!(quoted[0].doc_id, 0, "{quoted:?}");
+        assert_eq!(plain, quoted, "1 語のフレーズは引用符なしと同じ点");
+    }
+
+    #[test]
+    fn タイトルの情報が無い古い_manifest_では倍率を掛けない() {
+        let docs = ["設定 を 変える", "設定 の 説明"];
+        let engine = build_index(&docs, 1024);
+        assert!(engine.manifest.doc_title_terms.is_empty());
+        let hits = engine.search("設定", 10);
+        assert_eq!(hits.len(), 2);
     }
 
     #[test]

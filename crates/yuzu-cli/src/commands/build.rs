@@ -204,7 +204,33 @@ impl WatchBuild {
     /// 変更検知 1 回ぶん。設定の変更を取り込んでから再ビルドする
     pub(crate) fn rebuild(&mut self) -> anyhow::Result<()> {
         self.reload_config();
+        self.refresh_session_if_env_changed();
         build_once(&self.rc, self.live_reload, &mut self.session, self.drafts)
+    }
+
+    /// envKey が前回のセッションから変わっていたらセッションを作り直す。
+    ///
+    /// `yuzu.toml` の文字列が同じでも、辞書ファイル（`search.dictionary`）の中身だけが変わる
+    /// ことがある（10-07 見直しの B5）。セッションの Tokenizer は作り直されず、検索の
+    /// キャッシュに当たったページも旧辞書で数えたまま残るので、索引とブラウザの分かち書きが
+    /// ずれていた。Tokenizer だけを持ち直しても足りない（キャッシュが残る。PR #29 の指摘）ので、
+    /// envKey ごと比べてキャッシュも捨てる。辞書を読めないときは前回のセッションで続行する
+    fn refresh_session_if_env_changed(&mut self) {
+        match env_key(&self.rc) {
+            Ok(key) if key == self.session.env_key => {}
+            Ok(_) => match BuildSession::new(&self.rc, false) {
+                Ok(session) => {
+                    self.session = session;
+                    tracing::info!("辞書ファイルの変更を反映しました（検索の索引を作り直します）");
+                }
+                Err(e) => tracing::error!(
+                    "辞書ファイルの変更を反映できません（前回の辞書で続行します）: {e}"
+                ),
+            },
+            Err(e) => {
+                tracing::error!("辞書ファイルを読み込めません（前回の辞書で続行します）: {e}")
+            }
+        }
     }
 
     /// `yuzu.toml` の変更を取り込む。読めない・不正なときは**前回の設定で続行**する
@@ -349,6 +375,8 @@ pub(crate) struct BuildSession {
     shared: RenderShared,
     index_session: yuzu_index::IndexSession,
     manifest_path: PathBuf,
+    /// このセッションを作ったときの envKey（watch の再ビルドで比べる。[`WatchBuild::rebuild`]）
+    env_key: String,
 }
 
 impl BuildSession {
@@ -360,11 +388,13 @@ impl BuildSession {
             output::remove_dir_all_under(&rc.root, &cache_dir)
                 .with_context(|| format!("キャッシュを削除できません: {}", cache_dir.display()))?;
         }
+        let env_key = env_key(rc)?;
         Ok(Self {
-            cache: BuildCache::load(&cache_dir, &env_key(rc)?),
+            cache: BuildCache::load(&cache_dir, &env_key),
             shared: RenderShared::new(rc)?,
             index_session: yuzu_index::IndexSession::default(),
             manifest_path: cache_dir.join("output-manifest.json"),
+            env_key,
         })
     }
 }
@@ -794,6 +824,62 @@ mod tests {
         assert_eq!(
             format_changed(root, &[PathBuf::from("/outside/x.md")]),
             "/outside/x.md"
+        );
+    }
+
+    /// watch 中に辞書ファイルの中身だけが変わったら、セッション（Tokenizer と検索の
+    /// キャッシュ）を作り直す（10-07 見直しの B5。Phase 89）
+    #[test]
+    fn watch_中に辞書ファイルの中身が変わったらセッションを作り直す() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("content")).unwrap();
+        fs::write(
+            root.join("content/index.md"),
+            "# ホーム\n\n設定の説明です。\n",
+        )
+        .unwrap();
+        let model = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../mikan/assets/model/bccwj-suw_c1.0.model.zst");
+        let dictionary = root.join("dict.model.zst");
+        fs::copy(&model, &dictionary).unwrap();
+        let mut rc = resolved(root);
+        rc.config.search.dictionary = Some("dict.model.zst".to_string());
+
+        let session = BuildSession::new(&rc, false).unwrap();
+        let first = session.env_key.clone();
+        let mut watch = WatchBuild::new(
+            rc,
+            Overrides::default(),
+            LiveReloadMode::None,
+            false,
+            session,
+        );
+        watch.rebuild().unwrap();
+        assert_eq!(watch.session.env_key, first, "変更が無ければ作り直さない");
+
+        // zstd の skippable frame（magic 0x184D2A50・長さ・中身）を足す = 伸長した中身は
+        // 同じで、バイト列（辞書の指紋）だけが変わる
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&dictionary)
+            .unwrap()
+            .write_all(&[0x50, 0x2A, 0x4D, 0x18, 4, 0, 0, 0, 1, 2, 3, 4])
+            .unwrap();
+        watch.rebuild().unwrap();
+        assert_ne!(
+            watch.session.env_key, first,
+            "辞書の中身が変わったらセッションを作り直す"
+        );
+        // 作り直した後も、新しい辞書で作った索引を検索できる
+        let results = yuzu_index::search_dist(&watch.rc.output_dir, "設定", 10).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(
+            fs::read(watch.rc.output_dir.join("_search/model.zst")).unwrap(),
+            fs::read(&dictionary).unwrap(),
+            "dist のモデルも新しい辞書"
         );
     }
 

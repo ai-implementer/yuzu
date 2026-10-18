@@ -359,6 +359,11 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     出ないだけの縮退で済む）
 - 同じ理由で **wasm の既存メソッドのシグネチャは変えず新メソッドを足す** — 引数を足すと
   旧 wasm が黙って無視して「効いていないのに効いたつもりの結果」を返す
+- **スコアの計算は wasm（mikan の engine）に置き、索引の側は材料を足すだけにする**（Phase 89 の
+  タイトル一致の倍率 = manifest の `docTitleTerms` を `serde(default)` で足した）。古い wasm は
+  新しい項目を読まず、倍率が掛からないだけで済む
+- **mikan を変えたら検索 wasm を作り直す**（CI の `search wasm inputs` が `wasm-inputs.sha256` と
+  照合して落とす。mikan の版を上げただけでも落ちる = wasm のバイトも通知も変わるので作り直す）
 
 ### テーマ（JS / CSS / テンプレート / 埋め込み）
 
