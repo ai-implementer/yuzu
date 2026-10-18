@@ -68,7 +68,9 @@ use crate::model::{Frontmatter, TocEntry};
 ///   （Phase 83。旧キャッシュは `pageMd` を読まずに作られているので捨てる）
 /// - v25: frontmatter の YAML パーサを serde_yaml_ng から saphyr へ置き換え（Phase 88）。
 ///   最後のキーのブロックスカラーに末尾の改行が付くなど、CachedMeta の Frontmatter の値が変わりうる
-pub const CACHE_FORMAT_VERSION: u32 = 25;
+/// - v26: comrak 0.55 → 0.56（autolink の解釈を cmark-gfm に合わせた変更と、位置情報の修正。
+///   docs と雛形の出力は変わらなかったが、本文 HTML と CachedMeta の位置が変わりうる）
+pub const CACHE_FORMAT_VERSION: u32 = 26;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
