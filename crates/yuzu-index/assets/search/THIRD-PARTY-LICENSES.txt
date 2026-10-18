@@ -261,7 +261,7 @@ SOFTWARE.
 MIT License（MIT）
 
 この本文で配布されている crate:
-  - mikan 0.2.1（https://github.com/ai-implementer/yuzu）
+  - mikan 0.2.2（https://github.com/ai-implementer/yuzu）
 --------------------------------------------------------------------------------
 
 MIT License
@@ -321,7 +321,7 @@ SOFTWARE.
 MIT License（MIT）
 
 この本文で配布されている crate:
-  - mikan 0.2.1（https://github.com/ai-implementer/yuzu）
+  - mikan 0.2.2（https://github.com/ai-implementer/yuzu）
   - daachorse 1.0.1（https://github.com/daac-tools/daachorse）
   - itoa 1.0.18（https://github.com/dtolnay/itoa）
   - once_cell 1.21.4（https://github.com/matklad/once_cell）
