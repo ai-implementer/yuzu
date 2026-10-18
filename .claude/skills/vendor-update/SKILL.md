@@ -29,6 +29,13 @@ scripts/build-search-wasm.sh
   ```
   スクリプトは `CARGO_TARGET_DIR`（コンテナでは `/cargo-target`）の成果物を読む。
 - wasm と一緒に `THIRD-PARTY-LICENSES.txt`（wasm に入る crate とモデルのライセンス文。dist の `_search/` へ出る）を作り直す。wasm を変えずに文だけ作り直すなら `scripts/third-party-licenses.sh wasm`。
+- wasm の入力のハッシュ `wasm-inputs.sha256` もスクリプトが書く（Phase 89）。CI の `search wasm inputs`
+  （`scripts/build-search-wasm.sh --check`）が今の入力と照合し、mikan・mikan-wasm のソースや
+  Cargo.toml（**版を上げただけでも**）・wasm32 向けの依存の木・wasm のプロファイル・スクリプト自身が
+  変わったのに作り直していなければ落ちる。手書きの JS（`crates/mikan-wasm/js/`）は vendor 先と
+  バイトで照合する。記録だけを書き直す手段は無い（作り直し忘れの抜け道になるため）
+- スクリプトは `--remap-path-prefix` でビルドした人の `$CARGO_HOME` を `/cargo` に置き換える
+  （wasm は全利用者の `_search/` に配られる）。作り直した後に `strings search_bg.wasm | grep -c '/Users/\|/home/'` が 0 であること
 - **最重要: wasm-bindgen-cli は workspace の `wasm-bindgen = "=x.y.z"`（Cargo.toml でピン留め）と完全同一バージョン必須**。スクリプトが照合して不一致なら失敗する。crate 側を上げるときは
   ```bash
   cargo install wasm-bindgen-cli --version <同一バージョン>

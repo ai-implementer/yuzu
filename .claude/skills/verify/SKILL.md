@@ -42,6 +42,7 @@ cargo test --locked -p yuzu-server   # ← サンドボックス外で実行す�
 cargo build --locked --workspace
 cargo package --locked -p tankan -p mikan -p kabosu
 scripts/third-party-licenses.sh check
+scripts/build-search-wasm.sh --check   # 検索 wasm の作り直し忘れ（Phase 89。ビルドのツールは要らない）
 ```
 
 - `cargo package` は公開対象 3 crate のメタデータ・同梱内容の回帰を検出する（CI にもある）。
@@ -125,9 +126,11 @@ grep -q '取り込みの失敗' docs/dist/guide/quality/index.html && grep -q 'e
 test -s docs/dist/_assets/vendor/THIRD-PARTY-LICENSES.txt && test -s docs/dist/_search/THIRD-PARTY-LICENSES.txt && test ! -e docs/dist/_assets/vendor/README.md  # docs にもライセンス表記（Phase 86）
 grep -q 'id="第三者のソフトウェアのライセンス表記"' docs/dist/guide/internal/index.html  # 利用者のサイトに出るライセンス表記の説明（Phase 86）
 grep -q 'id="yaml-の書き方"' docs/dist/guide/writing/index.html  # frontmatter の YAML の読み方（Phase 88）
+grep -q 'id="結果の並び順"' docs/dist/guide/search/index.html && grep -q 'id="検索から外す"' docs/dist/guide/search/index.html  # 検索の並び順・search: false（Phase 89）
 ! grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/  # JSON / YAML 風の設定例が無い（Phase 84）
 grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --root docs --section 開発者向け "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
+<repo>/target/debug/yuzu search --root docs --format json --limit 3 "設定" | jq -e 'any(.[]; .url | startswith("reference/config/"))'  # 「設定」で設定のページが上位 3 件（Phase 89。リリース判定）
 # SSR フォールバック検出: backend:ssr のサイトで mermaid.js が読まれたら tankan の回帰
 grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' docs/dist/ --include="*.html" && echo "NG: フォールバック発生"
 ```
