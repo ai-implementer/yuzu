@@ -286,12 +286,13 @@ fn content_の外を指す相対リンクは_link_outside_content() {
         ],
         &[],
     );
-    let mut got: Vec<(&str, &str, &str)> = diags
+    let mut got: Vec<(&str, String, &str)> = diags
         .iter()
         .map(|d| {
             (
                 d.rule.id,
-                d.rel.to_str().unwrap(),
+                // Windows では rel が `\` 区切りになるので `/` にそろえて比べる
+                yuzu_core::urlpath::rel_to_slash(&d.rel),
                 if d.message.contains("../README.md") {
                     "README"
                 } else if d.message.contains("main.rs") {
@@ -303,6 +304,7 @@ fn content_の外を指す相対リンクは_link_outside_content() {
         })
         .collect();
     got.sort();
+    let got: Vec<(&str, &str, &str)> = got.iter().map(|(r, p, k)| (*r, p.as_str(), *k)).collect();
     assert_eq!(
         got,
         [
