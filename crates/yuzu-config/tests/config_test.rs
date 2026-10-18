@@ -192,6 +192,60 @@ fn site_logo_を読み込める() {
     assert!(load(dir2.path()).unwrap().config.site.logo.is_none());
 }
 
+/// `site.favicon`・`site.footer`・`[[site.header_links]]`（Phase 90）
+#[test]
+fn favicon_とフッターとヘッダーのリンクを読み込める() {
+    let dir = project(
+        r#"[site]
+favicon = "/images/favicon.svg"
+footer = "社外秘 · [社内ポータル](https://portal.example.com/)"
+
+[[site.header_links]]
+text = "GitHub"
+url = "https://github.com/example/docs"
+
+[[site.header_links]]
+text = "お問い合わせ"
+url = "mailto:docs@example.com"
+"#,
+    );
+    let site = load(dir.path()).unwrap().config.site;
+    assert_eq!(site.favicon.as_deref(), Some("/images/favicon.svg"));
+    assert!(site.footer.as_deref().unwrap().starts_with("社外秘"));
+    assert_eq!(site.header_links.len(), 2);
+    assert_eq!(site.header_links[0].text, "GitHub");
+    assert_eq!(site.header_links[1].url, "mailto:docs@example.com");
+
+    // 未指定時は None と空
+    let site = load(project("").path()).unwrap().config.site;
+    assert!(site.favicon.is_none() && site.footer.is_none() && site.header_links.is_empty());
+}
+
+#[test]
+fn ヘッダーのリンクの書き間違いは位置付きの設定エラー() {
+    for (toml, expected) in [
+        ("[[site.header_links]]\nurl = \"/a/\"\n", "text"),
+        ("[[site.header_links]]\ntext = \"A\"\n", "url"),
+        (
+            "[[site.header_links]]\ntext = \" \"\nurl = \"/a/\"\n",
+            "表示する文字が空です",
+        ),
+        (
+            "[[site.header_links]]\ntext = \"A\"\nurl = \"javascript:alert(1)\"\n",
+            "スクリプトを実行するスキーム",
+        ),
+        (
+            "[[site.header_links]]\ntext = \"A\"\nurl = \"/a/\"\nlabel = \"x\"\n",
+            "label",
+        ),
+    ] {
+        let dir = project(toml);
+        let err = load(dir.path()).expect_err(toml).to_string();
+        assert!(err.contains(expected), "{toml:?} → {err}");
+        assert!(err.contains("yuzu.toml:"), "位置付き: {err}");
+    }
+}
+
 /// `site.image`（og:image の素材）。logo と同じくパスかフル URL の文字列で、未指定は None
 #[test]
 fn site_image_を読み込める() {

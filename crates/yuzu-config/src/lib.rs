@@ -23,8 +23,8 @@ pub use resolve::{
 };
 pub use schema::{
     BindAddr, BuildConfig, Config, CrossrefConfig, CrossrefNumbering, DISABLEABLE_RULES, DarkMode,
-    DevConfig, GitConfig, GlossaryConfig, HighlightConfig, InputConfig, LintConfig, LlmsConfig,
-    MarkdownConfig, MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig,
+    DevConfig, GitConfig, GlossaryConfig, HeaderLink, HighlightConfig, InputConfig, LintConfig,
+    LlmsConfig, MarkdownConfig, MathConfig, MermaidBackend, MermaidConfig, NavConfig, OutputConfig,
     SearchConfig, ShardConfig, SiteConfig, ThemeConfig, TocConfig, TypoToleranceConfig,
 };
 
