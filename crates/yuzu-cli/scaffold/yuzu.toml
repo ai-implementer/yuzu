@@ -10,6 +10,10 @@ lang = "ja"
 # logo = "/images/yuzu-logo.svg"
 # SNS 共有カード（og:image）の画像。base_url がフル URL のときだけ出ます（絶対 URL が必須）
 # image = "/images/og.png"
+# タブのアイコン（未指定でも public/favicon.ico を置けばそれを使います）
+# favicon = "/images/favicon.svg"
+# ページの末尾に出す文言（インラインの Markdown。リンクが書けます）
+# footer = "社外秘 · [社内ポータル](https://portal.example.com/)"
 # サブパスで配信する場合は base_url を設定します（例: 社内リバプロ配下）
 # base_url = "/docs/"
 
