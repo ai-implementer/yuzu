@@ -353,10 +353,8 @@ pub(crate) fn layout(diagram: &SequenceDiagram, options: &Options) -> Layout {
                     if *activate_to {
                         act_stacks[*to].push(start_y + SELF_MSG_H);
                     }
-                    if *deactivate_from {
-                        if let Some(y1) = act_stacks[*from].pop() {
-                            activations.push(bar(xs[*from], act_stacks[*from].len(), y1, start_y));
-                        }
+                    if *deactivate_from && let Some(y1) = act_stacks[*from].pop() {
+                        activations.push(bar(xs[*from], act_stacks[*from].len(), y1, start_y));
                     }
                     cur_y += (lines_h.max(SELF_MSG_H) + 4.0) + MESSAGE_GAP;
                 } else {
@@ -374,10 +372,8 @@ pub(crate) fn layout(diagram: &SequenceDiagram, options: &Options) -> Layout {
                     if *activate_to {
                         act_stacks[*to].push(arrow_y);
                     }
-                    if *deactivate_from {
-                        if let Some(y1) = act_stacks[*from].pop() {
-                            activations.push(bar(xs[*from], act_stacks[*from].len(), y1, arrow_y));
-                        }
+                    if *deactivate_from && let Some(y1) = act_stacks[*from].pop() {
+                        activations.push(bar(xs[*from], act_stacks[*from].len(), y1, arrow_y));
                     }
                     messages.push(Msg {
                         x1: xs[*from],

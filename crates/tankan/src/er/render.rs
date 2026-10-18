@@ -102,29 +102,29 @@ pub(crate) fn to_svg(layout: &Layout, options: &Options) -> String {
         let d = rounded_polyline(&rel.points, 6.0);
         svg.path("tk-rel", &d, &format!("{dash}{markers}"));
 
-        if let Some((lx, ly)) = rel.label_at {
-            if !rel.label.is_empty() {
-                let lw = max_width(&rel.label, fs);
-                let lh = rel.label.len() as f32 * line_h;
-                svg.raw(r#"<g class="tk-rel-label">"#);
-                svg.rect(
-                    "",
-                    lx - lw / 2.0 - 4.0,
-                    ly - lh / 2.0 - 2.0,
-                    lw + 8.0,
-                    lh + 4.0,
-                    "",
-                );
-                svg.text_lines(
-                    "",
-                    lx,
-                    ly - lh / 2.0 + fs * 0.85,
-                    line_h,
-                    "middle",
-                    &rel.label,
-                );
-                svg.raw("</g>");
-            }
+        if let Some((lx, ly)) = rel.label_at
+            && !rel.label.is_empty()
+        {
+            let lw = max_width(&rel.label, fs);
+            let lh = rel.label.len() as f32 * line_h;
+            svg.raw(r#"<g class="tk-rel-label">"#);
+            svg.rect(
+                "",
+                lx - lw / 2.0 - 4.0,
+                ly - lh / 2.0 - 2.0,
+                lw + 8.0,
+                lh + 4.0,
+                "",
+            );
+            svg.text_lines(
+                "",
+                lx,
+                ly - lh / 2.0 + fs * 0.85,
+                line_h,
+                "middle",
+                &rel.label,
+            );
+            svg.raw("</g>");
         }
     }
 

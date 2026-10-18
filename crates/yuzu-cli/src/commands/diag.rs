@@ -222,10 +222,10 @@ fn annotation_root(root: &Path, workspace: Option<&Path>) -> PathBuf {
         if let Ok(rel) = root.strip_prefix(ws) {
             return rel.to_path_buf();
         }
-        if let (Ok(ws), Ok(r)) = (ws.canonicalize(), root.canonicalize()) {
-            if let Ok(rel) = r.strip_prefix(&ws) {
-                return rel.to_path_buf();
-            }
+        if let (Ok(ws), Ok(r)) = (ws.canonicalize(), root.canonicalize())
+            && let Ok(rel) = r.strip_prefix(&ws)
+        {
+            return rel.to_path_buf();
         }
     }
     PathBuf::new()
@@ -295,10 +295,10 @@ fn annotation_base(root: &Path, content_dir: &Path, workspace: Option<&Path>) ->
             return rel.to_path_buf();
         }
         // シンボリックリンク経由で綴りが違う場合の保険（macOS ランナー等）
-        if let (Ok(ws), Ok(dir)) = (ws.canonicalize(), content_dir.canonicalize()) {
-            if let Ok(rel) = dir.strip_prefix(&ws) {
-                return rel.to_path_buf();
-            }
+        if let (Ok(ws), Ok(dir)) = (ws.canonicalize(), content_dir.canonicalize())
+            && let Ok(rel) = dir.strip_prefix(&ws)
+        {
+            return rel.to_path_buf();
         }
     }
     content_dir

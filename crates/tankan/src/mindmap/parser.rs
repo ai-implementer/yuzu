@@ -164,10 +164,10 @@ fn parse_shape(line: &str, line_no: usize) -> Result<(NodeShape, String), Error>
         ("[", "]", NodeShape::Square),
     ];
     for (open, close, shape) in table {
-        if let Some(inner) = rest.strip_prefix(open) {
-            if let Some(inner) = inner.strip_suffix(close) {
-                return Ok((shape, clean_text(inner.trim(), line_no)?));
-            }
+        if let Some(inner) = rest.strip_prefix(open)
+            && let Some(inner) = inner.strip_suffix(close)
+        {
+            return Ok((shape, clean_text(inner.trim(), line_no)?));
         }
     }
     // 開始記号はあるが形として閉じていない → 行全体をプレーンテキスト扱い

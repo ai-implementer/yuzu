@@ -195,10 +195,10 @@ pub(crate) fn stem_title(rel: &Path) -> String {
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    if stem == "index" {
-        if let Some(parent) = rel.parent().and_then(|p| p.file_name()) {
-            return parent.to_string_lossy().into_owned();
-        }
+    if stem == "index"
+        && let Some(parent) = rel.parent().and_then(|p| p.file_name())
+    {
+        return parent.to_string_lossy().into_owned();
     }
     stem
 }

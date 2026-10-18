@@ -29,10 +29,10 @@ pub(crate) fn text_width(text: &str, font_size: f32) -> f32 {
     let em: f32 = text
         .chars()
         .map(|c| {
-            if let Some(i) = (c as u32).checked_sub(0x20) {
-                if (i as usize) < ASCII_WIDTHS.len() {
-                    return f32::from(ASCII_WIDTHS[i as usize]) / 1000.0;
-                }
+            if let Some(i) = (c as u32).checked_sub(0x20)
+                && (i as usize) < ASCII_WIDTHS.len()
+            {
+                return f32::from(ASCII_WIDTHS[i as usize]) / 1000.0;
             }
             // 非 ASCII は East Asian Width（cjk = Ambiguous を全角扱い＝安全側）
             match UnicodeWidthChar::width_cjk(c) {
@@ -146,14 +146,13 @@ pub(crate) fn decode_entities(text: &str) -> String {
     while let Some(pos) = rest.find('#') {
         out.push_str(&rest[..pos]);
         let after = &rest[pos + 1..];
-        if let Some(end) = after.find(';') {
-            if let Ok(code) = after[..end].parse::<u32>() {
-                if let Some(c) = char::from_u32(code) {
-                    out.push(c);
-                    rest = &after[end + 1..];
-                    continue;
-                }
-            }
+        if let Some(end) = after.find(';')
+            && let Ok(code) = after[..end].parse::<u32>()
+            && let Some(c) = char::from_u32(code)
+        {
+            out.push(c);
+            rest = &after[end + 1..];
+            continue;
         }
         out.push('#');
         rest = after;

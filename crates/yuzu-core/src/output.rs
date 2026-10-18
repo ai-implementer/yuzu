@@ -170,10 +170,11 @@ pub enum WriteOutcome {
 /// （[`write_under`] を通すこと）。単体で使ってよいのは出力先の外
 /// （原稿の整形結果など、パスが利用者指定でない書き込み）だけ
 pub fn write_if_changed(path: &Path, data: &[u8]) -> std::io::Result<WriteOutcome> {
-    if let Ok(meta) = fs::metadata(path) {
-        if meta.len() == data.len() as u64 && fs::read(path)? == data {
-            return Ok(WriteOutcome::Unchanged);
-        }
+    if let Ok(meta) = fs::metadata(path)
+        && meta.len() == data.len() as u64
+        && fs::read(path)? == data
+    {
+        return Ok(WriteOutcome::Unchanged);
     }
     fs::write(path, data)?;
     Ok(WriteOutcome::Written)

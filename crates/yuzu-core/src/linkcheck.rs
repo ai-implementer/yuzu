@@ -182,16 +182,16 @@ fn check_one(page: &Page, link: &LinkRef, targets: &Targets, out: &mut Vec<Diagn
                 );
             }
             Some(target) => {
-                if let Some(frag) = frag {
-                    if !has_anchor(target, frag) {
-                        push(
-                            out,
-                            page,
-                            link,
-                            rules::BROKEN_ANCHOR,
-                            format!("リンク先 `{resolved}` に見出し `#{frag}` がありません"),
-                        );
-                    }
+                if let Some(frag) = frag
+                    && !has_anchor(target, frag)
+                {
+                    push(
+                        out,
+                        page,
+                        link,
+                        rules::BROKEN_ANCHOR,
+                        format!("リンク先 `{resolved}` に見出し `#{frag}` がありません"),
+                    );
                 }
             }
         }
@@ -246,16 +246,16 @@ fn check_absolute(
         }
     });
     if let Some(target) = target {
-        if let Some(frag) = frag {
-            if !has_anchor(target, frag) {
-                push(
-                    out,
-                    page,
-                    link,
-                    rules::BROKEN_ANCHOR,
-                    format!("リンク先 `/{rest}` に見出し `#{frag}` がありません"),
-                );
-            }
+        if let Some(frag) = frag
+            && !has_anchor(target, frag)
+        {
+            push(
+                out,
+                page,
+                link,
+                rules::BROKEN_ANCHOR,
+                format!("リンク先 `/{rest}` に見出し `#{frag}` がありません"),
+            );
         }
         return;
     }
