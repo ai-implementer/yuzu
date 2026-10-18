@@ -305,6 +305,8 @@ jobs:
             exit 1
           fi
           grep -q 'id="第三者のソフトウェアのライセンス表記"' docs/dist/guide/internal/index.html
+          # Phase 88: frontmatter の YAML の読み方（YAML 1.2・YAML 1.1 の書き方はエラー）の説明
+          grep -q 'id="yaml-の書き方"' docs/dist/guide/writing/index.html
           # 設定例は TOML で書く（JSON / YAML 風の `markdown.mermaid.backend: "ssr"` や
           # `"abbr": false` はコピーすると設定エラーになる）。原稿・README・雛形・スキルを見る
           if grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/; then
@@ -502,6 +504,20 @@ jobs:
             exit 1
           fi
           rm content/unclosed.md content/hr-first.md
+          # Phase 88: frontmatter の書き間違いは全ページ分を日本語・ファイル上の行と列で出し、
+          # exit 2 で止まる（YAML 1.1 の yes は黙って true にせず案内する）
+          printf -- '---\n\ntitle: a\norder: "最初"\ndraft: yes\n---\n\n# a\n' > content/fm-a.md
+          printf -- '---\naliases: old/\n---\n\n# b\n' > content/fm-b.md
+          set +e
+          "$GITHUB_WORKSPACE/target/debug/yuzu" build 2> "$RUNNER_TEMP/fm-type.err"
+          status=$?
+          set -e
+          test "$status" -eq 2
+          grep -q 'frontmatter（YAML）が不正です（3 件）:' "$RUNNER_TEMP/fm-type.err"
+          grep -q 'content/fm-a.md:4:8: `order` の型が違います（期待: 整数、実際: 文字列）' "$RUNNER_TEMP/fm-type.err"
+          grep -q 'content/fm-a.md:5:8: `draft` の型が違います.*YAML 1.1' "$RUNNER_TEMP/fm-type.err"
+          grep -q 'content/fm-b.md:2:10: `aliases`' "$RUNNER_TEMP/fm-type.err"
+          rm content/fm-a.md content/fm-b.md
           # -q と -v の同時指定は矛盾エラー（黙ってどちらかを勝たせない）。
           # サブコマンドの前後に分けた指定は clap の conflicts_with が見ないので
           # パース後の検証（Cli::parse_validated）が弾く。両順序を見る
