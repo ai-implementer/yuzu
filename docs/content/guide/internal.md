@@ -26,11 +26,11 @@ yuzu が出力する `dist/` は静的ファイルだけです。置いた場所
 | ページの HTML | 本文。HTML コメントもページのソースに残る | — |
 | 原稿の `.md` | 原文そのまま（frontmatter・HTML コメント込み） | `llms.page_md = false`（全体）/ frontmatter `pageMd: false`（ページ） |
 | `llms.txt` / `llms-full.txt` | ページの索引と全文（frontmatter は入らず、HTML コメントは入る） | `llms.enabled = false` / `llms.full = false` / frontmatter `llms: false` |
-| `_search/` | 検索インデックス（本文のテキスト。HTML コメントは入らない） | `search.enabled = false` |
+| `_search/` | 検索インデックス（本文のテキスト。HTML コメントは入らない） | `search.enabled = false`（全体）/ frontmatter `search: false`（ページ） |
 | `sitemap.xml` | 全ページの URL（`base_url` がフル URL のときだけ） | `base_url` をパスだけにする |
 | `public/` の中身 | そのままコピー | 置かない |
 
-右の列の設定（`page_md`・`pageMd`・`llms.*`・`search.enabled`・`base_url`）で止めると、
+右の列の設定（`page_md`・`pageMd`・`llms.*`・`search.enabled`・`search`・`base_url`）で止めると、
 前回の build で出したものは次の build で `dist/` から消えます（`output.clean = false` の
 サイトや、`--force` の後でも）。消したページや `public/` から外したファイルは、
 `output.clean = false` のサイトで `--force` した後などに残ることがあります。社内のサイトでは
