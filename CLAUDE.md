@@ -391,8 +391,12 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - **`| url` は HTML 属性専用**（`&` を `&amp;` にする。生のままだと `&copy;` を
     パーサがデコードして別の URL になる）。`<script>` 内の文字列は実体参照がデコード
     されないので **`| url_js`**（`&` を残す）を使う。文脈で使い分ける
-  - `| safe` は `page.body`（レンダ済み HTML）と `theme_css_vars`（`css.rs` で検証済み）
-    だけに残す
+  - `| safe` は `page.body`（レンダ済み HTML）・`site.footer_html`（`site.footer` を
+    `yuzu_core::render_inline_markdown` で描画した HTML。本文と同じく書き手が書いたもの。Phase 90）・
+    `theme_css_vars`（`css.rs` で検証済み）だけに残す
+  - 設定に書いたリンク（`site.favicon`・`site.header_links`・フッターのリンク）は
+    `pipeline.rs` の `site_link_url` が base を前置する（`site.logo` と同じ規則。外部 URL・
+    `mailto:` はそのまま）。`header_links` の `javascript:` 等は codec が設定エラーにする
   - **URL 値へ `| safe` を使わない** = yuzu は slug 化をせずファイル名がそのまま
     route → URL になるため、引用符や `<` を含むファイル名で属性・`<script>` を抜けられる
     （`<script>` 内は実体参照がデコードされないので HTML エスケープでは直らない）
@@ -483,7 +487,7 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     経路は scaffold の e2e が検証する
   - 原稿は `yuzu fmt` の正規形・表記は長音符なし（`lint.terms` 準拠）で書く
 - **ci.yml の docs ゲートは docs の原稿と結合している**（新機能ごとに `grep` を 1 行足す運用）
-  - 特に `docs/yuzu.toml` の 25-45 行目（`[markdown]` ブロック）はインクルードの `lines=` で
+  - 特に `docs/yuzu.toml` の 27-47 行目（`[markdown]` ブロック）はインクルードの `lines=` で
     引用されているので、この範囲を動かすと原稿の中身と CI が同時に壊れる
     （`verify` スキルに直す箇所の一覧あり）
 - **ci.yml の check ジョブは `target/package` を消してからキャッシュする**（`drop target/package

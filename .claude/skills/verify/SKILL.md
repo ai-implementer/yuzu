@@ -77,7 +77,7 @@ cargo build -p yuzu-cli
 test -f docs/dist/index.html && test -f docs/dist/_search/manifest.json
 # 機能ごとの配信ゲート（CI と同じ。新機能を足したら 1 行増やす）
 grep -q 'http-equiv="refresh"' docs/dist/guide/lint/index.html                      # エイリアス
-grep -q '<figcaption>yuzu.toml:25-45</figcaption>' docs/dist/guide/code-and-math/index.html   # インクルード
+grep -q '<figcaption>yuzu.toml:27-47</figcaption>' docs/dist/guide/code-and-math/index.html   # インクルード
 grep -q 'id="fig:deps"' docs/dist/development/index.html                            # 図表番号
 grep -q '<a href="#fig:deps">図 1</a>' docs/dist/development/index.html             # 参照の自動補完
 grep -q '<details class="markdown-alert markdown-alert-tip">' docs/dist/guide/writing/index.html  # 折りたたみ
@@ -127,6 +127,9 @@ test -s docs/dist/_assets/vendor/THIRD-PARTY-LICENSES.txt && test -s docs/dist/_
 grep -q 'id="第三者のソフトウェアのライセンス表記"' docs/dist/guide/internal/index.html  # 利用者のサイトに出るライセンス表記の説明（Phase 86）
 grep -q 'id="yaml-の書き方"' docs/dist/guide/writing/index.html  # frontmatter の YAML の読み方（Phase 88）
 grep -q 'id="結果の並び順"' docs/dist/guide/search/index.html && grep -q 'id="検索から外す"' docs/dist/guide/search/index.html  # 検索の並び順・search: false（Phase 89）
+grep -q 'id="faviconフッターヘッダーのリンク"' docs/dist/guide/appearance/index.html  # favicon・フッター・ヘッダーのリンクの説明（Phase 90）
+# サブパス配信の favicon（Phase 90。リリース判定。docs/dist を作り直すので docs の確認の最後に）:
+# yuzu build --root docs --base-url /yuzu/ → <link rel="icon" href="/yuzu/…"> とそのファイルが dist にあること
 ! grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/  # JSON / YAML 風の設定例が無い（Phase 84）
 grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/syntect.css  # syntect.css は有効時だけ
 <repo>/target/debug/yuzu search --root docs --section 開発者向け "キャッシュ" | grep -q '/development/'  # エンジン側の絞り込み
@@ -135,7 +138,7 @@ grep -q 'css/syntect.css' docs/dist/index.html && test -f docs/dist/_assets/css/
 grep -rlE 'src="[^"]*vendor/mermaid\.min\.js"' docs/dist/ --include="*.html" && echo "NG: フォールバック発生"
 ```
 
-**`docs/yuzu.toml` の 25-45 行目**（`[markdown]` から `[markdown.glossary.terms]` の末尾まで）は
+**`docs/yuzu.toml` の 27-47 行目**（`[markdown]` から `[markdown.glossary.terms]` の末尾まで）は
 インクルードの `lines=` で引用されている。この範囲を動かすと原稿の中身とゲートが同時に壊れるので、
 `docs/content/guide/code-and-math.md` の `lines=` 3 箇所と ci.yml の grep を同時に直す。
 
