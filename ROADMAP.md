@@ -5,7 +5,7 @@ yuzu の開発計画と、これまでのリリースの内訳。**このファ�
 
 ## 現在: v0.20（Phase 87〜93）
 
-**v0.19.1 まで公開済み**。kabosu 0.2.0 / tankan 0.2.1 / mikan 0.2.1 は crates.io で公開済み
+**v0.19.1 まで公開済み**。kabosu 0.2.0 / tankan 0.2.1 / mikan 0.2.2 は crates.io で公開済み
 （yuzu のリリースとは非同期。kabosu の publish 前に fuzz を実行する規律は CLAUDE.md にある）。
 
 次は **v0.20**（テーマ「**最初の利用者が当たる所を直し、検証の穴を埋める**」）を 7 つの
@@ -237,7 +237,8 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
 - 別件（Phase 88 の外）: 10-17 に ruzstd 0.8.2（mikan が分かち書きモデルの伸長に使う）へ
   RUSTSEC-2026-0344（小さな入力でメモリを使い果たす）が出て、deps.yml の advisories が失敗した。
   ユーザの判断で別の PR（#56。10-18 にマージ）にし、0.9.1 へ上げて検索 wasm と通知を
-  作り直した。crates.io の mikan 0.2.1 は ruzstd 0.8 のままなので、mikan のパッチ版の公開が残る
+  作り直した。crates.io の mikan 0.2.1 は ruzstd 0.8 のままだったので、ruzstd の要件だけを上げた
+  mikan 0.2.2 を公開した（#58。10-18。ソースは 0.2.1 と同一）
 
 ### 89 検索の順位 ⬜
 
