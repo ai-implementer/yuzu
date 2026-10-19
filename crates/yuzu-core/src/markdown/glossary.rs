@@ -159,13 +159,36 @@ pub(crate) fn page_markdown(
     title: &str,
     terms: &std::collections::BTreeMap<String, String>,
 ) -> String {
-    let mut out = format!("# {title}\n");
+    let mut out = format!("# {}\n", escape_heading(title));
     // BTreeMap のキー順 = 決定的（rayon の並列化があっても出力バイトは同一）
     for (term, desc) in terms {
         if term.is_empty() || desc.is_empty() {
             continue;
         }
-        out.push_str(&format!("\n## {term}\n\n{}\n", desc.trim()));
+        out.push_str(&format!(
+            "\n## {}\n\n{}\n",
+            escape_heading(term),
+            desc.trim()
+        ));
+    }
+    out
+}
+
+/// 見出しに埋める用語・タイトル（用語集と検索結果ページ）の Markdown の記号を `\` でエスケープする
+/// （B8。以前は生のまま埋めたので、`__init__` は太字に、`Vec<T>` の `<T>` は生 HTML として消えていた）。
+/// 記号の集合は comrak の正規形（`yuzu fmt`）が見出しでエスケープするものと同じ（`|`・`{`・`$` は
+/// エスケープしない。`$x$` のように `$` で囲んだ用語は数式になる）。説明文は Markdown として
+/// 書けるのでエスケープしない
+pub(crate) fn escape_heading(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(
+            c,
+            '\\' | '`' | '*' | '_' | '[' | ']' | '<' | '>' | '#' | '!' | '~' | '&'
+        ) {
+            out.push('\\');
+        }
+        out.push(c);
     }
     out
 }

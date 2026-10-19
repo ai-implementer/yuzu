@@ -492,7 +492,8 @@ fn search_result_page(
         "" => scan::stem_title(&rel),
         title => title.to_string(),
     };
-    let source = format!("# {heading}\n");
+    // タイトルの Markdown の記号は文字のまま出す（用語集と同じ。B8）
+    let source = format!("# {}\n", markdown::glossary::escape_heading(&heading));
     let src = content_dir.join(&rel);
     let meta = markdown::extract_meta(&source, opts, &src)?;
     let title = meta
