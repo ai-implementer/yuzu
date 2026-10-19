@@ -57,8 +57,12 @@ pub fn run(cx: &crate::cx::Cx, dir: &Path) -> anyhow::Result<()> {
         bail!("yuzu new では --root を指定できません（生成先は位置引数で指定します）");
     }
     if dir.exists() && dir.read_dir()?.next().is_some() {
+        // Markdown がすでにあるフォルダで始める人を手順へ案内する（v0.20 Phase 91）
         bail!(
-            "{} は空ではありません（既存ディレクトリを上書きしません）",
+            "{} は空ではありません（既存ディレクトリを上書きしません）。\
+             Markdown がすでにあるフォルダで始めるときは、yuzu.toml を置いて input.dir に\
+             原稿のディレクトリを指定します（https://ai.implementer.net/yuzu/guide/install/ の\
+             「既存のフォルダで始める」）",
             dir.display()
         );
     }
@@ -129,5 +133,17 @@ mod tests {
                 "{rel} に {VERSION_PLACEHOLDER} が残っている"
             );
         }
+    }
+
+    /// 空でないフォルダでは止め、既存のフォルダで始める手順へ案内する（v0.20 Phase 91）
+    #[test]
+    fn 空でないフォルダでは止めて手順を案内する() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("README.md"), "# 既存\n").unwrap();
+        let cx = crate::cx::Cx::new(None).unwrap();
+        let err = super::run(&cx, dir.path()).unwrap_err().to_string();
+        assert!(err.contains("空ではありません"), "{err}");
+        assert!(err.contains("「既存のフォルダで始める」"), "{err}");
+        assert!(!dir.path().join("yuzu.toml").exists());
     }
 }

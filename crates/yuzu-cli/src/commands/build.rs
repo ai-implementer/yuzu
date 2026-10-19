@@ -533,7 +533,8 @@ pub(crate) fn build_once(
     }
 
     // ここから下はビルド成功時のみ: 孤児掃除 → マニフェスト・キャッシュ保存
-    let written = tracker.into_written();
+    let record = tracker.into_record();
+    let written = record.written();
     let mut removed = match &previous {
         Some(prev) => output::remove_orphans(&rc.output_dir, prev, &written)
             .context("孤児出力の削除に失敗しました")?,
@@ -571,6 +572,8 @@ pub(crate) fn build_once(
     if let Err(e) = report_problems(rc, &site, &md_opts, include_drafts, live_reload) {
         tracing::warn!("リンク切れの件数を数えられませんでした: {e:#}");
     }
+    // 上書き・トップページの警告と、何を出したかの 1 行（v0.20 Phase 91）
+    super::summary::report(rc, &site, &record);
 
     // キャッシュの内訳は開発者向けの値なので -v のときだけ（Phase 85）
     let stats = session.cache.stats();
@@ -589,15 +592,47 @@ pub(crate) fn build_once(
 /// ビルドしたページが 0 件なら知らせる（ビルドは成功のまま）。何も言わないと、原稿の
 /// 置き場所や `input.dir` の書き間違いに気づけない（`pages=0` の INFO だけだった）
 fn warn_if_no_pages(rc: &ResolvedConfig, site: &yuzu_core::SiteModel) {
+    if let Some(message) = no_pages_message(rc, site) {
+        tracing::warn!("{message}");
+    }
+}
+
+/// [`warn_if_no_pages`] の文言（ページが 1 件でもあれば None）
+fn no_pages_message(rc: &ResolvedConfig, site: &yuzu_core::SiteModel) -> Option<String> {
     if site.pages.iter().any(|p| !p.is_generated()) {
-        return;
+        return None;
     }
     let input = &rc.config.input.dir;
     let mut message = if rc.content_dir.is_dir() {
-        format!(
-            "ビルドしたページが 0 件です（原稿のディレクトリ `{input}` に公開する .md がありません。\
-             draft のページは --drafts のときだけビルドします）"
-        )
+        // `input.dir` の下の .md も数え、draft と input.ignore のどちらで外れたかを添える
+        // （v0.20 Phase 91。以前はプロジェクトルート直下の .md しか数えなかった）
+        let count = |ignore: &[String]| {
+            yuzu_core::count_markdown_files(&rc.content_dir, ignore).unwrap_or(0)
+        };
+        let all = count(&[]);
+        let not_ignored = count(&rc.config.input.ignore);
+        if all == 0 {
+            format!(
+                "ビルドしたページが 0 件です（原稿のディレクトリ `{input}` に .md がありません）"
+            )
+        } else {
+            let mut reasons = Vec::new();
+            if not_ignored > 0 {
+                reasons.push(format!("draft が {not_ignored} 件"));
+            }
+            if all > not_ignored {
+                reasons.push(format!("input.ignore の対象が {} 件", all - not_ignored));
+            }
+            let note = if not_ignored > 0 {
+                "。draft は --drafts のときだけビルドします"
+            } else {
+                ""
+            };
+            format!(
+                "ビルドしたページが 0 件です（`{input}` の下に .md が {all} 件ありますが、{}です{note}）",
+                reasons.join("・")
+            )
+        }
     } else {
         format!(
             "原稿のディレクトリ `{input}`（input.dir）がありません。ビルドしたページは 0 件です"
@@ -618,7 +653,7 @@ fn warn_if_no_pages(rc: &ResolvedConfig, site: &yuzu_core::SiteModel) {
              input.dir で原稿のあるディレクトリを指定してください（ルート自身は指定できません）"
         ));
     }
-    tracing::warn!("{message}");
+    Some(message)
 }
 
 /// ビルドしたページの問題を知らせる（終了コードは変えない = 成功のまま。詳細と CI の判定は
@@ -1177,6 +1212,44 @@ mod tests {
         assert!(after.case_conflicts.is_empty(), "抑制が効いていない");
         // 抑制できないリンク切れは数えたまま
         assert_eq!(after.links, 1);
+    }
+
+    /// v0.20 Phase 91: ページが 0 件のとき、`input.dir` の下の .md が draft と input.ignore の
+    /// どちらで外れたかを添える（以前はプロジェクトルート直下の .md しか数えなかった）
+    #[test]
+    fn ページが_0_件なら_draft_と_ignore_の件数を添える() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        let message = || {
+            let rc = yuzu_config::load(&root).unwrap();
+            let md_opts = yuzu_render::markdown_options(&rc.config);
+            let site =
+                yuzu_core::build_site_model(&rc.content_dir, &rc.config.input.ignore, &md_opts)
+                    .unwrap();
+            no_pages_message(&rc, &site)
+        };
+        write("yuzu.toml", "[input]\nignore = [\"notes/**\"]\n");
+        std::fs::create_dir_all(root.join("content")).unwrap();
+        let m = message().unwrap();
+        assert!(m.contains("`content` に .md がありません"), "{m}");
+
+        write("content/a.md", "---\ndraft: true\n---\n\n# a\n");
+        write("content/guide/b.md", "---\ndraft: true\n---\n\n# b\n");
+        write("content/notes/c.md", "# c\n");
+        let m = message().unwrap();
+        assert!(
+            m.contains(".md が 3 件ありますが、draft が 2 件・input.ignore の対象が 1 件です"),
+            "{m}"
+        );
+        assert!(m.contains("--drafts"), "{m}");
+
+        write("content/index.md", "# top\n");
+        assert_eq!(message(), None);
     }
 
     /// v0.20 Phase 91: content の外を指すリンクはリンク切れと別に数え、`lint.rules` で外せる
