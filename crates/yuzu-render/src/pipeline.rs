@@ -13,7 +13,8 @@ use rayon::prelude::*;
 
 use yuzu_config::ResolvedConfig;
 use yuzu_core::{
-    BuildCache, CachedBody, GeneratedKind, OutputSwitches, OutputTracker, SiteModel, SiteOutput,
+    BuildCache, CachedBody, GeneratedKind, OutputKind, OutputSwitches, OutputTracker, SiteModel,
+    SiteOutput,
 };
 
 use crate::assets;
@@ -411,7 +412,13 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 theme_css_vars => theme_css_vars,
             })?;
             let out_rel = page.output_rel_path(); // route + "index.html"（/ 区切り）
-            assets::write_output(ctx.outputs, output_dir, &out_rel, html.as_bytes())?;
+            assets::write_output(
+                ctx.outputs,
+                OutputKind::Page,
+                output_dir,
+                &out_rel,
+                html.as_bytes(),
+            )?;
             // ページ単位 Markdown（原文バイトそのまま）。コピーボタンと llms.txt の
             // .md リンクの実体。`yuzu fmt` 運用なら正規形と一致する。
             // 検索結果ページと、`llms.page_md = false` / frontmatter `pageMd: false` では
@@ -419,6 +426,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             if page.emits_page_md(cfg.llms.page_md) {
                 assets::write_output(
                     ctx.outputs,
+                    OutputKind::PageMd,
                     output_dir,
                     &page.md_rel_path(),
                     page.source.as_bytes(),
@@ -441,6 +449,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
             })?;
             assets::write_output(
                 ctx.outputs,
+                OutputKind::Redirect,
                 output_dir,
                 &format!("{alias_route}index.html"),
                 html.as_bytes(),
@@ -481,6 +490,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     if SiteOutput::NotFound.emitted(&switches) {
         assets::write_output(
             ctx.outputs,
+            OutputKind::Site(SiteOutput::NotFound),
             output_dir,
             SiteOutput::NotFound.path(),
             not_found.as_bytes(),
@@ -499,6 +509,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     ) {
         assets::write_output(
             ctx.outputs,
+            OutputKind::Site(SiteOutput::SyntectCss),
             output_dir,
             SiteOutput::SyntectCss.path(),
             css.as_bytes(),
@@ -541,6 +552,7 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         xml.push_str("</urlset>\n");
         assets::write_output(
             ctx.outputs,
+            OutputKind::Site(SiteOutput::Sitemap),
             output_dir,
             SiteOutput::Sitemap.path(),
             xml.as_bytes(),
@@ -551,6 +563,8 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
 
     // content の同伴アセット（ページ横の画像等）。copy_public より前 = 同じパスに
     // public/ のファイルがあればそちらが上書きして優先される（テーマ上書きと同じ思想）
+    // どちらも利用者のファイルなので、生成したページ・原稿の .md を上書きしたら tracker が記録し、
+    // build が警告する（v0.20 Phase 91。404.html・llms 等の置き換えは要約の行に出すだけ）
     assets::copy_content_assets(&rc.content_dir, &cfg.input.ignore, output_dir, ctx.outputs)?;
     assets::copy_public(rc.public_dir.as_deref(), output_dir, ctx.outputs)?;
     // build_id は `build --watch` のときだけ（判断は output_switches）

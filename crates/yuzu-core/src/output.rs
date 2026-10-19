@@ -230,10 +230,68 @@ pub fn write_atomic_under(root: &Path, rel: &str, data: &[u8]) -> std::io::Resul
     Ok(path)
 }
 
+/// 書き出したファイルの出どころ。書く側が申告する（記録を後からパスの文字列で分類しない =
+/// 別の一覧を持つと v0.19.1 の R1 と同じずれが起きる）。build の要約と、利用者のファイルが
+/// 生成物を上書きしたときの警告に使う（v0.20 Phase 91）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputKind {
+    /// ページの HTML（用語集・検索結果ページの合成ページを含む）
+    Page,
+    /// エイリアスのリダイレクト HTML
+    Redirect,
+    /// ページ単位の Markdown（原稿の `.md`）
+    PageMd,
+    /// サイト単位の生成物（404.html・llms・sitemap・テーマ資産・検索インデックス 等）
+    Site(crate::SiteOutput),
+    /// content の同伴アセット（利用者のファイル）
+    ContentAsset,
+    /// `public/` のコピー（利用者のファイル）
+    Public,
+}
+
+impl OutputKind {
+    /// yuzu が作ったファイルか（利用者のファイルは同伴アセットと `public/`）
+    pub fn is_generated(self) -> bool {
+        !matches!(self, Self::ContentAsset | Self::Public)
+    }
+}
+
+/// 利用者のファイルが、同じビルドで先に書いた yuzu の生成物を上書きした記録
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Overwrite {
+    /// dist 相対パス（`/` 区切り）
+    pub rel: String,
+    /// 上書きされた生成物
+    pub generated: OutputKind,
+    /// 上書きした利用者のファイル（[`OutputKind::ContentAsset`] か [`OutputKind::Public`]）
+    pub by: OutputKind,
+}
+
+/// このビルドの出力の記録（[`OutputTracker::into_record`]）
+#[derive(Debug, Default)]
+pub struct OutputRecord {
+    /// dist 相対パス → 最後に書いたものの出どころ
+    pub files: std::collections::BTreeMap<String, OutputKind>,
+    /// 利用者のファイルが生成物を上書きした記録（書いた順）
+    pub overwrites: Vec<Overwrite>,
+}
+
+impl OutputRecord {
+    /// 書いたパスの集合（孤児掃除とマニフェストの元）
+    pub fn written(&self) -> BTreeSet<String> {
+        self.files.keys().cloned().collect()
+    }
+
+    /// 出どころが `kind` のファイルの数
+    pub fn count(&self, kind: OutputKind) -> usize {
+        self.files.values().filter(|k| **k == kind).count()
+    }
+}
+
 /// このビルドで書き出した dist 相対パスの記録（孤児掃除マニフェストの元）
 pub struct OutputTracker {
     root: PathBuf,
-    written: Mutex<BTreeSet<String>>,
+    record: Mutex<OutputRecord>,
 }
 
 impl OutputTracker {
@@ -255,19 +313,36 @@ impl OutputTracker {
         }
         Ok(Self {
             root: root.to_path_buf(),
-            written: Mutex::new(BTreeSet::new()),
+            record: Mutex::new(OutputRecord::default()),
         })
     }
 
-    /// [`write_under`] ＋ 孤児掃除マニフェストへの記録
-    pub fn write(&self, rel: &str, data: &[u8]) -> std::io::Result<WriteOutcome> {
+    /// [`write_under`] ＋ 出力の記録。内容が同じで書き込みを省いたファイルも記録する
+    /// （増分ビルドでも `--force` と同じ記録になる）。利用者のファイルが先に書いた生成物を
+    /// 上書きしたら [`Overwrite`] に残す（`public/` が同伴アセットを上書きするのは仕様なので
+    /// 残さない）
+    pub fn write(&self, kind: OutputKind, rel: &str, data: &[u8]) -> std::io::Result<WriteOutcome> {
         let (_, outcome) = write_under(&self.root, rel, data)?;
-        self.written.lock().unwrap().insert(rel.to_string());
+        let mut record = self.record.lock().unwrap();
+        if let Some(previous) = record.files.insert(rel.to_string(), kind)
+            && previous.is_generated()
+            && !kind.is_generated()
+        {
+            record.overwrites.push(Overwrite {
+                rel: rel.to_string(),
+                generated: previous,
+                by: kind,
+            });
+        }
         Ok(outcome)
     }
 
     pub fn into_written(self) -> BTreeSet<String> {
-        self.written.into_inner().unwrap()
+        self.into_record().written()
+    }
+
+    pub fn into_record(self) -> OutputRecord {
+        self.record.into_inner().unwrap()
     }
 }
 
@@ -513,14 +588,20 @@ mod tests {
     fn remove_orphans_は差分削除と空ディレクトリ剪定をする() {
         let dir = tempfile::tempdir().unwrap();
         let tracker = OutputTracker::new(dir.path()).unwrap();
-        tracker.write("index.html", b"a").unwrap();
-        tracker.write("old/index.html", b"b").unwrap();
-        tracker.write("keep/index.html", b"c").unwrap();
+        tracker.write(OutputKind::Page, "index.html", b"a").unwrap();
+        tracker
+            .write(OutputKind::Page, "old/index.html", b"b")
+            .unwrap();
+        tracker
+            .write(OutputKind::Page, "keep/index.html", b"c")
+            .unwrap();
         let previous = tracker.into_written();
 
         let tracker = OutputTracker::new(dir.path()).unwrap();
-        tracker.write("index.html", b"a").unwrap();
-        tracker.write("keep/other.html", b"d").unwrap();
+        tracker.write(OutputKind::Page, "index.html", b"a").unwrap();
+        tracker
+            .write(OutputKind::Page, "keep/other.html", b"d")
+            .unwrap();
         let current = tracker.into_written();
 
         let removed = remove_orphans(dir.path(), &previous, &current).unwrap();
@@ -605,10 +686,60 @@ mod tests {
             "a\\b.html",
             "",
         ] {
-            assert!(tracker.write(bad, b"x").is_err(), "拒否されるべき: {bad:?}");
+            assert!(
+                tracker.write(OutputKind::Page, bad, b"x").is_err(),
+                "拒否されるべき: {bad:?}"
+            );
         }
-        assert!(tracker.write("a/b.html", b"x").is_ok());
+        assert!(tracker.write(OutputKind::Page, "a/b.html", b"x").is_ok());
         assert!(dir.path().join("a/b.html").exists());
+    }
+
+    /// 利用者のファイルが生成物を上書きしたら残す。`public/` が同伴アセットを上書きするのは
+    /// 仕様なので残さない（v0.20 Phase 91）
+    #[test]
+    fn 利用者のファイルが生成物を上書きしたら記録する() {
+        let dir = tempfile::tempdir().unwrap();
+        let tracker = OutputTracker::new(dir.path()).unwrap();
+        let llms = OutputKind::Site(crate::SiteOutput::LlmsTxt);
+        tracker
+            .write(OutputKind::Page, "index.html", b"page")
+            .unwrap();
+        tracker
+            .write(OutputKind::PageMd, "index.md", b"md")
+            .unwrap();
+        tracker.write(llms, "llms.txt", b"llms").unwrap();
+        tracker
+            .write(OutputKind::ContentAsset, "img.png", b"a")
+            .unwrap();
+        tracker
+            .write(OutputKind::ContentAsset, "index.html", b"asset")
+            .unwrap();
+        tracker.write(OutputKind::Public, "img.png", b"b").unwrap();
+        tracker
+            .write(OutputKind::Public, "llms.txt", b"public")
+            .unwrap();
+        let record = tracker.into_record();
+        assert_eq!(
+            record.overwrites,
+            [
+                Overwrite {
+                    rel: "index.html".into(),
+                    generated: OutputKind::Page,
+                    by: OutputKind::ContentAsset,
+                },
+                Overwrite {
+                    rel: "llms.txt".into(),
+                    generated: llms,
+                    by: OutputKind::Public,
+                },
+            ]
+        );
+        // 記録は最後に書いたものの出どころ
+        assert_eq!(record.count(OutputKind::Page), 0);
+        assert_eq!(record.count(OutputKind::PageMd), 1);
+        assert_eq!(record.count(OutputKind::Public), 2);
+        assert_eq!(record.written().len(), 4);
     }
 
     #[test]
