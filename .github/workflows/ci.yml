@@ -77,18 +77,32 @@ jobs:
       - name: search wasm inputs
         run: scripts/build-search-wasm.sh --check
 
-      # 雛形 deploy.yml（yuzu new が作る）の actions は、このリポジトリのワークフローと同じ
-      # SHA・版のコメントにする。dependabot は .github/ の外を見ないので、actions の更新 PR で
-      # 雛形だけが古い版に残るのを止める（Phase 82 の後、dependabot の最初の PR で判明）
+      # 雛形 deploy.yml（yuzu new が作る）と docs の PR 検証の例（docs/snippets/pr-check.yml）の
+      # actions は、このリポジトリのワークフローと同じ SHA・版のコメントにする。dependabot は
+      # .github/ の外を見ないので、actions の更新 PR で雛形と例だけが古い版に残るのを止める
+      # （Phase 82 の後、dependabot の最初の PR で判明）。docs は雛形を docs のルートの外から
+      # 取り込めないので写し（docs/snippets/deploy.yml）を置いている = 雛形とバイト一致させ、
+      # PR 検証の例の yuzu のインストールも雛形と同じ手順（コメントを除く）にする（Phase 91）
       - name: scaffold actions pins
         run: |
           status=0
-          while read -r ref; do
-            if ! grep -rqF -- "uses: $ref" .github/workflows/; then
-              echo "雛形 deploy.yml の「$ref」が .github/workflows に無い（同じ SHA・コメントに揃える）" >&2
-              status=1
-            fi
-          done < <(sed -n 's/^[ -]*uses: //p' crates/yuzu-cli/scaffold/deploy.yml)
+          for f in crates/yuzu-cli/scaffold/deploy.yml docs/snippets/pr-check.yml; do
+            while read -r ref; do
+              if ! grep -rqF -- "uses: $ref" .github/workflows/; then
+                echo "$f の「$ref」が .github/workflows に無い（同じ SHA・コメントに揃える）" >&2
+                status=1
+              fi
+            done < <(sed -n 's/^[ -]*uses: //p' "$f")
+          done
+          if ! cmp crates/yuzu-cli/scaffold/deploy.yml docs/snippets/deploy.yml; then
+            echo "docs/snippets/deploy.yml が雛形と違う（cp crates/yuzu-cli/scaffold/deploy.yml docs/snippets/deploy.yml）" >&2
+            status=1
+          fi
+          install_step() { sed -n '/- name: yuzu をインストール/,/\.\/yuzu\/yuzu --version/p' "$1" | grep -v '^ *#'; }
+          if ! diff <(install_step crates/yuzu-cli/scaffold/deploy.yml) <(install_step docs/snippets/pr-check.yml); then
+            echo "docs/snippets/pr-check.yml の yuzu のインストールが雛形 deploy.yml と違う" >&2
+            status=1
+          fi
           exit "$status"
 
       # kabosu の依存ゼロ検査: package 後の正規化 manifest に通常依存・build 依存・
@@ -335,6 +349,10 @@ jobs:
           # Phase 91: content の外を指すリンクのルール・build の警告と要約の行の説明
           grep -q 'link-outside-content' docs/dist/reference/rules/index.html && grep -q 'link-outside-content' docs/dist/guide/writing/index.html
           grep -q '出力: ページ' docs/dist/guide/quality/index.html && grep -q '利用者のファイルを優先' docs/dist/guide/quality/index.html
+          # Phase 91: 他のツールとの違いのページ・雛形 deploy.yml の全文・PR 検証の例と CI の例の --no-fmt
+          grep -q 'id="他のツールとの違い"' docs/dist/guide/migrate/index.html && grep -q 'id="生-html-と画像の大きさ"' docs/dist/guide/migrate/index.html
+          grep -q '<figcaption>snippets/deploy.yml</figcaption>' docs/dist/guide/deploy/index.html && grep -q 'id="ワークフローの全文"' docs/dist/guide/deploy/index.html
+          grep -q '<figcaption>snippets/pr-check.yml</figcaption>' docs/dist/guide/quality/index.html && grep -q -- '--no-fmt --format github' docs/dist/guide/quality/index.html
           # 設定例は TOML で書く（JSON / YAML 風の `markdown.mermaid.backend: "ssr"` や
           # `"abbr": false` はコピーすると設定エラーになる）。原稿・README・雛形・スキルを見る
           if grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/; then

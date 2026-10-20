@@ -130,6 +130,10 @@ grep -q 'id="結果の並び順"' docs/dist/guide/search/index.html && grep -q '
 grep -q 'id="faviconフッターヘッダーのリンク"' docs/dist/guide/appearance/index.html  # favicon・フッター・ヘッダーのリンクの説明（Phase 90）
 grep -q 'link-outside-content' docs/dist/reference/rules/index.html && grep -q 'link-outside-content' docs/dist/guide/writing/index.html  # content の外を指すリンク（Phase 91）
 grep -q '出力: ページ' docs/dist/guide/quality/index.html && grep -q '利用者のファイルを優先' docs/dist/guide/quality/index.html  # build の警告と要約の行（Phase 91）
+grep -q 'id="他のツールとの違い"' docs/dist/guide/migrate/index.html && grep -q 'id="生-html-と画像の大きさ"' docs/dist/guide/migrate/index.html  # 他のツールとの違い（Phase 91）
+grep -q '<figcaption>snippets/deploy.yml</figcaption>' docs/dist/guide/deploy/index.html && grep -q 'id="ワークフローの全文"' docs/dist/guide/deploy/index.html  # 雛形 deploy.yml の全文（Phase 91）
+grep -q '<figcaption>snippets/pr-check.yml</figcaption>' docs/dist/guide/quality/index.html && grep -q -- '--no-fmt --format github' docs/dist/guide/quality/index.html  # PR 検証の例・CI の例の --no-fmt（Phase 91）
+cmp crates/yuzu-cli/scaffold/deploy.yml docs/snippets/deploy.yml  # docs の写しは雛形とバイト一致（CI の scaffold actions pins。pr-check.yml の SHA とインストール手順も照合する）
 # サブパス配信の favicon（Phase 90。リリース判定。docs/dist を作り直すので docs の確認の最後に）:
 # yuzu build --root docs --base-url /yuzu/ → <link rel="icon" href="/yuzu/…"> とそのファイルが dist にあること
 ! grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/  # JSON / YAML 風の設定例が無い（Phase 84）
