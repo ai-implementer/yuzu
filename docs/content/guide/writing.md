@@ -1,6 +1,6 @@
 ---
 title: 執筆の基本
-order: 2
+order: 3
 description: ページとナビゲーション・frontmatter・GFM・Admonition・脚注・画像
 ---
 
@@ -227,6 +227,9 @@ GitHub 互換の `> [!NOTE]` 形式で注意書きが書けます（5 種類）�
 ![yuzu ロゴ](/images/yuzu-logo.svg)
 
 参照切れはどちらの方式でも `yuzu check` が検出します。
+
+画像の記法には大きさを指定する書き方がありません。生 HTML の `<img width="…">` を
+使うときの書き方は、[他のツールとの違い](migrate.md#生-html-と画像の大きさ)を参照してください。
 
 ## Markdown 断片のインクルード
 

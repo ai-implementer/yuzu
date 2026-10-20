@@ -1,6 +1,6 @@
 ---
 title: 配信とデプロイ
-order: 10
+order: 11
 description: base_url・GitHub Pages・404 ページ・git 連携メタ・sitemap・共有カード
 ---
 
@@ -53,6 +53,27 @@ GitHub Pages のサイトは、リポジトリを非公開にしてもインタ�
 
 ワークフローは `main` への push で動きます。既定のブランチが別の名前なら、
 ワークフローの `branches` を書き換えてください。
+
+### ワークフローの全文
+
+`yuzu new` が作る `.github/workflows/deploy.yml` の中身です。[既存のフォルダで始めた](install.md#既存のフォルダで始める)
+ときなど、`yuzu new` を使わなかった場合は、これをリポジトリの `.github/workflows/deploy.yml` に
+置きます。
+
+```yaml file="snippets/deploy.yml"
+```
+
+置くときに次を書き換えます:
+
+- `__YUZU_VERSION__` をすべて、`yuzu --version` が表示する版の番号（`v` は付けない）にします。
+  `yuzu new` はここを自分の版で埋めます
+- プロジェクトがリポジトリのサブディレクトリ（例: `docs/`）にあるなら、ビルドの `run` に
+  `--root docs` を付け、`upload-pages-artifact` の `path` を `docs/dist` にします。
+  書き換えた後の行は、ワークフローの「ビルド」のコメントにあります
+- 既定のブランチが `main` 以外なら `branches` を書き換えます
+
+プルリクエストごとに原稿を検査する（公開はしない）ワークフローの例は、
+[品質チェック](quality.md#ci-に組み込む)にあります。
 
 > [!NOTE]
 > このサイト自身も GitHub Pages で公開しています。リポジトリの
