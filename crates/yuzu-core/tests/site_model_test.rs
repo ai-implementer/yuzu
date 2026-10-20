@@ -566,6 +566,47 @@ fn 用語集ページは_fmt_の正規形と一致する() {
     );
 }
 
+/// 用語の Markdown の記号は見出しの文字のまま出す（B8。`__init__` が太字に、`Vec<T>` の
+/// `<T>` が生 HTML として消えていた）。生成した原稿は fmt の正規形のまま
+#[test]
+fn 用語集の用語は_markdown_の記号を文字のまま出す() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    let terms = [
+        ("__init__", "初期化"),
+        ("Vec<T>", "可変長配列"),
+        ("*args", "可変長引数"),
+        ("a|b", "または"),
+        ("C#", "言語"),
+        ("[x]", "角かっこ"),
+        ("&copy;", "実体参照"),
+        ("`code`", "コード"),
+        ("$PATH", "環境変数"),
+        ("a\\b", "バックスラッシュ"),
+        ("{#id}", "属性"),
+        ("~~x~~", "取り消し線"),
+        ("!x", "感嘆符"),
+    ];
+    let opts = glossary_opts(&terms, "glossary");
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let page = site.pages.iter().find(|p| p.is_generated()).unwrap();
+    let mut titles: Vec<&str> = page
+        .toc
+        .iter()
+        .skip(1) // h1
+        .map(|t| t.text.as_str())
+        .collect();
+    titles.sort_unstable();
+    let mut expected: Vec<&str> = terms.iter().map(|(t, _)| *t).collect();
+    expected.sort_unstable();
+    assert_eq!(titles, expected);
+    assert_eq!(
+        yuzu_core::format_document(page, &opts).unwrap(),
+        page.source,
+        "生成 Markdown が fmt の正規形でない"
+    );
+}
+
 #[test]
 fn 用語集ページの_route_はディレクトリ配下にも置ける() {
     let dir = tempfile::tempdir().unwrap();
@@ -714,6 +755,21 @@ fn search_page_opts(page: &str, page_title: &str) -> MarkdownOptions {
         },
         ..MarkdownOptions::default()
     }
+}
+
+/// 検索結果ページのタイトルの Markdown の記号も文字のまま出す（用語集と同じ。B8）
+#[test]
+fn 検索結果ページのタイトルは_markdown_の記号を文字のまま出す() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "index.md", "# top\n");
+    let opts = search_page_opts("search", "__検索__ <β>");
+    let site = build_site_model(dir.path(), &[], &opts).unwrap();
+    let page = site.pages.iter().find(|p| p.is_generated()).unwrap();
+    assert_eq!(page.title, "__検索__ <β>");
+    assert_eq!(
+        yuzu_core::format_document(page, &opts).unwrap(),
+        page.source
+    );
 }
 
 #[test]

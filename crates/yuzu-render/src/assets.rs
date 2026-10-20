@@ -9,15 +9,16 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use walkdir::WalkDir;
-use yuzu_core::{OutputTracker, SiteOutput};
+use yuzu_core::{OutputKind, OutputTracker, SiteOutput};
 
 use crate::error::RenderError;
 
-/// dist 相対パスへ書き出す（tracker があれば記録、なければ直接書き込み）。
+/// dist 相対パスへ書き出す（tracker があれば出どころ `kind` と一緒に記録、なければ直接書き込み）。
 /// rel の検証は両分岐とも `resolve_output_rel` に寄せる
 /// （エイリアス由来の `.` / `..` で実ページを上書きさせない）
 pub(crate) fn write_output(
     outputs: Option<&OutputTracker>,
+    kind: OutputKind,
     output_dir: &Path,
     rel: &str,
     data: &[u8],
@@ -25,7 +26,7 @@ pub(crate) fn write_output(
     match outputs {
         Some(tracker) => {
             tracker
-                .write(rel, data)
+                .write(kind, rel, data)
                 .map_err(RenderError::io(output_dir.join(rel)))?;
         }
         // tracker 無し（ライブラリ直接利用）でも同じ検証を通す
@@ -51,6 +52,7 @@ pub(crate) fn write_theme_assets(
         let data = yuzu_theme::get(&path).expect("iter() で列挙したパスは必ず存在する");
         write_output(
             outputs,
+            OutputKind::Site(SiteOutput::ThemeAssets),
             output_dir,
             &format!("{}/{rest}", SiteOutput::ThemeAssets.path()),
             &data,
@@ -65,6 +67,7 @@ pub(crate) fn write_theme_assets(
             SiteOutput::ThemeAssets.path(),
             output_dir,
             outputs,
+            OutputKind::Site(SiteOutput::ThemeAssets),
         )?;
     }
     Ok(())
@@ -77,7 +80,7 @@ pub(crate) fn copy_public(
     outputs: Option<&OutputTracker>,
 ) -> Result<(), RenderError> {
     if let Some(dir) = public_dir {
-        copy_tree(dir, "", output_dir, outputs)?;
+        copy_tree(dir, "", output_dir, outputs, OutputKind::Public)?;
     }
     Ok(())
 }
@@ -95,6 +98,7 @@ pub(crate) fn copy_content_assets(
         let data = fs::read(&abs).map_err(RenderError::io(&abs))?;
         write_output(
             outputs,
+            OutputKind::ContentAsset,
             output_dir,
             &yuzu_core::urlpath::rel_to_slash(&rel),
             &data,
@@ -117,6 +121,7 @@ pub(crate) fn write_build_id(
         .unwrap_or_else(|_| "0".to_string());
     write_output(
         outputs,
+        OutputKind::Site(SiteOutput::BuildId),
         output_dir,
         SiteOutput::BuildId.path(),
         id.as_bytes(),
@@ -129,6 +134,7 @@ fn copy_tree(
     dest_prefix: &str,
     output_dir: &Path,
     outputs: Option<&OutputTracker>,
+    kind: OutputKind,
 ) -> Result<(), RenderError> {
     for entry in WalkDir::new(src) {
         // 走査失敗を握りつぶすと public/ の一部が欠けた dist を「成功」として
@@ -162,7 +168,7 @@ fn copy_tree(
             format!("{dest_prefix}/{rel}")
         };
         let data = fs::read(entry.path()).map_err(RenderError::io(entry.path()))?;
-        write_output(outputs, output_dir, &dest_rel, &data)?;
+        write_output(outputs, kind, output_dir, &dest_rel, &data)?;
     }
     Ok(())
 }

@@ -332,8 +332,9 @@ jobs:
           grep -q 'id="検索から外す"' docs/dist/guide/search/index.html
           # Phase 90: favicon・フッター・ヘッダーのリンクの説明
           grep -q 'id="faviconフッターヘッダーのリンク"' docs/dist/guide/appearance/index.html
-          # Phase 91: content の外を指すリンクのルールと説明
+          # Phase 91: content の外を指すリンクのルール・build の警告と要約の行の説明
           grep -q 'link-outside-content' docs/dist/reference/rules/index.html && grep -q 'link-outside-content' docs/dist/guide/writing/index.html
+          grep -q '出力: ページ' docs/dist/guide/quality/index.html && grep -q '利用者のファイルを優先' docs/dist/guide/quality/index.html
           # 設定例は TOML で書く（JSON / YAML 風の `markdown.mermaid.backend: "ssr"` や
           # `"abbr": false` はコピーすると設定エラーになる）。原稿・README・雛形・スキルを見る
           if grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/; then
@@ -878,6 +879,22 @@ jobs:
           "$yuzu" build --root "$RUNNER_TEMP/empty-project" 2> "$RUNNER_TEMP/empty.err"
           grep -q '原稿のディレクトリ `content`（input.dir）がありません' "$RUNNER_TEMP/empty.err"
           grep -q 'プロジェクトルート直下に .md が 1 件あります' "$RUNNER_TEMP/empty.err"
+          # Phase 91: 原稿がすべて draft なら件数と理由を添える。トップページが無ければ理由
+          # （README.md）を添えて警告し、public/index.html が生成したトップページを上書きしたら
+          # 警告する。最後に何を出したかの 1 行（判定の組み合わせは build の単体テスト）
+          mkdir -p "$RUNNER_TEMP/empty-project/content"
+          printf -- '---\ndraft: true\n---\n\n# 下書き\n' > "$RUNNER_TEMP/empty-project/content/wip.md"
+          "$yuzu" build --root "$RUNNER_TEMP/empty-project" 2> "$RUNNER_TEMP/drafts.err"
+          grep -q '.md が 1 件ありますが、draft が 1 件' "$RUNNER_TEMP/drafts.err"
+          printf '# リポジトリの説明\n' > "$RUNNER_TEMP/empty-project/content/README.md"
+          "$yuzu" build --root "$RUNNER_TEMP/empty-project" 2> "$RUNNER_TEMP/readme.err"
+          grep -q 'トップページがありません' "$RUNNER_TEMP/readme.err"
+          grep -q '`content/README.md` は `/README/` のページになります' "$RUNNER_TEMP/readme.err"
+          grep -q '出力: ページ 1（原稿 1）' "$RUNNER_TEMP/readme.err"
+          mkdir -p public && printf '<html>app</html>\n' > public/index.html
+          "$yuzu" build 2> "$RUNNER_TEMP/overwrite.err"
+          grep -q 'index.html ← public/index.html' "$RUNNER_TEMP/overwrite.err"
+          rm public/index.html
           # 設定値と引数は入口で検証し、黙って捨てない（10-12 レビューの R3。どれも終了コード 2）:
           # build の --port は --watch が必要・--host は IP アドレスだけ・合成ページの route の
           # 不正値は位置付きの設定エラー（以前は検索結果ページを出さずに build も check も 0）

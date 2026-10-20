@@ -16,6 +16,7 @@ pub mod llms;
 pub mod new;
 pub mod preview;
 pub mod search;
+mod summary;
 
 /// プロジェクトルートを確定して設定を読む（全コマンド共通の入口）。
 ///

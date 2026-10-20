@@ -212,6 +212,13 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   `SiteOutput::emitted` と `yuzu_render::output_switches` を通る（10-12 レビューの R1。3 か所が
   別々の一覧で食い違っていた）。**生成物を足すときは `site_outputs!` に variant を足す**
   （`path` / `is_dir` / `emitted` は網羅 match。パス文字列を直に書かない）
+  - 出力の記録（`OutputTracker`）には、書く側が出どころ `OutputKind`（ページ・リダイレクト・
+    原稿の `.md`・`Site(SiteOutput)`・同伴アセット・`public/`）を申告する（v0.20 Phase 91）。
+    build の最後の要約・利用者のファイルが生成したページを上書きしたときの警告・トップページの
+    警告（cli の `commands/summary.rs`）はこの記録から作る。**記録をパスの文字列で分類しない**
+    （別の一覧を持つと R1 と同じずれが起きる）。記録は 1 ファイル 1 件で、大文字小文字だけ違うパスは
+    孤児掃除と同じくファイルの同一性で同じファイルかを判定する（文字列で照合すると、区別しない FS で
+    `public/INDEX.html` が生成した `index.html` を上書きしても警告が出ない。PR #69 のレビュー指摘）
 - **診断の収集** — cli の `commands/collect.rs`（check と build の件数の報告が共有。R2）。
   抑制は `Collected::suppress` を通した後でしか読めない。build はルールで絞って数える
   （以前は build が `lint.rules` を直接読み、`lintDisable` が効かなかった）。`Diagnostic` は
