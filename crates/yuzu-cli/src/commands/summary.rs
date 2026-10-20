@@ -113,7 +113,7 @@ fn page_overwrites(record: &OutputRecord, input: &str) -> Option<String> {
                 OutputKind::Page | OutputKind::Redirect | OutputKind::PageMd
             )
         })
-        .map(|o| format!("{} ← {}", o.rel, user_file(o.by, &o.rel, input)))
+        .map(|o| format!("{} ← {}", o.rel, user_file(o.by, &o.by_rel, input)))
         .collect();
     (!items.is_empty()).then(|| {
         format!(
@@ -271,26 +271,31 @@ mod tests {
                 ("404.html", OutputKind::Public),
             ],
             vec![
+                // 大文字小文字を区別しない FS では、大文字小文字だけ違う利用者のファイルが
+                // 同じファイルに書かれる。警告には利用者のファイルの実際の名前を出す
                 Overwrite {
                     rel: "index.html".into(),
                     generated: OutputKind::Page,
                     by: OutputKind::Public,
+                    by_rel: "INDEX.html".into(),
                 },
                 Overwrite {
                     rel: "guide/index.html".into(),
                     generated: OutputKind::Page,
                     by: OutputKind::ContentAsset,
+                    by_rel: "guide/index.html".into(),
                 },
                 Overwrite {
                     rel: "404.html".into(),
                     generated: OutputKind::Site(SiteOutput::NotFound),
                     by: OutputKind::Public,
+                    by_rel: "404.html".into(),
                 },
             ],
         );
         let m = page_overwrites(&rec, "docs").unwrap();
         assert!(
-            m.ends_with("index.html ← public/index.html・guide/index.html ← docs/guide/index.html"),
+            m.ends_with("index.html ← public/INDEX.html・guide/index.html ← docs/guide/index.html"),
             "{m}"
         );
         assert!(!m.contains("404"), "{m}");

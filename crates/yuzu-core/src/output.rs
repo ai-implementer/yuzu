@@ -259,12 +259,16 @@ impl OutputKind {
 /// 利用者のファイルが、同じビルドで先に書いた yuzu の生成物を上書きした記録
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Overwrite {
-    /// dist 相対パス（`/` 区切り）
+    /// 上書きされた生成物の dist 相対パス（`/` 区切り。[`OutputRecord::files`] のキー）
     pub rel: String,
     /// 上書きされた生成物
     pub generated: OutputKind,
     /// 上書きした利用者のファイル（[`OutputKind::ContentAsset`] か [`OutputKind::Public`]）
     pub by: OutputKind,
+    /// 上書きした利用者のファイルの dist 相対パス。`rel` と違うのは、大文字小文字を区別しない
+    /// FS で大文字小文字だけ違うパスが同じファイルになったとき（`public/INDEX.html` が
+    /// `index.html` を上書きする）
+    pub by_rel: String,
 }
 
 /// このビルドの出力の記録（[`OutputTracker::into_record`]）
@@ -291,7 +295,36 @@ impl OutputRecord {
 /// このビルドで書き出した dist 相対パスの記録（孤児掃除マニフェストの元）
 pub struct OutputTracker {
     root: PathBuf,
-    record: Mutex<OutputRecord>,
+    /// 2 つのパスが同じファイルか（テストで大文字小文字を区別しない FS を模すために差し替える）
+    same: fn(&Path, &Path) -> bool,
+    state: Mutex<TrackerState>,
+}
+
+#[derive(Default)]
+struct TrackerState {
+    record: OutputRecord,
+    /// 記録したパスを、大文字小文字を畳んだキーで引く（同じファイルの候補探し）
+    folded: std::collections::HashMap<String, Vec<String>>,
+}
+
+impl TrackerState {
+    /// `rel`（書いたファイルは `path`）が、記録済みのどのパスと同じファイルか
+    fn recorded_as(
+        &self,
+        root: &Path,
+        rel: &str,
+        path: &Path,
+        same: fn(&Path, &Path) -> bool,
+    ) -> Option<String> {
+        if self.record.files.contains_key(rel) {
+            return Some(rel.to_string());
+        }
+        self.folded
+            .get(&rel.to_lowercase())?
+            .iter()
+            .find(|cur| resolve_output_rel(root, cur).is_ok_and(|cur_path| same(path, &cur_path)))
+            .cloned()
+    }
 }
 
 impl OutputTracker {
@@ -299,6 +332,10 @@ impl OutputTracker {
     /// （書き込みが全部リンク先へ素通りするため。呼び出し側の検証と重なるが、
     /// tracker を作れば必ず書けてしまう以上ここでも止める二重防御）
     pub fn new(root: &Path) -> std::io::Result<Self> {
+        Self::new_with(root, is_same_file)
+    }
+
+    fn new_with(root: &Path, same: fn(&Path, &Path) -> bool) -> std::io::Result<Self> {
         if root
             .symlink_metadata()
             .is_ok_and(|m| m.file_type().is_symlink())
@@ -313,25 +350,47 @@ impl OutputTracker {
         }
         Ok(Self {
             root: root.to_path_buf(),
-            record: Mutex::new(OutputRecord::default()),
+            same,
+            state: Mutex::new(TrackerState::default()),
         })
     }
 
     /// [`write_under`] ＋ 出力の記録。内容が同じで書き込みを省いたファイルも記録する
     /// （増分ビルドでも `--force` と同じ記録になる）。利用者のファイルが先に書いた生成物を
     /// 上書きしたら [`Overwrite`] に残す（`public/` が同伴アセットを上書きするのは仕様なので
-    /// 残さない）
+    /// 残さない）。
+    ///
+    /// 記録は 1 ファイル 1 件。**大文字小文字を区別しない FS（macOS・Windows の既定）**では
+    /// `public/INDEX.html` が生成した `index.html` と同じファイルに書かれるので、文字列が
+    /// 違っても先に記録したパスの出どころを付け替え、上書きとして残す（PR #69 のレビュー指摘。
+    /// 文字列だけで照合すると、利用者のファイルが配信されるのに警告が出ず、要約のページ数も
+    /// 減らなかった）。キーは先に記録したパスのまま（ディスク上の名前も先に書いた方になる）。
+    /// 判定は [`remove_orphans`] と同じくファイルの同一性で、大文字小文字を畳んだ文字列は
+    /// 候補探しにだけ使う = 区別する FS では別のファイルとして記録する。Unicode の正規化
+    /// （NFC / NFD）だけが違うパスは拾えない
     pub fn write(&self, kind: OutputKind, rel: &str, data: &[u8]) -> std::io::Result<WriteOutcome> {
-        let (_, outcome) = write_under(&self.root, rel, data)?;
-        let mut record = self.record.lock().unwrap();
-        if let Some(previous) = record.files.insert(rel.to_string(), kind)
+        let (path, outcome) = write_under(&self.root, rel, data)?;
+        let mut state = self.state.lock().unwrap();
+        let Some(key) = state.recorded_as(&self.root, rel, &path, self.same) else {
+            state.record.files.insert(rel.to_string(), kind);
+            state
+                .folded
+                .entry(rel.to_lowercase())
+                .or_default()
+                .push(rel.to_string());
+            return Ok(outcome);
+        };
+        let record = &mut state.record;
+        let previous = record.files.insert(key.clone(), kind);
+        if let Some(previous) = previous
             && previous.is_generated()
             && !kind.is_generated()
         {
             record.overwrites.push(Overwrite {
-                rel: rel.to_string(),
+                rel: key,
                 generated: previous,
                 by: kind,
+                by_rel: rel.to_string(),
             });
         }
         Ok(outcome)
@@ -342,8 +401,13 @@ impl OutputTracker {
     }
 
     pub fn into_record(self) -> OutputRecord {
-        self.record.into_inner().unwrap()
+        self.state.into_inner().unwrap().record
     }
+}
+
+/// 2 つのパスが同じファイルか（Unix は dev / inode、Windows はファイル ID。読めなければ別物）
+fn is_same_file(a: &Path, b: &Path) -> bool {
+    same_file::is_same_file(a, b).unwrap_or(false)
 }
 
 /// `root` 配下の `rel_dir` にある通常ファイルを、`root` 相対の `/` 区切りで列挙する。
@@ -394,9 +458,7 @@ pub fn remove_orphans(
     previous: &BTreeSet<String>,
     current: &BTreeSet<String>,
 ) -> std::io::Result<usize> {
-    remove_orphans_with(root, previous, current, |a, b| {
-        same_file::is_same_file(a, b).unwrap_or(false)
-    })
+    remove_orphans_with(root, previous, current, is_same_file)
 }
 
 /// [`remove_orphans`] の本体。`same` は「2 つのパスが同じファイルか」（テストで
@@ -727,11 +789,13 @@ mod tests {
                     rel: "index.html".into(),
                     generated: OutputKind::Page,
                     by: OutputKind::ContentAsset,
+                    by_rel: "index.html".into(),
                 },
                 Overwrite {
                     rel: "llms.txt".into(),
                     generated: llms,
                     by: OutputKind::Public,
+                    by_rel: "llms.txt".into(),
                 },
             ]
         );
@@ -740,6 +804,70 @@ mod tests {
         assert_eq!(record.count(OutputKind::PageMd), 1);
         assert_eq!(record.count(OutputKind::Public), 2);
         assert_eq!(record.written().len(), 4);
+    }
+
+    /// 大文字小文字を区別しない FS（macOS・Windows の既定）: `public/INDEX.html` は生成した
+    /// `index.html` と同じファイルに書かれる。文字列が違っても上書きとして残し、記録は
+    /// 先に書いたパスの 1 件にまとめる（PR #69 のレビュー指摘）。Linux では同一性の判定を
+    /// 差し替えて、その FS を模す
+    #[test]
+    fn 大文字小文字だけ違うパスでも同じファイルなら上書きとして記録する() {
+        let dir = tempfile::tempdir().unwrap();
+        let case_insensitive = |a: &Path, b: &Path| {
+            a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+        };
+        let tracker = OutputTracker::new_with(dir.path(), case_insensitive).unwrap();
+        tracker
+            .write(OutputKind::Page, "guide/index.html", b"page")
+            .unwrap();
+        tracker
+            .write(OutputKind::ContentAsset, "Img.png", b"a")
+            .unwrap();
+        tracker
+            .write(OutputKind::Public, "Guide/INDEX.html", b"user")
+            .unwrap();
+        tracker.write(OutputKind::Public, "img.PNG", b"b").unwrap();
+        let record = tracker.into_record();
+        assert_eq!(
+            record.overwrites,
+            [Overwrite {
+                rel: "guide/index.html".into(),
+                generated: OutputKind::Page,
+                by: OutputKind::Public,
+                by_rel: "Guide/INDEX.html".into(),
+            }],
+            "public/ が同伴アセットを上書きするのは仕様なので残さない"
+        );
+        assert_eq!(record.count(OutputKind::Page), 0);
+        assert_eq!(record.count(OutputKind::ContentAsset), 0);
+        assert_eq!(record.count(OutputKind::Public), 2);
+        assert_eq!(
+            record.written(),
+            BTreeSet::from(["Img.png".to_string(), "guide/index.html".to_string()]),
+            "記録は 1 ファイル 1 件で、キーは先に書いたパス"
+        );
+    }
+
+    /// 大文字小文字を区別する FS（Linux の CI）: `index.html` と `INDEX.html` は別のファイル
+    /// なので、上書きとして残さず 2 件を記録する（文字列を畳んだだけで同じとみなさない）
+    #[test]
+    fn 大文字小文字だけ違うパスは別のファイルなら別々に記録する() {
+        let dir = tempfile::tempdir().unwrap();
+        let tracker = OutputTracker::new(dir.path()).unwrap();
+        tracker
+            .write(OutputKind::Page, "index.html", b"page")
+            .unwrap();
+        tracker
+            .write(OutputKind::Public, "INDEX.html", b"user")
+            .unwrap();
+        // 区別しない FS では同じファイルになるので、この前提が成り立つ環境だけで見る
+        if fs::read(dir.path().join("index.html")).unwrap() == b"user" {
+            return;
+        }
+        let record = tracker.into_record();
+        assert_eq!(record.overwrites, []);
+        assert_eq!(record.count(OutputKind::Page), 1);
+        assert_eq!(record.count(OutputKind::Public), 1);
     }
 
     #[test]
