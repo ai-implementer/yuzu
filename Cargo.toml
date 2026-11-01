@@ -59,7 +59,7 @@ saphyr-parser = "0.2.2"
 fst = { version = "0.4", features = ["levenshtein"] }
 # 日本語分かち書き（点予測）。純 Rust・wasm 可。モデルは assets に vendor
 vaporetto = "0.6"
-vaporetto_rules = "0.6"
+vaporetto_rules = "0.7"
 # モデル（.zst）の伸長。純 Rust・wasm 可
 # 0.9.1 以上（RUSTSEC-2026-0344。0.9.0 以前は小さな入力で伸長後の大きさを確かめずにメモリを使い果たす）
 ruzstd = "0.9.1"
