@@ -604,32 +604,41 @@ fn no_pages_message(rc: &ResolvedConfig, site: &yuzu_core::SiteModel) -> Option<
     }
     let input = &rc.config.input.dir;
     let mut message = if rc.content_dir.is_dir() {
-        // `input.dir` の下の .md も数え、draft と input.ignore のどちらで外れたかを添える
-        // （v0.20 Phase 91。以前はプロジェクトルート直下の .md しか数えなかった）
-        let count = |ignore: &[String]| {
-            yuzu_core::count_markdown_files(&rc.content_dir, ignore).unwrap_or(0)
-        };
-        let all = count(&[]);
-        let not_ignored = count(&rc.config.input.ignore);
+        // `input.dir` の下の .md も数え、draft・input.ignore・シンボリックリンクのどれで外れたかを
+        // 添える（v0.20 Phase 91。以前はプロジェクトルート直下の .md しか数えなかった）。分け方は
+        // ページの読み込みと同じ走査で、読み込んだのにページが無いなら draft（build が外すのは
+        // draft だけ）。ファイルシステムを別に調べない（シンボリックリンクの .md を数えて
+        // draft と案内していた。PR #69 のレビュー指摘）
+        let census = yuzu_core::markdown_census(&rc.content_dir, &rc.config.input.ignore)
+            .unwrap_or_default();
+        let (drafts, ignored, symlinks) = (
+            census.loaded.len(),
+            census.ignored.len(),
+            census.symlinks.len(),
+        );
+        let all = drafts + ignored + symlinks;
         if all == 0 {
             format!(
                 "ビルドしたページが 0 件です（原稿のディレクトリ `{input}` に .md がありません）"
             )
         } else {
             let mut reasons = Vec::new();
-            if not_ignored > 0 {
-                reasons.push(format!("draft が {not_ignored} 件"));
+            let mut notes = String::new();
+            if drafts > 0 {
+                reasons.push(format!("draft が {drafts} 件"));
+                notes.push_str("。draft は --drafts のときだけビルドします");
             }
-            if all > not_ignored {
-                reasons.push(format!("input.ignore の対象が {} 件", all - not_ignored));
+            if ignored > 0 {
+                reasons.push(format!("input.ignore の対象が {ignored} 件"));
             }
-            let note = if not_ignored > 0 {
-                "。draft は --drafts のときだけビルドします"
-            } else {
-                ""
-            };
+            if symlinks > 0 {
+                reasons.push(format!("シンボリックリンクが {symlinks} 件"));
+                notes.push_str(
+                    "。シンボリックリンクの .md は読まないので、実体のファイルを置いてください",
+                );
+            }
             format!(
-                "ビルドしたページが 0 件です（`{input}` の下に .md が {all} 件ありますが、{}です{note}）",
+                "ビルドしたページが 0 件です（`{input}` の下に .md が {all} 件ありますが、{}です{notes}）",
                 reasons.join("・")
             )
         }
@@ -1247,6 +1256,24 @@ mod tests {
             "{m}"
         );
         assert!(m.contains("--drafts"), "{m}");
+        assert!(!m.contains("シンボリックリンク"), "{m}");
+
+        // シンボリックリンクの .md はページにならない（走査がリンクを辿らない）ので、draft と
+        // 数えずに分けて案内する（PR #69 のレビュー指摘）
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.join("content/a.md"), root.join("content/link.md"))
+                .unwrap();
+            let m = message().unwrap();
+            assert!(
+                m.contains(
+                    ".md が 4 件ありますが、draft が 2 件・input.ignore の対象が 1 件・\
+                     シンボリックリンクが 1 件です"
+                ),
+                "{m}"
+            );
+            assert!(m.contains("シンボリックリンクの .md は読まないので"), "{m}");
+        }
 
         write("content/index.md", "# top\n");
         assert_eq!(message(), None);

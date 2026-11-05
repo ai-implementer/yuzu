@@ -56,7 +56,7 @@ pub use model::{
 pub use nav::{NavGroup, nav_groups, route_group_key};
 pub use output::{OutputKind, OutputRecord, OutputTracker, Overwrite, WriteOutcome};
 pub use routes::validate_routes;
-pub use scan::IgnoreMatcher;
+pub use scan::{IgnoreMatcher, MarkdownCensus};
 pub use site_output::{OutputSwitches, SiteOutput};
 pub use suppress::{SuppressionOutcome, apply_suppressions};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
@@ -344,10 +344,11 @@ fn load_pages(
     load_pages_cached(content_dir, ignore, opts, None)
 }
 
-/// `content_dir` 以下の `*.md` の数（`ignore` に当たるものを除く。ページの読み込みと同じ走査）。
-/// ビルドしたページが 0 件のときに、draft と `input.ignore` のどちらで外れたかを案内するために使う
-pub fn count_markdown_files(content_dir: &Path, ignore: &[String]) -> Result<usize, CoreError> {
-    Ok(scan::scan_markdown_files(content_dir, ignore)?.len())
+/// `content_dir` 以下の `.md` を、ページの読み込みと同じ走査で分ける。ビルドしたページに無い
+/// 原稿が draft・`input.ignore`・シンボリックリンクのどれで外れたかを案内するために使う
+/// （トップページが無いとき・ページが 0 件のときの警告）
+pub fn markdown_census(content_dir: &Path, ignore: &[String]) -> Result<MarkdownCensus, CoreError> {
+    scan::markdown_census(content_dir, ignore)
 }
 
 fn load_pages_cached(

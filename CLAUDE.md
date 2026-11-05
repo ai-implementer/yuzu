@@ -219,6 +219,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     （別の一覧を持つと R1 と同じずれが起きる）。記録は 1 ファイル 1 件で、大文字小文字だけ違うパスは
     孤児掃除と同じくファイルの同一性で同じファイルかを判定する（文字列で照合すると、区別しない FS で
     `public/INDEX.html` が生成した `index.html` を上書きしても警告が出ない。PR #69 のレビュー指摘）
+  - トップページ・ページ 0 件の警告に添える「原稿がページにならなかった理由」は、ページの読み込みと
+    同じ走査で分けた `yuzu_core::markdown_census`（読み込み・ignore・シンボリックリンク）とビルドした
+    ページから作る。**ファイルシステムを別に調べない**（`is_file()` はリンクを辿るので、走査が読まない
+    シンボリックリンクの `index.md` を draft と案内していた。PR #69 の 2 回目のレビュー指摘）
 - **診断の収集** — cli の `commands/collect.rs`（check と build の件数の報告が共有。R2）。
   抑制は `Collected::suppress` を通した後でしか読めない。build はルールで絞って数える
   （以前は build が `lint.rules` を直接読み、`lintDisable` が効かなかった）。`Diagnostic` は

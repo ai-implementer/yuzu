@@ -263,7 +263,8 @@ pub struct Overwrite {
     pub rel: String,
     /// 上書きされた生成物
     pub generated: OutputKind,
-    /// 上書きした利用者のファイル（[`OutputKind::ContentAsset`] か [`OutputKind::Public`]）
+    /// 上書きした利用者のファイル（[`OutputKind::ContentAsset`] か [`OutputKind::Public`]）。
+    /// 同伴アセットを `public/` がさらに上書きしたら、配信される `public/` の方
     pub by: OutputKind,
     /// 上書きした利用者のファイルの dist 相対パス。`rel` と違うのは、大文字小文字を区別しない
     /// FS で大文字小文字だけ違うパスが同じファイルになったとき（`public/INDEX.html` が
@@ -382,16 +383,25 @@ impl OutputTracker {
         };
         let record = &mut state.record;
         let previous = record.files.insert(key.clone(), kind);
-        if let Some(previous) = previous
-            && previous.is_generated()
-            && !kind.is_generated()
-        {
-            record.overwrites.push(Overwrite {
-                rel: key,
-                generated: previous,
-                by: kind,
-                by_rel: rel.to_string(),
-            });
+        match previous {
+            Some(previous) if previous.is_generated() && !kind.is_generated() => {
+                record.overwrites.push(Overwrite {
+                    rel: key,
+                    generated: previous,
+                    by: kind,
+                    by_rel: rel.to_string(),
+                });
+            }
+            // 生成物を上書きした同伴アセットを、さらに `public/` が上書きした。配信されるのは
+            // 後のファイルなので、上書きした側をそちらへ付け替える（PR #69 のレビュー指摘。
+            // 警告が配信されない同伴アセットを挙げていた）
+            Some(previous) if !previous.is_generated() && !kind.is_generated() => {
+                if let Some(overwrite) = record.overwrites.iter_mut().find(|o| o.rel == key) {
+                    overwrite.by = kind;
+                    overwrite.by_rel = rel.to_string();
+                }
+            }
+            _ => {}
         }
         Ok(outcome)
     }
@@ -804,6 +814,56 @@ mod tests {
         assert_eq!(record.count(OutputKind::PageMd), 1);
         assert_eq!(record.count(OutputKind::Public), 2);
         assert_eq!(record.written().len(), 4);
+    }
+
+    /// 同伴アセットが上書きした生成物を `public/` がさらに上書きしたら、配信される `public/` の
+    /// ファイルを上書きした側として残す（PR #69 のレビュー指摘）
+    #[test]
+    fn 同伴アセットの上書きを_public_が上書きしたら上書きした側を付け替える() {
+        let dir = tempfile::tempdir().unwrap();
+        let case_insensitive = |a: &Path, b: &Path| {
+            a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+        };
+        let tracker = OutputTracker::new_with(dir.path(), case_insensitive).unwrap();
+        tracker
+            .write(OutputKind::Page, "index.html", b"page")
+            .unwrap();
+        tracker
+            .write(OutputKind::ContentAsset, "index.html", b"asset")
+            .unwrap();
+        tracker
+            .write(OutputKind::Page, "guide/index.html", b"page")
+            .unwrap();
+        tracker
+            .write(OutputKind::ContentAsset, "guide/index.html", b"asset")
+            .unwrap();
+        // 大文字小文字だけ違う public/ のファイルが同じファイルに書かれる場合も同じ
+        tracker
+            .write(OutputKind::Public, "Guide/Index.html", b"public")
+            .unwrap();
+        tracker
+            .write(OutputKind::Public, "index.html", b"public")
+            .unwrap();
+        let record = tracker.into_record();
+        assert_eq!(
+            record.overwrites,
+            [
+                Overwrite {
+                    rel: "index.html".into(),
+                    generated: OutputKind::Page,
+                    by: OutputKind::Public,
+                    by_rel: "index.html".into(),
+                },
+                Overwrite {
+                    rel: "guide/index.html".into(),
+                    generated: OutputKind::Page,
+                    by: OutputKind::Public,
+                    by_rel: "Guide/Index.html".into(),
+                },
+            ]
+        );
+        assert_eq!(record.count(OutputKind::Public), 2);
+        assert_eq!(record.count(OutputKind::ContentAsset), 0);
     }
 
     /// 大文字小文字を区別しない FS（macOS・Windows の既定）: `public/INDEX.html` は生成した
