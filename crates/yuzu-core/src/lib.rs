@@ -54,9 +54,9 @@ pub use model::{
     SiteModel, SourceSpan, TocEntry,
 };
 pub use nav::{NavGroup, nav_groups, route_group_key};
-pub use output::{OutputTracker, WriteOutcome};
+pub use output::{OutputKind, OutputRecord, OutputTracker, Overwrite, WriteOutcome};
 pub use routes::validate_routes;
-pub use scan::IgnoreMatcher;
+pub use scan::{IgnoreMatcher, MarkdownCensus};
 pub use site_output::{OutputSwitches, SiteOutput};
 pub use suppress::{SuppressionOutcome, apply_suppressions};
 pub use traits::{CodeBlockRenderer, NoopCodeBlockRenderer, NoopUrlRewriter, UrlRewriter};
@@ -344,6 +344,13 @@ fn load_pages(
     load_pages_cached(content_dir, ignore, opts, None)
 }
 
+/// `content_dir` 以下の `.md` を、ページの読み込みと同じ走査で分ける。ビルドしたページに無い
+/// 原稿が draft・`input.ignore`・シンボリックリンクのどれで外れたかを案内するために使う
+/// （トップページが無いとき・ページが 0 件のときの警告）
+pub fn markdown_census(content_dir: &Path, ignore: &[String]) -> Result<MarkdownCensus, CoreError> {
+    scan::markdown_census(content_dir, ignore)
+}
+
 fn load_pages_cached(
     content_dir: &Path,
     ignore: &[String],
@@ -486,7 +493,8 @@ fn search_result_page(
         "" => scan::stem_title(&rel),
         title => title.to_string(),
     };
-    let source = format!("# {heading}\n");
+    // タイトルの Markdown の記号は文字のまま出す（用語集と同じ。B8）
+    let source = format!("# {}\n", markdown::glossary::escape_heading(&heading));
     let src = content_dir.join(&rel);
     let meta = markdown::extract_meta(&source, opts, &src)?;
     let title = meta

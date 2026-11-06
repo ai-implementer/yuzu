@@ -36,22 +36,35 @@ fn is_missing_root(e: &walkdir::Error, root: &Path) -> bool {
         && e.path() == Some(root)
 }
 
-/// `content_dir` 以下の `*.md` をパスのソート順で列挙する。
-/// `ignore` glob（相対パス・`/` 区切りで評価）に一致するものは除外
-pub(crate) fn scan_markdown_files(
+/// `.md` の走査で 1 件ごとに決まる扱い（[`scan_markdown_files`] と [`markdown_census`] が共有する）
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MarkdownEntry {
+    /// ページとして読み込む（draft を含む）
+    Load,
+    /// `ignore` glob に一致した
+    Ignored,
+    /// シンボリックリンク（走査はリンクを辿らないので読まない）
+    Symlink,
+}
+
+/// `content_dir` 以下の `*.md` をパスのソート順で走査し、1 件ごとの扱いを `visit` へ渡す。
+/// ページとして読み込むのは通常のファイルだけで、`ignore` glob（相対パス・`/` 区切りで評価）に
+/// 一致するものは除外する
+fn walk_markdown_files(
     content_dir: &Path,
     ignore: &[String],
-) -> Result<Vec<ScannedFile>, CoreError> {
+    mut visit: impl FnMut(MarkdownEntry, ScannedFile),
+) -> Result<(), CoreError> {
     let ignore_set = build_ignore_set(ignore)?;
-    let mut files = Vec::new();
 
     for entry in WalkDir::new(content_dir).sort_by_file_name() {
         let entry = match entry {
             Ok(entry) => entry,
-            Err(e) if is_missing_root(&e, content_dir) => return Ok(files),
+            Err(e) if is_missing_root(&e, content_dir) => return Ok(()),
             Err(e) => return Err(walk_error(e)),
         };
-        if !entry.file_type().is_file() {
+        let file_type = entry.file_type();
+        if !file_type.is_file() && !file_type.is_symlink() {
             continue;
         }
         let abs = entry.path().to_path_buf();
@@ -62,13 +75,63 @@ pub(crate) fn scan_markdown_files(
             .strip_prefix(content_dir)
             .expect("walkdir は content_dir 配下のみ返す")
             .to_path_buf();
-        if ignore_set.is_match(crate::urlpath::rel_to_slash(&rel)) {
+        let kind = if ignore_set.is_match(crate::urlpath::rel_to_slash(&rel)) {
             tracing::debug!(path = %rel.display(), "ignore パターンに一致したため除外");
-            continue;
-        }
-        files.push(ScannedFile { abs, rel });
+            MarkdownEntry::Ignored
+        } else if file_type.is_symlink() {
+            MarkdownEntry::Symlink
+        } else {
+            MarkdownEntry::Load
+        };
+        visit(kind, ScannedFile { abs, rel });
     }
+    Ok(())
+}
+
+/// `content_dir` 以下の `*.md` をパスのソート順で列挙する。
+/// `ignore` glob（相対パス・`/` 区切りで評価）に一致するもの・シンボリックリンクは除外
+pub(crate) fn scan_markdown_files(
+    content_dir: &Path,
+    ignore: &[String],
+) -> Result<Vec<ScannedFile>, CoreError> {
+    let mut files = Vec::new();
+    walk_markdown_files(content_dir, ignore, |kind, file| {
+        if kind == MarkdownEntry::Load {
+            files.push(file);
+        }
+    })?;
     Ok(files)
+}
+
+/// `content_dir` 以下の `.md` を、ページの読み込みと同じ走査で分けたもの（`content_dir` からの
+/// 相対パス。パスのソート順）。ビルドしたページに無い原稿の理由を案内するために使う
+/// （v0.20 Phase 91。理由をファイルシステムから別に調べると走査の規則とずれ、シンボリックリンクの
+/// `index.md` を draft と案内していた。PR #69 のレビュー指摘）
+#[derive(Debug, Default)]
+pub struct MarkdownCensus {
+    /// ページとして読み込む原稿（draft を含む。ビルドしたページに無ければ draft）
+    pub loaded: Vec<PathBuf>,
+    /// `input.ignore` に一致して外したもの
+    pub ignored: Vec<PathBuf>,
+    /// シンボリックリンク（走査はリンクを辿らないので読まない）
+    pub symlinks: Vec<PathBuf>,
+}
+
+/// [`MarkdownCensus`] を作る
+pub(crate) fn markdown_census(
+    content_dir: &Path,
+    ignore: &[String],
+) -> Result<MarkdownCensus, CoreError> {
+    let mut census = MarkdownCensus::default();
+    walk_markdown_files(content_dir, ignore, |kind, file| {
+        let list = match kind {
+            MarkdownEntry::Load => &mut census.loaded,
+            MarkdownEntry::Ignored => &mut census.ignored,
+            MarkdownEntry::Symlink => &mut census.symlinks,
+        };
+        list.push(file.rel);
+    })?;
+    Ok(census)
 }
 
 /// `content_dir` 以下の `.md` 以外のファイル（ページ横の画像等の同伴アセット）を
@@ -250,5 +313,42 @@ mod tests {
         );
         assert_eq!(stem_title(Path::new("guide/index.md")), "guide");
         assert_eq!(stem_title(Path::new("index.md")), "index");
+    }
+
+    /// 分類はページの読み込みと同じ走査で、読み込むのは `scan_markdown_files` と同じ集合。
+    /// シンボリックリンクはページにならないので分けて数える（PR #69 のレビュー指摘）
+    #[cfg(unix)]
+    #[test]
+    fn markdown_census_は読み込み_ignore_シンボリックリンクに分ける() {
+        use super::{markdown_census, scan_markdown_files};
+        use std::path::PathBuf;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("notes")).unwrap();
+        std::fs::write(root.join("guide.md"), "# g\n").unwrap();
+        std::fs::write(root.join("notes/a.md"), "# a\n").unwrap();
+        std::fs::write(root.join("image.png"), "png").unwrap();
+        std::os::unix::fs::symlink(root.join("guide.md"), root.join("index.md")).unwrap();
+        std::os::unix::fs::symlink(root.join("guide.md"), root.join("notes/b.md")).unwrap();
+
+        let ignore = ["notes/**".to_string()];
+        let census = markdown_census(root, &ignore).unwrap();
+        let paths = |v: &[&str]| v.iter().map(PathBuf::from).collect::<Vec<_>>();
+        assert_eq!(census.loaded, paths(&["guide.md"]));
+        // ignore に当たるものはシンボリックリンクでも ignore として数える
+        assert_eq!(census.ignored, paths(&["notes/a.md", "notes/b.md"]));
+        assert_eq!(census.symlinks, paths(&["index.md"]));
+        let scanned: Vec<PathBuf> = scan_markdown_files(root, &ignore)
+            .unwrap()
+            .into_iter()
+            .map(|f| f.rel)
+            .collect();
+        assert_eq!(scanned, census.loaded);
+
+        // 原稿のディレクトリが無ければ空（scan_markdown_files と同じく 0 件でエラーにしない）
+        let census = markdown_census(&root.join("missing"), &[]).unwrap();
+        assert!(census.loaded.is_empty() && census.ignored.is_empty());
+        assert!(census.symlinks.is_empty());
     }
 }

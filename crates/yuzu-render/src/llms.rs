@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use yuzu_config::ResolvedConfig;
-use yuzu_core::{NavNode, OutputSwitches, Page, SiteModel, SiteOutput};
+use yuzu_core::{NavNode, OutputKind, OutputSwitches, Page, SiteModel, SiteOutput};
 
 use crate::assets;
 use crate::error::RenderError;
@@ -102,6 +102,7 @@ pub(crate) fn write_llms_files(
         let llms_txt = generate_llms_txt(rc, site)?;
         assets::write_output(
             ctx.outputs,
+            OutputKind::Site(SiteOutput::LlmsTxt),
             output_dir,
             SiteOutput::LlmsTxt.path(),
             llms_txt.as_bytes(),
@@ -111,6 +112,7 @@ pub(crate) fn write_llms_files(
         let full = generate_llms_full_txt(rc, site, ctx.cache)?;
         assets::write_output(
             ctx.outputs,
+            OutputKind::Site(SiteOutput::LlmsFullTxt),
             output_dir,
             SiteOutput::LlmsFullTxt.path(),
             full.as_bytes(),

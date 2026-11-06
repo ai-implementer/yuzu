@@ -129,6 +129,7 @@ grep -q 'id="yaml-の書き方"' docs/dist/guide/writing/index.html  # frontmatt
 grep -q 'id="結果の並び順"' docs/dist/guide/search/index.html && grep -q 'id="検索から外す"' docs/dist/guide/search/index.html  # 検索の並び順・search: false（Phase 89）
 grep -q 'id="faviconフッターヘッダーのリンク"' docs/dist/guide/appearance/index.html  # favicon・フッター・ヘッダーのリンクの説明（Phase 90）
 grep -q 'link-outside-content' docs/dist/reference/rules/index.html && grep -q 'link-outside-content' docs/dist/guide/writing/index.html  # content の外を指すリンク（Phase 91）
+grep -q '出力: ページ' docs/dist/guide/quality/index.html && grep -q '利用者のファイルを優先' docs/dist/guide/quality/index.html  # build の警告と要約の行（Phase 91）
 # サブパス配信の favicon（Phase 90。リリース判定。docs/dist を作り直すので docs の確認の最後に）:
 # yuzu build --root docs --base-url /yuzu/ → <link rel="icon" href="/yuzu/…"> とそのファイルが dist にあること
 ! grep -rnE '`[a-z_]+(\.[a-z_]+)+: |`"[a-z_]+": |backend: ["]' docs/content README.md crates/yuzu-cli/scaffold/*.md .claude/skills/  # JSON / YAML 風の設定例が無い（Phase 84）

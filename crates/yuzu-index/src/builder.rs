@@ -288,7 +288,11 @@ pub fn build_search_index_with(
         match ctx.outputs {
             Some(tracker) => {
                 tracker
-                    .write(&rel_from_dist, data)
+                    .write(
+                        yuzu_core::OutputKind::Site(yuzu_core::SiteOutput::SearchIndex),
+                        &rel_from_dist,
+                        data,
+                    )
                     .map_err(IndexError::io(search_dir.join(rel)))?;
             }
             // tracker 経路と同じ検証を通す（rel の解釈を 1 実装に揃える）
