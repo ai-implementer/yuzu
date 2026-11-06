@@ -1,6 +1,6 @@
 ---
 title: 品質チェック
-order: 8
+order: 9
 description: yuzu fmt / lint / check で文書の品質を CI で保つ
 aliases: ["guide/lint/"]
 lintDisable:
@@ -284,6 +284,23 @@ GitHub Actions の注釈としてプルリクエストの diff 行に直接出�
 パスは `GITHUB_WORKSPACE` からの相対に自動で付け替わるので、上のように
 `--root` でサブディレクトリを指定しても、`cd docs` してから実行しても、
 正しいファイルに紐づきます。
+
+既存の原稿を持ち込んだ直後は、整形差分で `yuzu check` が失敗します。整形を後回しに
+する間は `--no-fmt` を付けます:
+
+```yaml
+- name: docs check
+  run: yuzu check --root docs --no-fmt --format github
+```
+
+プルリクエストごとに原稿を検査して、ビルドが通ることを確かめるワークフローの例です
+（公開はしません）。`.github/workflows/` に置き、`__YUZU_VERSION__` を `yuzu --version` が
+表示する版の番号（`v` は付けない）に書き換えます:
+
+```yaml file="snippets/pr-check.yml"
+```
+
+公開するワークフローは[配信とデプロイ](deploy.md#ワークフローの全文)にあります。
 
 機械処理したいときは `--format json` を使います（標準出力へ単一の JSON
 オブジェクトだけを出します）。出力の詳細は

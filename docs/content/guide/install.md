@@ -87,6 +87,12 @@ Markdown がすでにあるフォルダでも始められます。`yuzu new .` �
    （無いとサイトの `/` が 404 になり、`yuzu build` が警告します。`README.md` はトップページに
    ならず `/README/` のページになるので、トップページにするなら `index.md` へ名前を変えます）
 4. `yuzu build` のあとに `yuzu preview` で確認します
+5. GitHub Pages へ公開するなら、[配信とデプロイ](deploy.md#ワークフローの全文)の
+   ワークフローを `.github/workflows/deploy.yml` に置きます（`yuzu new` で作ったプロジェクト
+   には最初から入っています）
+
+ほかのドキュメントツールで書いた原稿なら、[他のツールとの違い](migrate.md)で書き方の
+違いを確かめてください。
 
 原稿が `docs/` にある場合の `input.dir` の指定:
 

@@ -1,0 +1,44 @@
+# プルリクエストの原稿を検査する（公開はしない）。.github/workflows/ に置く。
+# actions はフルコミット SHA でピン留めする（タグの書き換えによる改ざんを防ぐ）。
+# 更新時は SHA とコメントのバージョンを揃えること
+name: docs-check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # yuzu のリリースは x86_64 の Linux 向けを使う（arm の runner に替えるとアーカイブが無い）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: yuzu をインストール
+        # 使う yuzu の版を固定し、リリースに添付された SHA256SUMS で照合してから使う。
+        # __YUZU_VERSION__ は `yuzu --version` が表示する版の番号（v は付けない）に書き換える
+        env:
+          YUZU_VERSION: __YUZU_VERSION__
+        run: |
+          base="https://github.com/ai-implementer/yuzu/releases/download/v${YUZU_VERSION}"
+          archive="yuzu-v${YUZU_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -fsSL --proto '=https' --proto-redir '=https' -O "$base/$archive" -O "$base/SHA256SUMS"
+          awk -v f="$archive" '$2 == f' SHA256SUMS | sha256sum -c -
+          mkdir yuzu
+          tar -xzf "$archive" -C yuzu
+          echo "$RUNNER_TEMP/yuzu" >> "$GITHUB_PATH"
+          ./yuzu/yuzu --version
+
+      - name: 検査
+        # --format github で、診断をプルリクエストの差分の行に注釈として出す。
+        # 持ち込んだ原稿の整形を後回しにする間は、整形差分の検査だけを外す:
+        #   run: yuzu check --no-fmt --format github
+        # プロジェクトがサブディレクトリ（例: docs/）にあるなら、check と build に --root docs を付ける
+        run: yuzu check --format github
+
+      - name: ビルド
+        # 設定の誤りや取り込みの失敗でビルドが止まらないことを確かめる
+        run: yuzu build

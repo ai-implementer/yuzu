@@ -512,6 +512,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   - 特に `docs/yuzu.toml` の 27-47 行目（`[markdown]` ブロック）はインクルードの `lines=` で
     引用されているので、この範囲を動かすと原稿の中身と CI が同時に壊れる
     （`verify` スキルに直す箇所の一覧あり）
+  - **雛形 deploy.yml を変えたら `docs/snippets/deploy.yml` へ写す**（docs は雛形を docs のルートの
+    外から `file=` で取り込めないので写しを置いている。v0.20 Phase 91）。ci.yml の `scaffold actions pins` が
+    バイト一致と、PR 検証の例 `docs/snippets/pr-check.yml` の actions の SHA・yuzu のインストール手順
+    （コメントを除く）が雛形と同じかを照合する
 - **ci.yml の check ジョブは `target/package` を消してからキャッシュする**（`drop target/package
   before caching`）。Swatinem/rust-cache の掃除が `target/` の下をたどって kabosu のソースの `tests/` を
   テスト用のプロファイルとみなし、await せずに開いて ENOENT の注記を出す（キャッシュが完全一致しない
