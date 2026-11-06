@@ -1073,11 +1073,16 @@ PR #53 のレビュアー側の協議で提案され、こちらの 3 人格の�
   KaTeX に勧告が 5 件見つかり、影響しない理由を書いて `scripts/vendor-advisories.sh` で
   除外している（10-10）。11-06 に DOMPurify の 3 件（修正は 3.4.17）を同じく除外に足した（計 8 件）。
   12 系へ上げるときに除外を外して照合し直す
-- **vaporetto 0.7 系への更新** — 0.7.0（10-24）は同梱のモデル（vaporetto-models v0.5.0。0.6 の形式）を
-  `model version mismatch` で読めず、上流は 0.7 の形式のモデルを配っていない（11-06 に確認。
-  dependabot の #74・#75 を閉じ、`dependabot.yml` の ignore に足した）。上げるときはモデルの
-  入手方法を決め、分かち書きが変わるので検索 wasm の作り直しと `CACHE_FORMAT_VERSION` の bump が要る。
-  vaporetto と vaporetto_rules は同じ版にする（片方だけだと 0.6 と 0.7 が両方入る）
+- **vaporetto 0.7 系への更新** — 0.7.0（10-24）はモデルの形式が変わり、同梱のモデル
+  （vaporetto-models v0.5.0 の `bccwj-suw_c1.0`。0.6 の形式）を `model version mismatch` で読めない。
+  モデルの差し替えと検索 wasm の作り直しが要るので、自動では上げず手動で行う（11-06。dependabot の
+  #74・#75 を閉じ、`dependabot.yml` の ignore に足した）
+  - 0.7 の形式のモデルは vaporetto 本体の v0.7.0 のリリースに添付されている（`bccwj-suw_c1.0.tar.xz` も
+    ある）。`scripts/vendor-vaporetto-model.sh` の取得元（今は vaporetto-models）と SHA-256 を差し替える
+  - 上流のリリースノートでは、BCCWJ だけのモデルは 0.5.0 のものを `convert_bincode_model` で新しい
+    形式へ変換したもの。分かち書きは変わらない見込みだが `yuzu search` で確かめ、変わるなら
+    `CACHE_FORMAT_VERSION` を上げる
+  - vaporetto と vaporetto_rules は同じ版にする（片方だけだと 0.6 と 0.7 が両方入る）
 - **i18n** — テーマ UI 文字列の多言語化
   - 規模（実測）: jinja 18 ＋ テーマ JS 19 ＋ apispec 35 ＋ crossref 3 文字列。
     `site.lang` は `<html lang>` の 2 箇所でしか使われていない
