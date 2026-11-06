@@ -1071,7 +1071,13 @@ PR #53 のレビュアー側の協議で提案され、こちらの 3 人格の�
 - **mermaid 12 系への更新** — v0.18.1 で 11 系に留めた（12.x は tankan の互換対象の版と
   あわせて決める）。Phase 82 の照合で、11 系の最新の 11.17.2 が束ねる DOMPurify・js-yaml・
   KaTeX に勧告が 5 件見つかり、影響しない理由を書いて `scripts/vendor-advisories.sh` で
-  除外している（10-10）。12 系へ上げるときに除外を外して照合し直す
+  除外している（10-10）。11-06 に DOMPurify の 3 件（修正は 3.4.17）を同じく除外に足した（計 8 件）。
+  12 系へ上げるときに除外を外して照合し直す
+- **vaporetto 0.7 系への更新** — 0.7.0（10-24）は同梱のモデル（vaporetto-models v0.5.0。0.6 の形式）を
+  `model version mismatch` で読めず、上流は 0.7 の形式のモデルを配っていない（11-06 に確認。
+  dependabot の #74・#75 を閉じ、`dependabot.yml` の ignore に足した）。上げるときはモデルの
+  入手方法を決め、分かち書きが変わるので検索 wasm の作り直しと `CACHE_FORMAT_VERSION` の bump が要る。
+  vaporetto と vaporetto_rules は同じ版にする（片方だけだと 0.6 と 0.7 が両方入る）
 - **i18n** — テーマ UI 文字列の多言語化
   - 規模（実測）: jinja 18 ＋ テーマ JS 19 ＋ apispec 35 ＋ crossref 3 文字列。
     `site.lang` は `<html lang>` の 2 箇所でしか使われていない

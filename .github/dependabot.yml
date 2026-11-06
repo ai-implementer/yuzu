@@ -17,6 +17,12 @@ updates:
       # wasm-bindgen-cli と完全に同じ版で検索の wasm を作り直す必要がある（Cargo.toml で `=` 固定）。
       # 上げるときは vendor-update スキルの手順で手動
       - dependency-name: wasm-bindgen
+      # 0.7 は同梱のモデル（0.6 の形式）を読めず、上流に 0.7 の形式のモデルが無い（11-06。
+      # ROADMAP「v0.21 以降の候補」）。上げるときはモデルと一緒に手動で、2 つを同じ版にする
+      - dependency-name: vaporetto
+        versions: [">= 0.7.0"]
+      - dependency-name: vaporetto_rules
+        versions: [">= 0.7.0"]
     groups:
       # 本文 HTML が変わりうる依存。スナップショットの確認と CACHE_FORMAT_VERSION の bump が
       # 要るので、ほかの依存のマージを止めないよう別の PR にする（組は上から順に当てはめる）
