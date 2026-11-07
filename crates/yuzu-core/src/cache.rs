@@ -76,7 +76,9 @@ use crate::model::{Frontmatter, TocEntry};
 ///   `/search/?q=https://…` のようにクエリに URL を含むリンクにも base が付き、本文 HTML が変わる
 /// - v29: content の外を指す相対リンク（`..` がルートより上へ出る）を書いたまま残す（Phase 91）。
 ///   以前は出た分の `..` を捨てて中のページ・ファイルの URL にしていた
-pub const CACHE_FORMAT_VERSION: u32 = 29;
+/// - v30: comrak 0.56 → 0.59（0.58 にテーブルのセルの描画が二次時間になる不具合の修正。ほかは
+///   既定で無効の拡張の追加。docs と雛形の出力は変わらなかったが、本文 HTML が変わりうる）
+pub const CACHE_FORMAT_VERSION: u32 = 30;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
