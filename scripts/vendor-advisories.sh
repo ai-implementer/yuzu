@@ -20,12 +20,20 @@ export LC_ALL=C
 # 影響しないと判断した勧告。「GHSA の ID と <パッケージ>@<版>」の組で書く（版が変われば
 # 除外は外れ、改めて照合される）。足すときは、影響しない理由と見直す条件をコメントに書く
 IGNORE=(
-  # --- mermaid 11.17.2 が束ねているパッケージ（10-10 に確認。11 系は 11.17.2 が最新で、
-  # 11 系の更新では直せない。mermaid 12 へ上げるとき（v0.20 の候補）にすべて見直す）---
+  # --- mermaid 11.17.2 が束ねているパッケージ（10-10 に確認し、11-06 にも 11 系は 11.17.2 が
+  # 最新で、11 系の更新では直せない。mermaid 12 へ上げるとき（v0.20 の候補）にすべて見直す）---
   # DOMPurify の IN_PLACE モードの不具合。束ねたコードで mermaid は IN_PLACE を渡していない
   # （設定の既定値の読み取り 1 か所だけ）
   "GHSA-55q2-fjhq-7xh7 dompurify@3.4.12"
   "GHSA-6688-9rhm-gjv2 dompurify@3.4.12"
+  # DOMPurify の SAFE_FOR_TEMPLATES・IN_PLACE（フックが親や兄弟を消す場合）・PARSER_MEDIA_TYPE が
+  # application/xhtml+xml の場合の不具合（11-06 に追加。修正は 3.4.17）。束ねたコードで mermaid が
+  # sanitize に渡す設定は {FORBID_TAGS:["style"]}・{ADD_TAGS, ADD_ATTR, HTML_INTEGRATION_POINTS}・
+  # サイトの dompurifyConfig だけで、どのオプションも渡していない。yuzu の mermaid-init.js は
+  # dompurifyConfig を設定しない。図のソースは SECURITY.md で信頼する前提のもの
+  "GHSA-cg2g-xh64-v4q7 dompurify@3.4.12"
+  "GHSA-mrv2-3pqr-j5jr dompurify@3.4.12"
+  "GHSA-c6gr-qvv4-5v3f dompurify@3.4.12"
   # js-yaml のマージキー・!!omap による DoS。mermaid の読み込み 4 か所はすべて JSON_SCHEMA で、
   # どちらの型も解釈しない。入力は原稿の図のソース（SECURITY.md で信頼する前提のもの）
   "GHSA-2883-xcg3-v3hh js-yaml@4.3.0"
