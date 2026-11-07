@@ -81,7 +81,10 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v31: unicode-normalization 0.1.25 → 0.1.26（正規化のデータが Unicode 17.0.0 → 18.0.0）。
 ///   分かち書きは語を NFKC で正規化して検索 tf に入れるので、Unicode 18 で割り当てられた文字を
 ///   含むページの tf が、作り直した検索 wasm の正規化と合わなくなる（既存の文字は変わらない）
-pub const CACHE_FORMAT_VERSION: u32 = 31;
+/// - v32: saphyr・saphyr-parser 0.2.2 → 0.3.3。入力の最後の空のブロックスカラー（`description: |`）が
+///   `"\n"` ではなく `""` になり、CachedMeta の Frontmatter の値が変わる（改行だけの description を
+///   出さなくなる。docs と雛形の出力は変わらなかった）
+pub const CACHE_FORMAT_VERSION: u32 = 32;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

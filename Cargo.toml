@@ -52,8 +52,8 @@ serde_json = "1"
 # 読み、型の解釈は yuzu-core の yaml.rs が行う（Phase 88。serde_yaml_ng は依存の unsafe-libyaml が
 # メンテナンス終了）。saphyr の既定 feature は encoding だけで、文字列から読むので使わない。
 # saphyr-parser はイベントを数えて別名の展開に上限を掛けるために直接使う（saphyr と同じ版にする）
-saphyr = { version = "0.2.2", default-features = false }
-saphyr-parser = "0.2.2"
+saphyr = { version = "0.3.3", default-features = false }
+saphyr-parser = "0.3.3"
 # --- 検索（Phase 3）---
 # term 辞書＋タイポトレランス（Levenshtein オートマトン）。純 Rust・wasm 可
 fst = { version = "0.4", features = ["levenshtein"] }
