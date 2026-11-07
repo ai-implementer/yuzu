@@ -640,6 +640,23 @@ mod tests {
         assert_eq!(strip.title.as_deref(), Some("a b"));
     }
 
+    /// 中身の無いブロックスカラーは、最後のキーでも空文字列（saphyr-parser 0.3.0 から。0.2.2 は
+    /// 入力の最後のときだけ "\n" を返し、改行だけの description が `<meta>` に出ていた）
+    #[test]
+    fn 中身の無いブロックスカラーは最後のキーでも空文字列() {
+        for indicator in ["|", "|+", ">"] {
+            let last = parse_frontmatter(&format!("---\ndescription: {indicator}\n---\n")).unwrap();
+            let middle =
+                parse_frontmatter(&format!("---\ndescription: {indicator}\norder: 1\n---\n"))
+                    .unwrap();
+            assert_eq!(last.description.as_deref(), Some(""), "{indicator}");
+            assert_eq!(
+                last.description, middle.description,
+                "{indicator}: キーの位置で値が変わらない"
+            );
+        }
+    }
+
     #[test]
     fn 重複キーは構文エラーで位置を返す() {
         let got = problems("---\ntitle: a\ntitle: b\n---\n");
