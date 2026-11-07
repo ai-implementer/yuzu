@@ -78,7 +78,10 @@ use crate::model::{Frontmatter, TocEntry};
 ///   以前は出た分の `..` を捨てて中のページ・ファイルの URL にしていた
 /// - v30: comrak 0.56 → 0.59（0.58 にテーブルのセルの描画が二次時間になる不具合の修正。ほかは
 ///   既定で無効の拡張の追加。docs と雛形の出力は変わらなかったが、本文 HTML が変わりうる）
-pub const CACHE_FORMAT_VERSION: u32 = 30;
+/// - v31: unicode-normalization 0.1.25 → 0.1.26（正規化のデータが Unicode 17.0.0 → 18.0.0）。
+///   分かち書きは語を NFKC で正規化して検索 tf に入れるので、Unicode 18 で割り当てられた文字を
+///   含むページの tf が、作り直した検索 wasm の正規化と合わなくなる（既存の文字は変わらない）
+pub const CACHE_FORMAT_VERSION: u32 = 31;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
