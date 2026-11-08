@@ -648,6 +648,24 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
     （手動実行で、panic を受け流して最後まで実行したときの終了コードが 0 であることを確かめていた）。
     judge の `run:` を取り出して 11 通り（件数・終了コード・対象の組み合わせ）を手元で試し、修正前は
     3 通りが誤って成功になることを確かめた
+  - 手動実行（600 秒。run 42442784937・11-08）: kabosu 3 つと mikan は panic・ハング・メモリ超過とも 0。
+    tankan はハング・メモリ超過 0・panic 16（受け流した）。fork モードは panic を受け流して 619 秒まで実行し、
+    最後の集計は `oom/timeout/crash: 0/0/16`、終了コードは 0（判断点の「未確認」を解消）
+  - PR #81 でマージ（11-08）
+- PR (3): 手動実行で見つかった tankan の panic
+  - 16 件はすべて state 図の `state/parser.rs:315` の `expect("事前スキャンで登録済み")`。事前スキャンは
+    `"state "`（空白 1 つ）で `state X {` を見つけ、本処理は `split_whitespace` で行頭の語を取っていたので、
+    両者が食い違うと未登録の名前を引いた。fuzz の入力は行頭の垂直タブだったが、`state<タブ>A {`・
+    `state "説明" as A <<fork>> {`・`state {` でも当たることを確かめた
+  - 行頭の語の取り方を `kind::keyword_of`（必ず行の先頭部分を返す）にまとめ、各図種のパーサ
+    （flowchart・class・sequence・gantt・ER・state）から使う。`split_whitespace` で取った語の長さで残りを
+    切り出すと、行頭に複数バイトの空白（U+2028 等）が並ぶ行で文字の境界の途中を切って panic する
+    （class・flowchart・gantt・state で再現。fuzz の 600 秒では見つかっていなかった）
+  - state 図の `state` の後ろの分解を `parse_state_decl` にまとめ、事前スキャンと本処理が同じ規則で
+    composite の名前を決める。名前の無い `state {` はエラーにし、`expect` はエラーを返す形にした
+  - `state<タブ>A {` のように panic してクライアント描画に切り替わっていた図が SSR で描けるようになり
+    本文 HTML が変わるので、`CACHE_FORMAT_VERSION` を 33 に上げる。tankan の修正はパッチ版（0.2.2）で
+    公開する（ユーザの作業。publish-crate スキル）
 - 工数: 小〜中
 
 ### 93 dogfooding と整理 ⬜

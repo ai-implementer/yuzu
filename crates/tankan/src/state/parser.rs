@@ -18,7 +18,7 @@ use crate::error::Error;
 use crate::flowchart::model::{
     Direction, Edge, EdgeLine, EdgeTip, EndRef, FlowchartDiagram, Node, NodeShape, Subgraph,
 };
-use crate::kind::trim_line;
+use crate::kind::{keyword_of, trim_line};
 
 pub(crate) fn parse(source: &str) -> Result<FlowchartDiagram, Error> {
     let mut p = StateParser::default();
@@ -131,26 +131,23 @@ struct StateParser {
 }
 
 impl StateParser {
-    /// composite 宣言（`state X {` / `state "説明" as X {`）を先に集める
+    /// composite 宣言（`state X {` / `state "説明" as X {`）を先に集める。
+    /// 行頭の語の取り方（[`keyword_of`]）と `state` の後ろの分解（[`parse_state_decl`]）は
+    /// 本処理（[`Self::statement`] → [`Self::state_decl`]）と同じものを使う。規則が食い違うと、
+    /// 事前スキャンが登録しなかった名前を本処理が引いて panic していた（`state<タブ>A {`・
+    /// `state "説明" as A <<fork>> {` 等。Phase 92 の fuzz）
     fn prescan_composites(&mut self, source: &str) {
         for raw in source.lines() {
             let line = trim_line(raw);
-            let Some(rest) = line.strip_prefix("state ") else {
+            if keyword_of(line) != "state" {
+                continue;
+            }
+            // 書き誤りは本処理が行番号付きで報告するので、ここでは読み飛ばす
+            let Ok(decl) = parse_state_decl(trim_line(&line["state".len()..]), 0) else {
                 continue;
             };
-            let Some(rest) = trim_line(rest).strip_suffix('{') else {
-                continue;
-            };
-            let rest = trim_line(rest);
-            let name = match rest.strip_prefix('"') {
-                Some(r) => r
-                    .split_once('"')
-                    .and_then(|(_, after)| trim_line(after).strip_prefix("as "))
-                    .map(trim_line),
-                None => Some(rest),
-            };
-            let Some(name) = name else { continue };
-            if name.is_empty() || self.composite_index.contains_key(name) {
+            let name = decl.name;
+            if !decl.opens_block || self.composite_index.contains_key(name) {
                 continue;
             }
             let id = self.diagram.subgraphs.len();
@@ -177,7 +174,7 @@ impl StateParser {
         line: &str,
         line_no: usize,
     ) -> Result<Option<(usize, Vec<String>)>, Error> {
-        let keyword = line.split_whitespace().next().unwrap_or("");
+        let keyword = keyword_of(line);
 
         if line == "}" {
             if self.scope_stack.pop().is_none() {
@@ -264,55 +261,22 @@ impl StateParser {
     /// `state ...` 宣言:
     /// `state "説明" as s1 [{]` / `state s1 <<choice|fork|join>>` / `state s1 [{]`
     fn state_decl(&mut self, rest: &str, line_no: usize) -> Result<(), Error> {
-        let (rest, opens_block) = match rest.strip_suffix('{') {
-            Some(r) => (trim_line(r), true),
-            None => (rest, false),
-        };
-
-        let (name, display): (&str, Option<Vec<String>>) = if let Some(r) = rest.strip_prefix('"') {
-            let Some((desc, after)) = r.split_once('"') else {
-                return Err(Error::Parse {
-                    line: line_no,
-                    message: "説明の引用符が閉じられていません".to_string(),
-                });
-            };
-            let Some(name) = trim_line(after).strip_prefix("as ") else {
-                return Err(Error::Parse {
-                    line: line_no,
-                    message: "`state \"説明\" as 名前` の形にしてください".to_string(),
-                });
-            };
-            (trim_line(name), Some(split_text(desc)))
-        } else {
-            (rest, None)
-        };
-
-        // `<<choice>>` / `<<fork>>` / `<<join>>`
-        let (name, special) = match name.split_once("<<") {
-            Some((n, k)) => {
-                let kind = k.strip_suffix(">>").map(trim_line);
-                let shape = match kind {
-                    Some("choice") => NodeShape::Diamond,
-                    // 向きは finish() で実効 direction から決める（仮に横）
-                    Some("fork") | Some("join") => NodeShape::ForkBar(false),
-                    _ => {
-                        return Err(Error::UnsupportedSyntax {
-                            line: line_no,
-                            construct: format!("<<{}>>", kind.unwrap_or(k)),
-                        });
-                    }
-                };
-                (trim_line(n), Some(shape))
-            }
-            None => (name, None),
-        };
+        let StateDecl {
+            name,
+            display,
+            special,
+            opens_block,
+        } = parse_state_decl(rest, line_no)?;
 
         if opens_block {
-            // 事前スキャンで登録済みのクラスタに親・タイトルを確定してスコープへ
-            let sub = *self
-                .composite_index
-                .get(name)
-                .expect("事前スキャンで登録済み");
+            // 事前スキャンが同じ規則で登録したクラスタに親・タイトルを確定してスコープへ
+            // （規則は 1 実装なので見つからないことは無いが、panic せずエラーにする）
+            let Some(&sub) = self.composite_index.get(name) else {
+                return Err(Error::Parse {
+                    line: line_no,
+                    message: format!("複合状態 {name} の宣言を読めません"),
+                });
+            };
             let parent = self.effective_scope();
             // 自分自身の内側で開き直すと親子関係が循環し、レイアウトの
             // スコープの辿り上げが終わらなくなる（`state A { state A {` や
@@ -622,6 +586,79 @@ fn split_text(text: &str) -> Vec<String> {
     split_br_lines(&decode_entities(trim_line(text)))
 }
 
+/// `state` の後ろを分解した結果
+struct StateDecl<'a> {
+    name: &'a str,
+    /// `state "説明" as 名前` の説明
+    display: Option<Vec<String>>,
+    /// `<<choice>>` / `<<fork>>` / `<<join>>`
+    special: Option<NodeShape>,
+    /// 末尾が `{`（composite の開始）
+    opens_block: bool,
+}
+
+/// `state` の後ろ（`"説明" as s1 [{]` / `s1 <<choice|fork|join>> [{]` / `s1 [{]`）を分解する。
+/// 事前スキャン（[`StateParser::prescan_composites`]）と本処理（[`StateParser::state_decl`]）が
+/// 同じ規則で composite の名前を決めるための 1 実装
+fn parse_state_decl(rest: &str, line_no: usize) -> Result<StateDecl<'_>, Error> {
+    let (rest, opens_block) = match rest.strip_suffix('{') {
+        Some(r) => (trim_line(r), true),
+        None => (rest, false),
+    };
+
+    let (name, display): (&str, Option<Vec<String>>) = if let Some(r) = rest.strip_prefix('"') {
+        let Some((desc, after)) = r.split_once('"') else {
+            return Err(Error::Parse {
+                line: line_no,
+                message: "説明の引用符が閉じられていません".to_string(),
+            });
+        };
+        let Some(name) = trim_line(after).strip_prefix("as ") else {
+            return Err(Error::Parse {
+                line: line_no,
+                message: "`state \"説明\" as 名前` の形にしてください".to_string(),
+            });
+        };
+        (trim_line(name), Some(split_text(desc)))
+    } else {
+        (rest, None)
+    };
+
+    // `<<choice>>` / `<<fork>>` / `<<join>>`
+    let (name, special) = match name.split_once("<<") {
+        Some((n, k)) => {
+            let kind = k.strip_suffix(">>").map(trim_line);
+            let shape = match kind {
+                Some("choice") => NodeShape::Diamond,
+                // 向きは finish() で実効 direction から決める（仮に横）
+                Some("fork") | Some("join") => NodeShape::ForkBar(false),
+                _ => {
+                    return Err(Error::UnsupportedSyntax {
+                        line: line_no,
+                        construct: format!("<<{}>>", kind.unwrap_or(k)),
+                    });
+                }
+            };
+            (trim_line(n), Some(shape))
+        }
+        None => (name, None),
+    };
+
+    // `state {` や `state <<fork>>`。名前の無い composite は事前スキャンで登録できない
+    if name.is_empty() {
+        return Err(Error::Parse {
+            line: line_no,
+            message: "`state` の後ろに状態の名前がありません".to_string(),
+        });
+    }
+    Ok(StateDecl {
+        name,
+        display,
+        special,
+        opens_block,
+    })
+}
+
 /// 遷移右辺 `TO[:::cls][ : label]` を (TO トークン, ラベル文字列) に分ける。
 /// `:::` インラインクラスの `:` はラベル区切り（単独 `:`）と誤認しない
 fn split_label(s: &str) -> (&str, Option<&str>) {
@@ -702,6 +739,29 @@ mod tests {
             .unwrap();
         assert_eq!(s2.label, ["これは説明", "追記行"]);
         assert_eq!(d.edges[0].label, ["条件A"]);
+    }
+
+    /// 事前スキャンと本処理が同じ規則で composite の名前を決める（Phase 92 の fuzz。修正前は
+    /// 事前スキャンが登録しなかった名前を本処理が引いて `expect` で panic していた）
+    #[test]
+    fn 事前スキャンと本処理は同じ規則で複合状態の名前を決める() {
+        // `state` の後ろがタブ（事前スキャンは `"state "` だけを見ていた）
+        let d = parse(&st("state\tA {\n  B\n}\nA --> C")).unwrap();
+        assert_eq!(d.subgraphs.len(), 1);
+        assert_eq!(d.subgraphs[0].title, ["A"]);
+        let b = d.nodes.iter().find(|n| n.label == ["B"]).unwrap();
+        assert_eq!(b.subgraph, Some(0));
+        // 説明と `<<fork>>` が付いた composite（事前スキャンは `A <<fork>>` を名前にしていた）
+        let d = parse(&st("state \"説明\" as A <<fork>> {\n  B\n}")).unwrap();
+        assert_eq!(d.subgraphs[0].title, ["説明"]);
+        // 名前の無い composite はエラー（事前スキャンは登録せず、本処理は空の名前を引いていた）
+        assert!(parse(&st("state {\n  B\n}")).is_err());
+        assert!(parse(&st("state <<fork>>")).is_err());
+        // fuzz が見つけた入力（行頭の垂直タブ）。結果は問わず panic しないこと
+        let _ = parse(&st(
+            "\\\\v\n NumLockOnf:f    }\n   \u{b}state Active {\n        NumLocLockO1\0@\0n :\n        --\n",
+        ));
+        let _ = parse(&st("\u{85}state A {\n  B\n}"));
     }
 
     #[test]

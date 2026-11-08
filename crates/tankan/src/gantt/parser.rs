@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::common::date::{is_supported_axis_format, parse_ymd, weekday};
 use crate::error::Error;
 use crate::gantt::model::{GanttDiagram, Section, Task, TaskTags, TickInterval};
-use crate::kind::trim_line;
+use crate::kind::{keyword_of, trim_line};
 
 /// excludes の適用範囲を制限する安全弁（無限ループ防止）
 const MAX_SPAN_DAYS: i64 = 3660;
@@ -77,7 +77,7 @@ pub(crate) fn parse(source: &str) -> Result<GanttDiagram, Error> {
             });
         }
 
-        let keyword = line.split_whitespace().next().unwrap_or("");
+        let keyword = keyword_of(line);
         let rest = trim_line(&line[keyword.len().min(line.len())..]);
         match keyword {
             "dateFormat" => {
