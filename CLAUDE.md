@@ -280,8 +280,9 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
 - **汎用ライブラリ（tankan / mikan / kabosu）** — yuzu のリリースと非同期。手順は
   **`publish-crate` スキル**（kabosu は publish 前に fuzz 必須）
   - fuzz.yml は 3 crate の対象（kabosu 3・mikan のシャード・tankan の `render_svg`）を週 1 回実行する
-    （v0.20 Phase 92）。合否は終了コードではなく artifact で決め、tankan の panic だけは受け流して件数を
-    出す（ハング・メモリ超過は必ず失敗）。制限の値は fuzz.yml の `env` の 1 か所。mikan の種
+    （v0.20 Phase 92）。合否は artifact と終了コードで決め、tankan の panic だけは最後まで実行できたら
+    （終了コード 0）受け流して件数を出す（ハング・メモリ超過・0 以外の終了は必ず失敗。panic があるだけで
+    終了コードを見ないと、OOM killer 等で artifact を残さず止まった実行を成功にする。PR #81 のレビュー指摘）。制限の値は fuzz.yml の `env` の 1 か所。mikan の種
     `fuzz/seeds/shard/` は `FORMAT_VERSION` を上げたら書き直す（mikan のテストが照合する）
 - **公開しない crate** — mikan-wasm と yuzu 本体の crate は `publish = false`
   （名前 `yuzu`・`yuzu-core` は別プロジェクトに取得済み。本体を公開する将来構想は ROADMAP.md）

@@ -3,10 +3,11 @@ name: fuzz
 # 汎用ライブラリの fuzzing（Phase 92）。nightly + cargo-fuzz が必要なため通常 CI から分離している。
 # 週 1 回の定期実行と手動実行。kabosu の publish 前には必ず一度回すこと（publish-crate スキル）。
 #
-# 合否はプロセスの終了コードではなく artifact で決める（judge の手順）:
-#   ハング（timeout-*）・メモリ超過（oom-*）は必ず失敗。panic（crash-*・leak-*）は、tankan だけ
-#   件数を報告して受け流す（yuzu が回収してクライアント描画に切り替えるので延期できる。ハングと
-#   メモリ超過は回収できず build ごと止まる）。ほかの対象は panic も失敗。
+# 合否は artifact と終了コードで決める（judge の手順）:
+#   ハング（timeout-*）・メモリ超過（oom-*）は必ず失敗。終了コードが 0 でなければ（最後まで実行
+#   できていない）失敗。panic（crash-*・leak-*）は、tankan だけ最後まで実行できたら件数を報告して
+#   受け流す（yuzu が回収してクライアント描画に切り替えるので延期できる。ハングとメモリ超過は回収
+#   できず build ごと止まる）。ほかの対象は panic も失敗。
 #   artifact があれば、入力を取り出せるよう upload する。
 # リリース判定（ROADMAP v0.20）: 定期実行と同じ秒数（600）の手動実行で、mikan が成功し、tankan に
 # timeout-*・oom-* が無いこと。
@@ -119,13 +120,20 @@ jobs:
             echo "::error::ハング ${timeout} 件・メモリ超過 ${oom} 件（artifact に入力を置いた）"
             exit 1
           fi
-          if [ "${{ matrix.keep_going }}" = true ] && [ "$crash" -gt 0 ]; then
-            # panic を受け流した実行は、panic があると終了コードが 0 でないことがあるので見ない
-            echo "::warning::panic ${crash} 件（受け流した。artifact に入力を置いた）"
-            exit 0
-          fi
+          # 最後まで実行できたことは終了コード 0 で確かめる。panic を受け流した実行（tankan）も、
+          # 最後まで実行できれば 0 になる（11-08 の手動実行で panic 16 件・終了コード 0 を確認）。
+          # 0 でなければ、artifact を残さずに止まった（OOM killer 等）か、受け流していない panic なので、
+          # panic の有無に依らず失敗にする（PR #81 のレビュー指摘。以前は panic があると見ていなかった）
           if [ "$status" -ne 0 ]; then
             echo "::error::cargo fuzz が終了コード ${status} で終わった（panic ${crash} 件）"
+            exit 1
+          fi
+          if [ "$crash" -gt 0 ]; then
+            if [ "${{ matrix.keep_going }}" = true ]; then
+              echo "::warning::panic ${crash} 件（受け流して最後まで実行した。artifact に入力を置いた）"
+              exit 0
+            fi
+            echo "::error::panic ${crash} 件（artifact に入力を置いた）"
             exit 1
           fi
 
