@@ -316,6 +316,62 @@ mod tests {
         }
     }
 
+    /// fuzz の種（`fuzz/seeds/shard/<名前>.bin`）にするシャード
+    fn fuzz_seeds() -> Vec<(&'static str, Vec<Vec<Posting>>)> {
+        vec![
+            ("empty", vec![]),
+            ("one-term", vec![vec![p(0, 1, &[0])]]),
+            (
+                "several-terms",
+                vec![
+                    vec![p(0, 3, &[0, 4, 210]), p(2, 1, &[7]), p(10, 7, &[1, 2, 3])],
+                    vec![],
+                    vec![p(5, 1, &[102])],
+                    vec![p(0, 1, &[0]), p(1, 1, &[9]), p(2, 1, &[5]), p(3, 1, &[1])],
+                ],
+            ),
+            ("no-positions", vec![vec![p(3, 2, &[])]]),
+            (
+                "large-values",
+                vec![vec![
+                    p(127, 128, &[16_383, 16_384]),
+                    p(u32::MAX - 1, 1, &[u32::MAX - 1]),
+                ]],
+            ),
+        ]
+    }
+
+    /// fuzz の種が今のエンコーダの出力と同じであること（Phase 92）。種は magic とバージョンを
+    /// 通らないと postings の読み込みまで届かないので、`FORMAT_VERSION` を上げたら
+    /// `MIKAN_UPDATE_SEEDS=1 cargo test -p mikan fuzz_の種` で書き直す
+    #[test]
+    fn fuzz_の種は今のエンコーダの出力と同じ() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fuzz/seeds/shard");
+        if std::env::var_os("MIKAN_UPDATE_SEEDS").is_some() {
+            std::fs::create_dir_all(&dir).unwrap();
+            for (name, postings) in fuzz_seeds() {
+                std::fs::write(dir.join(format!("{name}.bin")), encode_shard(&postings)).unwrap();
+            }
+        }
+        // crates.io の配布物には fuzz/ が入らない（入れ子のパッケージは cargo package が外す）
+        if !dir.is_dir() {
+            return;
+        }
+        for (name, postings) in fuzz_seeds() {
+            let path = dir.join(format!("{name}.bin"));
+            let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            assert_eq!(
+                bytes,
+                encode_shard(&postings),
+                "{name}.bin が古い（MIKAN_UPDATE_SEEDS=1 cargo test -p mikan fuzz_の種 で書き直す）"
+            );
+            let shard = Shard::parse(&bytes).unwrap();
+            for i in 0..shard.term_count() {
+                shard.postings_with_positions(i).unwrap();
+            }
+        }
+    }
+
     #[test]
     fn 読み書きの_roundtrip() {
         let postings = vec![

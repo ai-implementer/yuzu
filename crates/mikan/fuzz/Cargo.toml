@@ -1,0 +1,24 @@
+# mikan の fuzzing ハーネス（cargo-fuzz / nightly 必須。fuzz.yml が週 1 回と手動で実行する。Phase 92）。
+# ルート workspace の members glob（crates/*）は 1 階層のみのため、
+# 空の [workspace] で独立 workspace にしている（cargo-fuzz の標準形。kabosu/fuzz と同じ）
+[package]
+name = "mikan-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+mikan = { path = ".." }
+
+[[bin]]
+name = "shard"
+path = "fuzz_targets/shard.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

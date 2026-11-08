@@ -1,0 +1,24 @@
+# tankan の fuzzing ハーネス（cargo-fuzz / nightly 必須。fuzz.yml が週 1 回と手動で実行する。Phase 92）。
+# ルート workspace の members glob（crates/*）は 1 階層のみのため、
+# 空の [workspace] で独立 workspace にしている（cargo-fuzz の標準形。kabosu/fuzz と同じ）
+[package]
+name = "tankan-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tankan = { path = ".." }
+
+[[bin]]
+name = "render_svg"
+path = "fuzz_targets/render_svg.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
