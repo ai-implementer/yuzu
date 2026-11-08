@@ -4,9 +4,8 @@
 //!   ただし http / https の出現箇所は [`LinkReport::external`] で返す = 到達性の
 //!   検査（ネットワーク I/O）は cli 層の opt-in（`yuzu check --external-links`）だけが
 //!   行い、core は既定経路をオフラインに保つ
-//! - URL の分類は yuzu-render の `UrlResolver::rewrite` と同じ規則
-//!   （crates/yuzu-render/src/urls.rs — 変更時は両方を揃えること。外部参照の判定は
-//!   `urlpath::is_external_url` の 1 実装を共有）
+//! - URL の分類は yuzu-render の `UrlResolver::rewrite` と同じ `urlpath::classify_link`
+//!   （分類の enum `LinkTarget` を両方が網羅 match で使う。10-12 レビューの R5）
 //! - 著者が書いたパスは `%XX` を**デコードしてから**照合する（`my%20page.md` /
 //!   `/%E8%A8%AD…/`）。ブラウザで辿れるリンクは検査も通る、が契約。
 //!   `?` / `#` 以降の suffix はデコードの対象外（フラグメントは `has_anchor` が別途）
@@ -24,7 +23,7 @@ use crate::model::{Page, SourceSpan};
 use crate::rules;
 use crate::site_output::{OutputSwitches, SiteOutput};
 use crate::urlpath::{
-    is_external_url, is_http_url, percent_decode, rel_to_slash, resolve_relative, split_suffix,
+    LinkTarget, classify_link, is_http_url, percent_decode, rel_to_slash, resolve_relative,
 };
 
 /// 本文中の外部リンク（http / https）の出現箇所。
@@ -119,107 +118,121 @@ pub(crate) fn check_links(
 
 fn check_one(page: &Page, link: &LinkRef, targets: &Targets, out: &mut Vec<Diagnostic>) {
     let url = link.url.as_str();
-    if url.is_empty() {
-        return;
-    }
-
-    // 同一ページ内アンカー
-    if let Some(frag) = url.strip_prefix('#') {
-        if !has_anchor(page, frag) {
-            push(
-                out,
-                page,
-                link,
-                rules::BROKEN_ANCHOR,
-                format!("このページに見出し `#{frag}` がありません"),
-            );
-        }
-        return;
-    }
-
-    // 外部参照は検査しない（http / https は呼び出し側で external へ回し済み）
-    if is_external_url(url) {
-        return;
-    }
-
-    let (path, suffix) = split_suffix(url);
-    let frag = suffix.split_once('#').map(|(_, f)| f);
-
-    // 絶対・相対の分類は**デコード前**の文字列で行う（render 側の `rewrite` と同じ
-    // 順序）。`%2Flogo.png` はデコードすると `/logo.png` だが相対参照として
-    // `<dir>/logo.png` へ解決されるので、先にデコードすると分類が render とずれる
-    // ルート絶対（`/foo`）→ public/・ページ route・ビルド生成物に照合
-    if let Some(rest) = path.strip_prefix('/') {
-        // 著者がエンコード済みで書いた `/%E8%A8%AD…/` を生の route へ戻す
-        let rest = percent_decode(rest);
-        check_absolute(page, link, &rest, frag, targets, out);
-        return;
-    }
-
-    // content 相対の参照は生のファイル名へ戻してから照合する（suffix はデコードしない）
-    let path = percent_decode(path);
-    let path = path.as_str();
-
-    // 相対 `.md` リンク → ページに照合
-    if path.ends_with(".md") {
-        let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
-        let Some(resolved) = resolve_relative(&dir, path) else {
-            push_outside_content(out, page, link, url);
-            return;
-        };
-        match targets.by_rel.get(&resolved) {
-            None => push(
-                out,
-                page,
-                link,
-                rules::BROKEN_LINK,
-                format!("リンク先 `{url}` が見つかりません"),
-            ),
-            Some(target) if target.frontmatter.draft && !targets.include_drafts => {
+    // 分類は描画（yuzu-render の `UrlResolver::rewrite`）と同じ `classify_link`（R5）
+    match classify_link(url) {
+        // 外部参照は検査しない（http / https は呼び出し側で external へ回し済み）。
+        // ディレクトリ風の相対参照（`guide/`）は配信の形に依るので静的には検査しない
+        LinkTarget::Empty | LinkTarget::External | LinkTarget::Other => {}
+        // 同一ページ内アンカー
+        LinkTarget::Fragment(frag) => {
+            if !has_anchor(page, frag) {
                 push(
                     out,
                     page,
                     link,
-                    rules::BROKEN_LINK,
-                    format!("リンク先 `{resolved}` は draft のため公開サイトに含まれません"),
+                    rules::BROKEN_ANCHOR,
+                    format!("このページに見出し `#{frag}` がありません"),
                 );
             }
-            Some(target) => {
-                if let Some(frag) = frag
-                    && !has_anchor(target, frag)
-                {
-                    push(
-                        out,
-                        page,
-                        link,
-                        rules::BROKEN_ANCHOR,
-                        format!("リンク先 `{resolved}` に見出し `#{frag}` がありません"),
-                    );
-                }
-            }
         }
-        return;
+        // ルート絶対（`/foo`）→ public/・ページ route・ビルド生成物に照合。
+        // 著者がエンコード済みで書いた `/%E8%A8%AD…/` を生の route へ戻す
+        LinkTarget::Absolute { rest, suffix } => {
+            let rest = percent_decode(rest);
+            check_absolute(
+                page,
+                link,
+                &rest,
+                LinkTarget::fragment(suffix),
+                targets,
+                out,
+            );
+        }
+        LinkTarget::Page { path, suffix } => {
+            check_relative_page(
+                page,
+                link,
+                &path,
+                LinkTarget::fragment(suffix),
+                targets,
+                out,
+            );
+        }
+        LinkTarget::Asset { path, .. } => check_relative_asset(page, link, &path, targets, out),
     }
+}
 
-    // その他の相対参照（画像等）: 拡張子付きのみ content/ 内の実在を確認する
-    // （`guide/` のようなディレクトリ風リンクは配信形態依存のため静的検証しない）
-    let last = path.rsplit('/').next().unwrap_or(path);
-    if last.contains('.') {
-        let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
-        let Some(resolved) = resolve_relative(&dir, path) else {
-            push_outside_content(out, page, link, url);
-            return;
-        };
-        if !targets.assets.contains(&resolved) {
-            let kind = if link.is_image { "画像" } else { "参照先" };
+/// 相対 `.md` リンク → ページに照合
+fn check_relative_page(
+    page: &Page,
+    link: &LinkRef,
+    path: &str,
+    frag: Option<&str>,
+    targets: &Targets,
+    out: &mut Vec<Diagnostic>,
+) {
+    let url = link.url.as_str();
+    let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
+    let Some(resolved) = resolve_relative(&dir, path) else {
+        push_outside_content(out, page, link, url);
+        return;
+    };
+    match targets.by_rel.get(&resolved) {
+        None => push(
+            out,
+            page,
+            link,
+            rules::BROKEN_LINK,
+            format!("リンク先 `{url}` が見つかりません"),
+        ),
+        Some(target) if target.frontmatter.draft && !targets.include_drafts => {
             push(
                 out,
                 page,
                 link,
                 rules::BROKEN_LINK,
-                format!("{kind} `{url}` が content/ に見つかりません"),
+                format!("リンク先 `{resolved}` は draft のため公開サイトに含まれません"),
             );
         }
+        Some(target) => {
+            if let Some(frag) = frag
+                && !has_anchor(target, frag)
+            {
+                push(
+                    out,
+                    page,
+                    link,
+                    rules::BROKEN_ANCHOR,
+                    format!("リンク先 `{resolved}` に見出し `#{frag}` がありません"),
+                );
+            }
+        }
+    }
+}
+
+/// 拡張子付きの相対参照（画像等）→ content/ 内の実在を確認する
+fn check_relative_asset(
+    page: &Page,
+    link: &LinkRef,
+    path: &str,
+    targets: &Targets,
+    out: &mut Vec<Diagnostic>,
+) {
+    let url = link.url.as_str();
+    let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
+    let Some(resolved) = resolve_relative(&dir, path) else {
+        push_outside_content(out, page, link, url);
+        return;
+    };
+    if !targets.assets.contains(&resolved) {
+        let kind = if link.is_image { "画像" } else { "参照先" };
+        push(
+            out,
+            page,
+            link,
+            rules::BROKEN_LINK,
+            format!("{kind} `{url}` が content/ に見つかりません"),
+        );
     }
 }
 

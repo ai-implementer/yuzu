@@ -10,8 +10,7 @@
 use std::collections::HashMap;
 
 use yuzu_core::urlpath::{
-    encode_path, has_url_scheme, is_external_url, percent_decode, rel_to_slash, resolve_relative,
-    split_suffix,
+    LinkTarget, classify_link, encode_path, has_url_scheme, rel_to_slash, resolve_relative,
 };
 use yuzu_core::{Page, SiteModel, UrlRewriter};
 
@@ -88,62 +87,49 @@ impl UrlResolver {
 
 impl UrlRewriter for UrlResolver {
     fn rewrite(&self, page: &Page, url: &str) -> Option<String> {
-        // フラグメントのみ・スキーム付き（外部リンク等）は触らない
-        if url.is_empty() || url.starts_with('#') {
-            return None;
+        // 分類はリンク検査（yuzu-core の `linkcheck::check_one`）と同じ `classify_link`（R5）
+        match classify_link(url) {
+            // フラグメントのみ・スキーム付き（外部リンク等）は触らない。ディレクトリ風の
+            // 相対参照（`guide/`）は配信の形に依るので触らない
+            LinkTarget::Empty
+            | LinkTarget::Fragment(_)
+            | LinkTarget::External
+            | LinkTarget::Other => None,
+            // `/foo` 始まり → public/ 資産等のサイト絶対参照。base を前置する。
+            // 著者が書いた URL をそのまま使う（comrak の escape_href が非 ASCII と
+            // 空白を `%XX` にし、`%XX` は素通しするので、ここで再エンコードしない）
+            LinkTarget::Absolute { rest, suffix } => {
+                Some(format!("{}{}{}", self.base, rest, suffix))
+            }
+            // 相対 `.md` リンク → ページ route へ解決。
+            // content の外を指す（`..` がルートより上へ出る）相対参照は書いたまま残す。外のファイルは
+            // サイトに出ないので、中の別のページ・ファイルへ解決しない（check が `link-outside-content`
+            // で知らせる。v0.20 Phase 91）
+            LinkTarget::Page { path, suffix } => {
+                let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
+                let resolved = resolve_relative(&dir, &path)?;
+                let route = match self.routes.get(&resolved) {
+                    Some(route) => route.clone(),
+                    None => {
+                        tracing::warn!(
+                            from = %page.rel.display(),
+                            to = url,
+                            "リンク先の Markdown が見つかりません（URL は機械変換します）"
+                        );
+                        guess_route(&resolved)
+                    }
+                };
+                Some(format!("{}{}{}", self.base, encode_path(&route), suffix))
+            }
+            // 拡張子付きの相対参照（画像・添付等）は content の同伴アセットとして dist の同じ
+            // 相対パスへコピーされるため、base 付き絶対 URL へ解決する（ページは
+            // `guide/foo/index.html` に置かれるので相対のままでは階層がずれる）
+            LinkTarget::Asset { path, suffix } => {
+                let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
+                let resolved = resolve_relative(&dir, &path)?;
+                Some(format!("{}{}{}", self.base, encode_path(&resolved), suffix))
+            }
         }
-        if is_external_url(url) {
-            return None;
-        }
-
-        let (path, suffix) = split_suffix(url);
-
-        // `/foo` 始まり → public/ 資産等のサイト絶対参照。base を前置する。
-        // 著者が書いた URL をそのまま使う（comrak の escape_href が非 ASCII と
-        // 空白を `%XX` にし、`%XX` は素通しするので、ここで再エンコードしない）
-        if let Some(rest) = path.strip_prefix('/') {
-            return Some(format!("{}{}{}", self.base, rest, suffix));
-        }
-
-        // content 相対の参照は著者がエンコード済みで書いた形（`my%20page.md`）を
-        // 生のファイル名へ戻してから照合する（linkcheck と同じ規則）
-        let path = percent_decode(path);
-        let path = path.as_str();
-
-        // 相対 `.md` リンク → ページ route へ解決
-        // content の外を指す（`..` がルートより上へ出る）相対参照は書いたまま残す。外のファイルは
-        // サイトに出ないので、中の別のページ・ファイルへ解決しない（check が `link-outside-content`
-        // で知らせる。v0.20 Phase 91）
-        if path.ends_with(".md") {
-            let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
-            let resolved = resolve_relative(&dir, path)?;
-            let route = match self.routes.get(&resolved) {
-                Some(route) => route.clone(),
-                None => {
-                    tracing::warn!(
-                        from = %page.rel.display(),
-                        to = url,
-                        "リンク先の Markdown が見つかりません（URL は機械変換します）"
-                    );
-                    guess_route(&resolved)
-                }
-            };
-            return Some(format!("{}{}{}", self.base, encode_path(&route), suffix));
-        }
-
-        // その他の相対参照のうち拡張子付き（画像・添付等）は content の同伴
-        // アセットとして dist の同じ相対パスへコピーされるため、base 付き絶対
-        // URL へ解決する（ページは `guide/foo/index.html` に置かれるので相対の
-        // ままでは階層がずれる）。判定はリンク検査（linkcheck）と同じ
-        // 「末尾セグメントに `.` を含む」。ディレクトリ風リンクは配信形態
-        // 依存のため従来どおり触らない
-        let last = path.rsplit('/').next().unwrap_or(path);
-        if last.contains('.') {
-            let dir = page.rel.parent().map(rel_to_slash).unwrap_or_default();
-            let resolved = resolve_relative(&dir, path)?;
-            return Some(format!("{}{}{}", self.base, encode_path(&resolved), suffix));
-        }
-        None
     }
 }
 
