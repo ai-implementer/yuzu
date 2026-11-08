@@ -564,7 +564,7 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
     deploy の「ワークフローの全文」・quality の「CI に組み込む」・install の「既存のフォルダで始める」の
     手順 5 と案内・サイドバーの並び（インストールの次）
 
-### 92 fuzz ⬜
+### 92 fuzz ✅
 
 **概要**: fuzz を定期実行にし、対象を kabosu から mikan（検索の索引の読み込み）と tankan
 （図の描画）へ広げる。mikan の `Shard::parse` の panic と巨大確保（10-07 見直しの E2）を直す。
@@ -666,6 +666,9 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
   - `state<タブ>A {` のように panic してクライアント描画に切り替わっていた図が SSR で描けるようになり
     本文 HTML が変わるので、`CACHE_FORMAT_VERSION` を 33 に上げる。tankan の修正はパッチ版（0.2.2）で
     公開する（ユーザの作業。publish-crate スキル）
+  - 手動実行（600 秒。run 42452688578・11-08。ブランチ phase-92-tankan-state）: 5 対象とも panic・ハング・
+    メモリ超過が 0 件（tankan は 616 秒まで実行して `oom/timeout/crash: 0/0/0`・終了コード 0）。**リリース判定の
+    fuzz の条件を満たした**（tankan の panic の件数をリリースノートに書く必要も無い）
 - 工数: 小〜中
 
 ### 93 dogfooding と整理 ⬜
