@@ -1,22 +1,59 @@
 name: fuzz
 
-# kabosu の fuzzing（手動トリガのみ）。nightly + cargo-fuzz が必要なため
-# 通常 CI から分離している。kabosu の publish 前には必ず一度回すこと
-# （CLAUDE.md「リリース手順」参照）
+# 汎用ライブラリの fuzzing（Phase 92）。nightly + cargo-fuzz が必要なため通常 CI から分離している。
+# 週 1 回の定期実行と手動実行。kabosu の publish 前には必ず一度回すこと（publish-crate スキル）。
+#
+# 合否は artifact と終了コードで決める（judge の手順）:
+#   ハング（timeout-*）・メモリ超過（oom-*）は必ず失敗。終了コードが 0 でなければ（最後まで実行
+#   できていない）失敗。panic（crash-*・leak-*）は、tankan だけ最後まで実行できたら件数を報告して
+#   受け流す（yuzu が回収してクライアント描画に切り替えるので延期できる。ハングとメモリ超過は回収
+#   できず build ごと止まる）。ほかの対象は panic も失敗。
+#   artifact があれば、入力を取り出せるよう upload する。
+# リリース判定（ROADMAP v0.20）: 定期実行と同じ秒数（600）の手動実行で、mikan が成功し、tankan に
+# timeout-*・oom-* が無いこと。
 on:
+  schedule:
+    # 毎週月曜 03:00（JST）
+    - cron: "0 18 * * 0"
   workflow_dispatch:
     inputs:
       seconds:
-        description: "1 ターゲットあたりの実行秒数"
+        description: "1 対象あたりの実行秒数（空なら定期実行と同じ 600）"
         required: false
-        default: "300"
 
 permissions:
   contents: read
 
+# 制限の値はここだけに書く（publish-crate スキルの手元での実行もこの値を参照する）。
+# -timeout は 1 入力あたりの秒数で、ハングの判定（libFuzzer の既定 1200 秒では 600 秒の実行で
+# ハングを報告できない）。ASAN と計装の下では release より大幅に遅いので、普通の入力の時間切れが
+# 出たら値を上げる（ハングとして直す前に、release で速いかを確かめる）
+env:
+  FUZZ_SECONDS: ${{ inputs.seconds || '600' }}
+  FUZZ_TIMEOUT: "10"
+  FUZZ_RSS_LIMIT_MB: "2048"
+
 jobs:
   fuzz:
+    name: fuzz (${{ matrix.crate }} / ${{ matrix.target }})
     runs-on: ubuntu-latest
+    # 600 秒の実行とビルド（ASAN 付き・キャッシュ無しで 10 分前後）に余裕を見た値。
+    # 秒数を 2700 より長くするときは上げる
+    timeout-minutes: 60
+    strategy:
+      # 1 つの対象の失敗で、ほかの対象の結果を隠さない
+      fail-fast: false
+      matrix:
+        include:
+          - { crate: kabosu, target: parse }
+          - { crate: kabosu, target: roundtrip }
+          - { crate: kabosu, target: decode }
+          - { crate: mikan, target: shard }
+          # panic を受け流して最後まで実行する（-fork と -ignore_crashes。ハングとメモリ超過では止める）
+          - { crate: tankan, target: render_svg, keep_going: true }
+    defaults:
+      run:
+        working-directory: crates/${{ matrix.crate }}
     steps:
       # actions はフルコミット SHA でピン留めする（ci.yml と同じ規律）
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,14 +62,85 @@ jobs:
           toolchain: nightly
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: crates/kabosu/fuzz
+          workspaces: crates/${{ matrix.crate }}/fuzz
+          key: ${{ matrix.crate }}
 
       - name: install cargo-fuzz
         run: cargo install cargo-fuzz --locked
 
-      - name: fuzz (parse / roundtrip / decode)
-        working-directory: crates/kabosu
+      # 種: mikan はエンコーダが書いたシャード（fuzz/seeds/。mikan のテストが今の出力と照合する）、
+      # tankan は図種ごとの corpus（tests/corpus/<図種>/*.mmd。図種の間で名前が重なるので図種を前に付ける）
+      - name: seed corpus
         run: |
-          for target in parse roundtrip decode; do
-            cargo +nightly fuzz run "$target" -- -max_total_time="${{ inputs.seconds || '300' }}"
-          done
+          corpus="fuzz/corpus/${{ matrix.target }}"
+          mkdir -p "$corpus"
+          if [ -d "fuzz/seeds/${{ matrix.target }}" ]; then
+            cp "fuzz/seeds/${{ matrix.target }}/"* "$corpus/"
+          fi
+          if [ "${{ matrix.crate }}" = tankan ]; then
+            for f in tests/corpus/*/*.mmd; do
+              cp "$f" "$corpus/$(basename "$(dirname "$f")")-$(basename "$f")"
+            done
+          fi
+          echo "種: $(find "$corpus" -type f | wc -l) 件"
+
+      - name: fuzz
+        id: run
+        run: |
+          args=(-max_total_time="$FUZZ_SECONDS" -timeout="$FUZZ_TIMEOUT" -rss_limit_mb="$FUZZ_RSS_LIMIT_MB")
+          if [ "${{ matrix.keep_going }}" = true ]; then
+            # fork のときはハングとメモリ超過も既定で受け流すので、止める側を明示する
+            args+=(-fork=1 -ignore_crashes=1 -ignore_timeouts=0 -ignore_ooms=0)
+          fi
+          status=0
+          cargo +nightly fuzz run "${{ matrix.target }}" -- "${args[@]}" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: judge
+        id: judge
+        if: always() && steps.run.outcome == 'success'
+        run: |
+          dir="fuzz/artifacts/${{ matrix.target }}"
+          count() { find "$dir" -maxdepth 1 -type f -name "$1-*" 2>/dev/null | wc -l; }
+          crash=$(( $(count crash) + $(count leak) ))
+          timeout=$(count timeout)
+          oom=$(count oom)
+          status="${{ steps.run.outputs.status }}"
+          {
+            echo "### ${{ matrix.crate }} / ${{ matrix.target }}（${FUZZ_SECONDS} 秒）"
+            echo
+            echo "| panic（crash・leak） | ハング（timeout） | メモリ超過（oom） | 終了コード |"
+            echo "| --- | --- | --- | --- |"
+            echo "| $crash | $timeout | $oom | $status |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ $(( crash + timeout + oom )) -gt 0 ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "$timeout" -gt 0 ] || [ "$oom" -gt 0 ]; then
+            echo "::error::ハング ${timeout} 件・メモリ超過 ${oom} 件（artifact に入力を置いた）"
+            exit 1
+          fi
+          # 最後まで実行できたことは終了コード 0 で確かめる。panic を受け流した実行（tankan）も、
+          # 最後まで実行できれば 0 になる（11-08 の手動実行で panic 16 件・終了コード 0 を確認）。
+          # 0 でなければ、artifact を残さずに止まった（OOM killer 等）か、受け流していない panic なので、
+          # panic の有無に依らず失敗にする（PR #81 のレビュー指摘。以前は panic があると見ていなかった）
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo fuzz が終了コード ${status} で終わった（panic ${crash} 件）"
+            exit 1
+          fi
+          if [ "$crash" -gt 0 ]; then
+            if [ "${{ matrix.keep_going }}" = true ]; then
+              echo "::warning::panic ${crash} 件（受け流して最後まで実行した。artifact に入力を置いた）"
+              exit 0
+            fi
+            echo "::error::panic ${crash} 件（artifact に入力を置いた）"
+            exit 1
+          fi
+
+      - name: upload artifacts
+        if: always() && (steps.judge.outputs.found == 'true' || failure())
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-artifacts-${{ matrix.crate }}-${{ matrix.target }}
+          path: crates/${{ matrix.crate }}/fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
