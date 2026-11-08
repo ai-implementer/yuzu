@@ -84,7 +84,9 @@ use crate::model::{Frontmatter, TocEntry};
 /// - v32: saphyr・saphyr-parser 0.2.2 → 0.3.3。入力の最後の空のブロックスカラー（`description: |`）が
 ///   `"\n"` ではなく `""` になり、CachedMeta の Frontmatter の値が変わる（改行だけの description を
 ///   出さなくなる。docs と雛形の出力は変わらなかった）
-pub const CACHE_FORMAT_VERSION: u32 = 32;
+/// - v33: tankan の state 図の事前スキャンと本処理を同じ規則にした（Phase 92 の fuzz）。`state<タブ>A {`
+///   のように panic してクライアント描画に切り替わっていた図が SSR で描けるようになり、本文 HTML が変わる
+pub const CACHE_FORMAT_VERSION: u32 = 33;
 
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]

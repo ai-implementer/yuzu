@@ -18,7 +18,7 @@ use crate::error::Error;
 use crate::flowchart::model::{
     Direction, Edge, EdgeLine, EdgeTip, EndRef, FlowchartDiagram, Node, NodeShape, Subgraph,
 };
-use crate::kind::trim_line;
+use crate::kind::{keyword_of, trim_line};
 
 pub(crate) fn parse(source: &str) -> Result<FlowchartDiagram, Error> {
     let mut p = Parser::default();
@@ -148,7 +148,7 @@ impl Parser {
             }
         }
 
-        let keyword = statement.split_whitespace().next().unwrap_or("");
+        let keyword = keyword_of(statement);
         let rest = trim_line(&statement[keyword.len().min(statement.len())..]);
         match keyword {
             "classDef" => {

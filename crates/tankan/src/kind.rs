@@ -121,9 +121,51 @@ pub(crate) fn trim_line(line: &str) -> &str {
     line.trim_matches(|c: char| c == ' ' || c == '\t' || c == '\u{3000}' || c == '\r')
 }
 
+/// 行頭の語（最初の空白文字の手前まで）。戻り値は必ず `line` の先頭部分なので、
+/// 各図種のパーサは `&line["classDef".len()..]` のように語の長さで残りを切り出せる。
+/// `split_whitespace` で取ると、[`trim_line`] が外さない空白（垂直タブ・U+2028 等）が行頭に
+/// あるときに語を読み飛ばし、切り出しが文字の境界の途中になって panic していた（Phase 92 の fuzz）。
+/// 行頭がそうした空白なら空文字列を返す（どの語にも当たらない）
+pub(crate) fn keyword_of(line: &str) -> &str {
+    line.split(char::is_whitespace).next().unwrap_or("")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DiagramKind, detect};
+    use super::{DiagramKind, detect, keyword_of};
+
+    #[test]
+    fn 行頭の語は必ず行の先頭部分() {
+        assert_eq!(keyword_of("state A {"), "state");
+        assert_eq!(keyword_of("classDef\tx fill:#f00"), "classDef");
+        assert_eq!(keyword_of("end"), "end");
+        assert_eq!(keyword_of(""), "");
+        // trim_line が外さない空白で始まる行は、どの語にも当たらない
+        assert_eq!(keyword_of("\u{b}state A {"), "");
+        assert_eq!(keyword_of("\u{2028}\u{2028}classDef x"), "");
+    }
+
+    /// 行頭に trim_line が外さない空白（U+2028 等の複数バイト）が並ぶ行で、各図種のパーサが
+    /// 語の長さで残りを切り出して、文字の境界の途中で panic していた（Phase 92 の fuzz で
+    /// state を見つけ、同じ書き方の class・flowchart・gantt でも再現した）。結果は問わない
+    #[test]
+    fn 行頭に複数バイトの空白がある行でも_panic_しない() {
+        let lead = "\u{2028}\u{2028}\u{2028}";
+        for (header, line) in [
+            ("flowchart TD", "classDef a fill:#f00"),
+            ("classDiagram", "class A"),
+            ("sequenceDiagram", "participant A"),
+            ("gantt", "title x"),
+            ("erDiagram", "direction LR"),
+            ("stateDiagram-v2", "state A"),
+            ("stateDiagram-v2", "state A {"),
+        ] {
+            let source = format!("{header}\n{lead}{line}\n");
+            let _ = crate::render_svg(&source, &crate::Options::default());
+            let source = format!("{header}\n\u{85}{line}\n");
+            let _ = crate::render_svg(&source, &crate::Options::default());
+        }
+    }
 
     #[test]
     fn 図種の判別() {

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::common::text::{decode_entities, split_br_lines};
 use crate::error::Error;
-use crate::kind::trim_line;
+use crate::kind::{keyword_of, trim_line};
 use crate::sequence::model::{
     BlockKind, Event, HeadKind, LineKind, NotePos, PBox, Participant, SequenceDiagram,
 };
@@ -131,7 +131,7 @@ pub(crate) fn parse(source: &str) -> Result<SequenceDiagram, Error> {
 
 impl Parser {
     fn statement(&mut self, line: &str, line_no: usize) -> Result<(), Error> {
-        let keyword = line.split_whitespace().next().unwrap_or("");
+        let keyword = keyword_of(line);
         let rest = trim_line(&line[keyword.len().min(line.len())..]);
 
         if UNSUPPORTED_KEYWORDS.contains(&keyword.to_ascii_lowercase().as_str()) {
@@ -454,7 +454,7 @@ fn split_box_color(rest: &str) -> (Option<String>, &str) {
             );
         }
     }
-    let first = rest.split_whitespace().next().unwrap_or("");
+    let first = keyword_of(rest);
     if first.starts_with('#') || is_css_color_name(first) {
         return (Some(first.to_string()), trim_line(&rest[first.len()..]));
     }

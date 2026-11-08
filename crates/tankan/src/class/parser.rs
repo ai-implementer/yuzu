@@ -13,7 +13,7 @@ use crate::class::model::{Class, ClassDiagram, Marker, Relation};
 use crate::common::style::StyleCollector;
 use crate::common::text::{decode_entities, split_br_lines};
 use crate::error::Error;
-use crate::kind::trim_line;
+use crate::kind::{keyword_of, trim_line};
 
 pub(crate) fn parse(source: &str) -> Result<ClassDiagram, Error> {
     let mut p = ClassParser::default();
@@ -152,7 +152,7 @@ impl ClassParser {
         line_no: usize,
         body_block: &mut Option<usize>,
     ) -> Result<(), Error> {
-        let keyword = line.split_whitespace().next().unwrap_or("");
+        let keyword = keyword_of(line);
         // スタイル構文。`class` は宣言キーワードなので、複数適用は `cssClass`（Mermaid 準拠）
         match keyword {
             "classDef" => {

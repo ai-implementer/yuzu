@@ -11,7 +11,7 @@ use crate::common::style::StyleCollector;
 use crate::common::text::{decode_entities, split_br_lines};
 use crate::er::model::{Attribute, Cardinality, Entity, ErDiagram, Relation};
 use crate::error::Error;
-use crate::kind::trim_line;
+use crate::kind::{keyword_of, trim_line};
 
 pub(crate) fn parse(source: &str) -> Result<ErDiagram, Error> {
     let mut p = ErParser::default();
@@ -80,7 +80,7 @@ pub(crate) fn parse(source: &str) -> Result<ErDiagram, Error> {
             continue;
         }
 
-        let keyword = line.split_whitespace().next().unwrap_or("");
+        let keyword = keyword_of(line);
         match keyword {
             "classDef" => {
                 p.styles.class_def(trim_line(&line["classDef".len()..]));
