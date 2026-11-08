@@ -86,7 +86,9 @@ globset = "0.4"
 # yuzu-server の監視スレッドで行う（debouncer は種類を捨てるので使わない。
 # Linux の inotify が届ける「開いただけ」のイベントで再ビルドが止まらなくなる）
 notify = "8.2"
-axum = { version = "0.8", features = ["ws"] }
+# 既定の features（json・form・query の extractor・matched-path 等）は使わないので外し、配信に要る
+# http1・`axum::serve` の tokio・ライブリロードの ws だけを指定する（v0.20 Phase 93）
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws"] }
 tower-http = { version = "0.7", features = ["fs"] }
 # broadcast（ライブリロード通知）に "sync" が必須（axum の feature からは有効化されない）
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }

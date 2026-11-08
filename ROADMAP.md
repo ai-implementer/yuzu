@@ -377,16 +377,16 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
 - 確かめること: 手元の preview で favicon・フッター・キーボード操作・検索欄（ユーザ）。
   スナップショット。公開サイトの favicon はリリース後に確かめる
 - 工数: 小〜中
-- 決定（10-18。着手時に確認したが応答が無く、**推奨案で仮決め**）と実装
-  - **設定キー** — `site` に 3 つ（仮決め）: `site.favicon`（文字列。public/ のパスかフル URL）・
+- 決定（10-18 に着手時に確認したが応答が無く、推奨案で仮決めした。11-08 にユーザが推奨案のまま確定）と実装
+  - **設定キー** — `site` に 3 つ: `site.favicon`（文字列。public/ のパスかフル URL）・
     `site.footer`（インラインの Markdown。`yuzu_core::render_inline_markdown` で描く）・
     `[[site.header_links]]`（`text` と `url` は必須。`javascript:` / `data:` / `vbscript:` は設定エラー）。
     リンクは `site.logo` と同じく base を前置し、外部 URL・`mailto:` はそのまま（`pipeline.rs` の
     `site_link_url`）。ヘッダーのリンクは狭い画面（≤50rem）ではナビの下に出す。フッターは印刷にも残す
-  - **favicon の自動** — 自動で出す（仮決め）。`site.favicon` が無くても `public/favicon.ico` が
+  - **favicon の自動** — 自動で出す。`site.favicon` が無くても `public/favicon.ico` が
     あれば、base の下を指す `<link rel="icon">` を出す
-  - **Admonition のラベル** — v0.21 へ移す（仮決め。i18n の `theme.strings` でまとめて扱う）
-  - **テーマ切替** — 3 状態にする（仮決め）。押すたびに OS の設定 → 今の見た目の反対 → もう一方 →
+  - **Admonition のラベル** — v0.21 へ移す（i18n の `theme.strings` でまとめて扱う）
+  - **テーマ切替** — 3 状態にする。押すたびに OS の設定 → 今の見た目の反対 → もう一方 →
     OS の設定（最初の 1 回は必ず見た目が変わる）。今の状態と次の状態を aria-label と title に出し、
     アイコンを ◐ / ☀ / ☾ にする。OS の設定に戻すと localStorage の選択を消す
   - 検索欄を 16px（`1rem`）にし `aria-label="サイト内を検索"` を足した。ショートカットの表記を
@@ -699,6 +699,24 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
   axum の features。完了済みの内訳を移し、ROADMAP は「現在」と候補と各版の 1 行の要約にする
 - 判断点: 完了済みの内訳の置き場所（docs サイトの開発者向けのページとして公開するか、
   リポジトリ内の別ファイルにするか）
+- 決めたこと（11-08 に確認したが応答が無く、推奨案で仮決めした。同日にユーザが推奨案のまま確定）:
+  完了済みの内訳はリポジトリ内の別ファイル（`ROADMAP-history.md`。公開サイトには出さない）へ移す /
+  PR は 3 本: (1) R4・R5・axum の features、(2) R9、(3) 運用文書の古い記述と参照先の照合・ROADMAP の
+  整理。docs サイトのフッターは 90 で設定済み（`site.footer`）だった。あわせて、90 で仮決めのままだった
+  判断点 4 つもユーザが推奨案のまま確定した（リリース判定の「仮決めのままの判断点が無い」）
+- PR (1): R4・R5・axum の features（内部の整理。出力は変えない）
+  - R4: ページと 404 の `context!` に同じ式で並べていた 12 個のキー（site・nav_collapse・base_url・
+    asset_url・live_reload の 2 つ・highlight・dark・theme_mode・search の 2 つ・theme_css_vars）を
+    `common_ctx` の 1 つにまとめ、両方で `..common_ctx` として合成する（minijinja の `context!` の `..`）。
+    テンプレートから見える変数名は変えない
+  - R5: リンクの URL の分類を `urlpath::classify_link`（enum `LinkTarget`: 空・フラグメント・外部・
+    ルート絶対・相対の `.md`・拡張子付き・その他）に置き、`linkcheck::check_one` と yuzu-render の
+    `UrlResolver::rewrite` が網羅 match で使う。分類はデコード前・相対参照のパスだけデコードする規則も
+    この 1 か所にした
+  - axum: 既定の features をやめ、`http1`・`tokio`・`ws` だけにする（json・form・query の extractor は
+    使っていない）。Cargo.lock から form_urlencoded・ryu・serde_path_to_error・serde_urlencoded が外れた
+  - 変更の前後で、docs（295 ファイル。404.html を含む）と雛形（91 ファイル）の出力、docs の
+    `check --format json` の出力がバイト同一
 - 工数: 小〜中
 
 ## v0.10.1 レビューの持ち越し
