@@ -627,6 +627,20 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
     破壊的だが、mikan の次の公開は 89 の `title_terms` で既に 0.3.0
   - 検索 wasm を作り直した（528,750 bytes。`search.js` は同一）。壊れていないシャードの読み方は変わらない
     ので、`FORMAT_VERSION` と `CACHE_FORMAT_VERSION` は上げない
+  - PR #80 でマージ（11-08）
+- PR (2): fuzz の対象と fuzz.yml
+  - 対象: mikan の `shard`（parse の後、全 term の postings を位置情報付きまで読む）と tankan の
+    `render_svg`。kabosu と同じく `crates/<crate>/fuzz/` の独立した workspace（`Cargo.lock`・corpus・
+    artifacts は .gitignore。入れ子のパッケージなので crates.io の配布物には入らない）
+  - 種: mikan はエンコーダが書いたシャード 5 つを `fuzz/seeds/shard/` に置く（magic とバージョンを
+    通らないと postings まで届かない）。今のエンコーダの出力と同じかを mikan のテストが照合し、
+    `MIKAN_UPDATE_SEEDS=1` で書き直す。tankan は `tests/corpus/<図種>/*.mmd` を fuzz.yml が平らにして置く
+  - fuzz.yml: 週 1 回（月曜 03:00 JST）の定期実行と手動実行。対象ごとに別のジョブ（`fail-fast: false`）。
+    制限の値（600 秒・`-timeout=10`・`-rss_limit_mb=2048`）は `env` の 1 か所（対象で値を変えないので
+    matrix ではなく env にした）。`timeout-minutes: 60`。合否は終了コードではなく artifact で決める:
+    `timeout-*`・`oom-*` は失敗、`crash-*`・`leak-*` は tankan だけ件数を Summary と警告に出して受け流す
+    （`-fork=1 -ignore_crashes=1 -ignore_timeouts=0 -ignore_ooms=0`）。artifact があれば upload する
+  - publish-crate スキルの手元での実行を fuzz.yml の値にそろえ、CLAUDE.md に fuzz の運用を書いた
 - 工数: 小〜中
 
 ### 93 dogfooding と整理 ⬜

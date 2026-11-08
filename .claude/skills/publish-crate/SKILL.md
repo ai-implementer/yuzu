@@ -25,8 +25,12 @@ yuzu 本体側の crate（名前 `yuzu`・`yuzu-core` が別プロジェクト�
 cargo build
 # 2. コミット → push → CI green を確認（ci.yml の cargo package --locked が
 #    メタデータ・同梱内容の回帰を検出する。作業ツリーが dirty だと package は拒否される）
-# 3. kabosu だけ: fuzz を一度回す（手動 workflow fuzz.yml、または手元で）
-cd crates/kabosu && cargo +nightly fuzz run parse -- -max_total_time=60   # roundtrip / decode も
+# 3. kabosu は必須・mikan と tankan も推奨: fuzz を一度回す（fuzz.yml を手動実行するのが基本。
+#    週 1 回の定期実行の結果が新しければそれでもよい）
+gh workflow run fuzz.yml          # 1 対象 600 秒。結果は Actions の Summary（panic・ハング・メモリ超過の件数）
+#    手元で回すときは fuzz.yml の env（FUZZ_TIMEOUT・FUZZ_RSS_LIMIT_MB）と同じ値を渡す
+#    （nightly・cargo-fuzz・C++ コンパイラが要る。開発コンテナには g++ が無い）
+cd crates/kabosu && cargo +nightly fuzz run parse -- -max_total_time=600 -timeout=10 -rss_limit_mb=2048   # roundtrip / decode も
 # 4. dry-run → publish（要 cargo login。公開は取り消し不可・yank のみ可能）
 cargo publish --dry-run -p <crate>
 cargo publish -p <crate>
