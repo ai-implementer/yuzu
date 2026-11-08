@@ -607,6 +607,26 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
   実行し、`-ignore_timeouts=0`・`-ignore_ooms=0` を明記する（fork のときはハングとメモリ超過も
   既定で受け流す見込みのため）。この動作は**未確認**で、使えなければリリース判定のとおり tankan
   の対象を定期実行から外す
+- 決めたこと（11-08。ユーザが推奨案で決めた）: 定期実行は週 1 回・1 対象 600 秒・
+  `-timeout=10`・`-rss_limit_mb=2048`（リリース判定の「同じ秒数の手動実行」は 600 秒）/ tankan の
+  panic は、図種のパーサの中で直せる小さいものはこの Phase で直し、大きいもの・件数が多いものは延期して
+  件数をリリースノートに書く（ハングとメモリ超過は必ず直す）/ PR は 3 本: (1) mikan の `Shard::parse`、
+  (2) fuzz の対象と fuzz.yml・手動実行、(3) 手動実行で見つかった tankan の修正。`-fork` と
+  `-ignore_crashes` の動作は (2) の最初の手動実行で確かめる（開発コンテナに C++ コンパイラが無い。
+  tankan に panic が出なければ確かめる必要が無く、出て受け流せなければリリース判定のとおり tankan を
+  定期実行から外す）。合否はプロセスの終了コードではなく、artifact の `timeout-*`・`oom-*` の有無で決める
+- PR (1): mikan の `Shard::parse` と postings の読み込み
+  - blob の開始位置を `blob_start`（u64）で計算する。32 bit の usize での桁あふれを、usize の幅に依らない
+    値の単体テストで確かめる（64 bit では修正前も parse がエラーを返すので、parse だけのテストでは差が出ない）
+  - 申告された件数（`doc_freq`・`pos_count`）での確保を、残りのバイト数で読める件数までに抑える
+    （`bounded_capacity`。1 posting は 3 バイト以上・1 位置は 1 バイト以上）。64 bit の Linux は overcommit で
+    32 GB の確保も通るので、修正前との差は通常のテストでは出ない（wasm32 では容量の桁あふれで panic、
+    fuzz では malloc の上限で止まる）。上限の計算は単体テストで確かめる
+  - doc_id と出現位置の delta の合計の桁あふれを `FormatError::PostingOverflow` にする（修正前は debug で
+    panic・release で値が巻き戻っていた。テストは修正を外すと panic で失敗する）。variant を足すのは
+    破壊的だが、mikan の次の公開は 89 の `title_terms` で既に 0.3.0
+  - 検索 wasm を作り直した（528,750 bytes。`search.js` は同一）。壊れていないシャードの読み方は変わらない
+    ので、`FORMAT_VERSION` と `CACHE_FORMAT_VERSION` は上げない
 - 工数: 小〜中
 
 ### 93 dogfooding と整理 ⬜

@@ -26,6 +26,27 @@ use crate::varint;
 
 const MAGIC: &[u8; 4] = b"YZSH";
 const HEADER_LEN: usize = 12;
+/// 1 つの posting が blob で占める最小のバイト数（doc_id_delta・tf・pos_count の varint が 1 バイトずつ）
+const MIN_POSTING_BYTES: usize = 3;
+
+/// オフセット表の終わり（= blob の始まり）のバイト位置。usize の幅に依らないよう u64 で計算する
+/// （32 bit の usize（wasm32）では `(term_count + 1) * 4` が桁あふれし、長さの検査を通った後に
+/// 範囲外の添字で panic していた。Phase 92）
+fn blob_start(term_count: u32) -> u64 {
+    HEADER_LEN as u64 + (u64::from(term_count) + 1) * 4
+}
+
+/// 入力が申告する件数で確保する量を、残りのバイト数で読める件数までに抑える
+/// （件数は 1 件あたり `min_bytes` 以上のバイトを使うので、それ以上は読めない。
+/// 申告どおりに確保すると `u32::MAX` 件で数十 GB を確保しようとする）
+fn bounded_capacity(count: u32, remaining: usize, min_bytes: usize) -> usize {
+    (count as usize).min(remaining / min_bytes)
+}
+
+/// delta 列を足し合わせる（壊れたデータで u32 を超えたらエラー）
+fn add_delta(base: u32, delta: u32) -> Result<u32, FormatError> {
+    base.checked_add(delta).ok_or(FormatError::PostingOverflow)
+}
 
 /// 1 doc ぶんの posting（v3: 出現位置付き）
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,11 +114,10 @@ impl Shard {
         }
         let term_count = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
 
-        let offsets_len = (term_count as usize + 1) * 4;
-        let blob_start = HEADER_LEN + offsets_len;
-        if bytes.len() < blob_start {
-            return Err(FormatError::UnexpectedEof);
-        }
+        let blob_start = usize::try_from(blob_start(term_count))
+            .ok()
+            .filter(|&start| start <= bytes.len())
+            .ok_or(FormatError::UnexpectedEof)?;
         let offsets: Vec<u32> = bytes[HEADER_LEN..blob_start]
             .as_chunks::<4>()
             .0
@@ -136,10 +156,14 @@ impl Shard {
         let slice = self.term_slice(local_index)?;
         let mut pos = 0;
         let doc_freq = varint::read_u32(slice, &mut pos)?;
-        let mut postings = Vec::with_capacity(doc_freq as usize);
+        let mut postings = Vec::with_capacity(bounded_capacity(
+            doc_freq,
+            slice.len() - pos,
+            MIN_POSTING_BYTES,
+        ));
         let mut doc_id = 0u32;
         for _ in 0..doc_freq {
-            doc_id += varint::read_u32(slice, &mut pos)?;
+            doc_id = add_delta(doc_id, varint::read_u32(slice, &mut pos)?)?;
             let tf = varint::read_u32(slice, &mut pos)?;
             let pos_count = varint::read_u32(slice, &mut pos)?;
             for _ in 0..pos_count {
@@ -156,16 +180,22 @@ impl Shard {
         let slice = self.term_slice(local_index)?;
         let mut pos = 0;
         let doc_freq = varint::read_u32(slice, &mut pos)?;
-        let mut postings = Vec::with_capacity(doc_freq as usize);
+        let mut postings = Vec::with_capacity(bounded_capacity(
+            doc_freq,
+            slice.len() - pos,
+            MIN_POSTING_BYTES,
+        ));
         let mut doc_id = 0u32;
         for _ in 0..doc_freq {
-            doc_id += varint::read_u32(slice, &mut pos)?;
+            doc_id = add_delta(doc_id, varint::read_u32(slice, &mut pos)?)?;
             let tf = varint::read_u32(slice, &mut pos)?;
             let pos_count = varint::read_u32(slice, &mut pos)?;
-            let mut positions = Vec::with_capacity(pos_count as usize);
+            // 位置の delta は 1 件 1 バイト以上
+            let mut positions =
+                Vec::with_capacity(bounded_capacity(pos_count, slice.len() - pos, 1));
             let mut token_pos = 0u32;
             for _ in 0..pos_count {
-                token_pos += varint::read_u32(slice, &mut pos)?;
+                token_pos = add_delta(token_pos, varint::read_u32(slice, &mut pos)?)?;
                 positions.push(token_pos);
             }
             postings.push(Posting {
@@ -180,7 +210,102 @@ impl Shard {
 
 #[cfg(test)]
 mod tests {
-    use super::{Posting, Shard, encode_shard};
+    use super::{MIN_POSTING_BYTES, Posting, Shard, blob_start, bounded_capacity, encode_shard};
+    use crate::FORMAT_VERSION;
+    use crate::error::FormatError;
+    use crate::varint;
+
+    /// term 1 つのシャードを、blob の生バイトから組み立てる（エンコーダが書かない壊れた値を作る）
+    fn raw_shard(blob: &[u8]) -> Vec<u8> {
+        let mut out = b"YZSH".to_vec();
+        out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&1u32.to_le_bytes());
+        out.extend_from_slice(&0u32.to_le_bytes());
+        out.extend_from_slice(&(blob.len() as u32).to_le_bytes());
+        out.extend_from_slice(blob);
+        out
+    }
+
+    fn varints(values: &[u32]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for &v in values {
+            varint::write_u32(&mut out, v);
+        }
+        out
+    }
+
+    /// 32 bit の usize で桁あふれしていた計算を、usize の幅に依らない値で確かめる
+    /// （64 bit では修正前も parse がエラーを返すので、parse だけのテストでは差が出ない）
+    #[test]
+    fn blob_の開始位置は_usize_の幅に依らず計算する() {
+        assert_eq!(blob_start(0), 16);
+        assert_eq!(blob_start(3), 12 + 4 * 4);
+        assert_eq!(blob_start(u32::MAX), 12 + 4 * (1u64 << 32));
+        let mut header = b"YZSH".to_vec();
+        header.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        header.extend_from_slice(&0u16.to_le_bytes());
+        header.extend_from_slice(&u32::MAX.to_le_bytes());
+        assert!(matches!(
+            Shard::parse(&header),
+            Err(FormatError::UnexpectedEof)
+        ));
+    }
+
+    #[test]
+    fn 確保する量は残りのバイト数で読める件数まで() {
+        assert_eq!(bounded_capacity(u32::MAX, 30, MIN_POSTING_BYTES), 10);
+        assert_eq!(bounded_capacity(2, 30, MIN_POSTING_BYTES), 2);
+        assert_eq!(bounded_capacity(u32::MAX, 0, 1), 0);
+    }
+
+    /// 申告された件数（u32::MAX）の posting でも、データの終わりでエラーを返す。
+    /// 修正前は申告どおりに数十 GB を確保しようとした。64 bit の Linux では overcommit で確保が
+    /// 通るのでこのテストでは差が出ない（wasm32 では容量の桁あふれで panic し、fuzz では malloc の
+    /// 上限で止まる）。確保量の上限は [`bounded_capacity`] のテストで確かめる
+    #[test]
+    fn 件数が大きすぎる_posting_はエラー() {
+        let shard = Shard::parse(&raw_shard(&varints(&[u32::MAX]))).unwrap();
+        assert!(matches!(shard.postings(0), Err(FormatError::UnexpectedEof)));
+        assert!(matches!(
+            shard.postings_with_positions(0),
+            Err(FormatError::UnexpectedEof)
+        ));
+        // 位置の件数（doc_freq 1・doc_id 0・tf 1・pos_count u32::MAX）
+        let shard = Shard::parse(&raw_shard(&varints(&[1, 0, 1, u32::MAX]))).unwrap();
+        assert!(matches!(
+            shard.postings_with_positions(0),
+            Err(FormatError::UnexpectedEof)
+        ));
+    }
+
+    /// delta の合計が u32 を超えたらエラー（修正前は debug で panic・release で値が巻き戻っていた）
+    #[test]
+    fn doc_id_と出現位置の桁あふれはエラー() {
+        // doc_freq 2: (delta u32::MAX, tf 1, pos 0) → (delta 1, …) で doc_id が u32 を超える
+        let shard = Shard::parse(&raw_shard(&varints(&[2, u32::MAX, 1, 0, 1, 1, 0]))).unwrap();
+        assert!(matches!(
+            shard.postings(0),
+            Err(FormatError::PostingOverflow)
+        ));
+        assert!(matches!(
+            shard.postings_with_positions(0),
+            Err(FormatError::PostingOverflow)
+        ));
+        // 位置の delta: u32::MAX の次に 1
+        let shard = Shard::parse(&raw_shard(&varints(&[1, 0, 1, 2, u32::MAX, 1]))).unwrap();
+        assert!(matches!(
+            shard.postings_with_positions(0),
+            Err(FormatError::PostingOverflow)
+        ));
+        // 合計がちょうど u32::MAX なら読める
+        let shard = Shard::parse(&raw_shard(&varints(&[1, u32::MAX, 1, 1, u32::MAX]))).unwrap();
+        assert_eq!(shard.postings(0).unwrap(), vec![(u32::MAX, 1)]);
+        assert_eq!(
+            shard.postings_with_positions(0).unwrap()[0].positions,
+            vec![u32::MAX]
+        );
+    }
 
     /// テスト用の Posting 生成ヘルパ
     fn p(doc_id: u32, tf: u32, positions: &[u32]) -> Posting {
