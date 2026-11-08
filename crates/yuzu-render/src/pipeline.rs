@@ -291,6 +291,24 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     // theme.css_vars / css_vars_dark → head に注入する CSS 変数上書き（全ページ共通）
     let theme_css_vars =
         crate::css::generate_theme_var_overrides(&cfg.theme.css_vars, &cfg.theme.css_vars_dark);
+    // ページによらない値（ページと 404 のテンプレートに渡す）。両方の `context!` に同じ式を
+    // 並べていたので、片方に足し忘れると、未定義の変数を空・偽として通す minijinja では 404 ページだけ
+    // 機能が黙って消えた（10-12 レビューの R4）。ここに足せば両方に届く。テンプレートから見える
+    // 変数名は変えない（利用者が上書きしたテンプレートを壊さない）
+    let common_ctx = context! {
+        site => site_ctx,
+        nav_collapse => cfg.nav.collapse,
+        base_url => resolver.base(),
+        asset_url => resolver.asset_url(),
+        live_reload_poll => params.live_reload == LiveReloadMode::Poll,
+        live_reload_ws => params.live_reload == LiveReloadMode::Ws,
+        highlight_enabled => cfg.markdown.highlight.enabled,
+        dark_enabled => cfg.theme.dark == yuzu_config::DarkMode::Toggle,
+        theme_mode => cfg.theme.dark.as_str(),
+        search_enabled => cfg.search.enabled,
+        search_page_url => search_page_url.as_deref(),
+        theme_css_vars => theme_css_vars,
+    };
 
     // ページ生成の並列ループ。共有物は読み取り専用（Env / syntect / resolver /
     // nav / 日付マップ）か内部 Mutex の `&self` API（BuildCache / OutputTracker）。
@@ -382,7 +400,6 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 _ => &template,
             };
             let html = tpl.render(context! {
-                site => site_ctx,
                 page => PageCtx::new(
                     page,
                     &body,
@@ -394,22 +411,12 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
                 )
                 .with_page_md(page.emits_page_md(cfg.llms.page_md), page, &resolver),
                 nav => NavCtx::build(&params.site.nav, nav_trails.trail(&page.route), &resolver),
-                nav_collapse => cfg.nav.collapse,
                 pager => nav_order.pager(&page.route, &resolver),
                 breadcrumbs => build_breadcrumbs(&nav_trails, &page.route, &resolver),
-                base_url => resolver.base(),
-                asset_url => resolver.asset_url(),
-                live_reload_poll => params.live_reload == LiveReloadMode::Poll,
-                live_reload_ws => params.live_reload == LiveReloadMode::Ws,
                 mermaid_enabled => mermaid_js_needed,
                 math_enabled => math_needed,
-                highlight_enabled => cfg.markdown.highlight.enabled,
-                dark_enabled => cfg.theme.dark == yuzu_config::DarkMode::Toggle,
-                theme_mode => cfg.theme.dark.as_str(),
-                search_enabled => cfg.search.enabled,
-                search_page_url => search_page_url.as_deref(),
                 search_page_size => search_page_size,
-                theme_css_vars => theme_css_vars,
+                ..common_ctx.clone()
             })?;
             let out_rel = page.output_rel_path(); // route + "index.html"（/ 区切り）
             assets::write_output(
@@ -462,7 +469,6 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
     // copy_public より前に書く = public/404.html を置いたプロジェクトは
     // そちらが上書きして優先される（テーマ上書きと同じ思想）
     let not_found = shared.env.get_template("404.jinja")?.render(context! {
-        site => site_ctx,
         page => context! {
             title => "ページが見つかりません",
             description => Option::<&str>::None,
@@ -473,19 +479,9 @@ pub fn render_site(params: &RenderParams) -> Result<(), RenderError> {
         // route "404.html" はどのページ route とも一致しない = trail が空で
         // サイドバーはハイライトなし・全セクション閉じ（nav.collapse 時）
         nav => NavCtx::build(&params.site.nav, &[], &resolver),
-        nav_collapse => cfg.nav.collapse,
-        base_url => resolver.base(),
-        asset_url => resolver.asset_url(),
-        live_reload_poll => params.live_reload == LiveReloadMode::Poll,
-        live_reload_ws => params.live_reload == LiveReloadMode::Ws,
         mermaid_enabled => false,
         math_enabled => false,
-        highlight_enabled => cfg.markdown.highlight.enabled,
-        dark_enabled => cfg.theme.dark == yuzu_config::DarkMode::Toggle,
-        theme_mode => cfg.theme.dark.as_str(),
-        search_enabled => cfg.search.enabled,
-        search_page_url => search_page_url.as_deref(),
-        theme_css_vars => theme_css_vars,
+        ..common_ctx
     })?;
     if SiteOutput::NotFound.emitted(&switches) {
         assets::write_output(
