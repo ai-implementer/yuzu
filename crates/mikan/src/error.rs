@@ -25,6 +25,11 @@ pub enum FormatError {
     VarintOverflow,
 
     #[error(
+        "シャードの doc_id か出現位置が u32 の範囲を超えています（インデックスが壊れています）"
+    )]
+    PostingOverflow,
+
+    #[error(
         "シャード {shard_id} は manifest と term 数が一致しません（期待: {expected}, 実際: {actual}）"
     )]
     ShardTermCountMismatch {
