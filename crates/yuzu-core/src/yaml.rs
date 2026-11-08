@@ -53,6 +53,11 @@ pub(crate) struct LoadError {
 pub(crate) fn load(text: &str) -> Result<Option<Node<'_>>, LoadError> {
     let mut receiver = Budgeted::default();
     receiver.loader.early_parse(false);
+    // saphyr 0.3.1 からは loader 自身も別名の展開に上限（既定 10 万ノード）を掛け、超えると英語の
+    // 構文エラーにする。上限を同じ値にそろえる。saphyr はマッピングのキーを 1 ノードと数えるので、
+    // 数は Budgeted 以下になり、上限には必ず Budgeted が先に当たる（文言は日本語のまま。
+    // PR #79 のレビュー指摘。既定のままだと 10 万を超え 20 万以下の文書が通らなくなっていた）
+    receiver.loader.alias_limit(MAX_ALIAS_NODES);
     let scanned = Parser::new_from_str(text).load(&mut receiver, true);
     // 上限を超えた後は loader へ渡していないので、loader 側の結果より先に見る
     if let Some(mark) = receiver.exceeded {
@@ -584,6 +589,32 @@ mod tests {
         let e = to_json(&text).unwrap_err();
         assert!(e.message.contains("多すぎます"), "{e}");
         assert_eq!(e.line, 6, "上限を超えた別名の行: {e}");
+    }
+
+    /// saphyr の loader の上限（既定 10 万ノード）より先に、yuzu の上限（20 万）で判定する
+    /// （PR #79 のレビュー指摘。saphyr 0.3.3 の既定のままだと、下の 2 つ目が英語の構文エラーになる）
+    #[test]
+    fn 別名の展開は上限ちょうどまで通し超えたら日本語のエラーにする() {
+        // 10 個ずつ 5 段 = 別名の展開 123,440 ノード（saphyr の既定の上限を超え、yuzu の上限以下）
+        let mut text = String::from("a0: &a0 [x,x,x,x,x,x,x,x,x,x]\n");
+        for i in 1..5 {
+            let p = i - 1;
+            let refs = vec![format!("*a{p}"); 10].join(",");
+            text.push_str(&format!("a{i}: &a{i} [{refs}]\n"));
+        }
+        assert!(to_json(&text).is_ok(), "{:?}", to_json(&text).err());
+        // 別名 1 つで展開するのが、配列 1 つと要素 n 個 = n + 1 ノード
+        let expand = |n: usize| format!("a: &x [{}]\nb: *x\n", vec!["1"; n].join(","));
+        assert!(
+            to_json(&expand(MAX_ALIAS_NODES - 1)).is_ok(),
+            "上限ちょうどは通す"
+        );
+        let e = to_json(&expand(MAX_ALIAS_NODES)).unwrap_err();
+        assert!(
+            e.message.contains("多すぎます"),
+            "上限を 1 つ超えたら日本語のエラー: {e}"
+        );
+        assert_eq!(e.line, 2, "{e}");
     }
 
     #[test]
