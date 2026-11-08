@@ -25,12 +25,14 @@
 
 ## 現在の成果物
 
-- 生成日: 2026-11-07（wasm-bindgen 0.2.126 / binaryen version_131 / wasm-opt -Oz / rustc 1.99.1。
-  開発コンテナ（Linux aarch64）で生成）。dependabot の cargo の組（#78）で wasm に入る serde_json
-  （1.0.154）と unicode-normalization（0.1.26。正規化のデータが Unicode 17.0.0 → 18.0.0）が
-  上がったことに追随。エクスポート API は変わらない（`search.js` は前回とバイト同一）。
-  wasm に絶対パスは入っていない
+- 生成日: 2026-11-08（wasm-bindgen 0.2.126 / binaryen version_131 / wasm-opt -Oz / rustc 1.99.1。
+  開発コンテナ（Linux aarch64）で生成）。Phase 92 の mikan の `Shard::parse` の修正（blob の開始位置を
+  usize の幅に依らず計算・申告された件数での確保を残りのバイト数で抑える・delta の合計の桁あふれを
+  エラーにする）に追随。壊れていないシャードの読み方は変わらない。エクスポート API は変わらない
+  （`search.js` は前回とバイト同一）。wasm に絶対パスは入っていない
 - 以前の生成（新しい順。ツールの版はどれも同じ）
+  - 2026-11-07: dependabot の cargo の組（#78）で wasm に入る serde_json（1.0.154）と
+    unicode-normalization（0.1.26。正規化のデータが Unicode 17.0.0 → 18.0.0）が上がったことに追随
   - 2026-10-18: Phase 89 の検索の順位（同義語をまとめて 1 語として数える・タイトル一致の倍率）に
     伴う再 vendor。この回から `--remap-path-prefix` でビルドした人の `$CARGO_HOME` を `/cargo` に
     置き換えたので、wasm に絶対パスが入らない（以前は `~/.cargo/registry` が 45 か所）。PR #65 の
@@ -49,7 +51,7 @@
     **追加**した（既存の `search(query, limit)` は据え置き ＝ 固定 URL の HTTP キャッシュに残った
     旧 wasm が引数を黙って無視して「絞り込んでいないのに絞り込んだ件数」を出す事故を避けるため）。
     インデックスフォーマットは v3 のまま（`docGroups` / `groups` は `serde(default)` の後方互換フィールド）
-- `search_bg.wasm`: 516KB（528,221 bytes。vaporetto + fst + BM25 エンジン + フレーズ隣接照合 +
+- `search_bg.wasm`: 516KB（528,750 bytes。vaporetto + fst + BM25 エンジン + フレーズ隣接照合 +
   近接ブースト + 動的抜粋 + 同義語クエリ拡張 + 文字単位 Levenshtein DFA
   （levenshtein_automata）+ グループ絞り込み + 同義語のまとめ + タイトル一致の倍率込み。gzip 転送で概ね半分以下）
 - `search.js`: 14KB（wasm-bindgen --target web の ES module グルー）
