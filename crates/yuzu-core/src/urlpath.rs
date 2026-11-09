@@ -106,6 +106,63 @@ pub fn split_suffix(url: &str) -> (&str, &str) {
     }
 }
 
+/// 本文のリンクの URL の分類。リンク検査（`linkcheck::check_one`）と描画（yuzu-render の
+/// `UrlResolver::rewrite`）が同じ分類を網羅 match で使う。以前は両方が同じ 6 つの分岐を同じ順に
+/// 書き、一致をコメントで縛っていた（順序のずれで分類が食い違ったことがある。10-12 レビューの R5）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkTarget<'a> {
+    /// 空の URL
+    Empty,
+    /// 同じページの見出し（`#frag`。値は `#` の後ろ）
+    Fragment(&'a str),
+    /// 外部（スキーム付き・`mailto:` 等。[`is_external_url`]）
+    External,
+    /// ルート絶対（`/foo`）。`rest` は先頭の `/` の後ろで**デコード前**（描画は書いたまま使い、
+    /// 検査はデコードして照合する）。分類はデコード前に行う（`%2Flogo.png` は相対参照）
+    Absolute { rest: &'a str, suffix: &'a str },
+    /// 相対の `.md`（ページへのリンク）。`path` はデコード済み
+    Page { path: String, suffix: &'a str },
+    /// 末尾のセグメントに `.` を含む相対参照（画像・添付等。content の同伴アセット）。
+    /// `path` はデコード済み
+    Asset { path: String, suffix: &'a str },
+    /// それ以外の相対参照（`guide/` のようなディレクトリ風。配信の形に依るので検査も書き換えもしない）
+    Other,
+}
+
+impl<'a> LinkTarget<'a> {
+    /// `?query` / `#fragment` のうちフラグメント（`#` の後ろ）
+    pub fn fragment(suffix: &'a str) -> Option<&'a str> {
+        suffix.split_once('#').map(|(_, f)| f)
+    }
+}
+
+/// 本文のリンクの URL を分類する（[`LinkTarget`]）。`?` / `#` 以降の suffix はデコードしない
+pub fn classify_link(url: &str) -> LinkTarget<'_> {
+    if url.is_empty() {
+        return LinkTarget::Empty;
+    }
+    if let Some(frag) = url.strip_prefix('#') {
+        return LinkTarget::Fragment(frag);
+    }
+    if is_external_url(url) {
+        return LinkTarget::External;
+    }
+    let (path, suffix) = split_suffix(url);
+    if let Some(rest) = path.strip_prefix('/') {
+        return LinkTarget::Absolute { rest, suffix };
+    }
+    // content 相対の参照は、著者がエンコード済みで書いた形（`my%20page.md`）を生のファイル名へ戻す
+    let path = percent_decode(path);
+    if path.ends_with(".md") {
+        return LinkTarget::Page { path, suffix };
+    }
+    let last = path.rsplit('/').next().unwrap_or(&path);
+    if last.contains('.') {
+        return LinkTarget::Asset { path, suffix };
+    }
+    LinkTarget::Other
+}
+
 /// 相対パスを `dir`（`/` 区切り、空 = ルート）基準で解決し、`/` 区切りに正規化する。
 ///
 /// `..` がルート（content）より上へ出るなら `None`。以前は出た分の `..` を捨てていたので、
@@ -180,6 +237,64 @@ pub fn synth_page_problem(raw: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    /// リンク検査と描画が共有する分類（R5）。分類はデコード前に行い、相対参照のパスだけデコードする
+    #[test]
+    fn リンクの_url_を分類する() {
+        assert_eq!(classify_link(""), LinkTarget::Empty);
+        assert_eq!(classify_link("#a"), LinkTarget::Fragment("a"));
+        assert_eq!(classify_link("https://example.com/"), LinkTarget::External);
+        assert_eq!(classify_link("mailto:a@example.com"), LinkTarget::External);
+        assert_eq!(
+            classify_link("/foo/?x=1#y"),
+            LinkTarget::Absolute {
+                rest: "foo/",
+                suffix: "?x=1#y"
+            }
+        );
+        // クエリに URL を含んでも外部ではない（v0.20 Phase 90 の PR #66 の指摘）
+        assert_eq!(
+            classify_link("/search/?q=https://x"),
+            LinkTarget::Absolute {
+                rest: "search/",
+                suffix: "?q=https://x"
+            }
+        );
+        // ルート絶対はデコードしない（描画は書いたまま使う）
+        assert_eq!(
+            classify_link("/%E8%A8%AD/"),
+            LinkTarget::Absolute {
+                rest: "%E8%A8%AD/",
+                suffix: ""
+            }
+        );
+        assert_eq!(
+            classify_link("my%20page.md#x"),
+            LinkTarget::Page {
+                path: "my page.md".to_string(),
+                suffix: "#x"
+            }
+        );
+        assert_eq!(
+            classify_link("img/a.png"),
+            LinkTarget::Asset {
+                path: "img/a.png".to_string(),
+                suffix: ""
+            }
+        );
+        // `%2F` はデコードすると `/` だが、分類はデコード前なので相対参照
+        assert_eq!(
+            classify_link("%2Flogo.png"),
+            LinkTarget::Asset {
+                path: "/logo.png".to_string(),
+                suffix: ""
+            }
+        );
+        assert_eq!(classify_link("guide/"), LinkTarget::Other);
+        assert_eq!(classify_link("guide"), LinkTarget::Other);
+        assert_eq!(LinkTarget::fragment("?a=1#b"), Some("b"));
+        assert_eq!(LinkTarget::fragment("?a=1"), None);
+    }
 
     #[test]
     fn suffix_の分離() {
