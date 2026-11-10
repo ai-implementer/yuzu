@@ -88,6 +88,21 @@ use crate::model::{Frontmatter, TocEntry};
 ///   のように panic してクライアント描画に切り替わっていた図が SSR で描けるようになり、本文 HTML が変わる
 pub const CACHE_FORMAT_VERSION: u32 = 33;
 
+/// キャッシュする派生物の指紋（`CACHE_FORMAT_VERSION` を最後に上げたときの値。10-12 レビューの R9）。
+///
+/// yuzu-cli のテスト（`commands::build::tests::キャッシュの中身が変わったら版を上げる`）が、記法を
+/// 一通り使う試験用のプロジェクトを実際にビルドし、保存されたキャッシュの中身（meta・body・search・
+/// llms）の SHA-256 をこの値と照合する。生成のロジック・依存の更新・キャッシュする型の変更で中身が
+/// 変わると失敗するので、`CACHE_FORMAT_VERSION` を上げて、テストが出す (新しい版, 指紋) にここを
+/// 書き直す（以前は版を上げるのがコメントと手順だけで、v13 は上げ忘れて後から計上した）。
+/// 試験用のプロジェクトの原稿を書き換えたときも指紋が変わり版を上げることになるが、利用者側で
+/// フルビルドが 1 回走るだけ
+#[doc(hidden)]
+pub const CACHE_FINGERPRINT: (u32, &str) = (
+    33,
+    "a269343bf61cbbc6affe64fcaa89c74893c1a5a2fd69242bdb7a8b69b528f9ba",
+);
+
 /// パス1（extract_meta）の結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
