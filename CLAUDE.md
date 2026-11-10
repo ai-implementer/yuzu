@@ -308,7 +308,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
     **文字列の大文字小文字を無視して判定しない** = 区別する FS（Linux）で旧出力が残り、
     マニフェストから落ちて二度と掃除されない（PR #29 のレビュー指摘）
   - **キャッシュ内容の意味が変わる変更**（本文 HTML の生成ロジック・検索 tf の重み等）では
-    `yuzu-core/src/cache.rs` の `CACHE_FORMAT_VERSION` を上げる
+    `yuzu-core/src/cache.rs` の `CACHE_FORMAT_VERSION` を上げ、隣の `CACHE_FINGERPRINT` も書き直す。
+    yuzu-cli のテスト `キャッシュの中身が変わったら版を上げる` が、記法を一通り使う試験用のプロジェクトを
+    ビルドしてキャッシュの中身の SHA-256 を照合するので、上げ忘れは CI で落ちる（失敗時に書き直す値を
+    出す。v0.20 Phase 93・10-12 レビューの R9）。依存の更新で出力が変わったときも同じ
 - **検索 tf のキャッシュはページ source ハッシュ ＋ インクルード参照先の内容ハッシュで
   判定する**（`PageCacheEntry::search_deps_sha256`。参照先だけの編集で検索結果が古いまま
   残る不具合の修正）

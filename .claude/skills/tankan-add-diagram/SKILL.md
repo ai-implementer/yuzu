@@ -35,7 +35,9 @@ SSR 成功へ変わる」＝本文 HTML が変わるので、**yuzu 側にも追
 
 1. **`CACHE_FORMAT_VERSION` を上げる**（`crates/yuzu-core/src/cache.rs`）。
    従来フォールバックだったページが SSR 成功へ変わる＝**本文 HTML の意味が変わる**ため。
-   doc コメントの履歴にも 1 行足す（前例: `v7: mindmap / timeline の SSR 追加`）
+   doc コメントの履歴にも 1 行足す（前例: `v7: mindmap / timeline の SSR 追加`）。
+   隣の `CACHE_FINGERPRINT` も、yuzu-cli のテスト（`キャッシュの中身が変わったら版を上げる`）が出す値に
+   書き直す（試験用のプロジェクトの図が変わらなくても、版と指紋の組がそろっていないと落ちる）
 2. `crates/yuzu-render/src/highlight.rs` と `tests/render_snapshot.rs` の追随
    （SSR 対象が増えるとスナップショットが動く）
 3. `README.md` と `CLAUDE.md` の対応図種の列挙、`crates/yuzu-cli/scaffold/`（「9 図種」等の表記）
