@@ -43,6 +43,7 @@ cargo build --locked --workspace
 cargo package --locked -p tankan -p mikan -p kabosu
 scripts/third-party-licenses.sh check
 scripts/build-search-wasm.sh --check   # 検索 wasm の作り直し忘れ（Phase 89。ビルドのツールは要らない）
+scripts/check-doc-refs.sh              # 文書とコメントが指すパス・スキル・ROADMAP / CLAUDE.md の節が実在するか（Phase 93）
 ```
 
 - `cargo package` は公開対象 3 crate のメタデータ・同梱内容の回帰を検出する（CI にもある）。

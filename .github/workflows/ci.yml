@@ -47,7 +47,7 @@ jobs:
         run: cargo build --locked --workspace
 
       # crates.io 公開対象（tankan・mikan・kabosu）のパッケージ検証。メタデータ・
-      # 同梱内容の回帰を PR で検出する。実公開は手動 cargo publish（CLAUDE.md「リリース手順」）
+      # 同梱内容の回帰を PR で検出する。実公開は手動 cargo publish（`publish-crate` スキル）
       - name: package (tankan, mikan, kabosu)
         run: |
           cargo package --locked -p tankan -p mikan -p kabosu
@@ -104,6 +104,11 @@ jobs:
             status=1
           fi
           exit "$status"
+
+      # 運用文書とコードのコメントが指す参照先（リポジトリのパス・スキル・ROADMAP / CLAUDE.md の節）が
+      # 実在するか（v0.20 Phase 93。10-04 見直しの「運用文書の古い記述」の再発防止）
+      - name: doc references
+        run: scripts/check-doc-refs.sh
 
       # kabosu の依存ゼロ検査: package 後の正規化 manifest に通常依存・build 依存・
       # ターゲット固有依存のセクションが無いことを縛る（dev 依存だけは許可）
