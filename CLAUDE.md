@@ -532,6 +532,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   v0.20 Phase 93）。リポジトリのパスをバッククォートで書く・`<名前>` スキルと書く・ROADMAP「…」/
   CLAUDE.md「…」で節を指すと照合の対象になるので、ファイルや節の名前を変えたら参照も直す。
   リリース済みの版の内訳とレビューの記録は `ROADMAP-history.md`（ROADMAP.md は今の版・候補・各版 1 行）
+- **`scripts/*.sh` は macOS 標準の Bash 3.2 でも動くように書く**（verify スキルがホストで呼ぶ）。
+  Bash 3.2 は `$var」` の日本語のバイトを変数名に含めて `set -u` で unbound にするので、日本語が続く変数は
+  `${var}` と囲む。`mapfile`・`readarray`・連想配列（Bash 4 以降）は使わない。ci.yml の
+  「scripts の Bash 3.2 互換」が grep で縛る（v0.20 Phase 93。PR #85 のレビュー指摘）
 - **ci.yml の否定ゲートに `! cmd` を書かない**
   - GitHub Actions の `bash -e` でも `!` で反転したコマンドは errexit の対象外で、失敗しても
     次の行へ進む（= ゲートになっていない）

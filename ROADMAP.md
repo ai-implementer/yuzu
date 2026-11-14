@@ -769,6 +769,15 @@ Windows と macOS の `cargo test` を足し、落ちたテストを直す。
     履歴にしか残していなかった（`⬜` と `- **` の形の行しか探していなかった）→ 候補の「レビューからの
     持ち越し（未着手）」に見出しを写し、未着手の状態はそこで管理すると書いた。履歴の ⬜ の見出しが
     ROADMAP.md にもあるかを `check-doc-refs.sh` が照合する（24 項目。1 つ消すと検出することを確かめた）
+  - 再レビューの指摘（1 件）: Bash 3.2 は `$heading」` の `」` のバイトを変数名に含めて unbound にし、
+    診断が欠けた名前を出せずに止まる → `${heading}`・`${text}` と囲んだ
+  - PR #85 でマージ（11-14）
+- その後: ほかのスクリプト（vendor-advisories.sh・third-party-licenses.sh・vendor-mermaid.sh・
+  build-search-wasm.sh）にも、日本語が続く変数の展開が 8 か所あった（PR #85 より前からある。
+  vendor-advisories.sh は成功時の行なので、macOS では勧告が 0 件でも止まる）→ `${…}` と囲み、ci.yml に
+  「scripts の Bash 3.2 互換」（変数の直後の ASCII 以外の文字と、mapfile・readarray・連想配列を grep で
+  探す。コメントの行は見ない）を足した。build-search-wasm.sh を直したので検索 wasm の入力のハッシュを
+  更新した（wasm と search.js はバイト同一）
 - 工数: 小〜中
 
 ## v0.21 以降の候補

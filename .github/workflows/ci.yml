@@ -110,6 +110,22 @@ jobs:
       - name: doc references
         run: scripts/check-doc-refs.sh
 
+      # scripts/ のシェルスクリプトは macOS 標準の Bash 3.2 でも動くように書く（verify スキルがホストで
+      # 呼ぶ）。Bash 3.2 は変数の直後の日本語のバイトを変数名に含め、set -u で unbound にするので、
+      # 変数は {} で囲む。mapfile・readarray・連想配列（Bash 4 以降）も使わない（v0.20 Phase 93。
+      # PR #85 のレビュー指摘）。コメントの行は見ない
+      - name: scripts の Bash 3.2 互換
+        run: |
+          files=$(git ls-files 'scripts/*.sh')
+          if grep -nP '^(?!\s*#).*\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]' $files; then
+            echo "変数の直後に ASCII 以外の文字がある（変数を {} で囲む）" >&2
+            exit 1
+          fi
+          if grep -nE '^[^#]*\b(mapfile|readarray|declare -A|local -A)\b' $files; then
+            echo "Bash 4 以降の機能を使っている（macOS 標準の Bash 3.2 に無い）" >&2
+            exit 1
+          fi
+
       # kabosu の依存ゼロ検査: package 後の正規化 manifest に通常依存・build 依存・
       # ターゲット固有依存のセクションが無いことを縛る（dev 依存だけは許可）
       - name: kabosu dependency-free check

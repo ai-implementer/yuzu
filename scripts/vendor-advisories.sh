@@ -74,7 +74,7 @@ bundled="$(sed -n 's/^  - \([^ ]*\) \([0-9][^（ ]*\)（.*/\1@\2/p' "$LIC/mermai
 expected="$(grep -o '[0-9][0-9]* 個）' "$LIC/mermaid.txt" | head -1 | grep -o '[0-9]*' || true)"
 got_count="$(printf '%s\n' "$bundled" | grep -c . || true)"
 if [ -z "$expected" ] || [ "$got_count" != "$expected" ]; then
-  fail "mermaid.txt の束ねたパッケージを読めません（見出しの個数: ${expected:-なし} / 読み取れた行: $got_count）"
+  fail "mermaid.txt の束ねたパッケージを読めません（見出しの個数: ${expected:-なし} / 読み取れた行: ${got_count}）"
 fi
 while IFS= read -r p; do
   packages+=("$p")
@@ -144,4 +144,4 @@ if [ -n "$report" ]; then
   echo "更新するなら vendor-update スキル、影響しないなら理由を書いて IGNORE に足す" >&2
   exit 1
 fi
-echo "vendor 資産 ${#packages[@]} パッケージに既知の勧告はありません（$mermaid・$katex ほか束ねた $got_count）"
+echo "vendor 資産 ${#packages[@]} パッケージに既知の勧告はありません（${mermaid}・$katex ほか束ねた ${got_count}）"

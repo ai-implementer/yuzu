@@ -83,7 +83,7 @@ if [ -z "$WB_VERSION" ]; then
   exit 1
 fi
 if ! wasm-bindgen --version | grep -q "$WB_VERSION"; then
-  echo "error: wasm-bindgen-cli のバージョンが crate（=$WB_VERSION）と一致しません:" >&2
+  echo "error: wasm-bindgen-cli のバージョンが crate（=${WB_VERSION}）と一致しません:" >&2
   echo "  $(wasm-bindgen --version)" >&2
   echo "  cargo install wasm-bindgen-cli --version $WB_VERSION --force で揃えてください" >&2
   exit 1

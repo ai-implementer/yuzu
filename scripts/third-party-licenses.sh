@@ -50,7 +50,7 @@ check_pins() {
   local got
   got="$(lock_version two-face)"
   if [ "$got" != "$TWO_FACE_VERSION" ]; then
-    echo "two-face の版が licenses/ の記録と違います（Cargo.lock: $got / 記録: $TWO_FACE_VERSION）。" >&2
+    echo "two-face の版が licenses/ の記録と違います（Cargo.lock: $got / 記録: ${TWO_FACE_VERSION}）。" >&2
     echo "licenses/README.md の手順で two-face の一覧を作り直し、TWO_FACE_VERSION を更新してください" >&2
     exit 1
   fi
@@ -256,7 +256,7 @@ wasm_notice() {
     echo "yuzu のブラウザ検索（_search/search_bg.wasm・search.js）と分かち書きモデル"
     echo "（_search/model.zst）に含まれる第三者のソフトウェアのライセンス表記"
     echo
-    echo "- Rust の crate: mikan-wasm の wasm32-unknown-unknown 向けの通常依存（cargo-about $ABOUT_VERSION）"
+    echo "- Rust の crate: mikan-wasm の wasm32-unknown-unknown 向けの通常依存（cargo-about ${ABOUT_VERSION}）"
     echo "- 分かち書きモデル（末尾の節）"
     echo
     echo "生成: scripts/third-party-licenses.sh wasm"
@@ -282,7 +282,7 @@ binary_notice() {
   {
     echo "yuzu ${version} のバイナリに含まれる第三者のソフトウェアのライセンス表記"
     echo
-    echo "1. Rust の crate（yuzu-cli の通常依存。配布する 4 ターゲットの和集合。cargo-about $ABOUT_VERSION）"
+    echo "1. Rust の crate（yuzu-cli の通常依存。配布する 4 ターゲットの和集合。cargo-about ${ABOUT_VERSION}）"
     echo "2. two-face ${TWO_FACE_VERSION} が同梱する構文定義・テーマ"
     echo "3. syntect が同梱する既定のテーマ・構文定義"
     echo "4. 利用者のサイトへ配る資産（mermaid・KaTeX。dist の _assets/vendor/THIRD-PARTY-LICENSES.txt と同じ）"
@@ -321,7 +321,7 @@ binary_notice() {
   } > "$out"
   check_placeholders "$(cat "$out")" "$out"
   NEW_FILE=""
-  echo "notice: $out（$(wc -c < "$out" | tr -d ' ') bytes）"
+  echo "notice: ${out}（$(wc -c < "$out" | tr -d ' ') bytes）"
 }
 
 case "${1:-}" in
