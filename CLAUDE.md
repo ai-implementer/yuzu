@@ -528,6 +528,10 @@ mikan = 旧 yuzu-index-format・mikan-wasm = 旧 yuzu-search-wasm（v0.7 後に�
   before caching`）。Swatinem/rust-cache の掃除が `target/` の下をたどって kabosu のソースの `tests/` を
   テスト用のプロファイルとみなし、await せずに開いて ENOENT の注記を出す（キャッシュが完全一致しない
   run だけ。ジョブは失敗しない）。`cargo package` の出力を使う検査はこの手順より前に置く
+- **文書とコメントが指す参照先は `scripts/check-doc-refs.sh` が照合する**（ci.yml の check ジョブ。
+  v0.20 Phase 93）。リポジトリのパスをバッククォートで書く・`<名前>` スキルと書く・ROADMAP「…」/
+  CLAUDE.md「…」で節を指すと照合の対象になるので、ファイルや節の名前を変えたら参照も直す。
+  リリース済みの版の内訳とレビューの記録は `ROADMAP-history.md`（ROADMAP.md は今の版・候補・各版 1 行）
 - **ci.yml の否定ゲートに `! cmd` を書かない**
   - GitHub Actions の `bash -e` でも `!` で反転したコマンドは errexit の対象外で、失敗しても
     次の行へ進む（= ゲートになっていない）

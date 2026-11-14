@@ -3,7 +3,7 @@ name = "mikan"
 # 検索インデックスフォーマット＋BM25 クエリエンジン。yuzu-* の上位層に依存しない
 # 汎用ライブラリで、monorepo のまま crates.io へ単独公開している（開発は yuzu
 # ワークスペースで一体・repository は monorepo を指す）。バージョンは workspace と
-# 独立で、変更時にだけ上げて publish する（手順は CLAUDE.md「リリース手順」参照）
+# 独立で、変更時にだけ上げて publish する（手順は `publish-crate` スキル）
 description = "Japanese full-text search index format and BM25 query engine, shared by a native indexer and a wasm client (static files, no I/O)"
 version = "0.2.2"
 edition.workspace = true

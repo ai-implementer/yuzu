@@ -3,7 +3,7 @@ name = "kabosu"
 # 汎用ライブラリ（特定ツール非依存）。monorepo のまま crates.io へ公開している
 # （開発はこのワークスペースで一体。repository は monorepo を指す）。
 # バージョンは workspace と独立で、kabosu の変更時にだけ上げて publish する
-# （手順は CLAUDE.md「リリース手順」参照）。
+# （手順は `publish-crate` スキル）。
 # [dependencies] セクションは意図的に書かない = 依存ゼロ（CI が manifest を検査する）
 description = "Dependency-free TOML parser and encoder with spans, hand-written decode, no_std + alloc"
 version = "0.2.0"
