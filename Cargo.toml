@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.19.1"
+version = "0.20.0"
 edition = "2024"
 # 1.99: 10-18 に当時の最新の stable へ上げた。kabosu・tankan も同じ版（rust-version.workspace）。
 # cargo の依存の選び方はワークスペースでいちばん低い MSRV に合わせるので、そろえないと依存を上げられない
