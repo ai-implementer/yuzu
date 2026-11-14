@@ -866,7 +866,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "kabosu"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "insta",
  "serde_json",
@@ -965,7 +965,7 @@ checksum = "38d1115007560874e373613744c6fba374c17688327a71c1476d1a5954cc857b"
 
 [[package]]
 name = "mikan"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "fst",
  "insta",
@@ -1632,7 +1632,7 @@ dependencies = [
 
 [[package]]
 name = "tankan"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "insta",
  "roxmltree",
