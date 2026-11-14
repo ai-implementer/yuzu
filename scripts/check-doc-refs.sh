@@ -78,6 +78,11 @@ for file in "${FILES[@]}"; do
     target="${ref%%「*}"
     text="${ref#*「}"
     text="${text%」}"
+    # 書き方の説明（`ROADMAP「…」`）のプレースホルダは飛ばす（以前は ROADMAP.md のどこかに「…」が
+    # あったので、たまたま通っていた）
+    case "$text" in
+      *…*) continue ;;
+    esac
     case "$target" in
       ROADMAP | ROADMAP.md) target=ROADMAP.md ;;
       ROADMAP-history.md) ;;
