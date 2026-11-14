@@ -11,7 +11,7 @@
 # （キーは 1Password の op で取得。取れなければ送らない）。
 #
 # 使い方:
-#   scripts/dev-container.sh build   # イメージをビルド（--no-cache 可）
+#   scripts/dev-container.sh build   # イメージをビルド（--no-cache 可。既存のコンテナへは down → up で反映）
 #   scripts/dev-container.sh up      # 長寿命コンテナを起動（キャッシュ volume 付き）
 #   scripts/dev-container.sh shell   # コンテナ内の bash に入る（shell -c '...' で単発実行）
 #   scripts/dev-container.sh claude  # コンテナ内で Claude Code を起動
@@ -150,6 +150,42 @@ revive_or_remove() {
   return 1
 }
 
+# コンテナの元になったイメージと今の $IMAGE のダイジェスト（取れなければ空）。
+# docker は inspect のテンプレートで取る（素の `docker inspect` は同名のイメージにも当たるので
+# `container inspect` で絞る）。apple container は JSON しか出さないので最初の "digest" を拾う
+# （コンテナは configuration.image.descriptor、イメージは index のダイジェストが最初に出る）
+first_json_digest() {
+  grep -o '"digest" *: *"sha256:[0-9a-f]*"' | head -n 1 | grep -o 'sha256:[0-9a-f]*' || true
+}
+
+container_image_digest() {
+  if [ "$ENGINE" = "container" ]; then
+    "$ENGINE" inspect "$NAME" 2>/dev/null | first_json_digest || true
+  else
+    "$ENGINE" container inspect -f '{{.Image}}' "$NAME" 2>/dev/null || true
+  fi
+}
+
+image_digest() {
+  if [ "$ENGINE" = "container" ]; then
+    "$ENGINE" image inspect "$IMAGE" 2>/dev/null | first_json_digest || true
+  else
+    "$ENGINE" image inspect -f '{{.Id}}' "$IMAGE" 2>/dev/null || true
+  fi
+}
+
+# build し直したイメージは既存のコンテナに反映されない（up も start も古いコンテナを使い続ける）。
+# コンテナの元のイメージが今の $IMAGE と違えば知らせる。どちらかが取れなければ何も出さない
+warn_if_stale_image() {
+  local current latest
+  current=$(container_image_digest)
+  latest=$(image_digest)
+  if [ -n "$current" ] && [ -n "$latest" ] && [ "$current" != "$latest" ]; then
+    echo "warn: ${NAME} は build し直す前のイメージで動いています（${IMAGE} の変更は反映されていません）" >&2
+    echo "  反映するには: scripts/dev-container.sh down && scripts/dev-container.sh up（キャッシュ volume は残ります）" >&2
+  fi
+}
+
 cmd_build() {
   ensure_engine_running
   "$ENGINE" build "$@" \
@@ -159,6 +195,7 @@ cmd_build() {
     --build-arg "DEV_HOME=$HOME" \
     --build-arg "DEV_WORKSPACE=$ROOT" \
     -t "$IMAGE" -f "$ROOT/.devcontainer/Dockerfile" "$ROOT/.devcontainer"
+  warn_if_stale_image
 }
 
 cmd_up() {
@@ -168,13 +205,15 @@ cmd_up() {
 
   if container_exists; then
     if container_alive; then
-      echo "既に起動しています: ${NAME}（shell で入れます）"
+      echo "既に起動しています: ${NAME}（shell で入れます。build したイメージに替えるには down → up）"
+      warn_if_stale_image
       return 0
     fi
     # エンジン差分 3/3: 停止コンテナの再開。start で戻せれば volume 未接続の
     # 作り直しを避けられる（不可なら削除して下で作り直す）
     if revive_or_remove; then
-      echo "停止中のコンテナを再開しました: $NAME"
+      echo "停止中のコンテナを再開しました: ${NAME}（build したイメージに替えるには down → up）"
+      warn_if_stale_image
       return 0
     fi
   fi
@@ -241,7 +280,13 @@ ensure_up() {
     echo "コンテナが見つかりません。up から起動します..."
     cmd_up
   elif ! container_alive; then
-    revive_or_remove || cmd_up
+    if revive_or_remove; then
+      warn_if_stale_image
+    else
+      cmd_up
+    fi
+  else
+    warn_if_stale_image
   fi
 }
 

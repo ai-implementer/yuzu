@@ -18,7 +18,7 @@ apple container CLI の汎用リファレンス（構文・罠・k8s プラグ�
 ## 基本操作
 
 ```bash
-scripts/dev-container.sh build    # イメージビルド（ホスト値の ARG 付き。--no-cache 可）
+scripts/dev-container.sh build    # イメージビルド（ホスト値の ARG 付き。--no-cache 可。既存のコンテナへは down → up で反映）
 scripts/dev-container.sh up       # 長寿命コンテナ起動（volume 2 本＋同一パス bind mount＋ -p 127.0.0.1:5173:5173）
 scripts/dev-container.sh shell    # bash で入る（shell -c '...' で単発実行）
 scripts/dev-container.sh claude   # コンテナ内で Claude Code（~/.claude 共有・初回のみコンテナ内 OAuth）
