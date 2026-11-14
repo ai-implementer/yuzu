@@ -99,7 +99,9 @@ cargo build -p yuzu-cli
   （publish 経由の疎通は実機確認済み）
 - **stable の追従**: イメージ内の toolchain はビルド時点の stable で固定。CI（常に最新
   stable）と clippy 結果がズレたら `scripts/dev-container.sh build --no-cache` で焼き直す
-  （toolchain 名 `stable` は `rust-toolchain.toml` と一致させる意図。版を固定するなら対で変える）
+  （toolchain 名 `stable` は `rust-toolchain.toml` と一致させる意図。版を固定するなら対で変える）。
+  焼き直したイメージは `down` → `up` でコンテナを作り直すまで使われない（`up` だけでは
+  既存のコンテナを使い続ける。古いイメージのままなら `build`・`up`・`shell` 等が警告する）
 - **インストーラはハッシュ検証つき**: rustup-init・cargo-binstall・codex は
   バージョン固定の成果物を落として sha256 を照合してから実行する（`curl | sh` にしない。
   例外は Claude Code — 固定版配布が無くネイティブインストーラを使う）。
