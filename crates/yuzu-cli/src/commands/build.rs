@@ -1351,4 +1351,235 @@ mod tests {
         assert!(!search.join("manifest.json").exists());
         assert!(search.join("readme.txt").is_file());
     }
+
+    /// キャッシュの指紋を取る試験用のプロジェクト（`CACHE_FORMAT_VERSION` を上げる原因になった記法を
+    /// 一通り使う）。改行の違いを持ち込まないよう、チェックアウトしたファイルではなく文字列から作る
+    const FINGERPRINT_PROJECT: &[(&str, &str)] = &[
+        (
+            "yuzu.toml",
+            r#"[site]
+title = "指紋"
+base_url = "/docs/"
+
+[markdown.mermaid]
+enabled = true
+backend = "ssr"
+
+[markdown.math]
+enabled = true
+
+[markdown.glossary.terms]
+SSR = "Server-Side Rendering。ビルド時に図を SVG へ変換すること"
+
+[search]
+index_code = true
+"#,
+        ),
+        (
+            "content/index.md",
+            r#"---
+title: 指紋のトップ
+description: キャッシュの指紋を取る試験用のページ
+aliases: [old-top/]
+---
+
+# 指紋のトップ
+
+**「重要」**な日本語の本文です。SSR で図を描きます。
+
+## コード
+
+```rust title="src/lib.rs" {2} showLineNumbers
+fn main() {
+    println!("こんにちは");
+}
+```
+
+```sh tab="macOS / Linux"
+yuzu build
+```
+
+```powershell tab="Windows"
+yuzu.exe build
+```
+
+## 表と脚注
+
+| 列 | 値 |
+| --- | --- |
+| a | 1 |
+
+Table: 値の表 {#tbl:values}
+
+[](#tbl:values) を参照してください。脚注です[^1]。
+
+[^1]: 脚注の本文
+
+用語
+: 定義リストの説明
+
+[ガイド](guide/index.md)・[図の節](guide/index.md#図)・[外部](https://example.com/)・[検索](/search/?q=https://x)
+
+![画像](img/a.png)
+"#,
+        ),
+        (
+            "content/guide/index.md",
+            r#"---
+title: ガイド
+lintDisable: [broken-link]
+readingTime: false
+pageMd: false
+---
+
+# ガイド
+
+## 図
+
+```mermaid
+flowchart TD
+  A --> B
+```
+
+Figure: 流れ {#fig:flow}
+
+```mermaid
+stateDiagram-v2
+  state	A {
+    B
+  }
+```
+
+```mermaid
+journey
+  title 未対応の図種はクライアント描画に切り替わる
+```
+
+[](#fig:flow) のとおりです。
+
+## 数式
+
+$E = mc^2$ と
+
+$$
+\int_0^1 x\,dx
+$$
+
+> [!NOTE]- 折りたたみ
+> 中身
+
+> [!TIP]
+> 開いた注記
+"#,
+        ),
+        // 外のファイルを取り込むページは本文 HTML をキャッシュしない（v15）ので、取り込みはここに分ける
+        // （検索 tf と llms はキャッシュする）
+        (
+            "content/include.md",
+            r#"---
+title: 取り込み
+---
+
+# 取り込み
+
+```rust file="snippets/greet.rs" lines=2
+```
+
+```include file="snippets/note.md"
+```
+"#,
+        ),
+        (
+            "content/hidden.md",
+            "---\ntitle: 検索から外す\nsearch: false\n---\n\n# 検索から外す\n\n本文です。\n",
+        ),
+        ("content/img/a.png", "png"),
+        (
+            "snippets/greet.rs",
+            "fn greet() {\n    println!(\"やあ\");\n}\n",
+        ),
+        ("snippets/note.md", "取り込まれた Markdown 断片です。\n"),
+    ];
+
+    /// 試験用のプロジェクトを新しい一時ディレクトリでビルドし、保存されたキャッシュの中身
+    /// （meta・body・search・llms。キーの source_sha256 等は外す）の SHA-256 を返す
+    fn cache_fingerprint() -> String {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        for (rel, text) in FINGERPRINT_PROJECT {
+            let path = root.join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+        let rc = yuzu_config::load(&root).unwrap();
+        let mut session = BuildSession::new(&rc, true).unwrap();
+        build_once(&rc, LiveReloadMode::None, &mut session, false).unwrap();
+        let mut entries: Vec<yuzu_core::cache::PageCacheEntry> =
+            fs::read_dir(root.join(".yuzu/cache/pages"))
+                .unwrap()
+                .map(|entry| {
+                    serde_json::from_slice(&fs::read(entry.unwrap().path()).unwrap()).unwrap()
+                })
+                .collect();
+        entries.sort_by(|a, b| a.rel.cmp(&b.rel));
+        // 原稿のページは 4 つの派生物をすべて持つ（合成ページの用語集は原稿が無いので一部だけ）
+        let summary: Vec<_> = entries
+            .iter()
+            .map(|e| {
+                let has = |b: bool| if b { "o" } else { "-" };
+                format!(
+                    "{} meta{} body{} search{} llms{}",
+                    e.rel,
+                    has(e.meta.is_some()),
+                    has(e.body.is_some()),
+                    has(e.search.is_some()),
+                    has(e.llms.is_some())
+                )
+            })
+            .collect();
+        for rel in ["index.md", "guide/index.md"] {
+            let entry = entries.iter().find(|e| e.rel == rel);
+            assert!(
+                entry.is_some_and(|e| e.meta.is_some()
+                    && e.body.is_some()
+                    && e.search.is_some()
+                    && e.llms.is_some()),
+                "試験用のプロジェクトのキャッシュが揃っていない: {summary:?}"
+            );
+        }
+        let payload: Vec<_> = entries
+            .iter()
+            .map(|e| (&e.rel, &e.meta, &e.body, &e.search, &e.llms))
+            .collect();
+        yuzu_core::cache::BuildCache::sha256_hex_parts(&[&serde_json::to_vec(&payload).unwrap()])
+    }
+
+    /// キャッシュの中身が変わったのに `CACHE_FORMAT_VERSION` を上げ忘れるのを止める（10-12 レビューの R9）。
+    /// 版を上げると、利用者の `.yuzu/cache/` の古い中身が捨てられる。上げ忘れると、生成のロジックを
+    /// 変えても前の版の本文 HTML 等がキャッシュから出続ける（v13 で起きた）
+    #[test]
+    fn キャッシュの中身が変わったら版を上げる() {
+        use yuzu_core::cache::{CACHE_FINGERPRINT, CACHE_FORMAT_VERSION};
+        let fingerprint = cache_fingerprint();
+        assert_eq!(
+            fingerprint,
+            cache_fingerprint(),
+            "キャッシュの中身が実行ごとに変わる（指紋に使えない。並び順や時刻が入っていないか）"
+        );
+        let (version, recorded) = CACHE_FINGERPRINT;
+        assert_eq!(
+            version, CACHE_FORMAT_VERSION,
+            "CACHE_FORMAT_VERSION を上げたら、yuzu-core の CACHE_FINGERPRINT も \
+             ({CACHE_FORMAT_VERSION}, \"{fingerprint}\") に書き直す"
+        );
+        assert_eq!(
+            fingerprint,
+            recorded,
+            "キャッシュする派生物（本文 HTML・メタ・検索 tf・llms）の生成結果が変わった。\
+             yuzu-core の CACHE_FORMAT_VERSION を {} に上げ（理由を版の一覧に書く）、\
+             CACHE_FINGERPRINT を ({}, \"{fingerprint}\") に書き直す",
+            CACHE_FORMAT_VERSION + 1,
+            CACHE_FORMAT_VERSION + 1,
+        );
+    }
 }

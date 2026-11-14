@@ -37,7 +37,8 @@ PR のブランチを取ってきて、落ちた検査ごとに直してから�
 
 | 落ちた検査・出た差分 | 原因 | やること |
 | --- | --- | --- |
-| insta スナップショットの差分 | comrak・syntect・two-face 等で本文 HTML・ハイライトが変わった | 差分を目視 → `INSTA_UPDATE=always cargo test -p <crate>` → `git diff` で確認。本文 HTML が変わるなら `yuzu-core/src/cache.rs` の `CACHE_FORMAT_VERSION` を上げる（上げ忘れは CI で検出できない） |
+| insta スナップショットの差分 | comrak・syntect・two-face 等で本文 HTML・ハイライトが変わった | 差分を目視 → `INSTA_UPDATE=always cargo test -p <crate>` → `git diff` で確認。本文 HTML が変わるなら `yuzu-core/src/cache.rs` の `CACHE_FORMAT_VERSION` を上げる |
+| yuzu-cli の `キャッシュの中身が変わったら版を上げる` | 依存の更新で、試験用のプロジェクトのキャッシュの中身（本文 HTML・メタ・検索 tf・llms）が変わった（スナップショットに差分が出ない依存でも当たる） | `CACHE_FORMAT_VERSION` を上げ、隣の `CACHE_FINGERPRINT` をテストが出す (新しい版, 指紋) に書き直す（v0.20 Phase 93。以前は上げ忘れを CI で検出できなかった） |
 | `third-party-licenses.sh check`: two-face の版 | two-face を上げた | `licenses/README.md` の手順で two-face の一覧を作り直し、スクリプトの `TWO_FACE_VERSION` を更新 |
 | `third-party-licenses.sh check`: 検索 wasm の通知が今の依存と合わない・`search wasm inputs`（`build-search-wasm.sh --check`）が落ちた | 検索 wasm に入る crate（serde_json・fst・vaporetto 等）の版が Cargo.lock で変わった・増えた・外れた | `scripts/build-search-wasm.sh` で wasm と通知を作り直す（vendor-update スキル。wasm-bindgen-cli・binaryen・cargo-about が要る）。`yuzu build` → `yuzu search` で整合を確かめる。vaporetto の更新はトークナイザが変わるので特に必須 |
 | deps.yml の `licenses-notice` | `licenses/about.toml` の clarify の checksum が合わない・crate の本文が無く雛形に戻った | `licenses/README.md`「雛形に戻る crate の扱い」 |
