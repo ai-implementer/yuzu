@@ -13,14 +13,28 @@
 #
 #   scripts/check-doc-refs.sh
 # 終了コード: 0 = すべて実在 / 1 = 見つからない参照がある
+#
+# macOS 標準の Bash 3.2 でも動くように書く（mapfile・連想配列・${var,,} 等の Bash 4 以降の機能を
+# 使わない。PR #85 のレビュー指摘。verify スキルからホストで呼ぶ）
 set -euo pipefail
-export LC_ALL=C.UTF-8 2>/dev/null || export LC_ALL=C
+
+# 日本語の節の名前を文字単位で照合するため、実在する UTF-8 のロケールを使う（C のままだと `[^」]` が
+# バイト単位になり、照合が黙って抜ける。macOS には C.UTF-8 が無いことがある）
+for loc in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+  if locale -a 2>/dev/null | grep -qx "$loc"; then
+    export LC_ALL="$loc"
+    break
+  fi
+done
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 # 照合の対象（git 管理下のファイルだけ）
-mapfile -t FILES < <(git ls-files -- \
+FILES=()
+while IFS= read -r f; do
+  FILES+=("$f")
+done < <(git ls-files -- \
   'Cargo.toml' 'crates/*/Cargo.toml' '.github/*.yml' '.github/workflows/*.yml' 'scripts/*.sh' \
   'CLAUDE.md' 'README.md' 'SECURITY.md' '.claude/skills/*/SKILL.md' '.devcontainer/README.md' \
   'licenses/README.md' 'crates/*/README.md' 'crates/*/assets/*/README.md' 'crates/*/assets/*/*/README.md' \
@@ -73,6 +87,17 @@ for file in "${FILES[@]}"; do
     grep -qF -- "$text" "$target" || report "$file" "$target に「$text」がありません"
   done < <(grep -oE '(ROADMAP(-history)?(\.md)?|CLAUDE\.md)「[^」]+」' "$file" | sort -u)
 done
+
+# 4. ROADMAP-history.md のレビュー・見直しの未着手（⬜）の項目の見出しが、ROADMAP.md にもある
+#    （履歴にしか無いと、次の計画で取りこぼす。PR #85 のレビュー指摘）。見出しは行をまたぐことがあり、
+#    日本語の折り返しは空白を挟まないので、空白と改行をすべて外して比べる
+normalize() { tr -d ' \n'; }
+roadmap_flat="$(normalize < ROADMAP.md)"
+while IFS= read -r heading; do
+  [[ "$roadmap_flat" == *"$heading"* ]] ||
+    report "ROADMAP-history.md" "未着手の「$heading」が ROADMAP.md にありません（「レビューからの持ち越し（未着手）」に写す）"
+done < <(awk '/^## レビューと見直しの記録/ { p = 1 } p' ROADMAP-history.md | normalize |
+  grep -oE '⬜\*\*[^*]+\*\*' | sed -E 's/^⬜//' | sort -u)
 
 if [ "$missing" -gt 0 ]; then
   echo "見つからない参照が $missing 件あります（参照先を直すか、参照を書き換えてください）" >&2
