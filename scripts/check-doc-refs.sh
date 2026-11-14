@@ -84,7 +84,7 @@ for file in "${FILES[@]}"; do
       CLAUDE.md) ;;
       *) continue ;;
     esac
-    grep -qF -- "$text" "$target" || report "$file" "$target に「$text」がありません"
+    grep -qF -- "$text" "$target" || report "$file" "$target に「${text}」がありません"
   done < <(grep -oE '(ROADMAP(-history)?(\.md)?|CLAUDE\.md)「[^」]+」' "$file" | sort -u)
 done
 
@@ -95,7 +95,7 @@ normalize() { tr -d ' \n'; }
 roadmap_flat="$(normalize < ROADMAP.md)"
 while IFS= read -r heading; do
   [[ "$roadmap_flat" == *"$heading"* ]] ||
-    report "ROADMAP-history.md" "未着手の「$heading」が ROADMAP.md にありません（「レビューからの持ち越し（未着手）」に写す）"
+    report "ROADMAP-history.md" "未着手の「${heading}」が ROADMAP.md にありません（「レビューからの持ち越し（未着手）」に写す）"
 done < <(awk '/^## レビューと見直しの記録/ { p = 1 } p' ROADMAP-history.md | normalize |
   grep -oE '⬜\*\*[^*]+\*\*' | sed -E 's/^⬜//' | sort -u)
 
