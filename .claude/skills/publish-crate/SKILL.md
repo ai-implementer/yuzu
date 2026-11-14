@@ -6,12 +6,12 @@ description: 汎用ライブラリ（tankan / mikan / kabosu）を crates.io へ
 # 汎用ライブラリの crates.io 公開
 
 対象は monorepo 内の 3 crate。バージョンは workspace と独立で、各 `Cargo.toml` の
-`version` を明示指定している（公開済み: tankan 0.2.1 / mikan 0.2.2 / kabosu 0.2.0）。
+`version` を明示指定している（公開済み: tankan 0.2.2 / mikan 0.3.0 / kabosu 0.2.1）。
 
 | crate | 役割 | 備考 |
 | --- | --- | --- |
 | tankan | Mermaid 互換 SSR | |
-| mikan | 検索エンジン（旧 yuzu-index-format） | native / wasm で 1 実装共有。**0.2.2 の後に `SectionInput::title_terms` を足した（破壊的。Phase 89）= 次は 0.3.0**。版を上げると検索 wasm も作り直す（CI の `search wasm inputs`） |
+| mikan | 検索エンジン（旧 yuzu-index-format） | native / wasm で 1 実装共有。版を上げると検索 wasm も作り直す（CI の `search wasm inputs`） |
 | kabosu | TOML パーサ（依存ゼロ・no_std + alloc） | **publish 前に fuzz を必ず一度回す** |
 
 公開しない crate: **mikan-wasm**（wasm 成果物を作るビルド用。`publish = false`）と

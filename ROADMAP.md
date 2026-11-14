@@ -7,11 +7,10 @@ yuzu の開発計画（今の版の Phase・候補）と、これまでの版の
 
 ## 現在: v0.20 まで公開済み
 
-**v0.20.0 まで公開済み**。kabosu 0.2.0 / tankan 0.2.1 / mikan 0.2.2 は crates.io で公開済み（yuzu の
-リリースとは非同期。v0.20 で直した tankan・mikan は未公開 = tankan 0.2.2・mikan 0.3.0 の公開が残る。
-手順は `publish-crate` スキル）。次の版（v0.21。外部への露出の予定）は未策定で、候補は下の
-「v0.21 以降の候補」。v0.20 の計画と各 Phase の記録は ROADMAP-history.md の
-「完了済み: v0.20（Phase 87〜93）の内訳」。
+**v0.20.0 まで公開済み**。kabosu 0.2.1 / tankan 0.2.2 / mikan 0.3.0 は crates.io で公開済み（yuzu の
+リリースとは非同期。v0.20 の修正を 11-14 に公開。手順は `publish-crate` スキル）。次の版（v0.21。
+外部への露出の予定）は未策定で、候補は下の「v0.21 以降の候補」。v0.20 の計画と各 Phase の記録は
+ROADMAP-history.md の「完了済み: v0.20（Phase 87〜93）の内訳」。
 
 ## v0.21 以降の候補
 
