@@ -124,10 +124,7 @@ fn has_boundary(text: &str, start: usize, term: &str) -> bool {
     }
     let last = term.chars().next_back().expect("同上");
     let end = start + term.len();
-    if ascii_word(last) && text[end..].chars().next().is_some_and(ascii_word) {
-        return false;
-    }
-    true
+    !(ascii_word(last) && text[end..].chars().next().is_some_and(ascii_word))
 }
 
 /// `<abbr title="説明">略語</abbr>`。title は属性文脈なので必ずエスケープする
