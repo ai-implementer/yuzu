@@ -8,7 +8,7 @@
 //! 置かれたとき、名前が衝突すると別グループのタブが巻き添えで切り替わる）。
 //!
 //! 記法として `:::tabs`（comrak の `block_directive`）を採らなかった理由は
-//! ROADMAP の Phase 50 を参照（同じ長さのフェンスがネストできない・info が
+//! ROADMAP-history.md の Phase 50 を参照（同じ長さのフェンスがネストできない・info が
 //! 丸ごと class に入る・素のビューアで `:::` が見える）。
 
 use comrak::nodes::{AstNode, NodeValue};

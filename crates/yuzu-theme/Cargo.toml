@@ -7,7 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-# crates.io へは公開しない（配布は GitHub Release のバイナリ + cargo install --git。README ロードマップ参照）
+# crates.io へは公開しない（配布は GitHub Release のバイナリ + cargo install --git。将来構想は ROADMAP「v0.21 以降の候補」）
 publish = false
 
 [dependencies]

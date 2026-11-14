@@ -76,7 +76,8 @@ eval "$(yuzu completions bash)"   # シェル補完（zsh / fish / powershell / 
 | 記法（Admonition・図表番号・折りたたみ・インクルード） | [執筆の基本](https://ai.implementer.net/yuzu/guide/writing/) |
 | 設定キー・CLI・診断ルールの一覧 | [リファレンス](https://ai.implementer.net/yuzu/reference/) |
 | 内部設計・凍結した設計判断・ワークスペース構成 | [開発](https://ai.implementer.net/yuzu/development/) |
-| 開発計画とこれまでの内訳 | [ROADMAP.md](ROADMAP.md) |
+| 開発計画（今の版・候補） | [ROADMAP.md](ROADMAP.md) |
+| リリース済みの版の内訳・レビューの記録 | [ROADMAP-history.md](ROADMAP-history.md) |
 
 ## 開発
 
